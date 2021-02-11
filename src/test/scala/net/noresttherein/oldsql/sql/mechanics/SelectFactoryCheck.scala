@@ -8,15 +8,14 @@ import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, ColumnSQL, From, IndexedMapping, InnerJoin, Join, JoinParam, LeftJoin, NonParam, OuterJoin, ParamSelect, RightJoin, RowProduct, SQLBoolean, Subselect}
+import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, ColumnSQL, From, IndexedMapping, InnerJoin, Join, JoinParam, LeftJoin, NonParam, OuterJoin, ParamSelect, RightJoin, RowProduct, SQLBoolean, Subselect, WithParam}
+import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
+import net.noresttherein.oldsql.sql.UnboundParam.FromParam
 import net.noresttherein.oldsql.sql.ast.{ConversionSQL, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, ListingSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
-import net.noresttherein.oldsql.sql.JoinParam.WithParam
-import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
-import net.noresttherein.oldsql.sql.UnboundParam.FromParam
 
 
 

@@ -4,18 +4,20 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
+import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, JoinedMappings, NonEmptyFrom, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TableSQL}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
+import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.mechanics.RowProductMatcher
-import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
-import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
+import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SpelledSQL}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -68,6 +70,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 
 
 
+	override def paramCount = 0
 	override def lastParamOffset :Nothing = throw new UnsupportedOperationException("Dual.lastParamOffset")
 	override def isParameterized :Boolean = false
 	override def isSubselectParameterized :Boolean = false
@@ -214,8 +217,15 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 		subselect.asInstanceOf[F { type Implicit = RowProduct; type DefineBase[+I <: RowProduct] = subselect.DefineBase[I] }]
 
 
+	protected override def defaultSpelling(context :SQLContext)
+	                                      (implicit spelling :SQLSpelling) :SpelledSQL[@~, RowProduct] =
+		if (filter == True) spelling.emptyFrom(context)
+		else spelling.emptyFrom(context) && (spelling(filter)(_, _))
 
-	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.dual(this)
+	override def parameterization :Parameterization[@~, RowProduct] = Parameterization.paramless[Dual]
+
+
+	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.dual(this)
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Dual]

@@ -9,8 +9,9 @@ import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnMatche
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnMatcher}
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, Lift, LocalScope, SQLTypeUnification}
-import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, FunctionSQL, LogicalSQL, QuerySQL, SelectSQL, SQLTerm, TupleSQL}
+import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, LogicalSQL, QuerySQL, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.AggregateSQL.{AggregateMatcher, CaseAggregate}
 import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.{ArithmeticMatcher, CaseArithmetic}
 import net.noresttherein.oldsql.sql.ast.ConcatSQL.{CaseConcat, ConcatMatcher}
@@ -29,7 +30,8 @@ import net.noresttherein.oldsql.sql.ast.SQLTerm.{ColumnTerm, False, SQLNull, Tru
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermMatcher}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.SeqTuple
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
-import net.noresttherein.oldsql.sql.mechanics.SQLScribe
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -44,7 +46,8 @@ import net.noresttherein.oldsql.sql.mechanics.SQLScribe
   * `F <: `[[net.noresttherein.oldsql.sql.FromSome FromSome]] into
   * [[net.noresttherein.oldsql.sql.ColumnSQL.ColumnSQLAggregateMethods ColumnQLAggregateMethods]] providing
   * extension methods for applying SQL aggregate functions such as
-  * [[net.noresttherein.oldsql.sql.AggregateFunction.Count COUNT]] or [[net.noresttherein.oldsql.sql.AggregateFunction.Avg AVG]]
+  * [[net.noresttherein.oldsql.sql.AggregateFunction.Count COUNT]]
+  * or [[net.noresttherein.oldsql.sql.AggregateFunction.Avg AVG]]
   * to this expression.
   * @see [[net.noresttherein.oldsql.sql.ColumnSQL.LocalColumn]]
   * @see [[net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn]]
@@ -320,6 +323,26 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 
 	override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelect[P, V] =
 		ParamSelect(from, this)
+
+
+	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+	                                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		defaultSpelling(context, params)
+
+	/** Translates this expression into an SQL string according to the given format/dialect, adding parenthesis
+	  * around the expression if necessary (the expression is not atomic and could be potentially split by operators
+	  * of higher precedence). This is a polymorphic method: default implementation always adds parenthesis,
+	  * unless the SQL returned by `spelling` already contains a pair; several subclasses override it simply
+	  * to `spelling(this)(context, params)`.
+	  */
+	def inParens[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+	                       (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+	{
+		val sql = spelling(this :ColumnSQL[E, S, V])(context, params)
+		if (sql.sql.length >= 2 && sql.sql.head == '(' && sql.sql.last == ')') sql
+		else "(" +: (sql + ")")
+	}
+
 }
 
 
@@ -468,7 +491,10 @@ object ColumnSQL {
 
 
 
-	/** A column with an alias given for use in the `as` clause. */
+	/** A column with an alias given for use in the `as` clause. The value given here is treated only as a suggestion:
+	  * it will be ignored if the column appears in a position where `as` clause is illegal, and the alias
+	  * can be changed when generating SQL to ensure uniqueness in the pertinent scope.
+	  */
 	class AliasedColumn[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	                   (val column :ColumnSQL[F, S, V], val alias :String)
 		extends CompositeColumnSQL[F, S, V]
@@ -500,6 +526,12 @@ object ColumnSQL {
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V] =
 			matcher.alias(this)
+
+
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			spelling(column :ColumnSQL[E, S, V])(context, params)
+//			column.inParens(context, params) + (" " + spelling.AS + " ") + alias
 
 	}
 

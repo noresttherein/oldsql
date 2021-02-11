@@ -1,9 +1,16 @@
 package net.noresttherein.oldsql.collection
-import net.noresttherein.oldsql.collection.NaturalMap.{Assoc, BaseNaturalMap}
-import net.noresttherein.oldsql.morsels.generic.{=#>, GenericFun}
 
+import scala.collection.{immutable, IterableOps}
 import scala.collection.mutable.Builder
-import scala.collection.{immutable, IterableOps, MapOps}
+
+import net.noresttherein.oldsql.collection.NaturalMap.{Assoc, BaseNaturalMap}
+import net.noresttherein.oldsql.collection.NaturalMap.WhenNoKey.Throw
+import net.noresttherein.oldsql.exceptions.NoSuchComponentException
+import net.noresttherein.oldsql.morsels.generic.=#>
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+
+
+
 
 
 
@@ -119,7 +126,6 @@ object NaturalMap {
 		@inline def -#>[V[_]](value :V[X]) :Assoc[K, V, X] = new Assoc(key, value)
 	}
 
-
 	implicit class NaturalMapMethods[K[_], V[_]](private val self :NaturalMap[K, V]) extends AnyVal {
 		@inline def +[X](key :K[X], value :V[X]) :NaturalMap[K, V] = self.updated(key, value)
 		@inline def +[X](entry :(K[X], V[X])) :NaturalMap[K, V] = self.updated(entry._1, entry._2)
@@ -128,19 +134,33 @@ object NaturalMap {
 
 
 
+	def apply[K[_], V[_]](entries :Assoc[K, V, _]*)
+	                     (implicit default :WhenNoKey[K, V] = Throw.aNoSuchElementException[K]) :NaturalMap[K, V] =
+		(newBuilder[K, V] ++= entries).result()
 
-	def apply[K[_], V[_]](entries :Assoc[K, V, _]*) :NaturalMap[K, V] = (newBuilder[K, V] ++= entries).result()
+	def single[K[_], V[_], X](key :K[X], value :V[X])
+	                         (implicit default :WhenNoKey[K, V] = Throw.aNoSuchElementException[K]) :NaturalMap[K, V] =
+		if (default == Throw.aNoSuchElementException[K])
+			new Singleton(key, value)
+		else {
+			val whenNoKey = default
+			new Singleton[K, V, X](key, value) {
+				override def default[T](key :K[T]) :V[T] = whenNoKey(key)
+			}
+		}
 
-	def single[K[_], V[_], X](key :K[X], value :V[X]) :NaturalMap[K, V] = new Singleton(key, value)
-
-	def empty[K[_], V[_]] :NaturalMap[K, V] = instance.asInstanceOf[NaturalMap[K, V]]
+	def empty[K[_], V[_]](implicit default :WhenNoKey[K, V] = Throw.aNoSuchElementException[K]) :NaturalMap[K, V] =
+		if (default == Throw.aNoSuchElementException[K])
+			instance.asInstanceOf[NaturalMap[K, V]]
+		else
+			new NaturalizedMap[K, V](Map.empty[K[_], V[_]])
 
 	private[this] final val instance = new NaturalizedMap[Seq, Seq](Map.empty[Seq[_], Seq[_]])
 
 
-	def newBuilder[K[_], V[_]] :Builder[Assoc[K, V, _], NaturalMap[K, V]] =
+	def newBuilder[K[_], V[_]](implicit default :WhenNoKey[K, V] = Throw.aNoSuchElementException[K])
+			:Builder[Assoc[K, V, _], NaturalMap[K, V]] =
 		new NaturalMapBuilder[K, V, Map, Map[K[_], V[_]]](Map[K[_], V[_]]())
-
 
 
 	def Lazy[K[_], V[_]](entries: => IterableOnce[Assoc[K, V, _]]) :NaturalMap[K, V] =
@@ -150,6 +170,40 @@ object NaturalMap {
 
 
 
+	/** An implicit opportunistic type class used by some `NaturalMap` implementations to handle the situation
+	  * of a missing key. This allows 'plugging in' behaviour of throwing a desired, more informational exception,
+	  * without a need of guarding every map access against thrown default `NoSuchElementException` exceptions.
+	  * This class has no implicit values in the implicit scope and they must be imported explicitly,
+	  * but client code typically makes providing it optional.
+	  * See the companion object for common predefined implementations.
+	  */
+	trait WhenNoKey[K[_], +V[_]] extends Serializable {
+		def apply[X](key :K[X]) :V[X]
+	}
+
+	object WhenNoKey {
+		def apply[K[_], V[_]](f :K =#> V) :WhenNoKey[K, V] = new WhenNoKey[K, V] {
+			override def apply[X](key :K[X]) = f(key)
+		}
+
+		type Throw[X] = Nothing
+		object Throw {
+			def aNoSuchElementException[K[_]] :WhenNoKey[K, Throw] =
+				noSuch.asInstanceOf[WhenNoKey[K, Throw]]
+
+			private[this] val noSuch = new WhenNoKey[({ type K[_] = Any })#K, Throw] {
+					override def apply[X](key :Any) = throw new NoSuchElementException(key.toString)
+				}
+
+
+			implicit def aNoSuchComponentException[C[X] <: RefinedMapping[X, O], O]
+			                                      (implicit mapping :MappingAt[O]) :WhenNoKey[C, Throw] =
+				new WhenNoKey[C, Throw] {
+					override def apply[X](key :C[X]) =
+						throw new NoSuchComponentException("Mapping " + key + " is not a component of " + mapping + ".")
+				}
+		}
+	}
 
 
 
@@ -163,8 +217,6 @@ object NaturalMap {
 		}
 
 		override def contains(key :K[_]) :Boolean = get(key).isDefined
-
-
 
 		override def removed(key :K[_]) :NaturalMap[K, V] =
 			if (contains(key)) {
@@ -183,12 +235,9 @@ object NaturalMap {
 			else (NaturalMap.newBuilder[K, U] ++= this ++= entries).result()
 
 
-
 		protected def default[X](key :K[X]) :V[X] =
 			throw new NoSuchElementException(key.toString)
 	}
-
-
 
 
 
@@ -222,12 +271,8 @@ object NaturalMap {
 		override def size :Int = target.size
 
 		override def get[X](key :K[X]) :Option[V[X]] = target.get(key)
-
 		override def apply[X](key :K[X]) :V[X] = target(key)
-
 		override def contains(key :K[_]) :Boolean = target.contains(key)
-
-
 
 		override def removed(key :K[_]) :NaturalMap[K, V] =
 			if (cache != null)
@@ -278,7 +323,6 @@ object NaturalMap {
                     new LazyNaturalMap(target.map(f))
 			}
 
-
 		override def flatMap[A[_], B[_]](f :Assoc[K, V, _] => IterableOnce[Assoc[A, B, _]]) :NaturalMap[A, B] =
 			if (cache != null)
 				cache.flatMap(f)
@@ -306,13 +350,9 @@ object NaturalMap {
 
 
 		override def iterator :Iterator[Assoc[K, V, _]] = target.iterator
-
 		override def keySet :collection.Set[K[_]] = target.keySet
-
 		override def values :Iterable[V[_]] = target.values
 	}
-
-
 
 
 
@@ -351,19 +391,20 @@ object NaturalMap {
 
 
 
-
-
-	private class NaturalizedMap[K[_], +V[_]] private[NaturalMap] (private val entries :Map[K[_], V[_]] = Map.empty[K[_], V[_]])
+	private class NaturalizedMap[K[_], +V[_]] private[NaturalMap]
+	                            (private val entries :Map[K[_], V[_]] = Map.empty[K[_], V[_]])
+	                            (implicit default :WhenNoKey[K, V] = Throw.aNoSuchElementException[K])
 		extends NaturalMap[K, V]
 	{
 		override def size :Int = entries.size
-
 		override def knownSize :Int = entries.knownSize
-
 
 		override def contains(key :K[_]) :Boolean = entries.contains(key)
 
-		override def apply[X](key :K[X]) :V[X] = entries(key).asInstanceOf[V[X]]
+		override def apply[X](key :K[X]) :V[X] = {
+			val res = entries.getOrElse(key, null.asInstanceOf[V[_]]).asInstanceOf[V[X]]
+			if (res == null) default(key) else res
+		}
 
 		override def get[X](key :K[X]) :Option[V[X]] = entries.get(key).asInstanceOf[Option[V[X]]]
 
@@ -407,7 +448,7 @@ object NaturalMap {
 
 
 		override def withDefault[U[T] >: V[T]](default :K =#> U) :NaturalMap[K, U] =
-			new NaturalizedMap[K, U](entries.withDefault(default.existential))
+			new NaturalizedMap[K, U](entries)(WhenNoKey(default))
 
 	}
 
@@ -417,15 +458,20 @@ object NaturalMap {
 		                            G[X, +Y] <: Map[X, Y] with immutable.MapOps[X, Y, G, G[X, Y]],
 		                            M <: G[K[_], V[_]] with immutable.MapOps[K[_], V[_], G, M]]
 	                               (private[this] var entries :G[K[_], V[_]])
+	                               (implicit default :WhenNoKey[K, V] = Throw.aNoSuchElementException[K])
 		extends Builder[Assoc[K, V, _], NaturalMap[K, V]]
 	{
 		override def clear() :Unit = entries = (entries :IterableOps[(K[_], V[_]), Iterable, G[K[_], V[_]]]).empty
 
-		override def result() :NaturalMap[K, V] = new NaturalizedMap[K, V](entries)
+		override def result() :NaturalMap[K, V] = entries.size match {
+			case 0 => empty[K, V]
+			case 1 => val elem = entries.head; single(elem._1.asInstanceOf[K[Any]], elem._2.asInstanceOf[V[Any]])
+			new NaturalizedMap[K, V](entries)
+		}
 
 		override def addOne(elem :Assoc[K, V, _]) :this.type = { entries = entries.updated(elem._1, elem._2); this }
-
 	}
+
 }
 
 

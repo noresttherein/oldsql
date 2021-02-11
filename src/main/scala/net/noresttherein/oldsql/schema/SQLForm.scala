@@ -16,11 +16,10 @@ import net.noresttherein.oldsql.morsels.{ColumnBasedFactory, Extractor, Stateles
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.SQLForm.{NotNullSQLForm, NullValue}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull
 import net.noresttherein.oldsql.schema.SQLReadForm.{FlatMappedSQLReadForm, LazySQLReadForm, MappedSQLReadForm, NotNullReadForm, ProxyReadForm, ReadFormNullGuard, ReadFormNullValue, ReadFormSeq, SeqReadForm}
 import net.noresttherein.oldsql.schema.SQLWriteForm.{CustomNullSQLWriteForm, EmptyWriteForm, EvalOrNullSQLWriteForm, FlatMappedWriteForm, LazyWriteForm, MappedWriteForm, NonLiteralWriteForm, NotNullWriteForm, ProxyWriteForm, SeqWriteForm, SQLWriteFormSeq, WriteFormNullGuard}
 import net.noresttherein.oldsql.schema.forms.SQLForms
-import net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull
-import net.noresttherein.oldsql.slang
 import net.noresttherein.oldsql.slang.innerNameOf
 
 
@@ -739,6 +738,7 @@ object SQLForm {
 
 		override def opt(rs :ResultSet, position :Int) :Opt[T] = Lack
 
+		override def nullSafe :SQLForm[T] = this
 		override def notNull :SQLForm[T] = super[SQLForm].notNull
 
 		override def readColumns = 0

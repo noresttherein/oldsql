@@ -1,12 +1,9 @@
 package net.noresttherein.oldsql.schema.support
 
-import net.noresttherein.oldsql.morsels.ColumnBasedFactory
-import net.noresttherein.oldsql.schema.Mapping.{MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter
+import net.noresttherein.oldsql.schema.{Buffs, ColumnMapping}
+import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 import net.noresttherein.oldsql.schema.support.MappingProxy.{OpaqueColumnProxy, OpaqueProxy}
-import net.noresttherein.oldsql.schema.{cascadeBuffs, Buff, Buffs, ColumnMapping, Mapping}
-import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StandardColumn}
 
 
 
@@ -43,14 +40,14 @@ class CoveredMapping[M <: RefinedMapping[S, X], S, X, O]
 		case simple :SimpleColumn[T @unchecked, X @unchecked] =>
 			ColumnMapping(rename(column.name), buffs.unsafeCascade(backer(simple)))(simple.form)
 		case _ =>
-			new OpaqueColumnProxy[T, O](column, rename(column.name), buffs.unsafeCascade(backer(column)))
+			new OpaqueColumnProxy[T, X, O](column, rename(column.name), buffs.unsafeCascade(backer(column)))
 	}
 
 
 	def cover[T](component :body.Component[T]) :Component[T] = alias(component)
 	def cover[T](column :body.Column[T]) :Column[T] = alias(column)
-	def uncover[T](component :Component[T]) :body.Component[T] = dealias(component)
-	def uncover[T](column :Column[T]) :body.Column[T] = dealias(column)
+	def uncover[T](component :Component[T]) :body.Component[T] = unexport(component)
+	def uncover[T](column :Column[T]) :body.Column[T] = unexport(column)
 
 	override def mappingName :String = "|" + body.mappingName + "|"
 

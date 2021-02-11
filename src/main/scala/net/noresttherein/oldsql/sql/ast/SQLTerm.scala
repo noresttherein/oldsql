@@ -6,9 +6,10 @@ import net.noresttherein.oldsql.morsels.generic.{Fixed, Self}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.FormFunction
 import net.noresttherein.oldsql.schema.SQLWriteForm.EmptyWriteForm
-import net.noresttherein.oldsql.sql.{ast, ColumnSQL, GlobalBoolean, RowProduct, SQLBoolean, SQLExpression, SQLOrdering}
+import net.noresttherein.oldsql.sql.{ColumnSQL, GlobalBoolean, RowProduct, SQLBoolean, SQLExpression, SQLOrdering}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnLiteral.{CaseColumnLiteral, ColumnLiteralMatcher}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.ColumnTermMatcher
@@ -19,6 +20,9 @@ import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral.{CaseLiteral, Literal
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull.{CaseNull, NullMatcher}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter.{CaseParameter, ParameterMatcher}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameterColumn.{CaseParameterColumn, ParameterColumnMatcher}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
+
 
 
 
@@ -33,7 +37,7 @@ import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameterColumn.{CaseParamete
 trait SQLTerm[T] extends SQLExpression[RowProduct, GlobalScope, T] {
 	protected def form :SQLForm[T]
 	override def readForm :SQLReadForm[T] = form
-	def writeForm :SQLWriteForm[Unit]
+	def writeForm :SQLWriteForm[Unit] //type of Unit rather than Any to prevent accidental use for other values
 
 	protected def groundValue :Option[T]
 	override def isGlobal = true
@@ -59,8 +63,6 @@ trait SQLTerm[T] extends SQLExpression[RowProduct, GlobalScope, T] {
 		case _ => false
 	}
 
-
-
 	override def canEqual(that :Any) :Boolean = that.getClass == getClass
 
 	override def equals(that :Any) :Boolean = that match {
@@ -69,8 +71,6 @@ trait SQLTerm[T] extends SQLExpression[RowProduct, GlobalScope, T] {
 			term.groundValue == groundValue && term.form == form
 		case _ => false
 	}
-
-
 
 	override def hashCode :Int = groundValue.hashCode * 31 + form.hashCode
 
@@ -102,6 +102,10 @@ object SQLTerm {
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 //		                    (matcher :ColumnMatcher[RowProduct, Y]) :Y[GlobalScope, T] =
 //			matcher.term(this)
+
+		override def inParens[P, E <: RowProduct](context :SQLContext, params :Parameterization[P, E])
+		                                         (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			spelling(this :ColumnSQL[E, GlobalScope, T])(context, params)
 	}
 
 
@@ -137,8 +141,20 @@ object SQLTerm {
 
 		override def groundValue :Option[T] = Some(value)
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[RowProduct, Y]): Y[GlobalScope, T] =
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+		                    (matcher: ExpressionMatcher[RowProduct, Y]): Y[GlobalScope, T] =
 			matcher.literal(this)
+
+		protected override def defaultSpelling[P, E <: RowProduct]
+		                                      (context :SQLContext, params :Parameterization[P, E])
+		                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			SpelledSQL(form.literal(value), context, params)
+
+		protected override def inlineSpelling[P, E <: RowProduct]
+		                                     (context :SQLContext, params :Parameterization[P, E])
+		                                     (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			SpelledSQL(form.inlineLiteral(value), context, params)
+
 
 		override def sameAs(that :Any) :Boolean = that.isInstanceOf[SQLLiteral[_]]
 
@@ -245,8 +261,9 @@ object SQLTerm {
 	class SQLParameter[T](val value :T, val name :Option[String] = None)(implicit override val form :SQLForm[T])
 		extends SQLTerm[T]
 	{
+		private[this] val constForm = SQLWriteForm.const[T](value)
 		override def readForm :SQLReadForm[T] = form
-		override val writeForm :SQLWriteForm[Unit] = SQLWriteForm.const[T](value)
+		override def writeForm :SQLWriteForm[Unit] = constForm
 		override def groundValue :Option[T] = Some(value)
 
 
@@ -254,6 +271,20 @@ object SQLTerm {
 		                    (matcher: ExpressionMatcher[RowProduct, Y]): Y[GlobalScope, T] =
 			matcher.param(this)
 
+
+		protected override def defaultSpelling[P, E <: RowProduct]
+		                                      (context :SQLContext, params :Parameterization[P, E])
+		                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			constForm.writtenColumns match {
+				case 0 => SpelledSQL(context, params)
+				case 1 => SpelledSQL("?", context, params :+ constForm)
+				case n => SpelledSQL(Iterator.fill(n)("?").mkString("(", ", ", ")"), context, params :+ constForm)
+			}
+
+		protected override def inlineSpelling[P, E <: RowProduct]
+		                                     (context :SQLContext, params :Parameterization[P, E])
+		                                     (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			SpelledSQL(Iterator.fill(constForm.writtenColumns)("?").mkString(", "), context, params :+ constForm)
 
 		override def sameAs(that :Any) :Boolean = that.isInstanceOf[SQLParameter[_]]
 
@@ -369,14 +400,31 @@ object SQLTerm {
 		override def opt: GlobalSQL[RowProduct, Option[T]] = CompositeNull[Option[T]]
 
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[RowProduct, Y]) :Y[GlobalScope, T] =
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+		                    (matcher :ExpressionMatcher[RowProduct, Y]) :Y[GlobalScope, T] =
 			matcher.sqlNull(this)
+
+		protected override def defaultSpelling[P, E <: RowProduct]
+		                                      (context :SQLContext, params :Parameterization[P, E])
+		                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		{
+			val literal = groundValue.filter(_ != null).map(v => form.literal(v)) getOrElse form.nullLiteral
+			SpelledSQL(literal, context, params)
+		}
+
+		protected override def inlineSpelling[P, E <: RowProduct]
+		                                     (context :SQLContext, params :Parameterization[P, E])
+		                                     (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		{
+			val literal = groundValue.filter(_ != null).map(v => form.inlineLiteral(v)) getOrElse form.inlineNullLiteral
+			SpelledSQL(literal, context, params)
+		}
 
 
 		override def sameAs(that :Any) :Boolean = that.isInstanceOf[CompositeNull[_]]
 
 		override def toString :String =
-			groundValue.filter(_ != null).map(v => form.literal(v) + ":SQLNull") getOrElse form.nullLiteral
+			groundValue.filter(_ != null).map(v => v.toString + ":SQLNull") getOrElse form.nullLiteral
 	}
 
 
@@ -570,9 +618,19 @@ object SQLTerm {
 
 		override def groundValue :Option[T] = None
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[RowProduct, Y]): Y[GlobalScope, T] =
+		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+		                    (matcher: ExpressionMatcher[RowProduct, Y]): Y[GlobalScope, T] =
 			matcher.native(this)
 
+		protected override def defaultSpelling[P, E <: RowProduct]
+		                                      (context :SQLContext, params :Parameterization[P, E])
+		                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			SpelledSQL(sql, context, params)
+
+		protected override def inlineSpelling[P, E <: RowProduct]
+		                                     (context :SQLContext, params :Parameterization[P, E])
+		                                     (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			defaultSpelling(context, params)
 
 		override def isomorphic(expression :SQLExpression.*) :Boolean = expression match {
 			case self :AnyRef if self eq this => true

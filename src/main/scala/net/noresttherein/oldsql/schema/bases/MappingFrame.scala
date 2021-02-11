@@ -22,9 +22,9 @@ import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, MappingExtract, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, FlagBuffType, Ignored, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, ReadOnly}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StandardColumn}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.ReadFormNullValue
 import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.{InverseForeignKeyMapping, RelatedEntityForeignKey, RelatedEntityForeignKeyColumn}
@@ -32,7 +32,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.{DeepProxy, ExportCo
 import net.noresttherein.oldsql.schema.Relation.RelVar
 import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping, JoinedEntityComponent, JoinTableCollectionMapping, RelationshipMapping}
 import net.noresttherein.oldsql.schema.bits.JoinTableCollectionMapping.{JoinTableKinMapping, JoinTableManyMapping}
-import net.noresttherein.oldsql.schema.support.{BuffedMapping, EffectivelyEmptyMapping, MappingDeclaredBuffs}
+import net.noresttherein.oldsql.schema.support.{BuffedMapping, EffectivelyEmptyMapping}
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -719,7 +719,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 			if (target.isInstanceOf[SimpleColumn[_, _]])
 				new ColumnComponent[K](componentSelector andThen selector, name, keyBuffs)(target.form)
 			else
-				new OpaqueColumnProxy[K, O](target, name, keyBuffs)
+				new OpaqueColumnProxy[K, X, O](target, name, keyBuffs)
 					with FrameColumn[K] with LateInitComponent[K]
 				{
 					override val componentSelector = fk.componentSelector andThen selector

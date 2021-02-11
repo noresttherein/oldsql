@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.Mapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.sql.{By, ByOne, ByVal, ColumnSQL, FromSome, GroupBy, GroupByClause, GroupByOne, GroupByVal, RowProduct}
+import net.noresttherein.oldsql.sql.{By, ByOne, ByVal, ColumnSQL, FromSome, GroupBy, GroupByClause, GroupByOne, GroupByVal, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.RowProduct.GroupingOfGeneralized
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL, TypedComponentSQL}
@@ -44,6 +44,7 @@ trait GroupingExpression[-F <: RowProduct, -G <: RowProduct, -E] {
 	type Result <: GroupByClause
 	def apply(clause :G, expr :E) :Result
 }
+
 
 
 
@@ -88,7 +89,6 @@ sealed abstract class GroupingColumnExpressionImplicits extends ArbitraryGroupin
 			override def apply(clause :G, expr :ColumnSQL[F, GlobalScope, V]) =
 				ByOne(clause, expr.anchor(clause.fromClause.generalized))
 		}
-
 }
 
 
@@ -103,9 +103,10 @@ object GroupingExpression extends GroupingColumnExpressionImplicits {
 
 			override def apply(clause :F, expr :C) = { //todo: clause groupBy expr <- requires Generalized <: O
 				val relation = clause.fullTableStack(shift.offset).toRelationSQL
-				                     .asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
-				val component = TypedComponentSQL(relation, projection[F](expr))(projection.isomorphism)
-				GroupBy[F, projection.WithOrigin, projection.WithOrigin, S](clause, component.groupingRelation)
+				                     .asInstanceOf[RelationSQL[U, MappingOf[Any]#TypedProjection, Any, U]]
+				val component = TypedComponentSQL(relation, projection[U](expr))(projection.isomorphism)
+				//todo: replace this with component in Scala 3 once overloading works
+				GroupBy[F, projection.WithOrigin, projection.WithOrigin, S](clause, component.groupingRelation, component)
 			}
 		}
 

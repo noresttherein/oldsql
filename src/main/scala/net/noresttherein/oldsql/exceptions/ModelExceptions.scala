@@ -22,7 +22,7 @@ trait KinCompositionException extends IllegalReferenceException
   * (for example, more than one for [[net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.Self self]]-compoposition).
   */
 class IllegalKinArityException(msg :String, cause :Throwable = null)
-	extends BaseOldSQLException(msg, cause) with KinCompositionException
+	extends IllegalResultArityException(msg, cause) with KinCompositionException
 
 /** Thrown after a failure to resolve a [[net.noresttherein.oldsql.model.Kin.One One]] kin, representing a mandatory
   * relationship with a single entity, if the referenced entity does not exist in the underlying database.

@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql
 
-import net.noresttherein.oldsql.exceptions.{PreexistingTransactionException, TransactionAbortedException, TransactionUnavailableException}
 import net.noresttherein.oldsql.ManagedAsset.{AbstractManagedAsset, ManagedTransactionAPIAsset}
+import net.noresttherein.oldsql.exceptions.{PreexistingTransactionException, TransactionAbortedException, TransactionUnavailableException}
 
 
 
@@ -165,11 +165,20 @@ trait Asset {
 	  * The transaction will ''not'' be committed (or rolled back) when control is passed from the block back to
 	  * this method. It simply summons an implicit [[net.noresttherein.oldsql.Asset.Transaction Transaction]]
 	  * and passes it as the argument to the block parameter.
+	  *
+	  * Note that you can declare the transaction argument of the block as `implicit`, making it available to
+	  * any methods requiring an implicit transaction:
+	  * {{{
+	  *     asset.inTransaction { implicit tx =>
+	  *         ...
+	  *     }
+	  * }}}
 	  * @return the value returned by `block`.
 	  * @see [[net.noresttherein.oldsql.Asset.transaction]] which runs the block in a fresh transaction instead.
 	  * @see [[net.noresttherein.oldsql.Asset.transactional]] which will reuse an implicit transaction if one 
 	  *      is available and create a fresh one in the other case.      
 	  */
+	@deprecated("This method does not make sense. What was I thinking?", "release")
 	def inTransaction[T](block :Transaction => T)(implicit transaction :Transaction) :T = block(transaction)
 
 	/** Starts a fresh [[net.noresttherein.oldsql.Asset.Transaction transaction]] and passes it to the given
@@ -186,6 +195,14 @@ trait Asset {
 	  * are mapped with that partial function before being rethrown. This behaviour should be generally reserved
 	  * for 'technical' exceptions thrown by the underlying service and not any exceptions thrown by the application
 	  * or this library.
+	  *
+	  * Note that you can declare the transaction argument of the block as `implicit`, making it available to
+	  * any methods requiring an implicit transaction:
+	  * {{{
+	  *     asset.transaction { implicit tx =>
+	  *         ...
+	  *     }
+	  * }}}
 	  * @return the value returned by `block`.
 	  * @see [[net.noresttherein.oldsql.Asset.inTransaction]]
 	  * @see [[net.noresttherein.oldsql.Asset.transactional]]      
@@ -218,13 +235,22 @@ trait Asset {
 	  * This method is thus equivalent to either [[net.noresttherein.oldsql.Asset.inTransaction inTransaction(block)]]
 	  * or [[net.noresttherein.oldsql.Asset.transaction transaction(block)]], depending on the presence of 
 	  * a preexisting implicit transaction.
+	  *
+	  * Note that you can declare the transaction argument of the block as `implicit`, making it available to
+	  * any methods requiring an implicit transaction:
+	  * {{{
+	  *     asset.transactional { implicit tx =>
+	  *         ...
+	  *     }
+	  * }}}
 	  * @return the value returned by `block`.
 	  */	
 	def transactional[T](block :Transaction => T)(implicit transaction :Transaction = noTransaction) :T =
 		if (transaction == noTransaction)
 			this.transaction(block)
 		else
-			inTransaction(block)
+			block(transaction)
+//			inTransaction(block)
 
 
 
@@ -290,7 +316,7 @@ object Asset {
 	  * instance.
 	  */
 	def apply(asset :ManagedAsset) :Asset = new Asset {
-		type Transaction = asset.Transaction
+		override type Transaction = asset.Transaction
 
 		protected override def newTransaction = //asset.trustedStartTransaction
 			throw new UnsupportedOperationException(
@@ -299,7 +325,6 @@ object Asset {
 
 		override def noTransaction = null.asInstanceOf[Transaction]
 
-//		override def isTransactional(implicit transaction :Transaction) = transaction.isOpen
 		override def isTransactional(implicit transaction :Transaction) :Boolean = {
 			assertSame; asset.isTransactional
 		}
@@ -307,16 +332,13 @@ object Asset {
 		protected override def commit()(implicit transaction :Transaction) :Unit =
 			throw new UnsupportedOperationException(s"Asset adapter of $asset does not support explicit commits.")
 
-
 		override def willRollback(implicit transaction :Transaction) = { //transaction.willRollback
 			assertSame; asset.willRollback
 		}
 
-
 		override def rollback()(implicit transaction :Transaction) :Unit = { //transaction.rollback()
 			assertSame; asset.rollback()
 		}
-
 
 		override def abort()(implicit transaction :Transaction) = {
 			assertSame; asset.abort()
@@ -336,7 +358,7 @@ object Asset {
 
 
 		override def inTransaction[T](block :Transaction => T)(implicit transaction :Transaction) :T = {
-			assertSame; asset.inTransaction(block(transaction))
+			assertSame; asset.transactional(block(transaction))
 		}
 
 		override def transaction[T](block :Transaction => T) :T = asset.transaction {
@@ -375,7 +397,7 @@ object Asset {
 
 
 	trait TransactionAPIAsset extends Asset {
-		type Transaction <: TransactionAPI
+		override type Transaction <: TransactionAPI
 
 		override def noTransaction :Transaction = null.asInstanceOf[Transaction]
 
@@ -400,9 +422,9 @@ object Asset {
 
 
 /** High level API of some transactional data source or service. It is a sister trait to
-  * [[net.noresttherein.oldsql.Asset Asset]], but where the latter used on implicit values of transactions in order
+  * [[net.noresttherein.oldsql.Asset Asset]], but where the latter used implicit transaction parameters in order
   * to propagate the transactional context between method calls, this interface depends on some other means, such
-  * as thread local variables or JNDI to do the job, removing the transaction from the API almost completely.
+  * as thread local variables or JNDI, to do the job, removing the transaction from the API almost completely.
   * 
   * This interface is responsible only of managing of open transactions, abstracting completely over the nature
   * of the underlying resource. It uses inversion of control, hiding the creation, committing and, potentially, 
@@ -466,13 +488,11 @@ trait ManagedAsset {
 	def isTransactional :Boolean
 
 
-
 	/** True if the underlying transaction is either already rolled back or marked for roll back.
 	  * @throws net.noresttherein.oldsql.exceptions.TransactionUnavailableException if no transactional context 
 	  *                                                                             is present. 
 	  */
 	def willRollback :Boolean
-
 
 	/** Flags the implicitly available transaction for being rolled back. The moment of actual rollback is unspecified:
 	  * it can happen as part of execution of this method, or at some other point in the future 
@@ -500,7 +520,6 @@ trait ManagedAsset {
 	  * @see [[net.noresttherein.oldsql.ManagedAsset.rollback(cause:Throwable)*]]
 	  */
 	def rollback(cause :Throwable) :Unit
-
 
 
 	/** Throws a [[net.noresttherein.oldsql.exceptions.TransactionAbortedException TransactionAbortedException]], which
@@ -544,7 +563,7 @@ trait ManagedAsset {
 	  * of a transaction for the current thread can be performed explicitly, before `block` is executed, or deferred 
 	  * until a transaction is actually needed by any method called from the block. The latter case would make 
 	  * this method superfluous when considered in itself, as it would have the same effect as executing the block 
-	  * explicitly outside of this method; large part of the reason behind its existence however is the symmetry with
+	  * explicitly outside of this method; a large part of the reason behind its existence however is the symmetry with
 	  * [[net.noresttherein.oldsql.Asset Asset]], which allows the code written for the latter to be adapted with
 	  * minimal changes for the use with this interface.
 	  * @return the value returned by `block`.
@@ -552,6 +571,7 @@ trait ManagedAsset {
 	  * @see [[net.noresttherein.oldsql.ManagedAsset.transactional]] which will reuse an implicit transaction if one 
 	  *      is available and create a fresh one in the other case.      
 	  */
+	@deprecated("This method is useless. What was I thinking?", "release")
 	def inTransaction[T](block: => T) :T
 
 	/** Starts a fresh [[net.noresttherein.oldsql.ManagedAsset.Transaction transaction]] and executes the by-name
@@ -676,7 +696,6 @@ object ManagedAsset {
 		}
 
 
-
 		override def inTransaction[T](block: => T) :T = {
 			currentTransaction; block
 		}
@@ -699,7 +718,6 @@ object ManagedAsset {
 			if (isTransactional) block else transaction(block)
 
 
-
 		private def recover(transaction :Transaction)(error :Exception) :Nothing =
 			try {
 				commit(transaction)
@@ -718,9 +736,7 @@ object ManagedAsset {
 			throw caseThrown.applyOrElse(error, identity[Exception])
 		}
 
-
 		protected def caseRecoverable :PartialFunction[Exception, Exception] = PartialFunction.empty
-
 		protected def caseThrown :PartialFunction[Exception, Exception] = PartialFunction.empty
 
 	}
@@ -799,10 +815,8 @@ trait ThreadAsset extends AbstractManagedAsset {
 	override def isTransactional :Boolean = threadTransaction.get != null
 
 
-
 	protected[oldsql] override def noTransactionToRollbackMessage :String =
 		s"Cannot roll back as no transaction for $this for thread $threadFormat is in progress."
-
 
 	protected def threadFormat :String = {
 		val thread = Thread.currentThread
@@ -842,7 +856,6 @@ object ThreadAsset {
 		}
 
 
-
 	/** Adapts the given `Asset` to the `ManagedAsset` interface. Returned asset overrides implementations
 	  * of all methods executing transactional blocks, delegating them to their counterparts of the adapted
 	  * instance.
@@ -873,7 +886,7 @@ object ThreadAsset {
 		override def abort(message :String, cause :Throwable) = asset.abort(message, cause)(currentTransaction)
 
 
-		override def inTransaction[T](block : => T) = asset.inTransaction { _ => block }(currentTransaction)
+		override def inTransaction[T](block : => T) = asset.transactional { _ => block }(currentTransaction)
 
 		override def transaction[T](block : => T) =
 			try {

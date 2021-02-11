@@ -3,11 +3,13 @@ package net.noresttherein.oldsql.sql.ast
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.ColumnReadForm
-import net.noresttherein.oldsql.sql.{ast, AggregateClause, AggregateFunction, ColumnSQL, FromSome, RowProduct, SQLExpression}
+import net.noresttherein.oldsql.sql.{AggregateClause, AggregateFunction, ColumnSQL, FromSome, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.AggregateSQL.DefaultAggregateSQL
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -16,7 +18,7 @@ import net.noresttherein.oldsql.sql.ast.AggregateSQL.DefaultAggregateSQL
 
 /** An SQL expression representing the application of an aggregate function such as `sum` to an expression using
   * columns from multiple rows. Used in conjunction with queries featuring a ''group by'' clause,
-  * or in the ''select'' clause when all rows are being aggregated.
+  * or in a ''select'' clause when all rows are being aggregated.
   * @tparam F the ungrouped ''from'' clause whose [[net.noresttherein.oldsql.sql.RowProduct.Explicit ''Explicit'']]
   *           section is aggregated, that is contains relations whose columns are not available individually
   *           (unless featured in
@@ -49,9 +51,9 @@ trait AggregateSQL[-F <: RowProduct, -G <: RowProduct, X, Y] extends ColumnSQL[G
 	def isDistinct :Boolean
 
 	/** Add a `DISTINCT` clause to this aggregate expression. */
-	def distinct :AggregateSQL[F, G, X, Y] =
-		if (isDistinct) this
-		else new DefaultAggregateSQL(function, arg, true)(readForm)
+	def distinct :AggregateSQL[F, G, X, Y] //=
+//		if (isDistinct) this
+//		else new DefaultAggregateSQL(function, arg, true)(readForm)
 
 	override def isGlobal = false
 	override def asGlobal :Option[Nothing] = None
@@ -66,17 +68,18 @@ trait AggregateSQL[-F <: RowProduct, -G <: RowProduct, X, Y] extends ColumnSQL[G
 					AggregateSQL(function, grounded, isDistinct)(readForm).asInstanceOf[ColumnSQL[G, LocalScope, Y]]
 			}
 		case _ =>
-			throw new IllegalArgumentException(s"Can't anchor an AggregateSQL $this in a non AggregateClause $from")
+			throw new IllegalArgumentException(s"Cannot anchor an AggregateSQL $this in a non AggregateClause $from.")
 	}
 
 
 	override def basedOn[U <: G, E <: RowProduct](base :E)(implicit ext :U PartOf E) :AggregateSQL[F, E, X, Y] =
-		new DefaultAggregateSQL(function, arg, isDistinct)(readForm) //we could just cast ourselves and it would be fine
+		this.asInstanceOf[AggregateSQL[F, E, X, Y]]
+//		new DefaultAggregateSQL(function, arg, isDistinct)(readForm) //we could just cast ourselves and it would be fine
 
 	override def expand[U <: G, E <: RowProduct]
 	                   (base :E)(implicit expansion :U ExpandedBy E, global: GlobalScope <:< LocalScope) :Nothing =
 		throw new UnsupportedOperationException(
-			s"AggregateSQL expression cannot be expanded over to a subselect clause $base."
+			s"AggregateSQL expression cannot be used in a subselect $base of its original FROM clause."
 		)
 
 
@@ -147,12 +150,27 @@ object AggregateSQL {
 
 	type * = AggregateSQL[_ <: RowProduct, _ <: RowProduct, _, _]
 
-	private[sql] class DefaultAggregateSQL[-F <: RowProduct, -G <: RowProduct, X, Y]
+	//Loose bounds here are required only by distinct, basedOn and Count.*
+	private[sql] class DefaultAggregateSQL[F <: FromSome, X, Y]
 	                                      (override val function :AggregateFunction,
 	                                       override val arg :ColumnSQL[F, LocalScope, X],
 	                                       override val isDistinct :Boolean)
 	                                      (implicit override val readForm :ColumnReadForm[Y])
-		extends AggregateSQL[F, G, X, Y]
+		extends AggregateSQL[F, F#GeneralizedAggregate, X, Y]
+	{
+		override def distinct =
+			if (isDistinct) this else new DefaultAggregateSQL(function, arg, true)
+
+		protected override def defaultSpelling[P, E <: F#GeneralizedAggregate]
+		                                      (context :SQLContext, params :Parameterization[P, E])
+		                                      (implicit spelling :SQLSpelling) =
+		{
+			val ungroupedParams = params.ungroup[F]
+			val res = spelling(function, isDistinct)(arg)(context, ungroupedParams.params)
+			val grouped = res.params.settersReversed.map(_.unmap(ungroupedParams.ungroupParams))
+			SpelledSQL(res.sql, res.context, params.reset(grouped ::: params.settersReversed))
+		}
+	}
 
 
 

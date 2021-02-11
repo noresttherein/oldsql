@@ -7,11 +7,14 @@ import net.noresttherein.oldsql.sql.{ColumnSQL, ParamSelect, RowProduct, SQLExpr
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.UnaryColumnOperator
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, GroundFrom, NonEmptyFrom, TopFrom}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, Lift, LocalScope}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.UnaryOperatorSQL
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.ColumnPromotionConversion.{CaseColumnPromotion, ColumnPromotionMatcher}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion.{CasePromotion, PromotionMatcher}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectSQL, TopSelectSQL}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -46,6 +49,15 @@ trait ConversionSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, Y] ext
 
 	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[F, R]): R[S, Y] =
 		matcher.conversion(this)
+
+
+	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		spelling(value :SQLExpression[E, S, X])(context, params)
+
+	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+	                                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		spelling.inline(value :SQLExpression[E, S, X])(context, params)
 
 
 	protected def name :String = this.localClassName

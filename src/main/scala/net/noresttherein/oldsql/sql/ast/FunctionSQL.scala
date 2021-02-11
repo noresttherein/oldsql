@@ -4,11 +4,13 @@ import net.noresttherein.oldsql.collection.{Chain, Opt}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm}
 import net.noresttherein.oldsql.sql.{ColumnFunction, ColumnSQL, RowProduct, SQLExpression, SQLFunction}
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
+import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumn.FunctionColumnMatcher
-import net.noresttherein.oldsql.sql.mechanics.SQLScribe
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -40,6 +42,16 @@ trait FunctionSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X <: Chain,
 
 	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, R]) :R[S, Y] =
 		matcher.function(this)
+
+
+	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		spelling(function)(args :ChainTuple[E, S, X])(context, params)
+
+	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+	                                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		defaultSpelling(context, params)
+
 
 
 	override def sameAs(other :CompositeSQL.*) :Boolean = other match {

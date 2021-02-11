@@ -5,11 +5,10 @@ import scala.collection.mutable.Builder
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.exceptions.{IllegalKinArityException, IncompatibleElementTypeException}
+import net.noresttherein.oldsql.exceptions.IllegalKinArityException
 import net.noresttherein.oldsql.model.ComposedOf.{Arity, CollectionOf, ComposableFrom, ConstructFrom, DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.ToCollection
 import net.noresttherein.oldsql.model.Kin.Derived
-import net.noresttherein.oldsql.morsels.Stateless
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -608,16 +607,21 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		}
 
 
-		/** A factory and matcher for composition of `Seq[V]` and subclasses from instances */
+		/** A factory and matcher for composition of `Seq[V]` and subclasses from instances
+		  * of `Int `[[net.noresttherein.oldsql.model.-> ->]]` V`, where the first element of the pair is the index
+		  * of element of the second element. More precisely, the sequence is constructed by sorting the input ascending
+		  * by index - gaps in numeration result in subsequent elements being at lower position than stated rather than
+		  * `null` or other filler elements at missing indices.
+		  */
 		object Ordered {
 			def apply[S, V]()(implicit factory :Factory[V, S]) :S ConstructFrom (Int -> V) =
-				new ToOrdered[S, V](factory)("Indexed[" + factory.innerClassName + "]")
+				new ToOrdered[S, V](factory)("Ordered[" + factory.innerClassName + "]")
 
 			@inline def of[V] :OrderedComposer[V] = new OrderedComposer[V] {}
 
 			sealed trait OrderedComposer[V] extends Any {
 				final def as[S](factory :Factory[V, S]) :S ConstructFrom (Int -> V) =
-					new ToOrdered[S, V](factory)("Indexed[" + factory.innerClassName + "]")
+					new ToOrdered[S, V](factory)("Ordered[" + factory.innerClassName + "]")
 
 				final def in[S[_]](implicit factory :Factory[V, S[V]]) :S[V] ConstructFrom (Int -> V) = as(factory)
 
@@ -874,7 +878,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			def iterableFactory = iterableFactoryOf(factory)
 
 			override def compatibleWith(decomposer :DecomposableTo[S, _]) :Boolean =
-				DecomposableTo.Indexed.unapply(decomposer)
+				DecomposableTo.Ordered.unapply(decomposer)
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ToOrdered[_, _]]
 
@@ -971,7 +975,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 	}
 
 	abstract class IndexedDecomposableToImplicits extends FallbackDecomposableToImplicits {
-		implicit def indexed[T] :Iterable[T] ExtractAs (Int -> T) = DecomposableTo.Indexed()
+		implicit def indexed[T] :Iterable[T] ExtractAs (Int -> T) = DecomposableTo.Ordered()
 	}
 
 
@@ -1067,7 +1071,11 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		}
 
 
-		object Indexed {
+		/** A factory and matcher for the decomposition of `Seq[V]`
+		  * into `Int `[[net.noresttherein.oldsql.model.-> ->]]` V`, where the first element of the pair
+		  * is the zero-based index of the given element in the sequence.
+		  */
+		object Ordered {
 			def apply[V]() :Iterable[V] ExtractAs (Int -> V) = FromIndexed.asInstanceOf[Iterable[V] ExtractAs (Int -> V)]
 
 			def unapply[T, E](decomposer :T DecomposableTo E) :Boolean = decomposer == FromIndexed
@@ -1146,7 +1154,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 			override def first(composite :Iterable[Any]) :Int -> Any = ->(0, composite.head)
 
-			override def toString = "Indexed"
+			override def toString = "Ordered"
 		}
 
 	}

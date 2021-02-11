@@ -3,12 +3,10 @@ package net.noresttherein.oldsql.sql.mechanics
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, FromSome, GroupBy, GroupByClause, RowProduct}
 import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExpandingDecorator}
 import net.noresttherein.oldsql.sql.Expanded.ExpandedDecomposition
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
-import net.noresttherein.oldsql.sql.RowProduct.As
 
 
 
@@ -32,6 +30,7 @@ import net.noresttherein.oldsql.sql.RowProduct.As
 abstract class GroupedUnder[+F <: RowProduct, -G <: RowProduct] {
 	def apply(grouping :G) :F
 }
+
 
 
 object GroupedUnder {

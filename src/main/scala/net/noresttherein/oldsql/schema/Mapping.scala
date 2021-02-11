@@ -9,21 +9,22 @@ import net.noresttherein.oldsql.{slang, OperationType}
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.Opt.Got
+import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.InferTypeParams
+import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, ExtraSelect, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingBound, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ArbitraryProjection, ExactProjection, IsomorphicProjection}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.bits.{LabeledMapping, OptionMapping}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
-import net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals
 import net.noresttherein.oldsql.sql.{RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent
@@ -850,6 +851,8 @@ trait Mapping {
 		case UPDATE => updatable
 	}
 
+	/** Returns an ''export'' column of this mapping under the given a name. */
+	@throws[NoSuchComponentException]("if this mapping doesn't declare a direct or indirect column with the given name.")
 	def columnNamed(name :String) :Column[_]
 
 
@@ -1160,7 +1163,7 @@ trait Mapping {
 		/** Use recursion to print the ''export'' (by this mapping) version of every subcomponent.
 		  * @param ident whitespace prefix to start every new line with
 		  * @param wasColumn was the last printed component a sibling column, meaning we should print this column inline
-		  * @return true if `mapping` is a column.
+		  * @return `true` if `mapping` is a column.
 		  */
 		def rec[T](mapping :Component[T], res :StringBuilder, ident :String = "", wasColumn :Boolean = false) :Boolean =
 			mapping match {
@@ -1194,7 +1197,6 @@ trait Mapping {
 		val res = new StringBuilder
 		rec(this, res)
 		res.toString
-//		components.map(c => export(c).debugString).mkString("\n" + toString + "{\n", "; ", "\n}")
 	}
 
 
@@ -1280,7 +1282,12 @@ object Mapping extends LowPriorityMappingImplicits {
 		LooseComponent(mapping)
 
 
-	implicit class MappingExtension[M <: Mapping](private val self :M) extends AnyVal {
+	implicit class MappingExtension[M <: Mapping](private val self :M) extends AnyVal { //consider: rename to *
+//		def toSQL[F <: RowProduct, S](from :F)(implicit origin :M <:< MappingAt[F], offset :TableCount[F, _ <: Numeral],
+//		                                                projection :OriginProjection[M, S])
+//				:LooseComponent[F, projection.WithOrigin, S] =
+//			toSQL[F, S]
+
 		def toSQL[F <: RowProduct, S](implicit origin :M <:< MappingAt[F], offset :TableCount[F, _ <: Numeral],
 		                                       projection :OriginProjection[M, S])
 				:LooseComponent[F, projection.WithOrigin, S] =

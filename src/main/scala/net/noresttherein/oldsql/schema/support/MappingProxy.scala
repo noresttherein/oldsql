@@ -9,12 +9,14 @@ import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.morsels.generic.=#>
-import net.noresttherein.oldsql.schema.{filterColumnExtracts, Buff, Buffs, ColumnExtract, ColumnForm, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{filterColumnExtracts, Buffs, ColumnExtract, ColumnForm, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bases.{ExportMapping, StableMapping}
 import net.noresttherein.oldsql.schema.support.DelegateMapping.{ShallowDelegate, WrapperDelegate}
+
+
 
 
 
@@ -189,7 +191,6 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		override def insertForm :SQLWriteForm[S] = backer.insertForm
 		override def updateForm :SQLWriteForm[S] = backer.updateForm
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = backer.writeForm(op)
-
 	}
 
 
@@ -217,6 +218,9 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 			if ((component eq backer) | (component eq this)) this.asInstanceOf[Component[T]]
 			else backer.exportOrNot(component)
 
+		override def unexport[X](component :Component[X]) :Component[X] =
+			if (component eq this) backer.asInstanceOf[Component[X]]
+			else component
 
 		override def apply[T](component :Component[T]) :Extract[T] =
 			(if (component eq backer)
@@ -258,6 +262,12 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		override def assemble(pieces :Pieces) :Opt[S] = pieces.get(backer) //infinite recursion potential!
 
 		final override def buffs :Buffs[S] = Buffs.empty
+
+		protected override def unexport[X](component :Component[X]) :Component[X] =
+			if (component eq this) backer.asInstanceOf[Component[X]] else component
+
+		protected override def unexport[X](column :Column[X]) :Column[X] =
+			if (column eq this) backer.asInstanceOf[Column[X]] else column
 
 		override def columnNamed(name :String) :Column[_] = backer.columnNamed(name)
 	}
@@ -341,11 +351,11 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 
 
 		/** Maps a component of this proxy back to its corresponding export component of `backer`. */
-		protected def dealias[T](component :Component[T]) :backer.Component[T] =
+		protected override def unexport[T](component :Component[T]) :backer.Component[T] =
 			originals.getOrElse(component, component).asInstanceOf[backer.Component[T]]
 
 		/** Maps a column of this proxy back to its corresponding export column of `backer`. */
-		protected def dealias[T](column :Column[T]) :backer.Column[T] =
+		protected override def unexport[T](column :Column[T]) :backer.Column[T] =
 			originals.getOrElse(column, column).asInstanceOf[backer.Column[T]]
 
 		private[this] def adaptExport[T](component :backer.Component[T]) = component match {
@@ -452,6 +462,8 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 				export(entry._2)
 			}.toList : _*
 		)
+
+		override def toString :String = "//" + backer
 	}
 
 
@@ -464,16 +476,24 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * [[net.noresttherein.oldsql.haul.ComponentValues.aliased aliased]]: the adapted column is substituted with
 	  * this proxy when checking for a preset value.
 	  */ //consider: why can't we just have it in the extract map, so it's aliased automatically?
-	class OpaqueColumnProxy[S, O] private (protected override val backer :ColumnMapping[S, _], 
-	                                       override val name :String, override val buffs :Buffs[S],
-	                                       override val form :ColumnForm[S])
+	class OpaqueColumnProxy[S, A, O] private (protected override val backer :ColumnMapping[S, A],
+	                                          override val name :String, override val buffs :Buffs[S],
+	                                          override val form :ColumnForm[S])
 		extends MappingProxy[S, O] with ColumnMapping[S, O] with StableColumn[S, O]
 	{
-		def this(backer :ColumnMapping[S, _]) = this(backer, backer.name, backer.buffs, backer.form)
-		def this(backer :ColumnMapping[S, _], name :String) = this(backer, name, backer.buffs, backer.form)
-		def this(backer :ColumnMapping[S, _], buffs :Buffs[S]) = this(backer, backer.name, buffs, backer.form)
-		def this(backer :ColumnMapping[S, _], name :String, buffs :Buffs[S]) = this(backer, name, buffs, backer.form)
-		
+		def this(backer :ColumnMapping[S, A]) = this(backer, backer.name, backer.buffs, backer.form)
+		def this(backer :ColumnMapping[S, A], name :String) = this(backer, name, backer.buffs, backer.form)
+		def this(backer :ColumnMapping[S, A], buffs :Buffs[S]) = this(backer, backer.name, buffs, backer.form)
+		def this(backer :ColumnMapping[S, A], name :String, buffs :Buffs[S]) = this(backer, name, buffs, backer.form)
+
+		protected override def unexport[X](component :Component[X]) :backer.Component[X] =
+			if (component eq this) backer.asInstanceOf[backer.Component[X]]
+			else throw new IllegalArgumentException(s"Mapping $component is not a component of column $this.")
+
+		protected override def unexport[X](column :Column[X]) :backer.Column[X] =
+			if (column eq this) backer.asInstanceOf[backer.Column[X]]
+			else throw new IllegalArgumentException(s"Column $column is not a component of column $this.")
+
 		private[this] val aliasing = new (MappingAt[O]#Component =#> MappingAt[O]#Component) {
 			override def apply[T](x :Component[T]) =
 				if (x eq backer) this.asInstanceOf[Column[T]] else null
@@ -481,6 +501,8 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		
 		override def assemble(pieces :Pieces) :Opt[S] =
 			backer.asInstanceOf[Column[S]].assemble(pieces.aliased(aliasing))
+
+		override def toString :String = "//" + backer
 	}
 
 
@@ -508,7 +530,6 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		override def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
 		override def apply[T](component :Component[T]) :Extract[T] = extracts(component)
 
-
 		override def export[T](component :Component[T]) :Component[T] =
 			if ((component eq this) | (component eq backer)) component
 			else backer.export(component)
@@ -524,6 +545,17 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		override def exportOrNot[T](column :Column[T]) :Column[T] =
 			if ((column eq this) | (column eq backer)) column
 			else backer.exportOrNot(column)
+
+		override def unexport[X](component :Component[X]) :Component[X] = component match {
+			case column :ColumnMapping[X @unchecked, O] => unexport(column)
+			case _ => throw new IllegalArgumentException(s"Cannot unexport a non-column component $component with $this.")
+		}
+
+		override def unexport[X](column :Column[X]) :Column[X] =
+			if (column eq this)
+				throw new IllegalArgumentException("Cannot un-export the adapter column itself: " + column)
+			else
+				column
 
 		override val columnExtracts :NaturalMap[Column, ColumnExtract] =
 			backer.columnExtracts.updated[ColumnExtract, S](backer, ColumnExtract.ident(backer))
@@ -542,6 +574,8 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 			if (components.isEmpty) SQLWriteForm.empty
 			else if (components.contains(this)) form
 			else backer.writeForm(op, components)
+
+		override def toString :String = "->" + backer
 	}
 
 
@@ -587,6 +621,13 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		//this can fail with ClassCastException for custom NaturalMap implementations
 		override val extracts = columnExtracts.asInstanceOf[NaturalMap[Component, ColumnExtract]]
 
+		override protected def unexport[X](component :Component[X]) :Component[X] =
+			if (component eq this) backer.asInstanceOf[Component[X]] else component
+
+		override protected def unexport[X](column :Column[X]) :Column[X] =
+			if (column eq this) backer.asInstanceOf[Column[X]] else column
+
+
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
 			if (components.isEmpty) SQLReadForm.empty
 			else if (components.contains(this) || components.contains(backer)) form
@@ -596,6 +637,8 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 			if (components.isEmpty) SQLWriteForm.empty
 			else if (components.contains(this)) form
 			else backer.writeForm(op, components)
+
+		override def toString :String = "->" + backer
 	}
 	
 	

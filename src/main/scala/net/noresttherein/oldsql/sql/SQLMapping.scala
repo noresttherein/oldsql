@@ -26,7 +26,7 @@ import net.noresttherein.oldsql.sql.SQLExpression.{BaseExpressionMatcher, CaseEx
 import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
 import net.noresttherein.oldsql.sql.ast.ConversionSQL
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion
-import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedComponentSQL
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, ListingSQL, SeqTuple}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.MatchChain
@@ -42,7 +42,7 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, List
   * so that [[net.noresttherein.oldsql.sql.GroupBy GroupBy]]/[[net.noresttherein.oldsql.sql.By By]]
   * can be homomorphic with [[net.noresttherein.oldsql.sql.Join Join]]s and to allow
   * [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]] expressions to be used as
-  * [[net.noresttherein.oldsql.schema.Relation Relation]]s in the ''from'' clauses of other SQL selects.
+  * [[net.noresttherein.oldsql.schema.Relation Relation]]s in ''from'' clauses of other SQL selects.
   * This class is dedicated to non-component expressions; subclasses of
   * [[net.noresttherein.oldsql.sql.ast.MappingSQL MappingSQL]] should be used directly for component expressions.
   * Not all possible expressions are supported; the expression may consist of
@@ -67,23 +67,37 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, List
   *           expressions which can occur only as part of the most nested SQL select based on `F` in its
   *           ''group by'' or ''select'' clause, and [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope global]]
   *           for expressions which can occur anywhere in a SQL select from `F` or its dependent selects.
-  * @tparam X the value type of this expression
+  * @tparam V the value type of this expression
   * @tparam O the [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type of this mapping.
   *
   * @see [[net.noresttherein.oldsql.sql.ColumnSQLMapping ColumnSQLMapping]]
   * @author Marcin Mościcki
   */
-trait SQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O] extends BaseMapping[X, O] {
+trait SQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V, O] extends BaseMapping[V, O] {
 
-	val expr :SQLExpression[F, S, X]
+	val expr :SQLExpression[F, S, V] //consider: renaming to expression for consistency with SelectedColumn
 	def format :String = ??? //todo:
 
-	override val buffs :Buffs[X] = Buffs(this, SQLMapping.buffList.asInstanceOf[Seq[Buff[X]]]:_*)
+	override val buffs :Buffs[V] = Buffs(this, SQLMapping.buffList.asInstanceOf[Seq[Buff[V]]]:_*)
 
-	override def writtenValues[T](op :WriteOperationType, subject :X) :ComponentValues[X, O] = ColumnValues.empty
-	override def writtenValues[T](op :WriteOperationType, subject :X, collector :ComponentValuesBuilder[T, O]) :Unit =
+	override def writtenValues[T](op :WriteOperationType, subject :V) :ComponentValues[V, O] = ColumnValues.empty
+	override def writtenValues[T](op :WriteOperationType, subject :V, collector :ComponentValuesBuilder[T, O]) :Unit =
 		()
 
+	//todo: make export return SQLMapping - it will be very helpful in GroupingRelation
+//	protected def extract[T](component :Column[T]) :GenericExtract[ColumnSQLMapping[F, S, T, O], V, T, O]
+//
+//	override def apply[T](component :Component[T]) :GenericExtract[ColumnSQLMapping[F, S, T, O], V, T, O] =
+//		extract(component)
+//
+//	override def apply[T](column :Column[T]) :GenericExtract[ColumnSQLMapping[F, S, T, O], V, T, O] =
+//		extract(column)
+//
+//	override def export[T](component :Component[T]) :SQLMapping[F, S, V, O] =
+//		if (component eq this) this.asInstanceOf[SQLMapping[F, S, V, O]] else extract(component).export
+//
+//	override def export[T](column :Column[T]) :ColumnSQLMapping[F, S, V, O] =
+//		extract(column)
 
 	override def components :Unique[SQLMapping[F, S, _, O]]
 	override def subcomponents :Unique[SQLMapping[F, S, _, O]]
@@ -113,11 +127,11 @@ trait SQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O] extend
 	override def columnsWithout(buff :BuffType) :Unique[ColumnSQLMapping[F, S, _, O]] =
 		columns.filter(buff.inactive)
 
-	override def selectForm :SQLReadForm[X] = expr.readForm
+	override def selectForm :SQLReadForm[V] = expr.readForm
 
-	override def writeForm(op :WriteOperationType) :SQLWriteForm[X] = SQLWriteForm.empty
+	override def writeForm(op :WriteOperationType) :SQLWriteForm[V] = SQLWriteForm.empty
 
-	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[X] =
+	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[V] =
 		if (components.isEmpty)
 			SQLWriteForm.empty
 		else
@@ -150,9 +164,12 @@ object SQLMapping {
 
 
 
-
+	type * = SQLMapping[Nothing, LocalScope, _, _]
 
 	type Project[F <: RowProduct, S >: LocalScope <: GlobalScope, X] = {
+		type E[O] = SQLMapping[F, S, X, O]
+		type C[O] = ColumnSQLMapping[F, S, X, O]
+		type I[O] = ListingSQLMapping[F, S, X, O]
 		type Expression[O] = SQLMapping[F, S, X, O]
 		type Column[O] = ColumnSQLMapping[F, S, X, O]
 		type IndexedExpression[O] = ListingSQLMapping[F, S, X, O]
@@ -202,7 +219,7 @@ object SQLMapping {
 
 				def extractAssoc[C](column :ColumnMapping[C, G]) = {
 					val expr = e.origin \ column
-					val selected = ColumnSQLMapping[F, S, C, O](e.origin \ column, nameFor(expr))
+					val selected = ColumnSQLMapping[F, S, C, O](expr, nameFor(expr))
 					val componentExtract = mapping(column)
 					val selectExtract = GenericExtract(selected)(componentExtract)
 					Assoc[ExpressionColumn, ExpressionExtract[V]#E, C](selected, selectExtract)
@@ -255,7 +272,7 @@ object SQLMapping {
 				val name :String = f match {
 					case UnboundParamSQL(param, extract, _) => //first as it would match the following pattern, too
 						if (extract.isIdentity && !names(param.name)) param.name
-						else param.name + "_" + columns.size
+						else param.name + "_" + columns.size //nameFor is called when adding a new column, so this is the index.
 
 					case TypedComponentSQL(_, MappingExtract(_, _, component)) =>
 						val name :String = component match {
@@ -275,7 +292,6 @@ object SQLMapping {
 			}
 
 		}
-
 
 
 		private type Assembler[-_ >: LocalScope <: GlobalScope, T] = Pieces => Option[T]
@@ -371,7 +387,6 @@ object SQLMapping {
 		}
 
 
-
 		override val (columnExtracts, columns) = {
 			val extracts = (new ExtractsCollector)(expr)
 			NaturalMap((extracts :Seq[Assoc[Column, ExpressionExtract[X]#E, _]]) :_*) -> Unique(extracts.map(_._1) :_*)
@@ -414,7 +429,6 @@ object SQLMapping {
 		override def toString :String = expr.toString
 	}
 
-
 }
 
 
@@ -439,7 +453,7 @@ trait ColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 
 		case UnboundParamSQL(param, _, _) => param.name //first as it would match the following pattern, too
 
-		case TypedComponentSQL(_, MappingExtract(_, _, component)) =>
+		case ComponentSQL(_, MappingExtract(_, _, component)) =>
 			component match {
 				case column :ColumnMapping[_, _] => column.name
 				case label @: _ => label
@@ -495,9 +509,6 @@ object ColumnSQLMapping {
 			override val selectForm :ColumnReadForm[X] = expr.readForm
 		}
 
-
-
-
 	def unapply[X, O](mapping :MappingOf[X]) :Opt[(ColumnSQL[_, LocalScope, X], String)] =
 		mapping match {
 			case col :ColumnSQLMapping[_, LocalScope @unchecked, X @unchecked, O @unchecked] =>
@@ -505,6 +516,8 @@ object ColumnSQLMapping {
 			case _ => Lack
 		}
 
+
+	type * = ColumnSQLMapping[Nothing, LocalScope, _, _]
 }
 
 

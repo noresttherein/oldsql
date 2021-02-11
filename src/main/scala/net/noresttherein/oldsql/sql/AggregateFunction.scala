@@ -5,11 +5,17 @@ import java.sql.JDBCType
 import net.noresttherein.oldsql.schema.ColumnReadForm
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
-import net.noresttherein.oldsql.sql.RowProduct.{AggregateOf, ExpandedBy, PartOf}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLNumber.SQLFraction
 import net.noresttherein.oldsql.sql.ast.AggregateSQL
-import net.noresttherein.oldsql.sql.ast.AggregateSQL.DefaultAggregateSQL
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
+
+
+
+
 
 
 /** An SQL aggregate function such as `count`, `max` or `stddev`. As these functions often work differently,
@@ -21,6 +27,21 @@ import net.noresttherein.oldsql.sql.ast.AggregateSQL.DefaultAggregateSQL
   */ //todo: window functions
 trait AggregateFunction extends Serializable {
 	val name :String
+
+	protected def spell[P, F <: RowProduct](arg :ColumnSQL[F, LocalScope, _], distinct :Boolean = false)
+	                                       (context :SQLContext, params :Parameterization[P, F])
+	                                       (implicit spelling :SQLSpelling)
+			:SpelledSQL[P, F] =
+	{
+		val prefix = SpelledSQL(spelling.function(name) + (if (distinct) "(DISTINCT" else "("), context, params)
+		prefix + (spelling(arg)(_, _)) + ")"
+	}
+
+	private[sql] final def spell[P, F <: RowProduct](spelling :SQLSpelling)
+	                                                (arg :ColumnSQL[F, LocalScope, _], distinct :Boolean)
+	                                                (context :SQLContext, params :Parameterization[P, F])
+			:SpelledSQL[P, F] =
+		spell(arg, distinct)(context, params)(spelling)
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[AggregateFunction]
 
@@ -70,18 +91,45 @@ object AggregateFunction {
 		/** Represents the `COUNT(*)` SQL expression. Note that this stands for the whole expression, not only
 		  * the '*' within it.
 		  */
-		final val * :AggregateSQL[FromSome, AggregateClause, Nothing, Int] =
-			new DefaultAggregateSQL[FromSome, AggregateOf[FromSome], Nothing, Int](this, AllColumns, false)
+//		final val * :AggregateSQL[FromSome, AggregateClause, Nothing, Int] =
+//			new DefaultAggregateSQL[FromSome, AggregateOf[FromSome], Nothing, Int](this, AllColumns, false)
+		val * :AggregateSQL[FromSome, AggregateClause, Nothing, Int] =
+			new AggregateSQL[FromSome, AggregateClause, Nothing, Int] {
+				override def readForm :ColumnReadForm[Int] = ColumnReadForm[Int]
+				override def function :AggregateFunction = Count.this
+				override def arg :ColumnSQL[FromSome, LocalScope, Nothing] = AllColumns
+				override def isDistinct :Boolean = false
 
+				override val distinct = new AggregateSQL[FromSome, AggregateClause, Nothing, Int] {
+					override def readForm = ColumnReadForm[Int]
+					override def function = Count.this
+					override def arg = AllColumns
+					override def isDistinct = true
+					override def distinct = this
 
+					protected override def defaultSpelling[P, E <: AggregateClause]
+					                       (context :SQLContext, params :Parameterization[P, E])
+					                       (implicit spelling :SQLSpelling) =
+					{
+						val sql = spelling.function("count") + "(" + spelling.keyword("distinct") + ")"
+						SpelledSQL(sql, context, params)
+					}
+
+				}
+
+				protected override def defaultSpelling[P, E <: AggregateClause]
+				                       (context :SQLContext, params :Parameterization[P, E])
+				                       (implicit spelling :SQLSpelling) =
+					SpelledSQL(spelling.function("count(*)"), context, params)
+			}
+
+		/** The SQL expression used as the argument in `count(*)`. */
 		private case object AllColumns extends ColumnSQL[RowProduct, LocalScope, Nothing] {
 			override def readForm :ColumnReadForm[Nothing] =
 				ColumnReadForm.unsupported(JDBCType.INTEGER, "count(*)")(
 					"count(*).expr.readForm"
 				)
 
-
-			override def asGlobal :Option[ColumnSQL[RowProduct, GlobalScope, Nothing]] = None
 
 			override def basedOn[U <: RowProduct, E <: RowProduct]
 			                    (base :E)(implicit ext :U PartOf E) :ColumnSQL[E, LocalScope, Nothing] = this
@@ -90,13 +138,18 @@ object AggregateFunction {
 			                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< LocalScope) :Nothing =
 				throw new UnsupportedOperationException("Count(*) cannot be expanded over to subselect clauses.")
 
+			override def asGlobal :Option[ColumnSQL[RowProduct, GlobalScope, Nothing]] = None
+			override def isAnchored = true
+			override def anchor(from :RowProduct) = this
+
 			override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 			                    (matcher :ColumnMatcher[RowProduct, Y]) :Y[LocalScope, Nothing] =
 				matcher.*(this)
 
-
-			override def isAnchored = true
-			override def anchor(from :RowProduct) = this
+			protected override def defaultSpelling[P, E <: RowProduct]
+			                       (context :SQLContext, params :Parameterization[P, E])
+			                       (implicit spelling :SQLSpelling) =
+				SpelledSQL("*", context, params)
 
 			override def isomorphic(expression: SQLExpression.*) :Boolean = this == expression
 

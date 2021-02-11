@@ -1,23 +1,27 @@
 package net.noresttherein.oldsql.sql.ast
 
-import net.noresttherein.oldsql.collection.{Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.{AlteredRelation, DerivedTable, Table}
-import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
+import net.noresttherein.oldsql.schema.Relation.{SelectRelation, Table}
+import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLCommand, SQLDialect, SQLExpression, StandardSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, ParamlessFrom, PartOf}
 import net.noresttherein.oldsql.sql.SelectAPI.{Intersect, Minus, QueryTemplate, SetOperator, Union, UnionAll}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.SQLStatement.StatementResult
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.ExistsSQL
-import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnQuery, QueryRelation, Rows}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnQuery, Rows}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumnMapping.CompoundSelectColumnMappingMatcher
 import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectMapping.{CaseCompoundSelectMapping, CompoundSelectMappingMatcher}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumn.{CaseCompoundSelectColumn, CompoundSelectColumnMatcher}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL.CaseCompoundSelect
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{CaseSelect, CaseSelectColumn, CaseSelectMapping, SelectColumn, SelectColumnMappingMatcher, SelectColumnMatcher, SelectMappingMatcher, SelectMatcher}
-import net.noresttherein.oldsql.sql.mechanics.SQLScribe
-import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -68,6 +72,49 @@ trait QuerySQL[-F <: RowProduct, V]
 //	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 //	                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
 //		matcher.query(this)
+
+
+	/** Formats this query as an SQL `String` expression for use inside a tuple with other expressions,
+	  * or where tuples cannot be used. As ''selects'' cannot be inlined, this method throws an `IllegalStateException`
+	  * if its [[net.noresttherein.oldsql.sql.SQLExpression.readForm read form]]'s column count is greater than `1`.
+	  * Single column instances, even when not conforming to [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]],
+	  * delegate to [[net.noresttherein.oldsql.sql.SQLExpression.defaultSpelling defaultSpelling]].
+	  */
+	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+	                                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		if (readForm.readColumns == 1)
+			defaultSpelling(context, params)
+		else if (readForm.readColumns == 0)
+			SpelledSQL(context, params)
+		else
+			throw new IllegalStateException(
+				s"Cannot inline a compound select of multiple (${readForm.readColumns} :$readForm) columns: $this."
+			)
+
+	/** Generates the SQL `String` for this query as a parameterless expression. The rationale for not combining this
+	  * together with `defaultSpelling` is that it once was impossible to create an instance of `Parameterization`,
+	  * even without any unbound parameters, without providing a `RowProduct` - and it might be so again.
+	  * Currently though this method does forward to
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.defaultSpelling defaultSpelling]].
+	  */
+	protected def paramlessSpelling(context :SQLContext)
+	                               (implicit spelling :SQLSpelling, top :QuerySQL[F, V] <:< QuerySQL[RowProduct, V])
+			:SpelledSQL[@~, RowProduct] =
+		top(this).defaultSpelling[@~, RowProduct](spelling)(context, Parameterization.paramless[ParamlessFrom])
+
+	private[oldsql] final def paramlessSpelling(spelling :SQLSpelling, context :SQLContext)
+	                                           (implicit top :QuerySQL[F, V] <:< QuerySQL[RowProduct, V])
+			:SpelledSQL[@~, RowProduct] =
+		paramlessSpelling(context)(spelling, top)
+
+	/** Converts this query SQL expression into an executable [[net.noresttherein.oldsql.sql.SQLStatement SQLStatement]]
+	  * proper to the DBMS using the implicit [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]].
+	  * The implementation is delegated to the dialect object.
+	  */
+	def returnAs[R](implicit self :QuerySQL[F, V] <:< QuerySQL[RowProduct, V], composition :StatementResult[V, R],
+	                         dialect :SQLDialect = StandardSQL)
+			:SQLCommand[R] =
+		dialect(this)
 }
 
 
@@ -75,20 +122,20 @@ trait QuerySQL[-F <: RowProduct, V]
 
 
 
-sealed abstract class ImplicitQueryRelations {
+sealed abstract class ImplicitDerivedTables {
 	//we can't have a single implicit into Table[query.ResultMapping] and we need these casts as, above all,
 	//  we need to preserve the value type of the query as the subject type, and bound MappingAt does not specify it.
-	//todo: replace typedprojection with projection once we get rid of referernces to BaseMapping in API
+	//todo: replace typedprojection with projection once we get rid of references to BaseMapping in API
 	implicit def arbitraryQueryRelation[V](query :QuerySQL[RowProduct, V]) :Table[MappingOf[V]#TypedProjection] =
-		QueryRelation[query.ResultMapping, V](query).asInstanceOf[Table[MappingOf[V]#TypedProjection]]
+		SelectRelation[query.ResultMapping, V](query).asInstanceOf[Table[MappingOf[V]#TypedProjection]]
 
 	implicit def singleColumnRelation[V](query :ColumnQuery[RowProduct, V]) :Table[MappingOf[V]#ColumnProjection] =
-		QueryRelation[query.ResultMapping, V](query)
+		SelectRelation[query.ResultMapping, V](query)
 }
 
 
 
-object QuerySQL extends ImplicitQueryRelations {
+object QuerySQL extends ImplicitDerivedTables {
 
 	/** The value type of `SelectSQL` instances with header (select clause) type `V`.
 	  * This indirection allows the use of a SQL select expression both as a sequence (for example, inside `exists`)
@@ -141,50 +188,21 @@ object QuerySQL extends ImplicitQueryRelations {
 
 
 
-	implicit class relationConversionMethod[M[O] <: MappingAt[O], V]
+	implicit class TopQuerySQLExtension[M[O] <: MappingAt[O], V]
 	               (private val self :QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
 		extends AnyVal
 	{
-		def toRelation :Table[M] = QueryRelation[M, V](self)
-		def toTable :Table[M] = QueryRelation[M, V](self)
+		def toRelation :Table[M] = SelectRelation[M, V](self)
+		def toTable :Table[M] = SelectRelation[M, V](self)
+
+		def spell(implicit spelling :SQLSpelling = StandardSQL.spelling) :SpelledSQL[@~, RowProduct] =
+			spelling.spell(self)
 //		def as[A <: Label](alias :A) :With[M] As A = With(alias, this) //todo: With for MappingQuery
 	}
 
 
 	implicit def derivedTable[M[O] <: MappingAt[O]](query :MappingQuery[RowProduct, M]) :Table[M] =
-		QueryRelation[M, M[()]#Subject](query)
-
-
-
-	def QueryRelation[M[O] <: MappingAt[O], V](query :QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
-			:QueryRelation[M] =
-		{ val q = query; new QueryRelation[M] { val query = q } }
-
-	trait QueryRelation[M[O] <: MappingAt[O]] extends DerivedTable[M] { outer =>
-		val query :QuerySQL[RowProduct, _] { type ResultMapping[O] = M[O] }
-
-		override def apply[O] :M[O] = query.component[O]
-//		override def altered[O] :RefinedMapping[M[O]#Subject, O] = query.export[O]
-		override def export[O] :MappingAt[O] = query.export[O]
-
-		override def sql :String = ??? //todo: default dialect SQL
-
-		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
-				:QueryRelation[M] =
-			new AlteredRelation[M](this, includes, excludes) with QueryRelation[M] {
-				override val query = outer.query
-
-				override def export[O] = super[AlteredRelation].export[O]
-
-				override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]]) =
-					outer.alter(
-						(this.includes.view ++ includes).filterNot(excludes.contains(_)).to(Unique),
-						(this.excludes.view.filterNot(includes.contains(_)) ++ excludes).to(Unique)
-					)
-			}
-	}
-
-
+		SelectRelation[M, M[()]#Subject](query)
 
 
 
@@ -284,6 +302,8 @@ object QuerySQL extends ImplicitQueryRelations {
 	  * the schema of the first member is used for both of the arguments.
 	  */
 	trait CompoundSelectSQL[-F <: RowProduct, V] extends CompositeSQL[F, GlobalScope, Rows[V]] with QuerySQL[F, V] {
+		validateCompatibility()
+
 		val left :QuerySQL[F, V]
 		val right :QuerySQL[F, V]
 		val operator :SetOperator
@@ -319,6 +339,54 @@ object QuerySQL extends ImplicitQueryRelations {
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 		                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
 			matcher.compoundSelect(this)
+
+
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		{
+			val l = left match {
+				case CompoundSelectSQL(_, op, _) if op != operator =>
+					"(" +: (spelling(left :QuerySQL[E, V])(context, params) + ")")
+				case _ =>
+					spelling(left :QuerySQL[E, V])(context, params)
+			}
+			val r = right match {
+				case CompoundSelectSQL(_, op, _) if op != operator =>
+					"(" +: (spelling(right :QuerySQL[E, V])(l.context, l.params) + ")")
+				case _ =>
+					spelling(right :QuerySQL[E, V])(l.context, l.params)
+			}
+			l.sql +: (" " + spelling(operator) +" ") +: r
+		}
+
+//		protected override def paramlessSpelling(context :SQLContext)(implicit spelling :SQLSpelling,
+//		                                                              top :QuerySQL[F, V] <:< QuerySQL[RowProduct, V])
+//				:SpelledSQL[@~, RowProduct] =
+//		{
+//			val left = spelling.paramless(top(this.left))(context)
+//			val right = spelling.paramless(top(this.right))(context)
+//			val sql = left.sql + (" " + spelling(operator) + " ") + right.sql
+//			SpelledSQL(sql, context, left.params :++ right.params)
+//		}
+
+
+		/** Validates the compatibility of `left` and `right` queries, throwing an `IllegalArgumentException`
+		  * if a compound select combining the pair would be illegal. This method is called as part of this trait's
+		  * initialization, but depends on `left` and `right` fields, meaning they must be declared by subclasses
+		  * as constructor fields. Default implementation verifies only if column counts of the forms are equal
+		  * and not zero, but it can be overriden by subclasses.
+		  */
+		protected def validateCompatibility() :Unit = {
+			if (left.readForm.readColumns != right.readForm.readColumns)
+				throw new IllegalArgumentException(
+					s"Cannot combine two selects of varying column counts ${left.readForm.readColumns}(${left.readForm})" +
+						s" and ${right.readForm.readColumns}(${right.readForm}) into a combined select $this."
+				)
+			if (left.readForm.readColumns == 0)
+				throw new IllegalArgumentException(
+					s"Cannot create a compound select with a zero column count (${left.readForm}): $this."
+				)
+		}
 
 
 		override def sameAs(that :CompositeSQL.*) :Boolean = that match {

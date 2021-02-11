@@ -6,12 +6,14 @@ import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLBoolean, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.UnaryColumnOperator
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.LogicalSQL.AndSQL.{AndMatcher, CaseAnd}
 import net.noresttherein.oldsql.sql.ast.LogicalSQL.NotSQL.{CaseNot, NotMatcher}
 import net.noresttherein.oldsql.sql.ast.LogicalSQL.OrSQL.{CaseOr, OrMatcher}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{False, True}
-import net.noresttherein.oldsql.sql.mechanics.SQLScribe
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -30,7 +32,7 @@ trait LogicalSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope] extends Comp
 
 object LogicalSQL {
 
-	case class NotSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope](value :ColumnSQL[F, S, Boolean])
+	final case class NotSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope](value :ColumnSQL[F, S, Boolean])
 		extends UnaryColumnOperator[F, S, Boolean, Boolean] with LogicalSQL[F, S]
 	{
 		override def unary_![E <: F, O >: LocalScope <: S](implicit ev :Boolean =:= Boolean) :ColumnSQL[E, O, Boolean] =
@@ -41,6 +43,10 @@ object LogicalSQL {
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
 			matcher.not(this)
+
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+					(spelling.NOT + " ") +: value.inParens(context, params)
 
 		override def toString :String = "NOT " + value
 	}
@@ -62,8 +68,8 @@ object LogicalSQL {
 
 
 
-	class AndSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope] private
-	            (protected override val parts :List[ColumnSQL[F, S, Boolean]])
+	final class AndSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope] private
+	                  (protected override val parts :List[ColumnSQL[F, S, Boolean]])
 		extends LogicalSQL[F, S]
 	{
 		def conditions :Seq[ColumnSQL[F, S, Boolean]] = parts.reverse
@@ -83,7 +89,7 @@ object LogicalSQL {
 			other match {
 				case True() => this
 				case False() => other
-				case and :AndSQL[E, O] => ((this :ColumnSQL[E, O, Boolean]) /: and.inOrder)((acc, cond) => acc && cond)
+				case and :AndSQL[E, O] => ((this :ColumnSQL[E, O, Boolean]) /: and.inOrder)(_ && _)
 				case _ if parts.contains(other) => this
 				case _ => new AndSQL(other :: parts)
 			}
@@ -95,6 +101,16 @@ object LogicalSQL {
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
 			matcher.and(this)
+
+
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			parts.scanLeft(SpelledSQL(spelling.TRUE, context, params)) {
+				(sql, bool) => bool.inParens(sql.context, sql.params)
+			} match {
+				case Seq(empty) => empty
+				case Seq(_, t @ _*) => t.reduce { (_2, _1) => _1.sql +: (" " + spelling.AND + " ") +: _2 }
+			}
 
 
 		override def equals(that :Any) :Boolean = that match {
@@ -140,8 +156,8 @@ object LogicalSQL {
 
 
 
-	class OrSQL[-F <: RowProduct, S >: LocalScope <: GlobalScope] private
-	           (protected override val parts :List[ColumnSQL[F, S, Boolean]])
+	final class OrSQL[-F <: RowProduct, S >: LocalScope <: GlobalScope] private
+	                 (protected override val parts :List[ColumnSQL[F, S, Boolean]])
 		extends LogicalSQL[F, S]
 	{
 		def conditions :Seq[ColumnSQL[F, S, Boolean]] = parts.reverse
@@ -161,7 +177,7 @@ object LogicalSQL {
 			other match {
 				case True() => other
 				case False() => this
-				case or :OrSQL[E, O] => ((this :ColumnSQL[E, O, Boolean]) /: or.inOrder)((acc, cond) => acc || cond)
+				case or :OrSQL[E, O] => ((this :ColumnSQL[E, O, Boolean]) /: or.inOrder)(_ || _)
 				case _ if parts contains other => this
 				case _ => new OrSQL(other :: parts)
 			}
@@ -172,6 +188,16 @@ object LogicalSQL {
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
 			matcher.or(this)
+
+
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			parts.scanLeft(SpelledSQL(spelling.TRUE, context, params)) {
+				(sql, bool) => bool.inParens(sql.context, sql.params)
+			} match {
+				case Seq(empty) => empty
+				case Seq(_, t @ _*) => t.reduce { (_2, _1) => _1.sql +: (" " + spelling.OR + " ") +: _2 }
+			}
 
 
 		override def equals(that :Any) :Boolean = that match {

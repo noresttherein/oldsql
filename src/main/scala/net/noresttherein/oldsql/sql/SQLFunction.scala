@@ -3,10 +3,13 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.FunctionSQL
 import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumn
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -28,6 +31,17 @@ trait SQLFunction[X <: Chain, Y] extends Serializable {
 
 	def apply[F <: RowProduct, S >: LocalScope <: GlobalScope](args :ChainTuple[F, S, X]) :SQLExpression[F, S, Y] =
 		FunctionSQL(this, args)(readForm)
+
+
+	protected def spell[P, F <: RowProduct](args :ChainTuple[F, LocalScope, X])
+	                                       (context :SQLContext, params :Parameterization[P, F])
+	                                       (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+		((spelling.function(name) +  "(") +: spelling.inline(args)(context, params)) + ")"
+
+	private[sql] final def spell[P, F <: RowProduct](spelling :SQLSpelling)(args :ChainTuple[F, LocalScope, X])
+	                                                (context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
+		spell(args)(context, params)(spelling)
+
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[SQLFunction[_, _]]
 

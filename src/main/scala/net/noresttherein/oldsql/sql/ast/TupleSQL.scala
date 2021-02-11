@@ -7,20 +7,23 @@ import net.noresttherein.oldsql.collection.{Chain, Listing, Opt}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
+import net.noresttherein.oldsql.morsels.ChunkedString
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.forms.SQLForms
 import net.noresttherein.oldsql.sql.{ast, ColumnSQL, IndexedMapping, ListingColumnSQLMapping, ListingSQLMapping, ParamSelect, RowProduct, SQLExpression, SQLMapping}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn
+import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumnAs, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumnAs, SubselectAs, SubselectColumnAs, SubselectSQL, TopSelectAs, TopSelectColumnAs, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.{CaseChain, ChainEntry, ChainMatcher, EmptyChain}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingEntry, ListingMatcher, ListingValueSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.SeqTuple.{CaseSeq, SeqMatcher}
-import net.noresttherein.oldsql.sql.mechanics.SQLScribe
-import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -44,6 +47,21 @@ trait TupleSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T] extends Com
 
 	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
 		matcher.tuple(this)
+
+
+	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		SpelledSQL("(", context, params) + (inlineSpelling(_, _)) + ")"
+
+	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+	                                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		if (parts.isEmpty)
+			SpelledSQL(context, params)
+		else
+			inOrder.view.scanLeft(SpelledSQL(context, params)) {
+				(sql, item) => spelling.inline(item :SQLExpression[E, S, _])(sql.context, sql.params)
+			}.tail.reduce(_.sql +: ", " +: _)
+
 
 	override def sameAs(other :CompositeSQL.*) :Boolean = other.isInstanceOf[TupleSQL[_, _, _]]
 }
@@ -78,7 +96,6 @@ object TupleSQL {
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[F, Y]): Y[S, Seq[T]] =
 			matcher.seq(this)
-
 
 		override def toString :String = inOrder.mkString("Seq(", ", ", ")")
 	}
@@ -221,6 +238,16 @@ object TupleSQL {
 
 			override def expand[U <: RowProduct, E <: RowProduct]
 			             (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope) :this.type = this
+
+			protected override def defaultSpelling[P, E <: RowProduct]
+			                                      (context :SQLContext, params :Parameterization[P, E])
+			                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+				SpelledSQL(ChunkedString.empty, context, params)
+
+			protected override def inlineSpelling[P, E <: RowProduct]
+			                                     (context :SQLContext, params :Parameterization[P, E])
+			                                     (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+				defaultSpelling(context, params)
 		}
 
 
@@ -265,11 +292,11 @@ object TupleSQL {
 	  * Non-column components of the mapping must in that case recursively match a nested indexed tuple paired
 	  * with the same key type in this `LiteralChain` as the component's label.
 	  * An `ListingSQL` can consist only of expressions implementing `ListingValueSQL` - a sealed type
-	  * extended only by the [[ast.TupleSQL.ListingSQL.ListingColumn ListingColumn]]
+	  * extended only by [[ast.TupleSQL.ListingSQL.ListingColumn ListingColumn]]
 	  * and this trait. This ensures that every column of the whole expression is assigned a unique key,
 	  * which however may be a sequence of `Label`s, rather than a single one, if this expression contains
 	  * another indexed tuples as its subexpressions.
-	  * Note that, in order to provide clear cases when pattern matching, this type does not extend the standard
+	  * Note that, in order to provide unambigous cases when pattern matching, this type does not extend the standard
 	  * `ChainTuple`.
 	  */
 	trait ListingSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T <: Listing]
@@ -458,6 +485,8 @@ object TupleSQL {
 			override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E)
 					:ParamSelectAs[P, IndexedMapping.Of[V]#Column] =
 				ParamSelect[E, N, V](from, this)
+
+
 		}
 
 
@@ -482,10 +511,11 @@ object TupleSQL {
 			override def isGlobal :Boolean = last.isGlobal && init.isGlobal
 			override def isAnchored :Boolean = last.isAnchored && init.isAnchored
 
-			override def anchor(from :F) = (init.anchor(from), last.anchor(from)) match {
-				case (i, l) if (i eq init) && (l eq last) => this
-				case (i, l) => new ListingEntry(i, l)
-			}
+			override def anchor(from :F) :ListingSQL[F, S, T |~ (K :~ H)] =
+				(init.anchor(from), last.anchor(from)) match {
+					case (i, l) if (i eq init) && (l eq last) => this
+					case (i, l) => new ListingEntry(i, l)
+				}
 
 
 			override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ListingSQL[E, S, T |~ (K :~ H)] =

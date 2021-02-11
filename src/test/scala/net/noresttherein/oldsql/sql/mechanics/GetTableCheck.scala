@@ -3,12 +3,11 @@ package net.noresttherein.oldsql.sql.mechanics
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.{Mapping, Relation}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.sql.{AndFrom, By, From, FromSome, GroupBy, GroupByClause, InnerJoin, Join, LeftJoin, NonParam, RightJoin, RowProduct, Subselect}
+import net.noresttherein.oldsql.schema.Relation.Table
+import net.noresttherein.oldsql.sql.{AndFrom, By, ByParam, From, FromSome, GroupBy, GroupByClause, InnerJoin, Join, LeftJoin, NonParam, RightJoin, RowProduct, Subselect, WithParam}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamRelation}
 import net.noresttherein.oldsql.sql.mechanics.GetTable.{ByAlias, ByIndex, ByParamAlias, ByParamIndex, ByParamType, BySubject, ByType, RelationEvidence}
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
-import net.noresttherein.oldsql.sql.GroupParam.ByParam
-import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.RowProduct.As
 
 
@@ -29,11 +28,11 @@ class GetTableCheck {{
 	class Y[O] extends FormMapping[Byte, O]
 	class Z[O] extends FormMapping[Byte, O]
 
-	val A :Relation[A] = Relation("A", new A[()])
-	val B :Relation[B] = Relation("B", new B[()])
-	val C :Relation[C] = Relation("C", new C[()])
-	val D :Relation[D] = Relation("D", new D[()])
-	val E :Relation[E] = Relation("E", new E[()])
+	val A :Relation[A] = Table("A", new A[()])
+	val B :Relation[B] = Table("B", new B[()])
+	val C :Relation[C] = Table("C", new C[()])
+	val D :Relation[D] = Table("D", new D[()])
+	val E :Relation[E] = Table("E", new E[()])
 
 	type Test = (
 		From[A] As "A" LeftJoin B As "B" WithParam Int As "Int" RightJoin C As "C" WithParam Long As "Long"

@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
 import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.morsels.InferTypeParams
-import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping}
+import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.Buff.{BuffType, FlagBuffType}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, DelegateAdapter}
@@ -434,8 +434,8 @@ class AdjustedMapping[+M <: RefinedMapping[S, O], S, O] private[schema]
 
 
 	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :RefinedMapping[S, O] = {
-		val newIncludes = include.view.map(dealias(_)).to(Unique)
-		val newExcludes = exclude.view.map(dealias(_)).to(Unique)
+		val newIncludes = include.view.map(unexport(_)).to(Unique)
+		val newExcludes = exclude.view.map(unexport(_)).to(Unique)
 		AdjustedMapping[M, S, O](backer,
 			(includes.view ++ newIncludes).filterNot(newExcludes.contains).to(Unique),
 			(excludes.view.filterNot(newIncludes.contains) ++ newExcludes).to(Unique)
@@ -656,8 +656,8 @@ object AdjustedMapping {
 			(includes.view.map(_.+) ++ excludes.view.map(_.-)).toSeq
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] = {
-			val newIncludes = include.view.map(dealias(_)).to(Unique)
-			val newExcludes = exclude.view.map(dealias(_)).to(Unique)
+			val newIncludes = include.view.map(unexport(_)).to(Unique)
+			val newExcludes = exclude.view.map(unexport(_)).to(Unique)
 			adjustedMapping(
 				(includes.view ++ newIncludes).filterNot(newExcludes.contains).to(Unique),
 				(excludes.view.filterNot(newIncludes.contains) ++ newExcludes).to(Unique)
@@ -696,8 +696,8 @@ object AdjustedMapping {
 	{ this :AdjustedMapping[M, S, O] =>
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :A[S] = {
-			val newIncludes = include.view.map(dealias(_)).to(Unique)
-			val newExcludes = exclude.view.map(dealias(_)).to(Unique)
+			val newIncludes = include.view.map(unexport(_)).to(Unique)
+			val newExcludes = exclude.view.map(unexport(_)).to(Unique)
 			backer(
 				(includes.view ++ newIncludes).filterNot(newExcludes.contains),
 				excludes.view.filterNot(newIncludes.contains) ++ newExcludes

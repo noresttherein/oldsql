@@ -9,13 +9,13 @@ import net.noresttherein.oldsql.model.RelatedEntityFactory
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom
 import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional, Requisite}
-import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping, OptimizedMappingAssembly}
-import net.noresttherein.oldsql.schema.{cascadeBuffs, composeColumnExtracts, composeExtracts, Buff, Buffs, ColumnForm, ColumnMapping, Mapping, MappingExtract}
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, Requisite}
+import net.noresttherein.oldsql.schema.{composeColumnExtracts, composeExtracts, Buff, Buffs, ColumnForm, ColumnMapping, Mapping, MappingExtract}
 import net.noresttherein.oldsql.schema.ColumnMapping.{OptimizedColumn, SimpleColumn, StableColumn}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.RelVar
 import net.noresttherein.oldsql.schema.SQLForm.{AbstractMappedForm, NullValue}
+import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping, OptimizedMappingAssembly}
 import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.CounterpartComponent
 import net.noresttherein.oldsql.schema.support.{CoveredMapping, MappedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.OpaqueColumnProxy
@@ -760,7 +760,7 @@ object ForeignKeyMapping {
 			if (target.isInstanceOf[SimpleColumn[_, _]])
 				ColumnMapping[K, O](name, keyBuffs)(target.form)
 			else
-				new OpaqueColumnProxy[K, O](target, name, keyBuffs)
+				new OpaqueColumnProxy[K, MO, O](target, name, keyBuffs)
 		}
 		override def key :Column[K] = lazyKey.get
 

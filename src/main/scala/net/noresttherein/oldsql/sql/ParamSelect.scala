@@ -25,7 +25,7 @@ import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 
 
 
-/** Base trait with the public inteface of classes representing SQL ''selects''. This includes
+/** Base trait with the public interface of classes representing SQL ''selects''. This includes
   * [[net.noresttherein.oldsql.sql.ParamSelect parameterized]] ''selects'' and standard
   * SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]].
   */ //todo: unnecessary, we need to mix in SelectTemplate anyway.
@@ -109,7 +109,9 @@ object SelectAPI {
 	  */
 	trait QueryTemplate[V, +S[_]] {
 		type ResultMapping[O] <: MappingAt[O]
-
+//		def mapping[O] :ResultMapping[O]
+		private[oldsql] def bridgeComponent[O] :ResultMapping[O] = component
+		private[oldsql] def bridgeExport[O] :RefinedMapping[ResultMapping[O]#Subject, O] = export
 		protected def component[O] :ResultMapping[O]
 		protected def export[O] :RefinedMapping[ResultMapping[O]#Subject, O] //= component[O]
 
@@ -142,8 +144,8 @@ object SelectAPI {
 
 		trait SelectedColumn[X] {
 			def name :String
-			def expression :ColumnSQL[From, LocalScope, X]
-			override def toString :String = expression.toString + " as " + name
+			def expr :ColumnSQL[From, LocalScope, X]
+			override def toString :String = expr.toString + " as " + name
 		}
 
 		val from :From
@@ -462,7 +464,7 @@ object ParamSelect {
 		private def include[X](column :ColumnMapping[X, selectClause.Origin]) :SelectedColumn[X] =
 			new SelectedColumn[X] {
 				override val name :String = column.name
-				override val expression  = selectClause \ column
+				override val expr  = selectClause \ column
 			}
 
 		override def distinct :ParamSelectMapping[P, F, H, V] =
@@ -505,7 +507,7 @@ object ParamSelect {
 		protected class HeaderColumn[T](column :ColumnSQLMapping[F, LocalScope, T, _])
 			extends SelectedColumn[T]
 		{
-			override def expression :ColumnSQL[F, LocalScope, T] = column.expr
+			override def expr :ColumnSQL[F, LocalScope, T] = column.expr
 			override def name :String = column.name
 		}
 

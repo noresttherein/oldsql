@@ -6,14 +6,20 @@ import scala.collection.immutable.ArraySeq
 import scala.collection.mutable.ListBuffer
 import scala.reflect.runtime.universe.TypeTag
 
+import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
+import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory, PropertyPath, RelatedEntityFactory}
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional}
+import net.noresttherein.oldsql.model.Kin.Derived
+import net.noresttherein.oldsql.model.KinFactory.DerivedKinFactory
+import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
-import net.noresttherein.oldsql.schema.{cascadeBuffs, filterColumnExtracts, Buff, Buffs, ColumnExtract, ColumnForm, ColumnMapping, MappingExtract, SQLReadForm}
-import net.noresttherein.oldsql.schema.support.{EffectivelyEmptyMapping, EmptyMapping}
+import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.morsels.witness.Maybe
+import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnForm, ColumnMapping, MappingExtract, SQLReadForm}
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, NoSelect, OptionalSelect}
 import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StableColumn}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
@@ -21,16 +27,9 @@ import net.noresttherein.oldsql.schema.Relation.RelVar
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.ReadFormNullValue
 import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping, JoinedEntityComponent, JoinTableCollectionMapping, RelationshipMapping}
-import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
-import net.noresttherein.oldsql.exceptions.NoSuchComponentException
-import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.model.Kin.Derived
-import net.noresttherein.oldsql.model.KinFactory.DerivedKinFactory
-import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
-import net.noresttherein.oldsql.morsels.witness.Maybe
-import net.noresttherein.oldsql.schema
 import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.{InverseForeignKeyMapping, RelatedEntityForeignKey, RelatedEntityForeignKeyColumn}
 import net.noresttherein.oldsql.schema.bits.JoinTableCollectionMapping.{JoinTableKinMapping, JoinTableManyMapping}
+import net.noresttherein.oldsql.schema.support.EffectivelyEmptyMapping
 import net.noresttherein.oldsql.schema.support.MappingProxy.{OpaqueColumnProxy, OpaqueProxy}
 
 
@@ -534,7 +533,7 @@ trait SimpleMapping[S, O]
 				case simple :SimpleColumn[U @unchecked, X @unchecked] =>
 					new FlatColumn[U](rename(column.name), selector, columnBuffs)(simple.form)
 				case _ =>
-					new OpaqueColumnProxy[U, O](column, rename(column.name), columnBuffs)
+					new OpaqueColumnProxy[U, X, O](column, rename(column.name), columnBuffs)
 						with AbstractColumn[U]
 					{
 						protected[SimpleMapping] override val componentSelector = selector
@@ -599,7 +598,7 @@ trait SimpleMapping[S, O]
 			if (target.isInstanceOf[SimpleColumn[_, _]])
 				new FlatColumn[K](name, selector, buffs.cascade(factory.forceKeyOutOf), Nil)(target.form)
 			else
-				new OpaqueColumnProxy[K, O](target, name, Buffs.empty[K]) with AbstractColumn[K] {
+				new OpaqueColumnProxy[K, X, O](target, name, Buffs.empty[K]) with AbstractColumn[K] {
 					override val buffs = fk.buffs.cascade(factory.forceKeyOutOf).declare()
 					override val componentSelector = selector
 				}

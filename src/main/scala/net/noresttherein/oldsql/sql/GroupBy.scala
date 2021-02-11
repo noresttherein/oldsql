@@ -8,18 +8,19 @@ import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.Expanded.{AbstractExpanded, ExpandedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroupingOfGeneralized, NonEmptyFrom, PartOf}
-import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
 import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseTemplate
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.{AggregateSQL, MappingSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.EmptyChain
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
-import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext
 
 
 
@@ -85,6 +86,8 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 	extends Adjoin[F, M] with GroupByClause with GroupByClauseTemplate[F GroupBy M, F GroupBy M]
 { thisClause =>
 
+	val expr :SQLExpression[left.Generalized, GlobalScope, last.Subject]
+
 	override type FromLast = FromSome GroupBy M
 	override type Generalized = left.Generalized GroupBy M
 	override type Dealiased = left.Self GroupBy M
@@ -108,6 +111,9 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 	  * then completely replacing it).
 	  */
 	def withCondition(filter :LocalBoolean[Generalized]) :Copy
+
+	override def columnCount :Int = right.export[()].selectedByDefault.size
+
 
 	override def filtered[S >: LocalScope <: GlobalScope](filter :SQLBoolean[Generalized, S]) :Copy =
 		withCondition(condition && filter)
@@ -144,6 +150,7 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 	override def isSubselectParameterized :Boolean = left.isSubselectParameterized
 
 
+	override def size :Int = 1
 	override def fullSize :Int = outer.fullSize + 1
 
 	override type FullRow = OuterRow ~ last.Subject
@@ -211,6 +218,20 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 	}
 
 
+	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
+			:SpelledSQL[Params, Generalized] =
+	{
+		val fromSQL = left.spell(context)(spelling.inFrom)
+		if (expr == True || columnCount == 0)
+			SpelledSQL(fromSQL.sql, fromSQL.context.grouped, fromSQL.params.group[left.Generalized, M](generalized))
+		else {
+			val exprSQL = spelling.inline(expr)(fromSQL.context, fromSQL.params)
+			val groupedParams = exprSQL.params.group[left.Generalized, M](generalized)
+			val sql = fromSQL.sql + (" " + spelling.GROUP_BY + " ") + exprSQL.sql
+			SpelledSQL(sql, exprSQL.context.grouped, groupedParams)
+		}
+	}
+
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroupBy.*]
 
@@ -234,7 +255,7 @@ object GroupBy {
 	  */
 	def apply[F <: FromSome { type Generalized <: U }, U <: RowProduct, M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (from :F, group :ComponentSQL[U, M])(implicit cast :InferSubject[F, GroupBy, M, T, S]) :F GroupBy M =
-		GroupBy(from, group.groupingRelation)
+		GroupBy[F, T, T, S](from, cast(group.groupingRelation), cast.<:<(group))
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -255,27 +276,31 @@ object GroupBy {
 	  * @return an `F GroupBy G`.
 	  */
 	private[sql] def apply[F <: FromSome, G[O] <: MappingAt[O], M[O] <: BaseMapping[S, O], S]
-	                      (from :F, group :Relation[G], filter :LocalBoolean[F#Generalized GroupBy G] = True)
+	                      (from :F, group :Relation[G], expression :SQLExpression[F#Generalized, GlobalScope, S],
+	                       filter :LocalBoolean[F#Generalized GroupBy G] = True)
 	                      (implicit cast :InferSubject[F, GroupBy, G, M, S]) :F GroupBy G =
 	{
 		val last = RelationSQL[FromSome GroupBy M, M, S, FromSome GroupBy M](cast(group), 0)
-		GroupBy[F, M, S, Nothing](from, last, None)(cast.cast(filter))
+		GroupBy[F, M, S, Nothing](from, last, None)(expression, cast.cast(filter))
 	}
 
 
 	private[sql] def apply[F <: FromSome, M[O] <: BaseMapping[S, O], S, A <: Label]
 	                      (clause :F, group :RelationSQL[FromSome GroupBy M, M, S, FromSome GroupBy M],
 	                       asOpt :Option[A])
-	                      (cond :LocalBoolean[clause.Generalized GroupBy M])
+	                      (expression :SQLExpression[clause.Generalized, GlobalScope, S],
+	                       cond :LocalBoolean[clause.Generalized GroupBy M])
 			:F GroupBy M As A =
 		new GroupBy[clause.type, M] with GroupByClauseTemplate[clause.type GroupBy M, clause.type GroupBy M] {
 			override val left = clause
 			override val last = group
+			override val expr = expression
 			override val aliasOpt = asOpt
 			override val condition = cond
 			override val fromClause = left.self
 			override val outer = left.outer
 			override val fullSize = outer.fullSize + 1
+			override val parameterization = left.parameterization.group[left.Generalized, M](generalized)
 
 			override type Alias = A
 			override type WithLeft[+L <: FromSome] = L GroupBy M As A
@@ -286,13 +311,15 @@ object GroupBy {
 			override def narrow :left.type GroupBy M As A = this.asInstanceOf[left.type GroupBy M As A]
 
 			override def withCondition(filter :LocalBoolean[Generalized]) =
-				GroupBy[left.type, M, S, A](left, last, aliasOpt)(filter)
+				GroupBy[left.type, M, S, A](left, last, aliasOpt)(expr, filter)
 
 			override def withLeft[L <: FromSome](left :L)(condition :LocalBoolean[left.Generalized GroupBy M]) =
-				GroupBy[L, M, S, A](left, last, aliasOpt)(condition)
+				GroupBy[L, M, S, A](left, last, aliasOpt)(
+					expr.asInstanceOf[SQLExpression[left.Generalized, GlobalScope, S]], condition
+				)
 
 			override def aliased[N <: Label](alias :N) =
-				GroupBy[left.type, M, S, N](left, last, Some(alias))(condition)
+				GroupBy[left.type, M, S, N](left, last, Some(alias))(expr, condition)
 
 			override def fullTableStack[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E) =
 				last.expand(target) #:: outer.fullTableStack(target)(explicitSpan.expand(expansion))
@@ -303,7 +330,7 @@ object GroupBy {
 				last.expand(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
 
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.groupBy[F, M, S](this)
+			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.groupBy[F, M, S](this)
 
 		}.asInstanceOf[F GroupBy M As A]
 
@@ -326,8 +353,6 @@ object GroupBy {
 
 
 
-
-
 	/** Type alias for `GroupBy` with erased type parameters, covering all instances of `GroupBy`/`GroupBy`.
 	  * Provided for the purpose pattern matching, as the relation type parameter of the higher kind cannot
 	  * be matched directly with the wildcard '_'.
@@ -345,8 +370,6 @@ object GroupBy {
 	  * A convenience alias for use wherever a single-argument type constructor for a `RowProduct` is required.
 	  */
 	type WithRight[R[O] <: MappingAt[O]] = { type F[L <: FromSome] = L GroupBy R }
-
-
 
 
 
@@ -449,18 +472,18 @@ object GroupBy {
   * a [[net.noresttherein.oldsql.sql.FromClause discrete]] ''from'' producing individual rows into groups of rows.
   * The appended [[net.noresttherein.oldsql.schema.Relation relation]] is not a database table, view, or select as with
   * [[net.noresttherein.oldsql.sql.AndFrom AndFrom]], but a synthetic adapter for
-  * an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, GlobalScope S]`, where type `S` is the
+  * an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[G, GlobalScope S]`, where type `S` is the
   * subject type of the [[net.noresttherein.oldsql.schema.Mapping mapping]] `M` of the right type parameter
-  * and `F =:= this.GeneralizedDiscrete` is the generalized form of the left type parameter of the preceding `GroupBy`.
-  * The mapping may either directly come from a component of any of the relations from the ''from'' clause `F`
+  * and `G =:= this.GeneralizedDiscrete` is the generalized form of the left type parameter of the preceding `GroupBy`.
+  * The mapping may either directly come from a component of any of the relations from the ''from'' clause `G`
   * - ranging from a whole entity to a single column - or be another synthetic adapter, this type for an arbitrary
   * SQL expression. In either case, all [[net.noresttherein.oldsql.schema.Mapping.selectable selectable]] columns
   * of the mapping are used in their order; for non-components, the expression is recursively reduced to individual
   * [[net.noresttherein.oldsql.sql.ColumnSQL column]] expressions which comprise the column list.
   *
   * As grouping by composite SQL expressions is a common use case, two type aliases exist to support this feature:
-  * [[net.noresttherein.oldsql.sql.ByVal ByVal]]`[F, V]`
-  * and [[net.noresttherein.oldsql.sql.ByOne ByOne]]`[F, V]` which take only the subject type of the mapping
+  * [[net.noresttherein.oldsql.sql.ByVal ByVal]]`[G, V]`
+  * and [[net.noresttherein.oldsql.sql.ByOne ByOne]]`[G, V]` which take only the subject type of the mapping
   * as the `V` parameter, using a generic [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]] (for the former)
   * or [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] (for the latter) as the adapter used
   * in the grouping relation of this instance.
@@ -487,7 +510,7 @@ object GroupBy {
   * [[net.noresttherein.oldsql.sql.ColumnSQL.ColumnSQLAggregateMethods ColumnSQLAggregateMethods]], or
   * directly using an appropriate [[net.noresttherein.oldsql.sql.AggregateFunction AggregateFunction]].
   * In both cases, the `RowProduct` type parameter of the aggregated expression must be `this.GeneralizedDiscrete`
-  * (that is, `F#Generalized`), not this clause - as with expressions used for the grouping expression.
+  * (that is, `G#Generalized`), not this clause - as with expressions used for the grouping expression.
   *
   * Factory methods are available in the [[net.noresttherein.oldsql.sql.By$ companion]] object, accepting
   * either a [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent LooseComponent]] or
@@ -499,9 +522,11 @@ object GroupBy {
   * [[net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseExtension.by by]] added to any `GroupByClause`.
   * @author Marcin Mościcki
   */
-trait By[+F <: GroupByClause, M[A] <: MappingAt[A]]
-	extends AndBy[F, M] with GroupByClauseTemplate[F By M, F By M]
+trait By[+G <: GroupByClause, M[A] <: MappingAt[A]]
+	extends AndBy[G, M] with GroupByClauseTemplate[G By M, G By M]
 { thisClause =>
+
+	val expr :SQLExpression[GeneralizedDiscrete, GlobalScope, last.Subject]
 
 	override type Generalized = left.Generalized By M
 	override type Dealiased = left.Self By M
@@ -510,6 +535,8 @@ trait By[+F <: GroupByClause, M[A] <: MappingAt[A]]
 	override type GeneralizedLeft[+L <: GroupByClause] = L By M
 	override type DealiasedLeft[+L <: GroupByClause] = L By M
 	override type WithLeft[+L <: GroupByClause] <: L By M
+
+	override def columnCount :Int = left.columnCount + right.export[()].selectedByDefault.size
 
 	override type LastParam = left.LastParam
 	override type Params = left.Params
@@ -589,6 +616,29 @@ trait By[+F <: GroupByClause, M[A] <: MappingAt[A]]
 	}
 
 
+
+	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
+			:SpelledSQL[Params, Generalized] =
+	{
+		val preceding = spelling(left)(context)
+		val groupedParams = preceding.params.group[left.Generalized, M]
+		if (expr == True || right.export[()].filteredByDefault.isEmpty) //zero columns in expr
+			SpelledSQL(preceding.sql, preceding.context.grouped, groupedParams)
+		else {
+			val ungroupedParams = preceding.params.ungroup[GeneralizedDiscrete]
+//			val ungroupedParams = fromClause.parameterization
+			//we take here advantage of the fact that indexing of aliases in SQLContext is *not* changed by grouping it
+			val group = spelling.inline(expr)(preceding.context.grouped, ungroupedParams.params)
+			val shiftParams = group.params.settersReversed.map(_.unmap(ungroupedParams.ungroupParams))
+			val regroupedParams = groupedParams.reset(shiftParams:::groupedParams.settersReversed)
+			if (left.columnCount == 0) //no group by clause added
+				SpelledSQL(preceding.sql + (" " + spelling.GROUP_BY + " ") + group.sql, group.context, regroupedParams)
+			else //append all columns of this grouping expression
+				SpelledSQL(preceding.sql + ", " + group.sql, group.context, regroupedParams)
+		}
+	}
+
+
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[By.*]
 
 	override def name = "by"
@@ -631,7 +681,7 @@ object By {
 	         (from :G, group :ComponentSQL[F, M])
 	         (implicit  cast :InferSubject[G, By, M, T, S])
 			:G By M =
-		By(from, group.groupingRelation)
+		By[G, T, T, S](from, cast(group.groupingRelation), cast.<:<(group))
 
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
@@ -653,25 +703,29 @@ object By {
 	  * @return an `G GroupBy M`.
 	  */
 	private[sql] def apply[G <: GroupByClause, M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	                      (from :G, group :Relation[M], filter :LocalBoolean[G#Generalized By M] = True)
+	                      (from :G, group :Relation[M], expression :SQLExpression[G#GeneralizedDiscrete, GlobalScope, S],
+	                       filter :LocalBoolean[G#Generalized By M] = True)
 	                      (implicit cast :InferSubject[G, By, M, T, S]) :G By M =
-		By[G, T, S, Nothing](from, RelationSQL(cast(group), 0), None)(cast.cast(filter))
+		By[G, T, S, Nothing](from, RelationSQL(cast(group), 0), None)(expression, cast.cast(filter))
 
 
 
 	private[sql] def apply[G <: GroupByClause, T[O] <: BaseMapping[S, O], S, A <: Label]
 	                      (clause :G, group :RelationSQL[GroupByClause AndBy T, T, S, GroupByClause AndBy T],
 	                       asOpt :Option[A])
-	                      (cond :LocalBoolean[clause.Generalized By T])
+	                      (expression :SQLExpression[clause.GeneralizedDiscrete, GlobalScope, S],
+	                       cond :LocalBoolean[clause.Generalized By T])
 			:G By T As A =
 		new By[clause.type, T] with AbstractExpanded[clause.type, T, S] {
 			override val left = clause
 			override val last = group
+			override val expr = expression
 			override val aliasOpt = asOpt
 			override val condition = cond
 			override val fromClause = left.fromClause
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
+			override val parameterization = left.parameterization.group[left.Generalized, T]
 			override def lastRelation = last
 
 			override type Alias = A
@@ -683,15 +737,25 @@ object By {
 			override def narrow :left.type By T As A = this.asInstanceOf[left.type By T As A]
 
 			override def withCondition(filter :LocalBoolean[Generalized]) =
-				By[left.type, T, S, A](left, last, aliasOpt)(filter)
+				By[left.type, T, S, A](left, last, aliasOpt)(expr, filter)
 
 			override def withLeft[L <: GroupByClause](left :L)(condition :LocalBoolean[left.Generalized By T]) =
-				By[L, T, S, A](left, last, aliasOpt)(condition)
+				By[L, T, S, A](left, last, aliasOpt)(
+					expr.asInstanceOf[SQLExpression[left.GeneralizedDiscrete, GlobalScope, S]], condition
+				)
 
 			override def aliased[N <: Label](alias :N) =
-				By[left.type, T, S, N](left, last, Some(alias))(condition)
+				By[left.type, T, S, N](left, last, Some(alias))(expr, condition)
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.by[G, T, S](this)
+//			override def aliased[N <: Label](alias :N) = {
+//				val table = last as alias
+//				val swapped = SQLScribe.replaceRelation[T, S, T, S, Generalized, Generalized](
+//					generalized, generalized, last, table
+//				)(condition)
+//				By[left.type, T, S, N](left, table, Some(alias))(swapped)
+//			}
+
+			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.by[G, T, S](this)
 
 		}.asInstanceOf[G By T As A]
 

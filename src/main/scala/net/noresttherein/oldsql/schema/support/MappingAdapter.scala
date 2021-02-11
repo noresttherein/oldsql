@@ -1,19 +1,17 @@
 package net.noresttherein.oldsql.schema.support
 
-import net.noresttherein.oldsql.{schema, OperationType}
-import net.noresttherein.oldsql.collection.{NaturalMap, Unique}
+import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.collection.NaturalMap
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm}
+import net.noresttherein.oldsql.schema.{Buffs, ColumnExtract, ColumnForm, ColumnMapping, Mapping, SQLForm}
 import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StableColumn}
-import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.bits.LabeledMapping
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.{Label, LabeledColumn}
 import net.noresttherein.oldsql.schema.support.AdjustedMapping.SpecificAdjustedMapping
-import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.{ExportColumnAdapter, ExportComposedColumnAdapter}
-import net.noresttherein.oldsql.schema.support.MappingProxy.{DirectProxy, ExportColumnProxy, ShallowProxy}
+import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.ExportComposedColumnAdapter
+import net.noresttherein.oldsql.schema.support.MappingProxy.{DirectProxy, ExportColumnProxy}
 
 
 
@@ -58,6 +56,12 @@ sealed trait AdapterOf[+M <: Mapping] extends Mapping {
   *     implemented as a [[net.noresttherein.oldsql.schema.support.DelegateMapping DelegateMapping]] to their `body`;
   *   - [[net.noresttherein.oldsql.schema.support.MappingAdapter.ComposedAdapter ComposedAdapter]] for adapters
   *     of adapters or, more correctly, adapters implemented as a `DelegateMapping` to an adapter of their `body`.
+  *   - [[net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter ColumnAdapter]] for rare adapters
+  *     which are column themselves.
+  *
+  * Some implementations of this trait are also [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]]s,
+  * but they form a separate branch of the type hierarchy and, unless explicitly documented or evident from
+  * the class signature, all extending classes assume this is ''not'' the case in their implementation.
   *
   * This trait overrides factory methods creating adapter mappings such as `map` so they return a `MappingAdapter`
   * to the same mapping type `M` as this mapping (rather than to this adapter as `StaticMapping`).
@@ -73,8 +77,51 @@ trait MappingAdapter[+M <: Mapping, S, O]
 	extends AdapterOf[M] with BaseMapping[S, O]
 	   with MappingFactoryMethods[({ type A[X] = MappingAdapter[M, X, O] })#A, S, O]
 {
-	/** The adapted mapping. It is considered a valid component of this mapping. */
+	/** The adapted mapping. It is considered a valid component of this mapping. If this class extends also
+	  * [[net.noresttherein.oldsql.schema.support.DelegateMapping DelegateMapping]], it will in most cases be
+	  * the same object as its [[net.noresttherein.oldsql.schema.support.DelegateMapping.backer backer]] property,
+	  * but it doesn't need to be so: in particular 'adapters to adapters of a mapping `M`' (derived
+	  * from [[net.noresttherein.oldsql.schema.support.MappingAdapter.ComposedAdapter ComposedAdapter]])
+	  * use the adapted adapter as their `backer`, but have the same original `body` properties os them.
+	  */
 	val body :M { type Origin = O }
+
+	/** Converts a component of this mapping to a corresponding component of the backing mapping. If the argument
+	  * already is a component of `body`, it is returned itself; otherwise a component of `body` which served
+	  * as the base for the argument is returned, if it exists. In standard implementations, where only ''export''
+	  * components of `body` are exported to components uniquely of this instance - and its non-export components
+	  * are exported as the same component as their export version - the mapping returned is an ''export'' component.
+	  * A complete inverse of the function applied to all components of `body` when exporting them as components
+	  * of this instance might not exist - for example this adapter itself might not be an ''export'' version
+	  * of the adapted mapping - in which case
+	  * a [[net.noresttherein.oldsql.exceptions.NoSuchComponentException NoSuchComponentException]] should be thrown.
+	  * Definitions of this method are typically inherited from the methods of the same signature
+	  * in a subclass of [[net.noresttherein.oldsql.schema.support.DelegateMapping DelegateMapping]], serving as
+	  * the basis for this adapter's implementation. If this delegate mapping is
+	  * a [[net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate ShallowDelegate]] -
+	  * which uses the components of `body` as-is, the function is an identity on all of its domain (which might not
+	  * be necessarily the complete component set of `body`), with a possible exception of this adapter itself.
+	  */
+	def unexport[X](component :Component[X]) :Component[X]
+
+
+	/** Converts a column of this mapping to a corresponding column of the adapted mapping. If the argument
+	  * already is a column of `body`, it is returned itself; otherwise a column of `body` which served
+	  * as the base for the argument is returned, if it exists. In standard implementations, where only ''export''
+	  * columns of `body` are exported as columns uniquely of this instance - and its non-export columns
+	  * are exported as the same column as their export version - the object returned is an ''export'' column.
+	  * A complete inverse of the function applied to all columns of `body` when exporting them by  this instance
+	  * might not exist, in which case
+	  * a [[net.noresttherein.oldsql.exceptions.NoSuchComponentException NoSuchComponentException]] should be thrown.
+	  * Definitions of this method are typically inherited from the methods of the same signature
+	  * in a subclass of [[net.noresttherein.oldsql.schema.support.DelegateMapping DelegateMapping]], serving as
+	  * the basis for this adapter's implementation. If this delegate mapping is
+	  * a [[net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate ShallowDelegate]] -
+	  * which uses the components of `body` as-is, the function is an identity on all of its domain (which might not
+	  * be necessarily the complete component set of `body`), with a possible exception of this adapter itself.
+	  */
+	def unexport[X](column :Column[X]) :Column[X]
+
 
 	override def withBuffs(buffs :Buffs[S]) :MappingAdapter[M, S, O] = fail
 
@@ -168,6 +215,9 @@ object MappingAdapter {
 			)
 
 		override val body :M = backer
+
+		abstract override def unexport[X](component :Component[X]) :Component[X] = super.unexport(component)
+		abstract override def unexport[X](column :Column[X]) :Column[X] = super.unexport(column)
 	}
 
 
@@ -190,6 +240,9 @@ object MappingAdapter {
 			)
 
 		override val body :M = backer.body
+
+		abstract override def unexport[X](component :Component[X]) :Component[X] = super.unexport(component)
+		abstract override def unexport[X](column :Column[X]) :Column[X] = super.unexport(column)
 	}
 
 
@@ -250,9 +303,9 @@ object MappingAdapter {
 		  * is likely to result in a `NoSuchElementException`. For this reason, this is mainly a base class from
 		  * which more specialized adapter implementations are derived.
 		  */
-		class BaseColumnAdapter[+M <: ColumnMapping[T, O], T, S, O]
-		                       (override val body :M, override val name :String, override val buffs :Buffs[S])
-		                       (implicit override val form :ColumnForm[S])
+		abstract class BaseColumnAdapter[+M <: ColumnMapping[T, O], T, S, O]
+		                                (override val body :M, override val name :String, override val buffs :Buffs[S])
+		                                (implicit override val form :ColumnForm[S])
 			extends ColumnAdapter[M, T, S, O] with StableColumn[S, O]
 
 
@@ -301,9 +354,6 @@ object MappingAdapter {
 		  * The adapted column `body` is included only in the `extracts` (and `columnExtracts`) maps,
 		  * which are used only for aliasing to the ''export'' versions of the components,
 		  * but not in  `components`/`subcomponents`.
-		  * As the result, the adapted column is not technically a subcomponent, with only this instance being visible
-		  * to containing mappings, and all operations modifying a component (such as prefixing the column names) apply
-		  * only to this instance and return a new `SimpleColumnAdapter`, without modifying the `body`.
 		  */
 		class SimpleColumnAdapter[+M <: SimpleColumn[S, O], S, O](column :M, name :String, buffs :Buffs[S])
 			extends BaseColumnAdapter[M, S, S, O](column, name, buffs)(column.form) with SimpleColumn[S, O]
@@ -328,6 +378,9 @@ object MappingAdapter {
 				if (column eq body) originalExtract.asInstanceOf[ColumnExtract[T]]
 				else super.apply(column)
 
+			override def unexport[X](component :Component[X]) :Component[X] = body.asInstanceOf[Component[X]]
+			override def unexport[X](column :Column[X]) :Column[X] = body.asInstanceOf[Column[X]]
+
 			override def copy(name :String, buffs :Buffs[S]) :ColumnAdapter[M, S, S, O] =
 				new SimpleColumnAdapter(body, name, buffs)
 
@@ -349,6 +402,9 @@ object MappingAdapter {
 
 			override def copy(name :String, buffs :Buffs[S]) :ColumnAdapter[ColumnMapping[S, O], S, S, O] =
 				new MockColumnProxy[S, O](name, buffs)
+
+			override def unexport[X](component :Component[X]) :Component[X] = component
+			override def unexport[X](column :Column[X]) :Column[X] = column
 		}
 
 	}
@@ -360,6 +416,6 @@ object MappingAdapter {
 	  * type is required, but the mapping should remain unmodified.
 	  */
 	class IdentityAdapter[M <: RefinedMapping[S, O], S, O](override protected val backer :M)
-		extends DelegateAdapter[M, S, O] with DirectProxy[S, O]
+		extends DirectProxy[S, O] with DelegateAdapter[M, S, O]
 
 }

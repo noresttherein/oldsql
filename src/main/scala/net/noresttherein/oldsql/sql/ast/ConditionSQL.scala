@@ -6,6 +6,7 @@ import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLBoolean, SQLExpression, SQLOrdering}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.UnaryColumnOperator
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{BinaryOperatorSQL, UnaryOperatorSQL}
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.ComparisonSQL.{CaseComparison, ComparisonMatcher, ComparisonOperator}
@@ -17,7 +18,8 @@ import net.noresttherein.oldsql.sql.ast.ConditionSQL.IsNull.{CaseIsNull, IsNullM
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.LikeSQL.{CaseLike, LikeMatcher}
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.OrderComparisonSQL.OrderComparisonMatcher
 import net.noresttherein.oldsql.sql.ast.QuerySQL.Rows
-import net.noresttherein.oldsql.sql.mechanics.SQLScribe
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -55,6 +57,11 @@ object ConditionSQL {
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
 			matcher.isNull(this)
+
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			spelling(value :SQLExpression[E, S, T])(context, params) + " " +
+				spelling.keyword("is") + " " + spelling.NULL
 
 		override def toString :String = "(" + value + "is null)"
 	}
@@ -96,6 +103,12 @@ object ConditionSQL {
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
 //			matcher.comparison(this)
+
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			spelling(left :SQLExpression[E, S, T])(context, params) + (" " + symbol + " ") +
+				(spelling(right :SQLExpression[E, S, T])(_, _))
+
 
 		override def sameAs(that :CompositeSQL.*) :Boolean = that match {
 			case cmp :ComparisonSQL[_, _, _] => cmp.comparison == comparison
@@ -302,7 +315,7 @@ object ConditionSQL {
 
 
 
-	//consider: pattern as an SQLExpression
+	//todo: pattern as an SQLExpression
 	case class LikeSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope]
 	                  (value :ColumnSQL[F, S, String], pattern :String)
 		extends UnaryColumnOperator[F, S, String, Boolean] with ConditionSQL[F, S]
@@ -313,6 +326,11 @@ object ConditionSQL {
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
 			matcher.like(this)
+
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			value.inParens(context, params) + (" " + spelling.LIKE + " '") + pattern + "'"
+
 
 		override def toString = s"'$value' LIKE '$pattern'"
 	}
@@ -348,6 +366,11 @@ object ConditionSQL {
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Boolean] =
 			matcher.exists(this)
+
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			(spelling.function("exists") + "(") +:
+				(spelling(select :SQLExpression[E, GlobalScope, Rows[V]])(context, params) + ")")
 
 		override def toString :String = s"EXISTS($select)"
 	}
@@ -387,6 +410,13 @@ object ConditionSQL {
 
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, Boolean] =
 			matcher.in(this)
+
+
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			left.inParens(context, params) + (" " + spelling.keyword("IN") + " (") +
+				(spelling(right :SQLExpression[E, S, Seq[V]])(_, _)) + ")"
+
 
 		override def toString :String = s"($left IN $right)"
 	}

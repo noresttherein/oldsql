@@ -2,16 +2,16 @@ package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnForm, ColumnMapping, Mapping}
+import net.noresttherein.oldsql.schema.{Buffs, ColumnMapping, Mapping}
+import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.support.MappingAdapter
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.{SimpleColumnAdapter, ExportColumnAdapter}
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
-import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.support.MappingAdapter
-import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
 
 
 
@@ -95,7 +95,7 @@ object LabeledMapping {
 			Got(labeled.label -> labeled.body)
 
 
-		type LabeledProjection[L <: Label, M[O] <: MappingAt[O]] = { type WithOrigin[O] = L @: M[O] }
+		type Labeled[N <: Label, M[O] <: MappingAt[O]] = { type Projection[O] = N @: M[O] }
 
 		implicit def projection[L <: Label, M <: Mapping](implicit body :ExactProjection[M])
 				:ProjectionDef[L @: M, ({ type P[X] = L @: body.WithOrigin[X] })#P, M#Subject] =

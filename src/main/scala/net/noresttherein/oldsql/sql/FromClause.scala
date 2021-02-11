@@ -4,28 +4,29 @@ import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, SQLForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
-import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
+import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.DirectRelationshipMapping
-import net.noresttherein.oldsql.sql.AggregateFunction.{Avg, Count, Max, Min, StdDev, Sum, Var}
-import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
+import net.noresttherein.oldsql.sql.AggregateFunction.{Avg, Count, Max, Min, StdDev, Sum, Var}
+import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
 import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
-import net.noresttherein.oldsql.sql.JoinParam.WithParam
 import net.noresttherein.oldsql.sql.RowProduct.{As, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, RowProductTemplate}
 import net.noresttherein.oldsql.sql.UnboundParam.{NamedParamRelation, ParamRelation}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.ast.AggregateSQL
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, LooseColumn, LooseComponent, RelationSQL, TypedComponentSQL}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, LooseColumn, RelationSQL, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumn
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
-import net.noresttherein.oldsql.sql.mechanics.{GroupingExpression, LastTableOf, RowProductMatcher, TableCount}
+import net.noresttherein.oldsql.sql.mechanics.{GroupingExpression, LastTableOf, RowProductMatcher, SpelledSQL, TableCount}
 import net.noresttherein.oldsql.sql.mechanics.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.mechanics.LastTableOf.LastBound
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext
 
 
 
@@ -109,8 +110,11 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 //	                       (target :E)(implicit expansion :Generalized ExpandedBy E) :LazyList[TableSQL.AnyIn[E]]
 
 
+	override def spell(context :SQLContext)(implicit spelling :SQLSpelling) :SpelledSQL[Params, Generalized] =
+		spelling.fromWhere(this)(context)
 
-	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.fromClause(this)
+
+	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.fromClause(this)
 
 
 	private[sql] def concrete_RowProduct_subclass_must_extend_FromClause_or_GroupByClause :Nothing =
@@ -355,7 +359,7 @@ object FromSome {
 	  * [[net.noresttherein.oldsql.sql.ast.AggregateSQL aggregate]] expressions.
 	  */
 	implicit class FromSomeExtension[F <: FromSome](val thisClause :F) extends AnyVal {
-		import thisClause.{Base, Generalized, FromLast, LastMapping, Last}
+		import thisClause.{Base, Generalized, FromLast, Last}
 
 		/** Performs an inner join between this clause on the left side, and the table given as a `Table`
 		  * object on the right side.
@@ -999,9 +1003,9 @@ object FromSome {
 				:F GroupBy projection.WithOrigin =
 		{
 			val relation = thisClause.fullTableStack(shift.offset).toRelationSQL
-				.asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
-			val expr = TypedComponentSQL(relation, projection[F](component))(projection.isomorphism)
-			GroupBy[F, projection.WithOrigin, projection.WithOrigin, S](thisClause, expr.groupingRelation)
+				.asInstanceOf[RelationSQL[Generalized, MappingOf[Any]#TypedProjection, Any, Generalized]]
+			val expr = TypedComponentSQL(relation, projection[Generalized](component))(projection.isomorphism)
+			GroupBy[thisClause.type, projection.WithOrigin, projection.WithOrigin, S](thisClause, expr.groupingRelation, expr)
 		}
 
 		/** Adds a ''group by'' clause to this ''from'' clause with all
@@ -1010,8 +1014,8 @@ object FromSome {
 		  */
 		def groupBy[M[A] <: MappingAt[A], T[A] <: BaseMapping[S, A], S]
 		           (component :ComponentSQL[Generalized, M])
-		           (implicit cast :InferSubject[F, GroupBy, M, T, S]) :F GroupBy M =
-			GroupBy(thisClause, component.groupingRelation)
+		           (implicit cast :InferSubject[thisClause.type, GroupBy, M, T, S]) :F GroupBy M =
+			GroupBy[thisClause.type, M, T, S](thisClause, component.groupingRelation, cast.<:<(component))
 
 		/** Adds a ''group by'' clause to this ''from'' clause with the given single column expression. */
 		def groupBy[V](column :GlobalColumn[Generalized, V]) :F GroupByOne V =

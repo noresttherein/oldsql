@@ -10,18 +10,20 @@ import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf, RowComposition, RowDecomposition}
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.InferSubject
+import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
 import net.noresttherein.oldsql.sql.Expanded.{AbstractExpanded, ExpandedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf, RowComposition, RowDecomposition}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.mechanics.RowProductMatcher
+import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SpelledSQL}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -429,6 +431,7 @@ sealed trait From[T[O] <: MappingAt[O]]
 		decorate(self)
 
 
+	override def size = 1
 	override def fullSize = 1
 
 	override def generalizedExpansion[F <: FromSome] :F PrefixOf (F NonParam T) = PrefixOf.itself[F].expand[NonParam, T]
@@ -450,6 +453,17 @@ sealed trait From[T[O] <: MappingAt[O]]
 		ChainTuple.EmptyChain ~ last.expand(target)
 
 	override type AsSubselectOf[+F <: NonEmptyFrom] <: F Subselect T
+
+
+	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
+			:SpelledSQL[Params, Generalized] =
+	{
+		//From clause does not depend on anything other than itself, so we reset the context for the purpose of this select
+		val aliased = spelling.table(table, aliasOpt)(context.fresh, parameterization)
+		val sql = (spelling.FROM + " ") +: aliased
+		if (filter == True) sql else sql && (spelling.inWhere(filter)(_, _))
+	}
+
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[From.*]
@@ -553,6 +567,7 @@ object From {
 			override val aliasOpt = asOpt
 			override val condition = cond
 			override val outer = left.outer
+			override val parameterization = Parameterization.paramless[From[T]]
 			override def lastRelation :TableSQL[FromLast, T, S, FromLast] = last
 
 			override def narrow :dual.type NonParam T = this
@@ -603,7 +618,7 @@ object From {
 				Subselect[newOuter.type, T, S, A](newOuter, last, aliasOpt)(filter)
 
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.from[T, S](this)
+			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.from[T, S](this)
 
 		}.asInstanceOf[dual.type EmptyJoin T As A]
 
@@ -674,6 +689,7 @@ object From {
 	{
 		override def lastRelation :TableSQL[FromLast, T, S, FromLast] = last
 		override val outer = left.outer
+		override val parameterization = Parameterization.paramless[From[T]]
 
 		override def narrow :left.type NonParam T = this.asInstanceOf[left.type NonParam T]
 
@@ -721,7 +737,7 @@ object From {
 			Subselect[newOuter.type, T, S, A](newOuter, last, aliasOpt)(filter)
 
 
-		override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.from[T, S](this)
+		override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.from[T, S](this)
 	}
 
 }

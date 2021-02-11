@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher, Compos
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.CaseCompositeColumn
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, NonEmptyFrom, PartOf}
-import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, CompositeSQL, ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, CompositeSQL, ExpressionMapper, ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.CaseComposite
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, UnboundParamSQL}
 import net.noresttherein.oldsql.sql.ast.{AggregateSQL, MappingSQL, QuerySQL, SQLTerm}
@@ -34,14 +34,11 @@ import net.noresttherein.oldsql.sql.mechanics.SQLScribe.{ColumnResult, Expressio
   * [[net.noresttherein.oldsql.sql.SQLExpression.ExpressionMatcher ExpressionMatcher]] trait.
   * @author Marcin Mościcki
   */
-trait SQLScribe[+F <: RowProduct, -R <: RowProduct]
-	extends ExpressionMatcher[F, ExpressionResult[R]#T] with ColumnMatcher[F, ColumnResult[R]#T]
-{   //overriden so that the column variant is correctly picked from between overloads
-	override def apply[S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V]) :SQLExpression[R, S, V] =
-		e.applyTo(this)
+trait SQLScribe[+F <: RowProduct, -R <: RowProduct] extends ExpressionMapper[F, ExpressionResult[R]#T] {
+	//overriden so that the column variant is correctly picked from between overloads
+	override def apply[S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V]) :SQLExpression[R, S, V]
 
-	def apply[S >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, S, V]) :ColumnSQL[R, S, V] =
-		e.applyTo(this)
+	def apply[S >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, S, V]) :ColumnSQL[R, S, V]
 }
 
 
@@ -59,12 +56,19 @@ object SQLScribe {
 	  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.rephrase rephrase]] method.
 	  */
 	trait AbstractSQLScribe[+F <: RowProduct, -R <: RowProduct] extends SQLScribe[F, R]
+		with ExpressionMatcher[F, ExpressionResult[R]#T] with ColumnMatcher[F, ColumnResult[R]#T]
 		with CaseComposite[F, ExpressionResult[R]#T] with CaseCompositeColumn[F, ColumnResult[R]#T]
 		with CaseTerm[F, ExpressionResult[R]#T] with CaseColumnTerm[F, ColumnResult[R]#T]
 		with CaseTopSelect[F, ExpressionResult[R]#T] with CaseTopSelectColumn[F, ColumnResult[R]#T]
 	{
-		override def *(e :ColumnSQL[RowProduct, LocalScope, Nothing]) :ColumnSQL[R, LocalScope, Nothing] = e
+		override def apply[S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V]) :SQLExpression[R, S, V] =
+			e.applyTo(this)
 
+		override def apply[S >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, S, V]) :ColumnSQL[R, S, V] =
+			e.applyTo(this)
+
+
+		override def *(e :ColumnSQL[RowProduct, LocalScope, Nothing]) :ColumnSQL[R, LocalScope, Nothing] = e
 
 		override def composite[S >: LocalScope <: GlobalScope, X](e :CompositeSQL[F, S, X]) :SQLExpression[R, S, X] =
 			e.rephrase(this)
@@ -206,6 +210,7 @@ object SQLScribe {
 				                      newExt :newClause.Generalized ExpandedBy E) =
 					group(subselect, replacement, oldOffset + oldExt.length, newOffset + newExt.length, groupings)
 
+				override def toString = s"$self.group($oldClause, $newClause, $oldOffset, $newOffset, $groupings)"
 			}
 
 
@@ -214,15 +219,15 @@ object SQLScribe {
 			subselect(e :SubselectSQL[F, V]).asInstanceOf[ColumnSQL[G, GlobalScope, Rows[V]]]
 
 		override def subselect[V](e :SubselectSQL[F, V]) :GlobalSQL[G, Rows[V]] = {
-			val replacement = e.from match {
-				case discrete :FromSome => rebaseSubselect(discrete)//(e.from.outer)
+			val replacement = e.from match { //e.from is non-empty because otherwise it would be a top select
+				case discrete :FromSome => rebaseSubselect(discrete)
 				case grouped :GroupByClause => rebaseGroupedSubselect(grouped)
 				case aggregated :Aggregated[_] =>
 					val discrete = rebaseSubselect(aggregated.clause)
 					val res = Aggregated[discrete.clause.type](discrete.clause)
 					implicit val newExpansion = res.explicitSpan
 					RecursiveScribeSubselectExpansion[RowProduct, newClause.Generalized](res)
-				case _ =>
+				case _ => //this will never happen - every RowProduct must be either FromClause, GroupByClause or Aggregated
 					throw new IllegalArgumentException(s"Unexpected FROM clause type of a subselect: ${e.from}.")
 			}
 			val newSubselect = replacement.clause.generalized
@@ -403,7 +408,7 @@ object SQLScribe {
 
 
 
-	//unused
+	//used in as/aliased
 	def replaceRelation[T[X] <: BaseMapping[E, X], E, N[X] <: BaseMapping[V, X], V, F <: RowProduct, G <: RowProduct]
 	                   (oldClause :F, newClause :G,
 	                    relation :RelationSQL[F, T, E, _ >: F <: RowProduct],

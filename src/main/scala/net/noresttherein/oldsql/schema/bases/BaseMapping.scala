@@ -2,12 +2,14 @@ package net.noresttherein.oldsql.schema.bases
 
 import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.{Opt, Unique}
+import net.noresttherein.oldsql.collection.NaturalMap.WhenNoKey
+import net.noresttherein.oldsql.collection.NaturalMap.WhenNoKey.Throw
 import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.InferTypeParams
-import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnMapping, ColumnMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, OptionalSelect, SelectAudit, SelectDefault}
+import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.schema.{Buffs, ColumnMapping, ColumnMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, SelectAudit, SelectDefault}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingReadForm, MappingWriteForm, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
@@ -64,6 +66,14 @@ trait BaseMapping[S, O] extends Mapping { self =>
 			}
 			components foreach { c :Component[_] => componentValues(c) }
 		}
+
+	/** Assures that extract maps created using standard factory methods will be throwing
+	  * a [[net.noresttherein.oldsql.exceptions.NoSuchComponentException NoSuchComponentException]] with information
+	  * about both the key component and this mapping, instead of the default `NoSuchElementException`.
+	  */
+	implicit protected def throwNoSuchComponentException[C[X] <: Component[X]] :WhenNoKey[C, Throw] =
+		WhenNoKey.Throw.aNoSuchComponentException(this)
+
 
 
 	override def apply(pieces: Pieces): S =

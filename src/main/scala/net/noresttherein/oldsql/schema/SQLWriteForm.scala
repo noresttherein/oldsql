@@ -513,7 +513,9 @@ object SQLWriteForm {
 	def combine[T](name :String)(forms :SQLWriteForm[T]*) :SQLWriteForm[T] = forms match {
 		case Seq() =>
 			if (name == null) empty
-			else new EmptyWriteForm[T] with Stateless {}
+			else new EmptyWriteForm[T] with Stateless {
+				override val toString = name
+			}
 		case Seq(f) =>
 			if (name == null) f
 			else new ProxyWriteForm[T] with EmptyWriteForm[T] {
@@ -687,6 +689,7 @@ object SQLWriteForm {
 		override def nullLiteral: String = ""
 		final override def writtenColumns: Int = 0
 
+		override def nullSafe :SQLWriteForm[T] = this
 		override def notNull :SQLWriteForm[T] = this
 
 		override def toString = "<EMPTY"
@@ -696,7 +699,7 @@ object SQLWriteForm {
 
 	/** Base/mixin trait for write forms which are based on another form. Implements
 	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.writtenColumns writtenColumns]] and null-specific
-	  * literal methods by direct delegation to the member `form`.
+	  * literal methods by direct delegation to member `form`.
 	  */
 	trait WriteFormAdapter[-T] extends SQLWriteForm[T] {
 		protected def form :SQLWriteForm[Nothing]
@@ -762,15 +765,26 @@ object SQLWriteForm {
 	  * It directs [[net.noresttherein.oldsql.schema.SQLWriteForm.set set]] method
 	  * to [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull setNull]].
 	  */
-	private[schema] trait IgnoringWriteForm[T] extends SQLWriteForm[T] {
-		override def set(statement :PreparedStatement, position :Int, value :T) :Unit =
+	private[schema] trait IgnoringWriteForm extends SQLWriteForm[Any] {
+		override def set(statement :PreparedStatement, position :Int, value :Any) :Unit =
 			setNull(statement, position)
+
+		override def literal(value :Any, inline :Boolean) :String = nullLiteral(inline)
+		override def literal(value :Any) :String = nullLiteral
+		override def inlineLiteral(value :Any) :String = inlineNullLiteral
+
+		override def unmap[X](fun :X => Any) :SQLWriteForm[X] = this
+		override def flatUnmap[X](fun :X => Option[Any]) :SQLWriteForm[X] = this
+		override def compose[X](extractor :X =?> Any) :SQLWriteForm[X] = this
+		override def toOpt :SQLWriteForm[Option[Any]] = this
+
+		override def nullSafe :SQLWriteForm[Any] = this
 	}
 
 
 	private[schema] class NullSQLWriteForm[T](name :String = null)
 	                                         (implicit protected override val form :SQLWriteForm[T])
-		extends WriteFormAdapter[Any] with IgnoringWriteForm[Any] with NullableWriteFormLiterals[Any]
+		extends WriteFormAdapter[Any] with IgnoringWriteForm with NullableWriteFormLiterals[Any]
 	{
 		override def literal(value :Any, inline :Boolean) :String = form.nullLiteral(inline)
 
@@ -783,7 +797,7 @@ object SQLWriteForm {
 	private[schema] class NullValueSQLWriteForm[T](name :String = null)
 	                                              (implicit protected override val form :SQLWriteForm[T],
 	                                               nulls :NullValue[T])
-		extends WriteFormAdapter[Any] with IgnoringWriteForm[Any] with NullableWriteFormLiterals[Any]
+		extends WriteFormAdapter[Any] with IgnoringWriteForm with NullableWriteFormLiterals[Any]
 	{
 		override def setNull(statement :PreparedStatement, position :Int) :Unit =
 			form.set(statement, position, nulls.value)
@@ -832,7 +846,7 @@ object SQLWriteForm {
 
 	private[schema] class ConstSQLWriteForm[T](private val value :T, name :String = null)
 	                                          (implicit protected override val form :SQLWriteForm[T])
-		extends WriteFormAdapter[Any] with IgnoringWriteForm[Any] with NullableWriteFormLiterals[Any]
+		extends WriteFormAdapter[Any] with IgnoringWriteForm with NullableWriteFormLiterals[Any]
 	{
 		override def setNull(statement :PreparedStatement, position :Int) :Unit =
 			form.set(statement, position, value)
@@ -857,7 +871,7 @@ object SQLWriteForm {
 
 	private[schema] class EvalSQLWriteForm[T](value: => Opt[T], name :String = null)
 	                                         (implicit protected override val form :SQLWriteForm[T])
-		extends WriteFormAdapter[Any] with IgnoringWriteForm[Any] with NullableWriteFormLiterals[Any]
+		extends WriteFormAdapter[Any] with IgnoringWriteForm with NullableWriteFormLiterals[Any]
 	{
 		override def setNull(statement :PreparedStatement, position :Int) :Unit =
 			form.setOpt(statement, position, value)
@@ -877,7 +891,7 @@ object SQLWriteForm {
 	private[schema] class EvalOrNullSQLWriteForm[T](value: => Opt[T])
 	                                               (implicit protected override val form :SQLWriteForm[T],
 	                                                orElse :NullValue[T])
-		extends WriteFormAdapter[Any] with IgnoringWriteForm[Any] with NullableWriteFormLiterals[Any]
+		extends WriteFormAdapter[Any] with IgnoringWriteForm with NullableWriteFormLiterals[Any]
 	{
 		override def setNull(statement :PreparedStatement, position :Int) :Unit = value match {
 			case Got(x) => form.set(statement, position, x)

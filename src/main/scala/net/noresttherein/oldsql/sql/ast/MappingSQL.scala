@@ -2,17 +2,19 @@ package net.noresttherein.oldsql.sql.ast
 
 import net.noresttherein.oldsql.collection.{Chain, Opt, Unique}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.InferTypeParams
+import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, ColumnReadForm, Mapping, MappingExtract, Relation, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingOf, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
-import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.Relation.Table
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.{AndFrom, ColumnSQL, Expanded, ParamSelect, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
 import net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation
+import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, PrefixOf, TopFrom}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseColumn.LooseColumnMatcher
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.{CaseLooseComponent, LooseComponentMatcher}
@@ -20,8 +22,8 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.{CaseRelation, Re
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedColumnComponentSQL.{CaseColumnComponent, ColumnComponentMatcher}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedComponentSQL.{CaseComponent, ComponentMatcher, ProperComponent}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, TopSelectAs, TopSelectColumnAs}
-import net.noresttherein.oldsql.sql.mechanics.{TableCount, TableOffset}
-import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, TableCount, TableOffset}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 //here be implicits
@@ -48,7 +50,7 @@ import net.noresttherein.oldsql.slang._
 trait MappingSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, M[O] <: MappingAt[O]]
 	extends SQLExpression[F, S, M[()]#Subject]
 {
-	type Origin <: RowProduct
+	type Origin >: F <: RowProduct
 	type Subject = M[()]#Subject
 
 //	override def readForm :SQLReadForm[Subject] //= mapping.withOrigin[Any].selectForm
@@ -279,7 +281,7 @@ object MappingSQL {
 
 		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :LooseComponent[E, M, V] =
 			new LooseComponent[E, M, V](
-				mapping.asInstanceOf[M[E]], offset + ext.diff,
+				mapping.asInstanceOf[M[E]], offset + ext.lengthDiff,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]]
 			)(projection.isomorphism[E])
 
@@ -305,6 +307,15 @@ object MappingSQL {
 
 		override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, M] =
 			ParamSelect[E, M, V](from, anchor(from))
+
+
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			throw new UnsupportedOperationException("Not anchored component " + this + " cannot be spelled.")
+
+		protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			defaultSpelling(context, params)
 
 
 		override def isomorphic(expression :SQLExpression.*) :Boolean = equals(expression)
@@ -430,7 +441,7 @@ object MappingSQL {
 
 		override def asGlobal :Option[ColumnSQL[F, GlobalScope, V]] = Some(this)
 
-
+		//fixme: Adapter column with subcolumns support
 		private def include(components :Iterable[RefinedMapping[_, F]]) :LooseColumn[F, M, V] =
 			if (components.isEmpty) this
 			else {
@@ -508,7 +519,7 @@ object MappingSQL {
 		}
 
 		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :LooseColumn[E, M, V] =
-			new LooseColumn[E, M, V](column.asInstanceOf[M[E]], offset + ext.diff,
+			new LooseColumn[E, M, V](column.asInstanceOf[M[E]], offset + ext.lengthDiff,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]])(
 				projection.isomorphism
 			)
@@ -653,12 +664,12 @@ object MappingSQL {
 				:ColumnComponentSQL[F, project.WithOrigin, X]
 
 
-		/** An expression for the same component, but from the first
+		/** An expression for the same component, but from the first known
 		  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]] of ''from'' clause `P`.
 		  * Created expression is equal to this one, except for its `origin`, which is substituted with
 		  * `origin.moveTo(offset)`.
-		  * @param offset a proof that the first relation in ''from'' clause `P` is the same as the `origin` relation
-		  *               of this component (or, more precisely, they use the same mapping type `Entity`),
+		  * @param offset a proof that the first relation listed in ''from'' clause `P` is the same as the `origin`
+		  *               relation of this component (or, more precisely, they use the same mapping type `Entity`),
 		  *               carrying the offset of the new origin.
 		  */
 		def moveTo[P <: RowProduct](offset :TableOffset[P, Entity]) :ComponentSQL[P, M]
@@ -672,6 +683,16 @@ object MappingSQL {
 		override def asGlobal :Option[GlobalSQL[F, Subject]] = Some(this)
 		override def isAnchored = true
 		override def anchor(from :F) :ComponentSQL[F, M] = this
+
+
+		//we need SQLContext[P] and [X](P, SQLExpression[F, GlobalScope, X]) => X
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			spelling(origin, export)(context, params)
+
+		protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			spelling.inline(origin, export)(context, params)
 
 
 		override def isomorphic(expression :SQLExpression.*) :Boolean = this == expression
@@ -861,8 +882,7 @@ object MappingSQL {
 		override def moveTo[P <: RowProduct](offset :TableOffset[P, T]) :TypedComponentSQL[P, T, R, M, V, P] =
 			graft(origin.moveTo(offset))
 
-		override def graft[P <: RowProduct]
-		                       (relation :JoinedRelation[P, T]) :TypedComponentSQL[P, T, R, M, V, P] =
+		override def graft[P <: RowProduct](relation :JoinedRelation[P, T]) :TypedComponentSQL[P, T, R, M, V, P] =
 			relation.asInstanceOf[RelationSQL[P, T, R, P]] \ mapping.withOrigin[P]
 
 		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit expansion :U PartOf E)
@@ -1062,6 +1082,12 @@ object MappingSQL {
 
 		override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, M] =
 			ParamSelect[E, M, V](from, this)
+
+
+		override def inParens[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			spelling(this :ColumnSQL[E, LocalScope, V])(context, params)
+
 	}
 
 
@@ -1097,6 +1123,9 @@ object MappingSQL {
 					])
 				case _ => Lack
 			}
+
+
+		type * = ColumnComponentSQL[_ <: RowProduct, M, V] forSome { type V; type M[O] <: ColumnMapping[V, O] }
 
 	}
 
@@ -1496,8 +1525,8 @@ object MappingSQL {
 		override def mapping :T[O] = relation[O]
 
 		override val export :RefinedMapping[R, O] = {
-			if (includes.isEmpty && excludes.isEmpty) relation.`export`[O]
-			else relation.`export`[O].apply(includes, excludes)
+			if (includes.isEmpty && excludes.isEmpty) relation.export[O]
+			else relation.export[O].apply(includes, excludes)
 		}.asInstanceOf[RefinedMapping[R, O]]
 
 		override val extract = MappingExtract.ident(export)
@@ -1596,7 +1625,7 @@ object MappingSQL {
 
 		override def basedOn[U <: O, E <: RowProduct]
 		                    (base :E)(implicit expansion :U PartOf E) :RelationSQL[E, T, R, _ >: E <: RowProduct] =
-			new RelationSQL[E, T, R, E](relation, offset + expansion.diff,
+			new RelationSQL[E, T, R, E](relation, offset + expansion.lengthDiff,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]]
 			) //E is incorrect, but we lose this information anyway
 
@@ -1614,7 +1643,7 @@ object MappingSQL {
 			)
 
 		override def asIn[E <: RowProduct](implicit expansion :O PrefixOf E) :RelationSQL[E, T, R, E] =
-			new RelationSQL(relation, offset + expansion.diff,
+			new RelationSQL(relation, offset + expansion.lengthDiff,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]]
 			)
 
@@ -1732,7 +1761,7 @@ object MappingSQL {
 
 
 
-	class TableSQL[-F <: RowProduct, T[A] <: BaseMapping[R, A], R, O >: F <: RowProduct]
+	class TableSQL[-F <: RowProduct, T[A] <: BaseMapping[R, A], R, O >: F <: RowProduct] protected
 	              (override val relation :Table[T], override val offset :Int,
 	               override val includes :Unique[RefinedMapping[_, O]],
 	               override val excludes :Unique[RefinedMapping[_, O]])
@@ -1806,7 +1835,7 @@ object MappingSQL {
 
 		override def basedOn[U <: O, E <: RowProduct]
 		                    (base :E)(implicit expansion :U PartOf E) :TableSQL[E, T, R, _ >: E <: RowProduct] =
-			new TableSQL[E, T, R, E](relation, offset + expansion.diff,
+			new TableSQL[E, T, R, E](relation, offset + expansion.lengthDiff,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]]
 			) //E is incorrect, but we lose this information anyway
 
@@ -1824,7 +1853,7 @@ object MappingSQL {
 			)
 
 		override def asIn[E <: RowProduct](implicit expansion :O PrefixOf E) :TableSQL[E, T, R, E] =
-			new TableSQL(relation, offset + expansion.diff,
+			new TableSQL(relation, offset + expansion.lengthDiff,
 				includes.asInstanceOf[Unique[RefinedMapping[_, E]]], excludes.asInstanceOf[Unique[RefinedMapping[_, E]]]
 			)
 

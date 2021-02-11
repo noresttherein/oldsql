@@ -11,7 +11,6 @@ import net.noresttherein.oldsql.sql.{AndFrom, From, InnerJoin, Join, JoinParam, 
 import net.noresttherein.oldsql.sql.RowProduct.As
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
 import net.noresttherein.oldsql.slang
-import net.noresttherein.oldsql.sql.JoinParam.WithParam
 
 //implicits
 import slang._

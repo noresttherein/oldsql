@@ -2,8 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Mapping
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 
 
@@ -19,6 +18,10 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
   * the the adapted mapping through a property. This allows a class to implement both, each with another mapping
   * type as the adapted mapping - a feature used when the adapted mapping itself is an adapter to expose the
   * original mapping, rather than the adapter.
+  *
+  * Unless explicitly noted (or evident by type signature), extending classes and traits assume they are ''not''
+  * columns, even if `backer` is a column.
+  *
   * @see [[net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate]]
   * @see [[net.noresttherein.oldsql.schema.support.MappingProxy]]
   * @see [[net.noresttherein.oldsql.schema.support.MappedMapping]]
@@ -28,6 +31,47 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
   */
 trait DelegateMapping[+M <: Mapping, S, O] extends BaseMapping[S, O] {
 	protected val backer :M
+
+	/** Converts a component of this mapping to a corresponding component of the backing mapping. If the argument
+	  * already is a component of `backer`, it is returned itself; otherwise a component of `backer` which served
+	  * as the base for the argument is returned, if it exists. In standard implementations, where only ''export''
+	  * components of `backer` are exported to components uniquely of this instance - and non-export backer's components
+	  * are exported as the same component as their export version under `backer` - the mapping returned is
+	  * an ''export'' component. A complete inverse of the function applied to all components of `backer` when exporting
+	  * them as components of this instance might not exist - for example the delegate itself might
+	  * not be an ''export'' version of the backing mapping - in which case
+	  * a [[net.noresttherein.oldsql.exceptions.NoSuchComponentException NoSuchComponentException]] should be thrown.
+	  * If this delegate mapping is
+	  * a [[net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate ShallowDelegate]] -
+	  * which uses the components of `backer` as-is, the function is an identity on all of its domain (which might not
+	  * be necessarily the complete component set of `backer`), with a possible exception of this delegate itself.
+	  * The method has protected access here as `backer` might be completely shielded fromm the outside,
+	  * but it exists in a public version also in [[net.noresttherein.oldsql.schema.support.MappingAdapter MappingAdapter]],
+	  * and extending both these classes by mixing in
+	  * [[net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter DelegateAdapter]], as is typical,
+	  * makes it available to the clients of this mapping.
+	  */
+	protected def unexport[X](component :Component[X]) :backer.Component[X]
+
+	/** Converts a column of this mapping to a corresponding column of the backing mapping. If the argument
+	  * already is a column of `backer`, it is returned itself; otherwise a column of `backer` which served
+	  * as the base for the argument is returned, if it exists. In standard implementations, where only ''export''
+	  * columns of `backer` are exported to columns uniquely of this instance - and non-export backer's columns
+	  * are exported as the same columns as their export versions under `backer` - the column returned is
+	  * an ''export'' column. A complete inverse of the function applied to `backer`'s columns when exporting
+	  * them by this instance might not exist, in which case
+	  * a [[net.noresttherein.oldsql.exceptions.NoSuchComponentException NoSuchComponentException]] should be thrown.
+	  * If this delegate mapping is
+	  * a [[net.noresttherein.oldsql.schema.support.DelegateMapping.ShallowDelegate ShallowDelegate]] -
+	  * which uses the components of `backer` as-is, the function is an identity on all of its domain (which might not
+	  * be necessarily the complete component set of `backer`).
+	  * The method has protected access here as `backer` might be completely shielded fromm the outside,
+	  * but it exists in a public version also in [[net.noresttherein.oldsql.schema.support.MappingAdapter MappingAdapter]],
+	  * and extending both these classes by mixing in
+	  * [[net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter DelegateAdapter]], as is typical,
+	  * makes it available to the clients of this mapping.
+	  */
+	protected def unexport[X](column :Column[X]) :backer.Column[X]
 }
 
 
@@ -93,6 +137,14 @@ object DelegateMapping {
 		override def exportOrNot[T](component :Component[T]) :Component[T] = backer.exportOrNot(component)
 
 		override def exportOrNot[T](column :Column[T]) :Column[T] = backer.exportOrNot(column)
+
+		override def unexport[X](component :Component[X]) :Component[X] =
+			if (component eq this)
+				throw new IllegalArgumentException("Cannot un-export the adapter mapping itself: " + component)
+			else
+				component
+
+		override def unexport[X](column :Column[X]) :Column[X] = column
 
 		override def contains[T](component :Component[T]) :Boolean =
 			(component eq backer) || backer.contains(component)

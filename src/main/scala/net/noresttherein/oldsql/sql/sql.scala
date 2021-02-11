@@ -1,13 +1,12 @@
 package net.noresttherein.oldsql
 
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.SQLForm
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.RowProduct.GroupingOfGeneralized
 import net.noresttherein.oldsql.sql.GroupByClause.{Group, GroupingRelation}
+import net.noresttherein.oldsql.sql.RowProduct.GroupingOfGeneralized
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.UnboundParam.{NamedParamRelation, ParamRelation}
+import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, NamedParamRelation, ParamRelation}
 
 
 
@@ -148,17 +147,35 @@ package object sql {
 
 
 
+	/** A type alias for `JoinParam` accepting parameter type `X`. As a `RowProduct` containing a `JoinParam` join
+	  * in its type is a preliminary from clause which will be translated to a parameterized statement, it uses
+	  * an a 'inverse function symbol' as a mnemonic: `From[Users] <=? String`. This is equivalent to `WithParam[F, X]`.
+	  */
+	type <=?[+F <: FromSome, X] = WithParam[F, X]
+
+	/** An alias for `JoinParam` accepting the parameter type as the second (right) argument, hiding the
+	  * `FromParam[X, _]` from the type signature.
+	  */ //not F <: TopFromSome so it can be used in Generalized types
+	type WithParam[+F <: FromSome, X] = JoinParam[F, FromParam.Of[X]#P] //todo: rename, conflicts with param for WithClause
+
+	/** An alias for `GroupParam` accepting the parameter type as the second (right) argument, hiding the
+	  * `FromParam[X, _]` from the type signature.
+	  */
+	type ByParam[+F <: GroupByClause, X] = GroupParam[F, ParamRelation[X]#Param]
+
+
+
 	/** The first grouping expression of a [[net.noresttherein.oldsql.sql.GroupBy group by]] clause,
-	  * represented by a [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[X, _]`.
+	  * represented by a [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[S, _]`.
 	  */ //consider: renaming to GroupBy. Question only if this or GroupBy
-	type GroupByVal[+F <: FromSome, X] = F GroupBy Group[X]#T
+	type GroupByVal[+F <: FromSome, S] = F GroupBy Group[S]#T
 
 	object GroupByVal {
 
-		def apply[U <: RowProduct, F <: FromSome { type Generalized <: U }, X] //fixme: add filter once factory methods for all joins are refactored
-		         (from :F, group :SQLExpression[U, GlobalScope, X])//, filter :LocalBoolean[F#Generalized GroupByVal X] = True)
-				:F GroupByVal X =
-			GroupBy(from, GroupingRelation(group))//, filter)
+		def apply[U <: RowProduct, F <: FromSome { type Generalized <: U }, S] //fixme: add filter once factory methods for all joins are refactored
+		         (from :F, group :SQLExpression[U, GlobalScope, S])//, filter :LocalBoolean[F#Generalized GroupByVal S] = True)
+				:F GroupByVal S =
+			GroupBy[F, Group[S]#T, Group[S]#T, S](from, GroupingRelation(group), group)//, filter)
 
 		type * = GroupBy.*
 
@@ -170,16 +187,16 @@ package object sql {
 
 
 	/** A [[net.noresttherein.oldsql.sql.By following]] grouping expression of a ''group by'' clause,
-	  * represented by a [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[X, _]`.
+	  * represented by a [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[S, _]`.
 	  */
-	type ByVal[+F <: GroupByClause, X] = F By Group[X]#T
+	type ByVal[+F <: GroupByClause, S] = F By Group[S]#T
 
 	object ByVal {
 
-		def apply[F <: RowProduct, G <: GroupingOfGeneralized[F], X] //fixme: add filter once joins are refactored
-		         (from :G, group :SQLExpression[F, GlobalScope, X])//, filter :LocalBoolean[G#Generalized ByVal X] = True)
-				:G ByVal X =
-			By(from, GroupingRelation(group))//, filter)
+		def apply[F <: RowProduct, G <: GroupingOfGeneralized[F], S] //fixme: add filter once joins are refactored
+		         (from :G, group :SQLExpression[F, GlobalScope, S])//, filter :LocalBoolean[G#Generalized ByVal S] = True)
+				:G ByVal S =
+			By[G, Group[S]#T, Group[S]#T, S](from, GroupingRelation(group), group)//, filter)
 
 		type * = By.*
 
@@ -191,16 +208,16 @@ package object sql {
 
 
 	/** The first grouping expression of a [[net.noresttherein.oldsql.sql.GroupBy group by]] clause,
-	  * represented by a [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]]`[X, _]`.
+	  * represented by a [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]]`[S, _]`.
 	  */
-	type GroupByOne[+F <: FromSome, X] = F GroupBy Group[X]#C
+	type GroupByOne[+F <: FromSome, S] = F GroupBy Group[S]#C
 
 	object GroupByOne {
 
-		def apply[U <: RowProduct, F <: FromSome { type Generalized <: U }, X]//fixme: add filter once join factory methods are refactored
-		         (from :F, group :ColumnSQL[U, GlobalScope, X])//, filter :LocalBoolean[F#Generalized GroupByOne X] = True)
-				:F GroupByOne X =
-			GroupBy(from, GroupingRelation(group))//, filter)
+		def apply[U <: RowProduct, F <: FromSome { type Generalized <: U }, S]//fixme: add filter once join factory methods are refactored
+		         (from :F, group :ColumnSQL[U, GlobalScope, S])//, filter :LocalBoolean[F#Generalized GroupByOne S] = True)
+				:F GroupByOne S =
+			GroupBy[F, Group[S]#C, Group[S]#C, S](from, GroupingRelation(group), group)//, filter)
 
 		type * = GroupBy.*
 
@@ -212,16 +229,16 @@ package object sql {
 
 
 	/** A [[net.noresttherein.oldsql.sql.By following]] grouping expression of a ''group by'' clause,
-	  * represented by a [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]]`[X, _]`.
+	  * represented by a [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]]`[S, _]`.
 	  */
-	type ByOne[+F <: GroupByClause, X] = F By Group[X]#C
+	type ByOne[+F <: GroupByClause, S] = F By Group[S]#C
 
 	object ByOne {
 
-		def apply[F <: RowProduct, G <: GroupingOfGeneralized[F], X]//fixme: add filter once joins are refactored
-		         (from :G, group :ColumnSQL[F, GlobalScope, X])//, filter :LocalBoolean[G#Generalized ByOne X] = True)
-				:G ByOne X =
-			By(from, GroupingRelation(group))//, filter)
+		def apply[F <: RowProduct, G <: GroupingOfGeneralized[F], S]//fixme: add filter once joins are refactored
+		         (from :G, group :ColumnSQL[F, GlobalScope, S])//, filter :LocalBoolean[G#Generalized ByOne S] = True)
+				:G ByOne S =
+			By[G, Group[S]#C, Group[S]#C, S](from, GroupingRelation(group), group)//, filter)
 
 		type * = By.*
 

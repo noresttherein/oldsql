@@ -8,28 +8,30 @@ import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.slang
-import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
-import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, CompositeMatcher}
-import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CompositeColumnMatcher, MatchOnlyCompositeColumn}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseQuery, CompoundSelectSQL, QueryMatcher, Rows}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL.{CaseCompoundSelect, CompoundSelectMatcher}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectSQL, TopSelectSQL}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.EmptyChain
+import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
+import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
+import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{CaseComposite, CompositeMatcher}
 import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, ConversionSQL, FunctionSQL, LogicalSQL, MappingSQL, QuerySQL, SelectSQL, SQLTerm, TupleSQL}
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNull}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.{CaseConversion, ConversionMatcher, MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ast.FunctionSQL.{CaseFunction, FunctionMatcher}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{CaseMapping, LooseComponent, MappingMatcher}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseQuery, CompoundSelectSQL, QueryMatcher, Rows}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL.{CaseCompoundSelect, CompoundSelectMatcher}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectSQL, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{CaseTerm, SQLLiteral, SQLNull, SQLParameter, TermMatcher}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{CaseTuple, ChainTuple, TupleMatcher}
-import net.noresttherein.oldsql.sql.mechanics.{implicitSQLLiterals, SQLScribe, TableCount}
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.EmptyChain
+import net.noresttherein.oldsql.sql.mechanics.{implicitSQLLiterals, SpelledSQL, SQLScribe, TableCount}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 //here be implicits
 import slang._
+
 
 
 
@@ -477,6 +479,42 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 
 
 
+//	private[sql] final def spell[P](spelling :SQLSpelling, inline :Boolean = false)(context :SQLContext[P])
+//	                               (implicit params :Parameterization[P, F]) :SpelledSQL[P] =
+//		if (inline) inlineSpelling(context)(params, spelling) else defaultSpelling(context)(params, spelling)
+//
+//	protected def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E], inline :Boolean = false)
+//	                                        (implicit spelling :SQLSpelling) :SpelledSQL[P, E]
+
+	/** Translates this expression object into an annotated SQL string `SpelledSQL[P, E]`. This is a fallback method
+	  * used by [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]] if no non-standard representation
+	  * is required by the used DBMS. This method should not be exposed, as the clients of this class should
+	  * always use the `apply` method of `SQLSpelling` as the SQL formatter.
+	  */
+	protected def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+	                                        (implicit spelling :SQLSpelling) :SpelledSQL[P, E]
+
+	/** Translates this expression object into an annotated SQL string `SpelledSQL[P, E]`. This is the fallback method
+	  * used by [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]] if no non-standard representation
+	  * is required for the used DBMS. This is similar to
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.defaultSpelling defaultSpelling]], but multi-column expressions,
+	  * such as tuples and mapping components, are not surrounded in a pair of parenthesis (and all their subexpressions
+	  * are likewise inlined to the same level).
+	  */
+	protected def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+	                                       (implicit spelling :SQLSpelling) :SpelledSQL[P, E]
+
+	private[sql] final def defaultSpelling[P, E <: F]
+	                       (spelling :SQLSpelling)(implicit context :SQLContext, params :Parameterization[P, E])
+			:SpelledSQL[P, E] =
+		defaultSpelling(context, params)(spelling)
+
+	private[sql] final def inlineSpelling[P, E <: F]
+	                       (spelling :SQLSpelling)(implicit context :SQLContext, params :Parameterization[P, E])
+			:SpelledSQL[P, E] =
+		inlineSpelling(context, params)(spelling)
+
+
 	/** Tests if this expression is equal to the given one abstracting from possibly different sources.
 	  * Basically, if both expressions would produce the same SQL they should be isomorphic.
 	  */
@@ -484,8 +522,8 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 
 	/** Tests if this expression would produce the same value as the given expression, abstracting from possibly
 	  * different clauses. Similar to isomorphic, but generally disregards order of elements in composite expressions
-	  * such as 'and', 'or', seq. Be warned that this method's primary use is for tests, and production code shouldn't
-	  * depend on it.
+	  * such as 'and', 'or', seq. Be warned that this method's primary use is for tests, and production code should not
+	  * depend on it. No guarantees are given and the contract is best-effort only.
 	  */
 	private[oldsql] def equivalent(expression :SQLExpression.*) :Boolean = isomorphic(expression)
 
@@ -1056,12 +1094,25 @@ object SQLExpression  {
 			override def applyString(arg :String) = arg + ".toSeq"
 		}
 
-
 	}
 
 
 
 
+
+
+	/** A generic function translating SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] to values of
+	  * some type `Y[S, V]` dependant on the expression's value type. Most notably, it is implemented
+	  * by the visitor interface [[net.noresttherein.oldsql.sql.SQLExpression.ExpressionMatcher ExpressionMatcher]] -
+	  * this trait was extracted to allow hiding the multitude of visitor methods from public interfaces
+	  * of implementing classes, if needed.
+ 	  * @tparam F the `RowProduct` subtype on which all translated expressions are based.
+	  * @tparam Y the type constructor of the return type, accepting the expression's
+	  *           [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope scope]] and value types.
+	  */
+	trait ExpressionMapper[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+		def apply[S >: LocalScope <: GlobalScope, V](e: SQLExpression[F, S, V]): Y[S, V]
+	}
 
 
 	/** A visitor traversing the structure of an SQL expression over tables in `F` and producing a value of `Y[X]`,
@@ -1098,10 +1149,11 @@ object SQLExpression  {
 	  * @see [[net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher]]
 	  */
 	trait ExpressionMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends ColumnMatcher[F, Y] with CompositeMatcher[F, Y] with MappingMatcher[F, Y]
+		extends ExpressionMapper[F, Y] with ColumnMatcher[F, Y] with CompositeMatcher[F, Y] with MappingMatcher[F, Y]
 		   with QueryMatcher[F, Y] with TermMatcher[F, Y]
 	{
-		def apply[S >: LocalScope <: GlobalScope, V](e: SQLExpression[F, S, V]): Y[S, V] = e.applyTo(this)
+		override def apply[S >: LocalScope <: GlobalScope, V](e: SQLExpression[F, S, V]): Y[S, V] =
+			e.applyTo(this)
 
 		def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) :Y[S, X]
 

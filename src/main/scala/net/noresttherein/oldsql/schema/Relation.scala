@@ -1,17 +1,23 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.bits.ConstantMapping
+import net.noresttherein.oldsql.collection.{Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.Relation.{AlteredRelation, RelationTemplate}
+import net.noresttherein.oldsql.schema.Relation.BaseTable.TableFactory
 import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.bits.ConstantMapping
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.@:.Labeled
 import net.noresttherein.oldsql.schema.support.AdjustedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
-import net.noresttherein.oldsql.schema.Relation.BaseTable.TableFactory
-import net.noresttherein.oldsql.sql.Adjoin
+import net.noresttherein.oldsql.sql.{Adjoin, JoinedRelation, RowProduct}
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
+import net.noresttherein.oldsql.sql.ast.QuerySQL
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -86,6 +92,63 @@ trait Relation[+M[O] <: MappingAt[O]] extends AbstractRelation with RelationTemp
 	  */
 	def sameAs(that :Relation.*) :Boolean = default == that.default
 
+
+	/** Creates an SQL fragment referencing the given component of a relation expression for this relation.
+	  *   1. For a table column (including ''derived'' tables, i.e. ''select'' expressions), this translates to
+	  *      the form of `alias.columnName`, while other components print the above form for all their columns picked by
+	  *      `spelling.scope.`[[net.noresttherein.oldsql.sql.SQLDialect.SpellingScope.defaultColumns defaultColumns]];
+	  *      whether these columns are surrounded by a parenthesis in order to form a tuple, or inlined for use
+	  *      in a larger expression, is decided by `inline` flag.
+	  *   1. [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation Unbound]] parameters insert the JDBC statement
+	  *      parameter placeholder '?' (or multiple, as with regular components) and append a setter form for
+	  *      the parameter to the [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization Parameterization]]
+	  *      returned with the SQL.
+	  *   1. [[net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation Grouping]] relations always copy the whole
+	  *      expression as appearing in the ''group by'' clause, together with repetitions of any bound or unbound
+	  *      parameters included in the expression.
+	  * Default implementation delegates to the overloaded variant for a single column and simply collects the results.
+	  * Non standard implementations may resort to other schemes.
+	  * @param origin a relation expression which `relation` property must equal this instance.
+	  * @param component a component of the [[net.noresttherein.oldsql.schema.Relation.export export]] mapping
+	  *                  of this relation.
+	  */
+	@throws[IllegalArgumentException]("if origin does not reference this relation.")
+	def spell[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A]]
+	         (origin :JoinedRelation[O, T], component :MappingAt[O], inline :Boolean = false)
+	         (context :SQLContext, params :Parameterization[P, F])
+	         (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+	{
+		if (origin.relation != this)
+			throw new IllegalArgumentException(
+				s"Cannot spell the expression for component $component of $origin as it is for a different relation than $this."
+			)
+		val columns = spelling.scope.defaultColumns(export[O])
+		val inlined = columns.view.scanLeft(SpelledSQL(context, params)) {
+			(sql, col) => spell(origin, export[O].export(col))(sql.context, sql.params)
+		}.tail.reduce(_.sql +: ", " +: _)
+		if (inline || columns.size <= 1) inlined else ("(" +: inlined) + ")"
+	}
+
+	/** Creates an SQL fragment referencing the given column of a relation expression for this relation.
+	  *   1. For a table column (including ''derived'' tables, i.e. ''select'' expressions), this translates to
+	  *      the form of `alias.columnName`.
+	  *   1. [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation Unbound]] parameters insert the JDBC statement
+	  *      parameter placeholder '?' and append a setter form for the parameter
+	  *      to the [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization Parameterization]]
+	  *      returned with the SQL.
+	  *   1. [[net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation Grouping]] relations always copy the whole
+	  *      expression as appearing in the ''group by'' clause, together with repetitions of any bound or unbound
+	  *      parameters included in the expression.
+	  * @param origin a relation expression which `relation` property must equal this instance.
+	  * @param column a column of the [[net.noresttherein.oldsql.schema.Relation.export export]] mapping
+	  *               of this relation.
+	  */
+	protected def spell[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A], V]
+	                   (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
+	                   (context :SQLContext, params :Parameterization[P, F])
+	                   (implicit spelling :SQLSpelling) :SpelledSQL[P, F]
+
+
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[Relation.* @unchecked]
 
 
@@ -101,13 +164,8 @@ trait Relation[+M[O] <: MappingAt[O]] extends AbstractRelation with RelationTemp
 
 //consider: how me might preserve equality after serialization
 object Relation {
-	type * = Relation[M] forSome { type M[O] <: MappingAt[O] }
 
-
-	def apply[M <: Mapping, S](name :String, template : => M)
-	                          (implicit projection :OriginProjection[M, S]) :Relation[projection.WithOrigin] =
-		new ProjectingRelation[projection.WithOrigin, S](projection[()](template), name)(projection.isomorphism)
-
+	type * = Relation[MappingAt]
 
 
 	/** Extension methods for [[net.noresttherein.oldsql.schema.Relation Relation]], extracted due to its covariance
@@ -181,9 +239,9 @@ object Relation {
 	  * relation `val`s before they are initialized - either have everything declared in a singleton object, or declare
 	  * relations as `lazy val`s (or `object`s themselves).
 	  */
-	private class ProjectingRelation[+M[O] <: BaseMapping[S, O], S]
-	                                (prototype: => M[()], override val sql :String)
-	                                (implicit projection :IsomorphicProjection[M, S, ()])
+	private abstract class ProjectingRelation[+M[O] <: BaseMapping[S, O], S]
+	                                         (prototype: => M[()], override val sql :String)
+	                                         (implicit projection :IsomorphicProjection[M, S, ()])
 		extends Relation[M]
 	{
 		protected[this] lazy val template = prototype
@@ -237,6 +295,12 @@ object Relation {
 						(this.excludes.view.filterNot(includes.contains(_)) ++ excludes).to(Unique)
 					)
 			}
+
+		protected override def spell[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A], V]
+		                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
+		                            (context :SQLContext, params :Parameterization[P, F])
+		                            (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+			spelling.column(origin, export[O].export(column))(context, params)
 	}
 
 
@@ -271,6 +335,59 @@ object Relation {
 						(this.excludes.view.filterNot(includes.contains(_)) ++ excludes).to(Unique)
 					)
 			}
+	}
+
+
+	object RelVar {
+		type * = RelVar[M] forSome { type M[O] <: MappingAt[O] }
+	}
+
+
+
+
+	/** A 'true', persistent and updatable SQL table. */
+	trait BaseTable[+M[O] <: MappingAt[O]]
+		extends Table[M] with RelVar[M] with RelationTemplate[M, BaseTable]
+	{ outer =>
+		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+				:BaseTable[M] =
+			new AlteredRelation[M](this, includes, excludes) with BaseTable[M] {
+				override val name = outer.name
+
+				protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+						:BaseTable[M] =
+					outer.alter(
+						(this.includes.view ++ includes).filterNot(excludes.contains(_)).to(Unique),
+						(this.excludes.view.filterNot(includes.contains(_)) ++ excludes).to(Unique)
+					)
+			}
+	}
+
+
+	object BaseTable {
+
+		def apply[M <: Mapping, S](tableName :String, template : => M)
+		                          (implicit project :OriginProjection[M, S]) :BaseTable[project.WithOrigin] =
+			new ProjectingRelation[project.WithOrigin, S](project[()](template), tableName)(project.isomorphism)
+				with BaseTable[project.WithOrigin]
+			{
+				override val sql = tableName
+				override def name = sql
+			}
+
+		def apply[S] :TableFactory[S] = new TableFactory[S] {}
+
+		trait TableFactory[S] extends Any { //fixme: lazy implicit
+			final def apply[M <: Mapping](tableName :String)(implicit mapping :M, project :OriginProjection[M, S])
+					:BaseTable[project.WithOrigin] =
+				BaseTable(tableName, mapping)
+		}
+
+
+		trait StaticBaseTable[N <: String with Singleton, M[O] <: MappingAt[O]]
+			extends BaseTable[M] with StaticRelation[N, M]
+
+		type * = BaseTable[M] forSome { type M[O] <: MappingAt[O] }
 	}
 
 
@@ -349,49 +466,43 @@ object Relation {
 
 
 
-	/** A 'true', persistent and updatable SQL table. */
-	trait BaseTable[+M[O] <: MappingAt[O]]
-		extends Table[M] with RelVar[M] with RelationTemplate[M, BaseTable]
-	{ outer =>
-		override protected def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
-				:BaseTable[M] =
-			new AlteredRelation[M](this, includes, excludes) with BaseTable[M] {
-				override val name = outer.name
+	trait SelectRelation[M[O] <: MappingAt[O]] extends DerivedTable[M] { outer =>
+		type Row
+		val query :QuerySQL[RowProduct, Row] { type ResultMapping[O] = M[O] }
 
-				protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
-						:BaseTable[M] =
+		override def apply[O] :M[O] = query.bridgeComponent[O]
+//		override def altered[O] :RefinedMapping[M[O]#Subject, O] = query.export[O]
+		override def export[O] :MappingAt[O] = query.bridgeExport[O]
+
+		override def sql :String = ??? //todo: default dialect SQL
+
+		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+				:SelectRelation[M] =
+			new AlteredRelation[M](this, includes, excludes) with SelectRelation[M] {
+				override type Row = outer.Row
+				override val query = outer.query
+
+				override def export[O] = super[AlteredRelation].export[O]
+
+				override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]]) =
 					outer.alter(
 						(this.includes.view ++ includes).filterNot(excludes.contains(_)).to(Unique),
 						(this.excludes.view.filterNot(includes.contains(_)) ++ excludes).to(Unique)
 					)
 			}
+
 	}
 
 
-	object BaseTable {
-
-		def apply[M <: Mapping, S](tableName :String, template : => M)
-		                          (implicit project :OriginProjection[M, S]) :BaseTable[project.WithOrigin] =
-			new ProjectingRelation[project.WithOrigin, S](project[()](template), tableName)(project.isomorphism)
-				with BaseTable[project.WithOrigin]
-			{
-				override val sql = tableName
-				override def name = sql
+	object SelectRelation {
+		def apply[M[O] <: MappingAt[O], V](select :QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
+				:SelectRelation[M] =
+			new SelectRelation[M] {
+				override type Row = V
+				override val query = select
 			}
 
-		def apply[S] :TableFactory[S] = new TableFactory[S] {}
-
-		trait TableFactory[S] extends Any { //fixme: lazy implicit
-			final def apply[M <: Mapping](tableName :String)(implicit mapping :M, project :OriginProjection[M, S])
-					:BaseTable[project.WithOrigin] =
-				BaseTable(tableName, mapping)
-		}
-
-
-		trait StaticBaseTable[N <: String with Singleton, M[O] <: MappingAt[O]]
-			extends BaseTable[M] with StaticRelation[N, M]
-
-		type * = BaseTable[M] forSome { type M[O] <: MappingAt[O] }
+		type * = SelectRelation[M] forSome { type M[O] <: MappingAt[O] }
 	}
 
 
@@ -408,9 +519,9 @@ object Relation {
 		extends Relation[M] with RelationTemplate[M, Relation]
 	{
 		private val mapping = {
-			val mapping = default.export[this.type]
-			AdjustedMapping[RefinedMapping[mapping.Subject, this.type], mapping.Subject, this.type](
-				mapping.refine,
+			val template = default.export[this.type]
+			AdjustedMapping[RefinedMapping[template.Subject, this.type], template.Subject, this.type](
+				template.refine,
 				includes.asInstanceOf[Unique[RefinedMapping[_, this.type]]],
 				excludes.asInstanceOf[Unique[RefinedMapping[_, this.type]]]
 			)
@@ -425,11 +536,23 @@ object Relation {
 			new AlteredRelation[M](default, includes, excludes)
 
 
+		override def spell[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A]]
+		                  (origin :JoinedRelation[O, T], component :MappingAt[O], inline :Boolean)
+		                  (context :SQLContext, params :Parameterization[P, F])
+		                  (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+			default.spell(origin, mapping.withOrigin[O].unexport(component.refine))(context, params)
+
+		//todo: verify this calls the column overload
+		protected override def spell[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A], V]
+		                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
+		                            (context :SQLContext, params :Parameterization[P, F])
+		                            (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+			default.spell(origin, mapping.withOrigin[O].unexport(column))(context, params)
+
 		override def sql :String = default.sql
 
 		override lazy val toString :String =
 			(includes.view.map("+" + _) ++ excludes.view.map("-" + _)).mkString(s"($sql){", ", ", "}")
-
 	}
 
 
@@ -442,18 +565,59 @@ object Relation {
 	  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping.@:]]
 	  */
 	class Aliased[M[O] <: MappingAt[O], A <: Label](val relation :Relation[M], val alias :A)
-		extends StaticRelation[A, ({ type T[O] = A @: M[O] })#T]
+		extends StaticRelation[A, Labeled[A, M]#Projection]
 	{ //todo: the contract of name/sql must be specified here; is alias a part of sql?
 		type T[O] = A @: M[O]
-
-		override def name :A = alias
-		override def sql :String = relation.sql
 
 		override def apply[O] :A @: M[O] = labeled.asInstanceOf[A @: M[O]]
 		override def export[O] = relation.export[O]
 
-		private val labeled = alias @: relation[()].refine
+		override def name :A = alias
+		override def sql :String = relation.sql
 
+		override def spell[P, O <: RowProduct, F <: O, T[X] <: MappingAt[X]]
+		                  (origin :JoinedRelation[O, T], component :MappingAt[O], inline :Boolean)
+		                  (context :SQLContext, params :Parameterization[P, F])
+		                  (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+		{
+			val exported = if (component == labeled) relation.export[O] else component
+			relation.spell(origin, exported)(context, params)
+		}
+
+		protected override def spell[P, O <: RowProduct, F <: O, T[X] <: MappingAt[X], V]
+		                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
+		                            (context :SQLContext, params :Parameterization[P, F])
+		                            (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+		{
+			val exported = if (column == labeled) relation.export[O].asInstanceOf[ColumnMapping[_, O]] else column
+			relation.spell(origin, exported)(context, params)
+		}
+
+		private val labeled = alias @: relation[()].refine
+	}
+
+
+	object Aliased {
+		def apply[M[O] <: MappingAt[O], A <: Label](relation :Relation[M], alias :A) :Aliased[M, A] =
+			new Aliased(relation, alias)
+
+		def apply[M[O] <: MappingAt[O], A <: Label](table :Table[M], alias :A) :AliasedTable[M, A] =
+			new AliasedTable(table, alias)
+
+		def unapply[M[O] <: MappingAt[O]](relation :Relation[M]) :Opt[(Relation[MappingAt], Label)] =
+			relation match {
+				case aliased :Aliased.* => Got(aliased.relation, aliased.alias)
+				case _ => Lack
+			}
+
+
+		type * = Aliased[M, _ <: Label] forSome { type M[O] <: MappingAt[O] }
+
+		class AliasedTable[M[O] <: MappingAt[O], A <: Label](override val relation :Table[M], alias :A)
+			extends Aliased[M, A](relation, alias) with Table[Labeled[A, M]#Projection]
+		{
+			def table :Table[M] = relation
+		}
 	}
 
 

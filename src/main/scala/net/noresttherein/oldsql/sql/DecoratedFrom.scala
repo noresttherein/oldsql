@@ -4,7 +4,7 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator.FromSomeDecoratorComposition
-import net.noresttherein.oldsql.sql.RowProduct.{RowComposition, RowDecomposition, ExpandedBy, ExpandingClause, NonEmptyFrom, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, ExpandingClause, NonEmptyFrom, PartOf, PrefixOf, RowComposition, RowDecomposition}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
@@ -40,6 +40,7 @@ trait DecoratedFrom[+F <: RowProduct] extends RowProduct { thisClause =>
 	def withClause[C <: Bound](body :C) :DecoratedFrom[C]
 
 
+	override def paramCount :Int = clause.paramCount
 	override def lastParamOffset :Int = clause.lastParamOffset
 	override def isParameterized :Boolean = clause.isParameterized
 	override def isSubselectParameterized :Boolean = clause.isSubselectParameterized
@@ -56,7 +57,7 @@ trait DecoratedFrom[+F <: RowProduct] extends RowProduct { thisClause =>
 
 
 
-	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.decorator(this)
+	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.decorator(this)
 
 }
 
@@ -85,7 +86,7 @@ object DecoratedFrom {
 		override type OuterRow = clause.OuterRow
 
 
-		protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] =
+		protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y =
 			matcher.expandingDecorator(this)
 
 		private[sql] override def concrete_ExpandingClause_subclass_must_extend_Expanded_or_ExpandedDecorator :Nothing =
@@ -227,7 +228,7 @@ object DecoratedFrom {
 			withClause(clause.asSubselectOf(newOuter))
 
 
-		protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] =
+		protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y =
 			matcher.fromSomeDecorator(this)
 
 	}

@@ -5,8 +5,10 @@ import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.mechanics.SQLScribe
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -25,7 +27,7 @@ class ConcatSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope] private(prote
 
 
 	override def ++[E <: F, O >: LocalScope <: S]
-	(that :ColumnSQL[E, O, String])(implicit ev :String =:= String) :ColumnSQL[E, O, String] =
+	               (that :ColumnSQL[E, O, String])(implicit ev :String =:= String) :ColumnSQL[E, O, String] =
 		that match {
 			case concat :ConcatSQL[E @unchecked, O @unchecked] => new ConcatSQL(concat.parts ::: parts)
 			case _ => new ConcatSQL(that :: parts)
@@ -38,6 +40,18 @@ class ConcatSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope] private(prote
 
 	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, String] =
 		matcher.concat(this)
+
+
+	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		parts.scanLeft(SpelledSQL("''", context, params)) { //reverse order!
+			(sql, col) => spelling.inline(col :ColumnSQL[E, S, String])(sql.context, sql.params)
+		} match {
+			case Seq(empty) => empty  //reverse the order while reducing
+			case Seq(_, tail @ _*) => tail.reduce { (_2, _1) => _2 + (" " + spelling.CONCAT + " ") + _1.sql }
+		}
+
+
 
 
 	override def toString :String = parts.view.reverse.map("'" + _ + "'").mkString(" + ")

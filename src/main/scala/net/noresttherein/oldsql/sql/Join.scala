@@ -6,24 +6,26 @@ import scala.annotation.implicitNotFound
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
-import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf}
-import net.noresttherein.oldsql.sql.Expanded.{AbstractExpanded, ExpandedComposition, ExpandedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.Join.{AbstractJoin, JoinComposition}
+import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
+import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
+import net.noresttherein.oldsql.sql.Expanded.{AbstractExpanded, ExpandedComposition, ExpandedDecomposition, NonSubselect}
+import net.noresttherein.oldsql.sql.Join.{AbstractJoin, JoinComposition}
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext
 
 
 
@@ -298,7 +300,9 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 	override def likeJoin[P <: FromSome, S <: RowProduct](left :P, right :S) :right.JoinedWith[P, LikeJoin] =
 		right.joinedWith(left, this)
 
-	
+
+	override def filter :GlobalBoolean[Generalized] = super.filter //overriden due to overload ambiguity
+
 	override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :GlobalBoolean[E] =
 		left.filter(target)(expansion.expandFront[left.Generalized, R]) && condition.basedOn(target)
 
@@ -516,7 +520,7 @@ object Join {
 			withLeft(left.appendedTo(prefix))(condition :GlobalBoolean[left.Generalized GeneralizedJoin R])
 
 
-		protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.join[L, R, S](this)
+		protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.join[L, R, S](this)
 	}
 
 }
@@ -542,10 +546,14 @@ sealed trait InnerJoin[+L <: FromSome, R[O] <: MappingAt[O]]
 		InnerJoin(left, right, alias)(filter)
 
 
+	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
+			:SpelledSQL[Params, Generalized] =
+		spelling.join(this, spelling.INNER_JOIN)(context)
+
+
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[InnerJoin.*]
 
 	override def name :String = "join"
-
 }
 
 
@@ -647,6 +655,7 @@ object InnerJoin {
 			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
+			override val parameterization = left.parameterization.join[left.Generalized InnerJoin R, left.Generalized, R]
 
 			override type Alias = A
 			override type DealiasedCopy = left.type InnerJoin R
@@ -661,7 +670,7 @@ object InnerJoin {
 			override def aliased[N <: Label](alias :N) =
 				InnerJoin[left.type, R, S, N](left, last, Option(alias))(condition)
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.innerJoin[L, R, S](this)
+			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.innerJoin[L, R, S](this)
 
 		}.asInstanceOf[L InnerJoin R As A]
 
@@ -729,10 +738,14 @@ sealed trait OuterJoin[+L <: FromSome, R[O] <: MappingAt[O]]
 		OuterJoin(left, right, alias)(filter)
 
 
+	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
+			:SpelledSQL[Params, Generalized] =
+		spelling.join(this, spelling.OUTER_JOIN)(context)
+
+
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[OuterJoin.*]
 
 	override def name :String = "outer join"
-
 }
 
 
@@ -824,7 +837,6 @@ object OuterJoin {
 		cast(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
 
 
-
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
 	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L OuterJoin R As A =
@@ -835,6 +847,7 @@ object OuterJoin {
 			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
+			override val parameterization = left.parameterization.join[left.Generalized OuterJoin R, left.Generalized, R]
 
 			override type Alias = A
 			override type DealiasedCopy = left.type OuterJoin R
@@ -849,8 +862,7 @@ object OuterJoin {
 			override def aliased[N <: Label](alias :N) =
 				OuterJoin[left.type, R, S, N](left, last, Option(alias))(condition)
 
-
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.outerJoin[L, R, S](this)
+			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.outerJoin[L, R, S](this)
 		
 		}.asInstanceOf[L OuterJoin R As A]
 
@@ -920,10 +932,14 @@ sealed trait LeftJoin[+L <: FromSome, R[O] <: MappingAt[O]]
 		LeftJoin(left, right, alias)(filter)
 
 
+	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
+			:SpelledSQL[Params, Generalized] =
+		spelling.join(this, spelling.LEFT_JOIN)(context)
+
+
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[LeftJoin.*]
 
 	override def name = "left join"
-
 }
 
 
@@ -1015,7 +1031,6 @@ object LeftJoin {
 		cast(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
 
 
-
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
 	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L LeftJoin R As A =
@@ -1026,6 +1041,7 @@ object LeftJoin {
 			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
+			override val parameterization = left.parameterization.join[left.Generalized LeftJoin R, left.Generalized, R]
 
 			override type Alias = A
 			override type DealiasedCopy = left.type LeftJoin R
@@ -1039,7 +1055,7 @@ object LeftJoin {
 			override def aliased[N <: Label](alias :N) =
 				LeftJoin[left.type, R, S, N](left, last, Option(alias))(condition)
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.leftJoin[L, R, S](this)
+			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.leftJoin[L, R, S](this)
 			
 		}.asInstanceOf[L LeftJoin R As A]
 
@@ -1109,10 +1125,14 @@ sealed trait RightJoin[+L <: FromSome, R[O] <: MappingAt[O]]
 		RightJoin(left, right, alias)(filter)
 
 
+	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
+			:SpelledSQL[Params, Generalized] =
+		spelling.join(this, spelling.RIGHT_JOIN)(context)
+
+
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[RightJoin.*]
 
 	override def name = "right join"
-
 }
 
 
@@ -1124,7 +1144,6 @@ object RightJoin {
 
 	/** A template `RightJoin` instance with a dummy mapping, used as a polymorphic factory of `RightJoin` joins.  */
 	final val template : RightJoin.* = RightJoin(Relation.Dummy, Relation.Dummy)
-
 
 	/** Create a right outer join between the given two relations `left` and `right`.
 	  * The ''where'' clause can be subsequently specified using
@@ -1205,7 +1224,6 @@ object RightJoin {
 		cast(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
 
 
-
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
 	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L RightJoin R As A =
@@ -1216,6 +1234,7 @@ object RightJoin {
 			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
+			override val parameterization = left.parameterization.join[left.Generalized RightJoin R, left.Generalized, R]
 
 			override type Alias = A
 			override type DealiasedCopy = left.type RightJoin R
@@ -1229,7 +1248,7 @@ object RightJoin {
 			override def aliased[N <: Label](alias :N) = 
 				RightJoin[left.type, R, S, N](left, last, Option(alias))(condition)
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.rightJoin[L, R, S](this)
+			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.rightJoin[L, R, S](this)
 			
 		}.asInstanceOf[L RightJoin R As A]
 
@@ -1381,6 +1400,7 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 	}
 
 
+	override def size = 1
 	override def isSubselectParameterized = false
 	override def isSubselect = true //if it will accept Dual as the left side the standard definition in RowProduct must be changed.
 	override def isValidSubselect = true
@@ -1391,6 +1411,8 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 	override type Outer = left.Self
 
 
+
+	override def filter :GlobalBoolean[Generalized] = super.filter //overriden due to Scala's stupid overloading rules
 
 	override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :GlobalBoolean[E] =
 		condition.basedOn(target)
@@ -1430,11 +1452,18 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 	}
 
 
+	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
+		:SpelledSQL[Params, Generalized] =
+	{
+		val aliased = spelling.table(right, aliasOpt)(context.subselect, parameterization)
+		val sql = (spelling.FROM + " ") +: aliased
+		if (condition == True) sql else sql && spelling.inWhere(filter)
+	}
+
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Subselect.*]
 
 	override def name = "subselect"
-
 }
 
 
@@ -1517,6 +1546,7 @@ object Subselect {
 			override val condition = cond
 			override val outer = left.self
 			override val fullSize = left.fullSize + 1
+			override val parameterization = left.parameterization.join[left.Generalized Subselect R, left.Generalized, R]
 			override def lastRelation = last
 
 			override type Alias = A
@@ -1555,7 +1585,7 @@ object Subselect {
 				last.expand(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
 
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Option[Y] = matcher.subselect[L, R, S](this)
+			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.subselect[L, R, S](this)
 
 		}.asInstanceOf[L Subselect R As A]
 

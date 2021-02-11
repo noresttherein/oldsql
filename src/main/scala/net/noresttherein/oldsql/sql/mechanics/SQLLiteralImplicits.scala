@@ -2,9 +2,9 @@ package net.noresttherein.oldsql.sql.mechanics
 
 import scala.annotation.implicitAmbiguous
 
+import net.noresttherein.oldsql.sql.{GlobalBoolean, RowProduct}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{False, SQLLiteral, SQLNull, SQLParameter, True}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter.ParameterFactory
-import net.noresttherein.oldsql.sql.{GlobalBoolean, RowProduct}
 import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.nullSQL
 
 
@@ -48,7 +48,7 @@ trait SQLLiteralImplicits {
 	// would get unnoticed. We don't need it anyhow, as it can be either used  directly in a condition,
 	// or is compared with an expression derived from some columns, in which case it will be propagated automatically
 	@implicitAmbiguous("Boolean values are not implicitly convertible to SQLBoolean due to a high risk " +
-	                   "of subtle inadvertent conversions of expressions which should produce an SQLExpression " +
+	                   "of inadvertent conversions of expressions which should produce an SQLExpression " +
 	                   "but instead erroneously result in a Boolean, such as using == instead of ===.")
 	implicit def noImplicitBoolean1(value :Boolean) :GlobalBoolean[RowProduct] = if (value) True else False
 	implicit def noImplicitBoolean2(value :Boolean) :GlobalBoolean[RowProduct] = if (value) True else False

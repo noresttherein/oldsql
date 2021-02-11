@@ -6,9 +6,9 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication, Upper
 import net.noresttherein.oldsql.collection.ChainMap.&~
 import net.noresttherein.oldsql.collection.Listing.{:~, method_:~, |~}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.morsels.abacus.{Inc, NegativeInc, Numeral, Positive}
-import net.noresttherein.oldsql.morsels.generic.{Fixed, GenericFun, Self}
 import net.noresttherein.oldsql.morsels.LUB
+import net.noresttherein.oldsql.morsels.generic.{Fixed, GenericFun, Self}
+import net.noresttherein.oldsql.morsels.abacus.{Inc, NegativeInc, Numeral, Positive}
 
 
 
@@ -344,6 +344,8 @@ object Chain extends ChainFactory {
 		@inline def toMap[K, V](implicit ub :UpperBound[C, (K, V)]) :Map[K, V] =
 			self.toSeq[(K, V)].toMap
 
+
+		@inline def toTuple[T](implicit conversion :ChainToTuple[C, T]) :T = conversion(self)
 	}
 
 
@@ -431,6 +433,26 @@ object Chain extends ChainFactory {
 
 		private class GetPrev[-C <: Chain, N <: Numeral, +X](prev :ChainGet[C, _, X]) extends ChainGet[C ~ Any, N, X] {
 			override def apply(chain :C ~ Any) = prev(chain.init)
+		}
+
+		def apply(index :Int) :ChainGet[Chain, index.type, Any] = index match {
+			case 0 =>
+				new ChainGet[Chain, index.type, Any] {
+					def apply(chain :Chain) = chain match {
+						case _ ~ last => last
+						case _ => throw new IndexOutOfBoundsException("Off by one error.")
+					}
+				}
+			case n if n > 0 =>
+				val m = n - 1
+				val prev = ChainGet(m)
+				new ChainGet[Chain, index.type, Any] {
+					def apply(chain :Chain) = chain match {
+						case init ~ _ => prev(init)
+						case _ => throw new IndexOutOfBoundsException(m)
+					}
+				}
+			case n => throw new IndexOutOfBoundsException("Negative index " + n + " Chain access.")
 		}
 
 
@@ -602,6 +624,190 @@ object Chain extends ChainFactory {
 
 
 
+	@implicitNotFound("Cannot convert chain ${X} to a tuple ${Y}.")
+	abstract class ChainToTuple[-X <: Chain, +Y] {
+		def apply(chain :X) :Y
+	}
+
+	@inline private def ChainToTuple[Y] = new ToTuple[Y] {}
+
+	private trait ToTuple[T] extends Any {
+		implicit def apply[X <: Chain](implicit tuple :ChainApplication[X, T => T, T]) :ChainToTuple[X, T] =
+			{ x :X => tuple(identity, x) }
+	}
+
+	implicit def ChainToTuple1[A] = ChainToTuple[Tuple1[A]](applyTuple1)
+
+	implicit def ChainToTuple2[A,B] = ChainToTuple[(A,B)](applyTuple2)
+
+	implicit def ChainToTuple3[A,B,C] =
+		ChainToTuple[(A,B,C)](applyTuple3)
+
+	implicit def ChainToTuple4[A,B,C,D] =
+		ChainToTuple[(A,B,C,D)](applyTuple4)
+
+	implicit def ChainToTuple5[A,B,C,D,E] =
+		ChainToTuple[(A,B,C,D,E)](applyTuple5)
+
+	implicit def ChainToTuple6[A,B,C,D,E,F] =
+		ChainToTuple[(A,B,C,D,E,F)](applyTuple6)
+
+	implicit def ChainToTuple7[A,B,C,D,E,F,G] =
+		ChainToTuple[(A,B,C,D,E,F,G)](applyTuple7)
+
+	implicit def ChainToTuple8[A,B,C,D,E,F,G,H] =
+		ChainToTuple[(A,B,C,D,E,F,G,H)](applyTuple8)
+
+	implicit def ChainToTuple9[A,B,C,D,E,F,G,H,I] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I)](applyTuple9)
+
+	implicit def ChainToTuple10[A,B,C,D,E,F,G,H,I,J] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J)](applyTuple10)
+
+	implicit def ChainToTuple11[A,B,C,D,E,F,G,H,I,J,K] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J,K)](applyTuple11)
+
+	implicit def ChainToTuple12[A,B,C,D,E,F,G,H,I,J,K,L] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J,K,L)](applyTuple12)
+
+	implicit def ChainToTuple13[A,B,C,D,E,F,G,H,I,J,K,L,M] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J,K,L,M)](applyTuple13)
+
+	implicit def ChainToTuple14[A,B,C,D,E,F,G,H,I,J,K,L,M,N] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J,K,L,M,N)](applyTuple14)
+
+	implicit def ChainToTuple15[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O)](applyTuple15)
+
+	implicit def ChainToTuple16[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P)](applyTuple16)
+
+	implicit def ChainToTuple17[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q)](applyTuple17)
+
+	implicit def ChainToTuple18[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R)](applyTuple18)
+
+	implicit def ChainToTuple19[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S)](applyTuple19)
+
+	implicit def ChainToTuple20[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T)](applyTuple20)
+
+	implicit def ChainToTuple21[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U)](applyTuple21)
+
+	implicit def ChainToTuple22[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V] =
+		ChainToTuple[(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V)](applyTuple22)
+
+
+
+
+
+
+	implicit class ToChainConverter[X](private val self :X) extends AnyVal {
+		implicit def toChain[Y <: Chain](implicit conversion :ToChain[X, Y]) :Y = conversion(self)
+	}
+
+	@implicitNotFound("Cannot convert tuple ${X} to a chain ${Y}.")
+	abstract class ToChain[-X, +Y <: Chain] {
+		def apply(tuple :X) :Y
+	}
+
+	@inline private[collection] def ToChain[X, Y <: Chain](conversion :ToChain[X, Y]) :ToChain[X, Y] =
+		conversion
+
+	implicit def Tuple1ToChain[A] = ToChain { x :Tuple1[A] => @~ ~x._1 }
+
+	implicit def Tuple2ToChain[A,B] = ToChain { x :(A,B) => @~ ~x._1~x._2 }
+
+	implicit def Tuple3ToChain[A,B,C] = ToChain { x :(A,B,C) => @~ ~x._1~x._2~x._3 }
+
+	implicit def Tuple4ToChain[A,B,C,D] = ToChain { x :(A,B,C,D) => @~ ~x._1~x._2~x._3~x._4 }
+
+	implicit def Tuple5ToChain[A,B,C,D,E] = ToChain { x :(A,B,C,D,E) => @~ ~x._1~x._2~x._3~x._4~x._5 }
+
+	implicit def Tuple6ToChain[A,B,C,D,E,F] = ToChain { x :(A,B,C,D,E,F) => @~ ~x._1~x._2~x._3~x._4~x._5~x._6 }
+
+	implicit def Tuple7ToChain[A,B,C,D,E,F,G] = ToChain { x :(A,B,C,D,E,F,G) =>
+		@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7
+	}
+
+	implicit def Tuple8ToChain[A,B,C,D,E,F,G,H] = ToChain { x :(A,B,C,D,E,F,G,H) =>
+		@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8
+	}
+
+	implicit def Tuple9ToChain[A,B,C,D,E,F,G,H,I] = ToChain { x :(A,B,C,D,E,F,G,H,I) =>
+		@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9
+	}
+
+	implicit def Tuple10ToChain[A,B,C,D,E,F,G,H,I,J] = ToChain { x :(A,B,C,D,E,F,G,H,I,J) =>
+		@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10
+	}
+
+	implicit def Tuple11ToChain[A,B,C,D,E,F,G,H,I,J,K] = ToChain { x :(A,B,C,D,E,F,G,H,I,J,K) =>
+		@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10~x._11
+	}
+
+	implicit def Tuple12ToChain[A,B,C,D,E,F,G,H,I,J,K,L] = ToChain { x :(A,B,C,D,E,F,G,H,I,J,K,L) =>
+		@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10~x._11~x._12
+	}
+
+	implicit def Tuple13ToChain[A,B,C,D,E,F,G,H,I,J,K,L,M] = ToChain { x :(A,B,C,D,E,F,G,H,I,J,K,L,M) =>
+		@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10~x._11~x._12~x._13
+	}
+
+	implicit def Tuple14ToChain[A,B,C,D,E,F,G,H,I,J,K,L,M,N] = ToChain { x :(A,B,C,D,E,F,G,H,I,J,K,L,M,N) =>
+			@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10~x._11~x._12~x._13~x._14
+	}
+
+	implicit def Tuple15ToChain[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O] = ToChain { x :(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O) =>
+			@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10~x._11~x._12~x._13~x._14~x._15
+	}
+
+	implicit def Tuple16ToChain[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P] = ToChain {
+		x :(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P) =>
+			@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10~x._11~x._12~x._13~x._14~x._15~x._16
+	}
+
+	implicit def Tuple17ToChain[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q] = ToChain {
+		x :(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q) =>
+			@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10~x._11~x._12~x._13~x._14~x._15~x._16~x._17
+	}
+
+	implicit def Tuple18ToChain[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R] = ToChain {
+		x :(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R) =>
+			@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10~x._11~x._12~x._13~x._14~x._15~x._16~x._17~x._18
+	}
+
+	implicit def Tuple19ToChain[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S] = ToChain {
+		x :(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S) =>
+			@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10~x._11~x._12~x._13~x._14~x._15~x._16~x._17~x._18~x._19
+	}
+
+	implicit def Tuple20ToChain[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T] = ToChain {
+		x :(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T) =>
+			@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10~x._11~x._12~x._13~x._14~x._15~x._16~x._17~x._18~
+				x._19~x._20
+	}
+
+	implicit def Tuple21ToChain[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U] = ToChain {
+		x :(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U) =>
+			@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10~x._11~x._12~x._13~x._14~x._15~x._16~x._17~x._18~
+				x._19~x._20~x._21
+	}
+
+	implicit def Tuple22ToChain[A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V] = ToChain {
+		x :(A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V) =>
+			@~ ~x._1~x._2~x._3~x._4~x._5~x._6~x._7~x._8~x._9~x._10~x._11~x._12~x._13~x._14~x._15~x._16~x._17~x._18~
+				x._19~x._20~x._21~x._22
+	}
+
+
+
+
+
+
 	@implicitNotFound("Can't apply object ${F} to the chain ${X} with any known conversion.")
 	abstract class ChainApplication[-X <: Chain, -F, +Y] extends ((F, X) => Y)
 
@@ -609,8 +815,6 @@ object Chain extends ChainFactory {
 	@inline private[collection] def ChainApplication[X <: Chain, F, Y]
 	                                                (apply :ChainApplication[X, F, Y]) :ChainApplication[X, F, Y] =
 		apply
-
-
 
 	implicit def applyChain[C <: Chain, Y] :ChainApplication[C, C => Y, Y] =
 		ChainApplication { (f :C => Y, xs :C) => f(xs) }

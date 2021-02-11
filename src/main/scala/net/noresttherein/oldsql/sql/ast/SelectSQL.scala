@@ -2,20 +2,22 @@ package net.noresttherein.oldsql.sql.ast
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ChainApplication}
 import net.noresttherein.oldsql.collection.{Chain, Listing}
-import net.noresttherein.oldsql.schema.{AbstractRelation, ColumnMapping, ColumnReadForm, Relation, SQLReadForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.{ColumnSQL, ColumnSQLMapping, Dual, FromSome, GroupByClause, ListingColumnSQLMapping, IndexedMapping, ListingSQLMapping, ParamSelect, RowProduct, SQLExpression, SQLMapping}
+import net.noresttherein.oldsql.sql.{ColumnSQL, ColumnSQLMapping, Dual, FromSome, GroupByClause, IndexedMapping, ListingColumnSQLMapping, ListingSQLMapping, ParamSelect, RowProduct, SQLExpression, SQLMapping}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
-import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, SubselectOf}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundFrom, NonEmptyFrom, ParamlessFrom, PartOf, SubselectOf}
+import net.noresttherein.oldsql.sql.SelectAPI.SelectTemplate
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionMatcher, GlobalScope, LocalScope, LocalSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnMappingQuery, ColumnQuery, MappingQuery, Rows}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingValueSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL
-import net.noresttherein.oldsql.sql.mechanics.{SQLScribe, TableOffset}
-import net.noresttherein.oldsql.sql.SelectAPI.SelectTemplate
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe, TableOffset}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -25,13 +27,31 @@ import net.noresttherein.oldsql.slang._
 
 
 
-/** Representation of an SQL select as an SQL expression used in the context of source `F`. If the first type argument
-  * is the wildcard `RowProduct`, this will be a `TopSelectSQL` instance - a select independent of any external
-  * tables or parameters, in which all formulas (''select'' clause, ''where'' clause, etc) can be evaluated
-  * based on the values of the tables in its ''from'' clause. If `F` is not `RowProduct`, but contains tables, this is
-  * a subselect nested inside a select for source `F` - in its ''select'', ''from'' or ''where'' clause. The source for
-  * this expression, given by the member type `From`, is always an expansion of `F`. Subclasses should extend the trait
-  * for one of the above cases: [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL TopSelectSQL]] or
+/** Representation of an SQL ''select'' as an SQL [[net.noresttherein.oldsql.sql.SQLExpression expression]]
+  * depending on relations listed by ''from'' clause `F`. If the first type argument is the wildcard `RowProduct`,
+  * this will be a `TopSelectSQL` instance - a select independent of any external
+  * tables or parameters, in which all expressions (''select'', ''where'' and other clauses) can be evaluated
+  * based on the values of the tables in its [[net.noresttherein.oldsql.sql.ast.SelectSQL.From From]] clause.
+  * If `F` is not `RowProduct`, but contains tables, then this is a ''dependent select'' (subselect),
+  * nested inside a ''select'' with `F` as its ''from'' clause - in the latter's ''select'', ''from'' or ''where''
+  * clause. Type `From` of this class is always a direct [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy expansion]]
+  * of type `RowProduct`, satisfying `From <:`[[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]]`[F]`.
+  * It is referred to here for simplicity as the ''from'' clause of this select, but can be in fact
+  * a [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]] representing its ''from'', ''where'',
+  * ''group by'' and ''having'' clauses. Be warned that in that case
+  * (or when `From <: `[[net.noresttherein.oldsql.sql.Aggregated Aggregated]]`[_]`), the relation listed by
+  * [[net.noresttherein.oldsql.sql.SelectAPI.SelectTemplate.relations relations]] and
+  * [[net.noresttherein.oldsql.sql.SelectAPI.SelectTemplate.from from]]`.`[[net.noresttherein.oldsql.sql.RowProduct.tableStack tableStack]]
+  * are synthetic mappings representing the expressions in the ''group by'' clause, rather than tables of the ''from''
+  * clause - see method [[net.noresttherein.oldsql.sql.SelectAPI.SelectTemplate.tables tables]] for the latter.
+  * Regardless of whether this is a top select or a subselect expression, `From` never contains any
+  * [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters in its ''explicit'' section; type `F` however -
+  * included also in the prefix of `From` - can contain parameters. This allows the use of subselect expressions
+  * (as it follows from the above that top selects are always parameterless) inside parameterized
+  * [[net.noresttherein.oldsql.sql.ParamSelect ParamSelect]] quasi expressions.
+  *
+  * Subclasses should extend the trait for one of the above cases:
+  * [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL TopSelectSQL]] or
   * [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectSQL SubselectSQL]], instead of being derived directly
   * from this trait.
   *
@@ -219,6 +239,36 @@ object SelectSQL {
 			super[SelectSQL].reverseCollect(fun, acc)
 
 		override def bind(params: @~) :TopSelectSQL[V] = this
+
+
+		protected override def defaultSpelling[P, E <: RowProduct](context :SQLContext, params :Parameterization[P, E])
+		                                                          (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		{
+			val fromPart = spelling(from)(context)
+			val selectExpr = spelling.inline(selectClause)(fromPart.context, Parameterization.paramless)
+			val extraParams = (selectExpr.params :++ fromPart.params) compose { _ :P => @~ }
+			val allParams = params.reset(extraParams.settersReversed:::params.settersReversed)
+			val select = SpelledSQL(spelling.SELECT + " ", context, allParams)
+			if (fromPart.sql.isEmpty)
+				select + " " + selectExpr.sql
+			else
+				select + " " + selectExpr.sql + (" " + spelling.FROM + " ") + fromPart.sql
+		}
+
+//		protected override def paramlessSpelling(context :SQLContext)
+//		                                        (implicit spelling :SQLSpelling,
+//		                                                  top :QuerySQL[RowProduct, V] <:< QuerySQL[RowProduct, V])
+//				:SpelledSQL[@~, RowProduct] =
+//		{
+//			val fromPart = spelling(from)(context)
+//			val selectExpr = spelling.inline(selectClause)(fromPart.context, Parameterization.paramless)
+//			val select = SpelledSQL(spelling.SELECT + " ", context, selectExpr.params :++ fromPart.params)
+//			if (fromPart.sql.isEmpty)
+//				select + " " + selectExpr.sql
+//			else
+//				select + " " + selectExpr.sql + (" " + spelling.FROM + " ") + fromPart.sql
+//		}
+
 	}
 
 
@@ -273,6 +323,27 @@ object SelectSQL {
 		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 		                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
 			matcher.subselect(this)
+
+
+		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			if (from.isParameterized)
+				throw new UnsupportedOperationException(
+					"Cannot spell parameterized select without parameterization: " + this + "."
+				)
+			else { //this could use RowProduct.asParamless
+				val self = this.asInstanceOf[SelectSQL[F, V] { type From <: ParamlessFrom }]
+				val fromPart = spelling(self.from)(context)
+				val selectExpr = spelling.inline(self.selectClause)(fromPart.context, Parameterization.paramless)
+				val extraParams = (selectExpr.params :++ fromPart.params) compose { _ :P => @~ }
+				val allParams = params.reset(extraParams.settersReversed:::params.settersReversed)
+				val select = SpelledSQL(spelling.SELECT + " ", context, allParams)
+				if (fromPart.sql.isEmpty)
+					select + " " + selectExpr.sql
+				else
+					select + " " + selectExpr.sql + (" " + spelling.FROM + " ") + fromPart.sql
+			}
+
 
 	}
 
@@ -469,7 +540,7 @@ object SelectSQL {
 		private def include[X](column :ColumnMapping[X, selectClause.Origin]) :SelectedColumn[X] =
 			new SelectedColumn[X] {
 				override val name :String = column.name
-				override val expression  = selectClause \ column
+				override val expr  = selectClause \ column
 			}
 	}
 
@@ -511,7 +582,7 @@ object SelectSQL {
 							selectClause.moveTo(new TableOffset[Ext, selectClause.Entity](offset + ev.length))
 					new SubselectComponent[E, Ext, H, V](stretched, replacement, isDistinct)
 
-				case empty :Dual =>
+				case empty :Dual => //this shouldn't happen, but lets play it safe
 					val adaptedHeader = selectClause.asInstanceOf[ComponentSQL[Dual, H]]
 					new SubselectComponent[E, Dual, H, V](empty, adaptedHeader, isDistinct)
 
@@ -561,7 +632,7 @@ object SelectSQL {
 							selectClause.moveTo(new TableOffset[Ext, selectClause.Entity](offset + ev.length))
 					new SubselectComponentColumn[E, Ext, H, V](stretched, replacement, isDistinct)
 
-				case empty :Dual =>
+				case empty :Dual => //this shouldn't happen, but lets play it safe
 					val adaptedHeader = selectClause.asInstanceOf[ColumnComponentSQL[Dual, H, V]]
 					new SubselectComponentColumn[E, Dual, H, V](empty, adaptedHeader, isDistinct)
 
@@ -598,7 +669,7 @@ object SelectSQL {
 		protected class HeaderColumn[T](column :ColumnSQLMapping[S, LocalScope, T, _])
 			extends SelectedColumn[T]
 		{
-			override def expression :ColumnSQL[S, LocalScope, T] = column.expr
+			override def expr :ColumnSQL[S, LocalScope, T] = column.expr
 			override def name :String = column.name
 		}
 
@@ -655,7 +726,7 @@ object SelectSQL {
 					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
 					new ArbitrarySubselect[E, Ext, V](stretched, substitute(selectClause), isDistinct)
 
-				case empty :Dual =>
+				case empty :Dual => //this shouldn't happen, but lets play it safe
 					new ArbitrarySubselect[E, Dual, V](empty, selectClause.asInstanceOf[LocalSQL[Dual, V]], isDistinct)
 
 				case _ =>
@@ -712,7 +783,7 @@ object SelectSQL {
 					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
 					new ArbitrarySubselectColumn[E, Ext, V](stretched, substitute(selectClause), isDistinct)
 
-				case empty :Dual =>
+				case empty :Dual => //this shouldn't happen, but lets play it safe
 					val castHeader = selectClause.asInstanceOf[ColumnSQL[Dual, LocalScope, V]]
 					new ArbitrarySubselectColumn[E, Dual, V](empty, castHeader, isDistinct)
 			}
@@ -767,7 +838,7 @@ object SelectSQL {
 					val indexed = substitute(selectClause).asInstanceOf[ListingValueSQL[Ext, LocalScope, V]]
 					new IndexedSubselect[E, Ext, V](stretched, indexed, isDistinct)
 
-				case empty :Dual =>
+				case empty :Dual => //this shouldn't happen, but lets play it safe
 					val cast = selectClause.asInstanceOf[ListingValueSQL[Dual, LocalScope, V]]
 					new IndexedSubselect[E, Dual, V](empty, cast, isDistinct)
 
@@ -826,7 +897,7 @@ object SelectSQL {
 					val shift = selectClause.alias @: substitute(selectClause.column) :ListingColumn[Ext, LocalScope, A, V]
 					new SubselectIndexedColumn[E, Ext, A, V](stretched, shift, isDistinct)
 
-				case empty :Dual =>
+				case empty :Dual => //this shouldn't happen, but lets play it safe
 					val castHeader = selectClause.asInstanceOf[ListingColumn[Dual, LocalScope, A, V]]
 					new SubselectIndexedColumn[E, Dual, A, V](empty, castHeader, isDistinct)
 			}

@@ -3,19 +3,16 @@ package net.noresttherein.oldsql.sql
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.collection.Opt
-import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Relation
-import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.Relation.Table
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, ExpandingClause, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf, RowComposition, RowDecomposition}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
-import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.InferSubject
 
 
 
@@ -165,6 +162,7 @@ trait Adjoin[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 	override def fullSize :Int = left.fullSize + 1
 
+	override def paramCount :Int = left.paramCount
 	override def lastParamOffset :Int = left.lastParamOffset + 1
 	override def isParameterized :Boolean = left.isParameterized
 	override def isValidSubselect :Boolean = left.isValidSubselect
@@ -356,6 +354,8 @@ object Adjoin {
 	                                            R[O] <: MappingAt[O], T[O] <: U[O], +U[O] <: BaseMapping[_, O]]
 		extends (F[T] => F[R])
 	{
+		def <:<[X[M[O] <: MappingAt[O]]] :X[R] <:< X[T]
+
 		def apply(rows :Relation[R]) :Relation[T]
 
 		def apply(rows :Table[R]) :Table[T]
@@ -384,6 +384,8 @@ object Adjoin {
 
 		private[this] val instance =
 			new JoinedRelationSubject[Adjoin.WithLeft[RowProduct]#F, AnyAt, AnyAt, AnyAt] {
+				override def <:<[X[M[O] <: MappingAt[O]]] = implicitly[X[AnyAt] <:< X[AnyAt]]
+
 				override def apply(rows :Relation[AnyAt]) = rows
 				override def apply(rows :Table[AnyAt]) = rows
 
