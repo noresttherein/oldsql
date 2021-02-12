@@ -222,7 +222,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 		if (filter == True) spelling.emptyFrom(context)
 		else spelling.emptyFrom(context) && (spelling(filter)(_, _))
 
-	override def parameterization :Parameterization[@~, RowProduct] = Parameterization.paramless[Dual]
+	override def parameterization :Parameterization[@~, Dual] = Parameterization.paramless[Dual]
 
 
 	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.dual(this)

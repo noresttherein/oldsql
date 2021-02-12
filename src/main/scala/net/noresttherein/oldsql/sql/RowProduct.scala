@@ -1210,6 +1210,8 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	private[sql] def defaultSpelling(spelling :SQLSpelling)(implicit context :SQLContext) :SpelledSQL[Params, Generalized] =
 		defaultSpelling(context)(spelling)
 
+
+
 	/** A provider of accessor functions returning the values of the appropriate parameter in the
 	  * [[net.noresttherein.oldsql.sql.RowProduct.Params this.Params]] chain based on
 	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]] expressions of the associated
@@ -1220,7 +1222,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * for this instance as well as any ''selects'' based on it. The returned instance is empty - it does not contain
 	  * forms for setting any parameters present in ''where''/''having'' clauses in this instance.
 	  */
-	def parameterization :Parameterization[Params, Generalized]
+	def parameterization :Parameterization[Params, Self]
 
 
 

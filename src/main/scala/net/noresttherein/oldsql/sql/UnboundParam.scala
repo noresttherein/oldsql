@@ -808,7 +808,7 @@ object JoinParam {
 			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
-			override val parameterization = left.parameterization.param[Generalized, left.Generalized, P, X, left.Params]
+			override val parameterization = left.parameterization.param[Self, left.Self, P, left.Params, X]
 			override def lastRelation = last
 
 			override type Alias = A
@@ -843,7 +843,7 @@ object JoinParam {
 				val sql = spelling(left)(context)
 				//the alias *should* never be used, it is here because we need a placeholder value to keep indexing consistent
 				val expanded = context.param(aliasOpt getOrElse paramCount.toString)
-				val shiftParams = sql.params.param[left.Generalized JoinParam P, left.Generalized, P, X, left.Params]
+				val shiftParams = sql.params.param[Generalized, left.Generalized, P, left.Params, X]
 				val res = SpelledSQL(sql.sql, expanded, shiftParams)
 				if (condition == True) res
 				else res && (spelling.inWhere(condition)(_, _))
@@ -1117,7 +1117,7 @@ object GroupParam {
 			override val fromClause :Discrete = left.fromClause
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
-			override val parameterization = left.parameterization.param[Generalized, left.Generalized, P, X, left.Params]
+			override val parameterization = left.parameterization.param[Self, left.Self, P, left.Params, X]
 			override def lastRelation = last
 
 			override type Alias = A
@@ -1146,12 +1146,8 @@ object GroupParam {
 					:SpelledSQL[Params, Generalized] =
 			{
 				val sql = spelling(left)(context)
-				//the alias *should* never be used, it is here mostly for debugging and because we need a placeholder value to keep indexing consistent
-				//fixme: this can't be the same indexing as normal tables
-//				val aliased = context.join("?" + (aliasOpt getOrElse paramCount.toString))
-//				val shiftParams = sql.params.settersReversed.map(_.unmap { ps :Params => ps.init })
-				val shiftParams = sql.params.param[left.Generalized GroupParam P, left.Generalized, P, X, left.Params]
-				SpelledSQL(sql.sql, context, shiftParams) //condition separately in having
+				val shiftParams = sql.params.param[Generalized, left.Generalized, P, left.Params, X]
+				SpelledSQL(sql.sql, context.grouped, shiftParams) //condition separately in having
 			}
 
 

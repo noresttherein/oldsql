@@ -8,14 +8,14 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.{Aggregated, ColumnSQL, FromSome, IndexedMapping, ParamSelect, RowProduct}
 import net.noresttherein.oldsql.sql
+import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
 import net.noresttherein.oldsql.sql.RowProduct.{GroundFrom, NonEmptyFrom, TopFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.{ConversionSQL, SelectSQL, TupleSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL, LooseComponent}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
-import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
 
 
 
@@ -182,7 +182,8 @@ sealed abstract class DefaultSelectFactories extends AggregateSelectFactories {
 		new SelectFactory[F, ConversionSQL[G, S, X, T]] {
 			override type Select = ParamSelect[P, T]
 
-			override def apply(from :F, expr :ConversionSQL[G, S, X, T]) = ParamSelect(from, expr)
+			override def apply(from :F, expr :ConversionSQL[G, S, X, T]) =
+				expr.paramSelectFrom[P, G](from)
 		}
 
 	implicit def parameterizedSelectTuple[F <: G with TopFrom { type Params = P; type Generalized <: G },
@@ -193,7 +194,7 @@ sealed abstract class DefaultSelectFactories extends AggregateSelectFactories {
 		new SelectFactory[F, E] {
 			override type Select = ParamSelect[P, T]
 
-			override def apply(from :F, expr :E) = ParamSelect(from, expr)
+			override def apply(from :F, expr :E) = expr.paramSelectFrom[P, G](from)
 		}
 
 	implicit def parameterizedSelectAll[F <: G with TopFrom { type Params = P; type Generalized = G; type Row = R },
@@ -203,7 +204,7 @@ sealed abstract class DefaultSelectFactories extends AggregateSelectFactories {
 		new SelectFactory[F, sql.*] {
 			override type Select = ParamSelect[P, R]
 
-			override def apply(from :F, expr: sql.*) = ParamSelect(from, from.row)
+			override def apply(from :F, expr: sql.*) = from.row.paramSelectFrom[P, G](from)
 		}
 
 }
@@ -220,7 +221,7 @@ sealed abstract class ForthChoiceSelectFactories extends DefaultSelectFactories 
 		new SelectFactory[F, E] {
 			override type Select = ParamSelect[P, X]
 
-			override def apply(from :F, expr :E) = ParamSelect[P, F, X](from, expr)
+			override def apply(from :F, expr :E) = expr.paramSelectFrom[P, G](from)
 		}
 }
 
@@ -266,7 +267,8 @@ sealed abstract class ThirdChoiceSelectFactories extends ForthChoiceSelectFactor
 		new SelectFactory[F, ListingColumn[G, S, A, V]] {
 			override type Select = SelectColumnAs[B, IndexedMapping.Of[V]#Column, V]
 
-			override def apply(from :F, expr :ListingColumn[G, S, A, V]) = expr.selectFrom(from)
+			override def apply(from :F, expr :ListingColumn[G, S, A, V]) =
+				expr.selectFrom(from)
 		}
 
 	implicit def selectIndexedTuple[F <: G { type Generalized <: G; type Base = B },
@@ -283,17 +285,16 @@ sealed abstract class ThirdChoiceSelectFactories extends ForthChoiceSelectFactor
 
 
 	implicit def parameterizedSelectMapping[F <: G with TopFrom { type Params = P; type Generalized <: G },
-	                                        G <: RowProduct, P <: Chain, E <: Mapping, T]
+	                                        G <: RowProduct, P <: Chain, E <: Mapping, S]
 	                                       (implicit params :F <:< RowProduct { type Params = P },
-	                                                 origin :E <:< BaseMapping[T, G], offset :TableCount[G, _ <: Numeral],
-	                                                 project :OriginProjection[E, T])
+	                                                 origin :E <:< BaseMapping[S, G], offset :TableCount[G, _ <: Numeral],
+	                                                 project :OriginProjection[E, S])
 			:SelectFactory[F, E] { type Select = ParamSelectAs[P, project.WithOrigin] } =
 		new SelectFactory[F, E] {
 			override type Select = ParamSelectAs[P, project.WithOrigin]
 
 			override def apply(from :F, expr :E) =
-				(expr.anchor(from) :ComponentSQL[F, project.WithOrigin]).paramSelectFrom(from)
-
+				(expr.anchor(from) :ComponentSQL[G, project.WithOrigin]).paramSelectFrom[P, G](from)
 		}
 
 	implicit def parameterizedSelectComponent[F <: G with TopFrom { type Params = P; type Generalized <: G },
@@ -304,7 +305,7 @@ sealed abstract class ThirdChoiceSelectFactories extends ForthChoiceSelectFactor
 		new SelectFactory[F, E] {
 			override type Select = ParamSelectAs[P, M]
 
-			override def apply(from :F, expr :E) = expr.paramSelectFrom(from)
+			override def apply(from :F, expr :E) = expr.paramSelectFrom[P, G](from)
 		}
 
 	implicit def parameterizedSelectIndexedColumn[F <: G with TopFrom { type Params = P; type Generalized <: G },
@@ -316,7 +317,7 @@ sealed abstract class ThirdChoiceSelectFactories extends ForthChoiceSelectFactor
 			override type Select = ParamSelectAs[P, IndexedMapping.Of[V]#Column]
 
 			override def apply(from :F, expr :ListingColumn[G, S, A, V]) =
-				expr.paramSelectFrom(from)
+				expr.paramSelectFrom[P, G](from)
 		}
 
 	implicit def parameterizedSelectIndexedTuple[F <: G with TopFrom { type Params = P; type Generalized <: G },
@@ -328,7 +329,7 @@ sealed abstract class ThirdChoiceSelectFactories extends ForthChoiceSelectFactor
 		new SelectFactory[F, E] {
 			override type Select = ParamSelectAs[P, IndexedMapping.Of[T]#Projection]
 
-			override def apply(from :F, expr :E) = ParamSelect(from, expr)
+			override def apply(from :F, expr :E) = expr.paramSelectFrom[P, G](from)
 		}
 }
 
@@ -442,7 +443,7 @@ sealed abstract class SecondChoiceSelectFactories extends ThirdChoiceSelectFacto
 			override def apply(from :F, expr :E) = expr.subselectFrom(from)
 		}
 
-	//no ambigouity with column conversion as SelectFactory is not contravariant in the expression type
+	//no ambiguity with column conversion as SelectFactory is not contravariant in the expression type
 	implicit def subselectConversion
 	             [F <: G { type Generalized <: G; type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              G <: RowProduct, S >: LocalScope <: GlobalScope, B <: NonEmptyFrom, X, Y]
@@ -488,7 +489,7 @@ sealed abstract class SecondChoiceSelectFactories extends ThirdChoiceSelectFacto
   * expression types.
   *
   * Methods defined directly here (and not inherited) provide values for all individual column expression types
-  * and.
+  * and tuples.
   */
 object SelectFactory extends SecondChoiceSelectFactories {
 	//SelectColumnAs

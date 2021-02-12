@@ -1,35 +1,29 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.{Chain, Listing, Opt}
-import net.noresttherein.oldsql.collection.Chain.ChainApplication
+import net.noresttherein.oldsql.collection.Chain.{@~, ChainApplication}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.schema.{ColumnMapping, Relation}
+import net.noresttherein.oldsql.schema.{ColumnMapping, Relation, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.ParamQuery.{ParamCompoundSelect, ParamCompoundSelectMapping, ParamMappingQuery}
 import net.noresttherein.oldsql.sql.ParamSelect.ArbitraryParamSelect
-import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundFrom, PartOf, TopFrom}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundFrom, ParamlessFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.SelectAPI.{QueryTemplate, SelectTemplate, SetOperator}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.{ConversionSQL, QuerySQL, SelectSQL, TupleSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnMappingQuery, ColumnQuery, CompoundSelectColumn, CompoundSelectColumnMapping, CompoundSelectMapping, CompoundSelectSQL, MappingQuery}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnMappingQuery, ColumnQuery, CompoundSelectColumn, CompoundSelectColumnMapping, CompoundSelectMapping, CompoundSelectSQL, MappingQuery, Rows}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingValueSQL}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectMapping, TopSelectAs, TopSelectSQL}
-import net.noresttherein.oldsql.sql.mechanics.SQLScribe
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
-
-
-
-/** Base trait with the public interface of classes representing SQL ''selects''. This includes
-  * [[net.noresttherein.oldsql.sql.ParamSelect parameterized]] ''selects'' and standard
-  * SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]].
-  */ //todo: unnecessary, we need to mix in SelectTemplate anyway.
-trait SelectAPI[-F <: RowProduct, V] extends SelectTemplate[V, ({ type S[X] = SelectAPI[F, X] })#S]
 
 
 
@@ -125,13 +119,16 @@ object SelectAPI {
 		protected def applyFun[Fun, C <: Chain, X]
 		                      (f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C) :V => X =
 			{ v => application(f, isChain(v)) }
+
+
+		def canEqual(that :Any) :Boolean = that.getClass == getClass
 	}
 
 
 
 	/** A template for classes representing SQL ''selects'' - both standard SQL
 	  * [[net.noresttherein.oldsql.sql.ast.SelectSQL expressions]] and
-	  * [[net.noresttherein.oldsql.sql.ParamSelect parameterized]] ''selects''.
+	  * [[net.noresttherein.oldsql.sql.ParamSelect parameterized]] ''selects'', including their compound forms.
 	  * @tparam V value type representing the whole ''select'' clause, used as its return type and
 	  *           [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] value type.
 	  * @tparam S the self type of this interface, that is the whole public type of the ''select'' parameterized
@@ -149,7 +146,7 @@ object SelectAPI {
 		}
 
 		val from :From
-		val selectClause :SQLExpression[From, LocalScope, V]
+		val selectClause :SQLExpression[From, LocalScope, V] //what if we based it on from.Generalized?
 		def columns :Seq[SelectedColumn[_]]
 
 		//caution: in group by queries this returns the elements of the group by clause, not the actual from clause
@@ -162,7 +159,7 @@ object SelectAPI {
 		def distinct :S[V]
 
 
-		def canEqual(that :Any) :Boolean = that.getClass == getClass
+		override def canEqual(that :Any) :Boolean = that.getClass == getClass
 
 		override def equals(that :Any) :Boolean = that match {
 			case s :AnyRef if s eq this => true
@@ -199,6 +196,7 @@ object SelectAPI {
   * and a [[net.noresttherein.oldsql.sql.ast.QuerySQL.MappingQuery mapping]].
   */
 trait ParamQuery[P, V] extends QueryTemplate[V, ({ type Q[X] = ParamQuery[P, X] })#Q] {
+//	protected def readForm :SQLReadForm[Rows[V]]
 	//overrides to grant access to classes located in the companion object
 	protected override def component[O] :ResultMapping[O]
 	protected override def export[O] :RefinedMapping[ResultMapping[O]#Subject, O] //= component[O]
@@ -215,7 +213,21 @@ trait ParamQuery[P, V] extends QueryTemplate[V, ({ type Q[X] = ParamQuery[P, X] 
 
 	def bind(params :P) :QuerySQL[RowProduct, V]
 
-	def canEqual(that :Any) :Boolean = that.getClass == getClass
+	def spell(implicit spelling :SQLSpelling = StandardSQL.spelling) :SpelledSQL[P, RowProduct] =
+		spelling.spell(this)
+
+
+
+	/** Generates the SQL `String` for this query as a parameterized expression. The rationale for not combining this
+	  * together with `defaultSpelling` is that it is not possible to create an instance of `Parameterization`
+	  * for arbitrary parameter type without knowledge of the source `RowProduct`.
+	  */
+	protected def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling) :SpelledSQL[P, RowProduct]
+
+	private[oldsql] final def defaultSpelling(spelling :SQLSpelling, context :SQLContext)
+			:SpelledSQL[P, RowProduct] =
+		defaultSpelling(context)(spelling)
+
 }
 
 
@@ -243,8 +255,6 @@ object ParamQuery {
 
 
 
-
-
 	/** Implements a set operation combining the result sets of two
 	  * [[net.noresttherein.oldsql.sql.ParamSelect parameterized selects]]
 	  * (or other [[net.noresttherein.oldsql.sql.ParamQuery queries]]). The kind of operation is defined by
@@ -264,6 +274,23 @@ object ParamQuery {
 
 		override def bind(params :P) :QuerySQL[RowProduct, V] = operator(left.bind(params), right.bind(params))
 
+		protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
+				:SpelledSQL[P, RowProduct] =
+		{
+			val l = left match {
+				case ParamCompoundSelect(_, op, _) if op != operator =>
+					"(" +: (spelling(left)(context) + ")")
+				case _ =>
+					spelling(left)(context)
+			}
+			val r = right match {
+				case ParamCompoundSelect(_, op, _) if op != operator =>
+					"(" +: (spelling(right)(context) + ")")
+				case _ =>
+					spelling(right)(context)
+			}
+			SpelledSQL(l.sql + (" " + spelling(operator) +" ") + r.sql, context, l.params :++ r.params)
+		}
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
@@ -276,7 +303,6 @@ object ParamQuery {
 
 		override def toString :String = s"($left) $operator ($right)"
 	}
-
 
 
 	object ParamCompoundSelect {
@@ -304,8 +330,6 @@ object ParamQuery {
 
 
 
-
-
 	/** Implements a set operation combining the result sets of two parameterized
 	  * [[net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs selects]]
 	  * (or other [[net.noresttherein.oldsql.sql.ParamQuery.ParamMappingQuery queries]]), sharing the same row schema,
@@ -324,7 +348,6 @@ object ParamQuery {
 
 		override def bind(params :P) :MappingQuery[RowProduct, M] = operator(left.bind(params), right.bind(params))
 	}
-
 
 
 	object ParamCompoundSelectMapping {
@@ -358,15 +381,15 @@ object ParamQuery {
 /**
   * @author Marcin Mościcki
   */
-trait ParamSelect[P, V] extends SelectAPI[RowProduct, V] with SelectTemplate[V, ({ type S[X] = ParamSelect[P, X] })#S] {
+trait ParamSelect[P, V] extends ParamQuery[P, V] with SelectTemplate[V, ({ type S[X] = ParamSelect[P, X] })#S] {
 
-//	def readForm :SQLReadForm[Rows[V]] = selectClause.readForm.nullMap(Rows(_))
+	def parameterization :Parameterization[P, From]
 
 	/** The from clause of this select. */
 	override type From <: TopFrom { type Params = P }
 
 	override def map[X](f :V => X) :ParamSelect[P, X] =
-		new ArbitraryParamSelect[P, From, X](from, selectClause.map(f), isDistinct)
+		new ArbitraryParamSelect[P, From, X](from, selectClause.map(f), parameterization, isDistinct)
 
 	protected def reverseCollect[X](fun: PartialFunction[SQLExpression.*, X], acc: List[X]): List[X] = {
 		//we ignore filters in the implicit portion as, if this is a subselect, they would be collected by the enclosing expression.
@@ -378,9 +401,24 @@ trait ParamSelect[P, V] extends SelectAPI[RowProduct, V] with SelectTemplate[V, 
 	}
 
 
-
 	def bind(params :P) :TopSelectSQL[V]
 
+
+	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
+			:SpelledSQL[P, RowProduct] =
+	{
+		val fromSQL = spelling(from)(context)
+		val selectSQL = spelling.inline(selectClause)(fromSQL.context, parameterization)
+		val allParams = fromSQL.params :++ selectSQL.params
+		val select = SpelledSQL(spelling.SELECT + " " + selectSQL.sql, context, allParams)
+		if (fromSQL.sql.isEmpty)
+			select
+		else
+			select + " " + fromSQL.sql
+	}
+
+
+//	override def canEqual(that :Any) :Boolean = that.getClass == getClass
 }
 
 
@@ -392,6 +430,36 @@ trait ParamSelect[P, V] extends SelectAPI[RowProduct, V] with SelectTemplate[V, 
 object ParamSelect {
 	//todo: mapping indexed headers
 
+	/*def apply[F <: TopFrom, M[A] <: BaseMapping[V, A], V]
+	         (from :F, header :ComponentSQL[F, M]) :ParamSelectAs[from.Params, M] =
+		new ParamSelectComponent[from.Params, from.type, M, V](from, header)
+
+	def apply[P <: Chain, F <: TopFrom { type Params = P }, X, Y]
+	         (from :F, header :ConversionSQL[F, LocalScope, X, Y]) :ParamSelect[P, Y] =
+		new ArbitraryParamSelect[P, F, Y](from, header.anchor(from))
+
+	def apply[F <: TopFrom, V]
+	         (from :F, header :TupleSQL[F, LocalScope, V]) :ParamSelect[from.Params, V] =
+		new ArbitraryParamSelect[from.Params, from.type, V](
+			from :from.type, header.anchor(from) :SQLExpression[from.type, LocalScope, V]
+		)
+
+	def apply[F <: TopFrom, V <: Listing]
+	         (from :F, header :ListingSQL[F, LocalScope, V]) :ParamSelectAs[from.Params, IndexedMapping.Of[V]#Projection] =
+		new ParamIndexedSelect[from.Params, from.type, V](from :from.type, header :ListingSQL[from.type, LocalScope, V])
+
+	def apply[F <: TopFrom, A <: Label, V](from :F, header :ListingColumn[F, LocalScope, A, V])
+			:ParamSelectAs[from.Params, IndexedMapping.Of[V]#Column] =
+		new ParamIndexedColumnSelect[from.Params, from.type, A, V](
+			from, ListingColumnSQLMapping[F, LocalScope, A, V, ()](header.anchor(from))
+		)
+
+	def apply[F <: TopFrom, V]
+	         (from :F, header :ColumnSQL[F, LocalScope, V]) :ParamSelect[from.Params, V] =
+		new ArbitraryParamSelect[from.Params, from.type, V](
+			from :from.type, header.anchor(from) :ColumnSQL[from.type, LocalScope, V]
+		)
+*//*
 	def apply[F <: TopFrom, M[A] <: BaseMapping[V, A], V]
 	         (from :F, header :ComponentSQL[F, M]) :ParamSelectAs[from.Params, M] =
 		new ParamSelectComponent[from.Params, from.type, M, V](from, header)
@@ -417,14 +485,79 @@ object ParamSelect {
 	def apply[P <: Chain, F <: TopFrom { type Params = P }, V]
 	         (from :F, header :ColumnSQL[F, LocalScope, V]) :ParamSelect[P, V] =
 		new ArbitraryParamSelect[P, F, V](from, header.anchor(from))
+*/
+/*
+	def apply[M[A] <: BaseMapping[V, A], V]
+	         (from :TopFrom)(header :ComponentSQL[from.Generalized, M]) :ParamSelectAs[from.Params, M] =
+//		new ParamSelectComponent[from.Params, from.type, M, V](from, header)
+???
+	def apply[V]
+	         (from :TopFrom)(header :TupleSQL[from.Generalized, LocalScope, V]) :ParamSelect[from.Params, V] =
+//		new ArbitraryParamSelect[from.Params, F, V](from, header.anchor(from))
+???
+	def apply[V <: Listing]
+	         (from :TopFrom)(header :ListingSQL[from.Generalized, LocalScope, V])
+			:ParamSelectAs[from.Params, IndexedMapping.Of[V]#Projection] =
+//		new ParamIndexedSelect(from, header)
+???
+	def apply[P <: Chain, X, Y] //todo: type parameter P exists only because of scala's overloading bug
+	         (from :TopFrom { type Params = P })(header :ConversionSQL[from.Generalized, LocalScope, X, Y])
+			:ParamSelect[from.Params, Y] =
+//		new ArbitraryParamSelect[from.Params, from.type, Y](from, header.anchor(from))
+???
+	def apply[A <: Label, V]
+	         (from :TopFrom)(header :ListingColumn[from.Generalized, LocalScope, A, V])
+			:ParamSelectAs[from.Params, IndexedMapping.Of[V]#Column] =
+//		new ParamIndexedColumnSelect[from.Params, from.type, A, V](
+//			from, ListingColumnSQLMapping[F, LocalScope, A, V, ()](header.anchor(from))
+//		)
+???
+	def apply[V]
+	         (from :TopFrom)(header :ColumnSQL[from.Generalized, LocalScope, V]) :ParamSelect[from.Params, V] =
+//		new ArbitraryParamSelect[from.Params, from.Self, V](from, (header :ColumnSQL[from.Generalized, LocalScope, V]).anchor(from.self))
+???
+*/
 
+	@inline def apply(from :TopFrom) :ParamSelectFactory[from.type] = new ParamSelectFactory[from.type](from)
+
+	class ParamSelectFactory[F <: TopFrom](val from :F) extends AnyVal {
+		def apply[M[O] <: BaseMapping[V, O], V](header :ComponentSQL[from.Generalized, M]) :ParamSelectAs[from.Params, M] =
+			new ParamSelectComponent[from.Params, from.Self, M, V](from.self, header, from.parameterization)
+
+		def apply[V](header :TupleSQL[from.Generalized, LocalScope, V]) :ParamSelect[from.Params, V] =
+			new ArbitraryParamSelect[from.Params, from.Self, V](
+				from.self, header.anchor(from.self), from.parameterization
+			)
+
+		def apply[V <: Listing](header :ListingSQL[from.Generalized, LocalScope, V])
+				:ParamSelectAs[from.Params, IndexedMapping.Of[V]#Projection] =
+			new ParamIndexedSelect(from.self, header, from.parameterization)
+
+		//an unused type parameter due to an overloading resolution bug in scala 2
+		def apply[X, Y, _](header :ConversionSQL[from.Generalized, LocalScope, X, Y]) :ParamSelect[from.Params, Y] =
+			new ArbitraryParamSelect[from.Params, from.Self, Y](
+				from.self, header.anchor(from.self), from.parameterization
+			)
+
+		def apply[A <: Label, V](header :ListingColumn[from.Generalized, LocalScope, A, V])
+				:ParamSelectAs[from.Params, IndexedMapping.Of[V]#Column] =
+			new ParamIndexedColumnSelect[from.Params, from.Self, A, V](
+				from.self, ListingColumnSQLMapping[from.Self, LocalScope, A, V, ()](header.anchor(from.self)),
+				from.parameterization
+			)
+
+		def apply[V](header :ColumnSQL[from.Generalized, LocalScope, V]) :ParamSelect[from.Params, V] =
+			new ArbitraryParamSelect[from.Params, from.Self, V](
+				from.self, header.anchor(from.self), from.parameterization
+			)
+	}
 
 
 	type * = ParamSelect[_, _]
 
 
 
-	/** A `SelectSQL` interface exposing the mapping type `H` used for the ''select'' clause. */
+	/** A parameterized ''select'' interface exposing the mapping type `H` used for the ''select'' clause. */
 	trait ParamSelectAs[P, H[A] <: MappingAt[A]] extends ParamSelect[P, H[()]#Subject] {
 		override type ResultMapping[O] = H[O]
 
@@ -450,6 +583,7 @@ object ParamSelect {
 
 	private class ParamSelectComponent[P, F <: TopFrom { type Params = P }, H[A] <: BaseMapping[V, A], V]
 	                                  (override val from :F, override val selectClause :ComponentSQL[F, H],
+	                                   override val parameterization :Parameterization[P, F],
 	                                   override val isDistinct :Boolean = false)
 		extends ParamSelectMapping[P, F, H, V]
 	{
@@ -468,7 +602,7 @@ object ParamSelect {
 			}
 
 		override def distinct :ParamSelectMapping[P, F, H, V] =
-			if (isDistinct) this else new ParamSelectComponent(from, selectClause, true)
+			if (isDistinct) this else new ParamSelectComponent(from, selectClause, parameterization, true)
 
 		override def bind(params :P) :TopSelectAs[H] = {
 			val paramless = from.bind(params)
@@ -540,36 +674,39 @@ object ParamSelect {
 
 	private[sql] class ArbitraryParamSelect[P, F <: TopFrom { type Params = P }, V]
 	                   (override val from :F, protected override val mapping :SQLMapping[F, LocalScope, V, ()],
+	                    override val parameterization :Parameterization[P, F],
 	                    override val isDistinct :Boolean = false)
 		extends BaseArbitraryParamSelect[P, F, V](from, mapping)
 			with ArbitraryParamSelectTemplate[P, F, SQLMapping.Project[F, LocalScope, V]#Expression, V]
 	{
-		def this(from :F, expression :SQLExpression[F, LocalScope, V], isDistinct :Boolean) =
-			this(from, SQLMapping[F, LocalScope, V, ()](expression), isDistinct)
+		def this(from :F, expression :SQLExpression[F, LocalScope, V],
+		         params :Parameterization[P, F], isDistinct :Boolean) =
+			this(from, SQLMapping[F, LocalScope, V, ()](expression), params, isDistinct)
 
-		def this(from :F, expression :SQLExpression[F, LocalScope, V]) =
-			this(from, SQLMapping[F, LocalScope, V, ()](expression))
+		def this(from :F, expression :SQLExpression[F, LocalScope, V], params :Parameterization[P, F]) =
+			this(from, SQLMapping[F, LocalScope, V, ()](expression), params)
 
 		override def distinct :ParamSelect[P, V] =
-			if (isDistinct) this else new ArbitraryParamSelect(from, mapping, true)
+			if (isDistinct) this else new ArbitraryParamSelect(from, mapping, parameterization, true)
 	}
 
 
 
 	private[sql] class ParamIndexedSelect[P, F <: TopFrom { type Params = P }, V <: Listing]
 	                  (override val from :F, override val mapping :ListingSQLMapping[F, LocalScope, V, ()],
+	                   override val parameterization :Parameterization[P, F],
 	                   override val isDistinct :Boolean = false)
 		extends BaseArbitraryParamSelect[P, F, V](from, mapping)
 			with ArbitraryParamSelectTemplate[P, F, IndexedMapping.Of[V]#Projection, V]
 			with ParamSelectAs[P, IndexedMapping.Of[V]#Projection]
 	{
-		def this(from :F, expression :ListingValueSQL[F, LocalScope, V]) =
-			this(from, expression.mapping[()])
+		def this(from :F, expression :ListingValueSQL[F, LocalScope, V], params :Parameterization[P, F]) =
+			this(from, expression.mapping[()], params)
 
 		override val selectClause = mapping.expr
 
 		override def distinct :ParamSelectAs[P, IndexedMapping.Of[V]#Projection] =
-			if (isDistinct) this else new ParamIndexedSelect[P, F, V](from, mapping, true)
+			if (isDistinct) this else new ParamIndexedSelect[P, F, V](from, mapping, parameterization, true)
 
 		override def bind(params :P) :TopSelectAs[IndexedMapping.Of[V]#Projection] = {
 			val paramless = from.bind(params).asInstanceOf[GroundFrom]
@@ -582,6 +719,7 @@ object ParamSelect {
 
 	private[sql] class ParamIndexedColumnSelect[P, F <: TopFrom { type Params = P }, A <: Label, V]
 	                   (override val from :F, override val mapping :ListingColumnSQLMapping[F, LocalScope, A, V, ()],
+	                    override val parameterization :Parameterization[P, F],
 	                    override val isDistinct :Boolean = false)
 		extends BaseArbitraryParamSelect[P, F, V](from, mapping)
 		   with ArbitraryParamSelectTemplate[P, F, IndexedMapping.Of[V]#Column, V]
@@ -593,7 +731,8 @@ object ParamSelect {
 		override val selectClause = mapping.expr
 
 		override def distinct :ParamSelectAs[P, IndexedMapping.Of[V]#Column] =
-			if (isDistinct) this else new ParamIndexedColumnSelect[P, F, A, V](from, mapping, true)
+			if (isDistinct) this
+			else new ParamIndexedColumnSelect[P, F, A, V](from, mapping, parameterization, true)
 
 		override def bind(params :P) :TopSelectAs[IndexedMapping.Of[V]#Column] = {
 			val paramless = from.bind(params).asInstanceOf[GroundFrom]

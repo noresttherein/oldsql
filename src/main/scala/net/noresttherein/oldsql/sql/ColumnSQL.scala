@@ -321,8 +321,9 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectColumn[B, V] =
 		SelectSQL.subselect[B, from.type, V](from, this)
 
-	override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelect[P, V] =
-		ParamSelect(from, this)
+	override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
+			:ParamSelect[P, V] =
+		ParamSelect(from)(this)
 
 
 	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])

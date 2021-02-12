@@ -567,7 +567,7 @@ object From {
 			override val aliasOpt = asOpt
 			override val condition = cond
 			override val outer = left.outer
-			override val parameterization = Parameterization.paramless[From[T]]
+			override val parameterization = Parameterization.paramless[Dual EmptyJoin T As A]
 			override def lastRelation :TableSQL[FromLast, T, S, FromLast] = last
 
 			override def narrow :dual.type NonParam T = this
@@ -689,7 +689,7 @@ object From {
 	{
 		override def lastRelation :TableSQL[FromLast, T, S, FromLast] = last
 		override val outer = left.outer
-		override val parameterization = Parameterization.paramless[From[T]]
+		override val parameterization = Parameterization.paramless[Self]
 
 		override def narrow :left.type NonParam T = this.asInstanceOf[left.type NonParam T]
 

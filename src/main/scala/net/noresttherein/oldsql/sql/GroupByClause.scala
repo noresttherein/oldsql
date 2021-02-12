@@ -369,7 +369,7 @@ object Aggregated {
 			override val clause :discrete.type = discrete
 			override val fromClause = discrete.self
 			override val outer = clause.outer
-			override val parameterization = clause.parameterization.aggregate(generalized)
+			override val parameterization = clause.parameterization.aggregate(self)
 		}
 
 

@@ -446,11 +446,10 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  * @return a `ParamSelect` parameterized with the unbound parameters in `from`.
 	  * @throws UnsupportedOperationException if this expression cannot be used for a ''select'' clause.
 	  */
-	def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelect[P, V] =
+	def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P }) :ParamSelect[P, V] =
 		throw new UnsupportedOperationException(
 			s"Expression $this :${this.localClassName} can't be used as a select clause."
 		)
-
 
 
 	/** List of [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter ''bound'']] parameters used by this expression,
@@ -537,7 +536,6 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 
 
 
-
 object SQLExpression  {
 
 	implicit class SQLExpressionChaining[F <: RowProduct, S >: LocalScope <: GlobalScope, T]
@@ -580,7 +578,7 @@ object SQLExpression  {
 	  */
 	type GlobalScope
 
-	val GlobalScope = implicitly[GlobalScope <:< GlobalScope]
+	private[oldsql] val GlobalScope = implicitly[GlobalScope <:< GlobalScope]
 
 	/** An upper bound of all [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] subtypes
 	  * with the value type `V` and based on the [[net.noresttherein.oldsql.sql.RowProduct ''from'' clause]] `F`.

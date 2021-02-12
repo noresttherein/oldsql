@@ -78,7 +78,8 @@ object SQLDialect {
 
 
 	trait SQLSpelling {
-//		def apply[P](query :ParamQuery[P, _]) :SpelledSQL[P] = query.paramlessSpelling
+		def spell[P, V](query :ParamQuery[P, V]) :SpelledSQL[P, RowProduct] =
+			query.defaultSpelling(this, newContext)
 
 		def spell[V](query :QuerySQL[RowProduct, V]) :SpelledSQL[@~, RowProduct] =
 			query.paramlessSpelling(this, newContext)
@@ -86,6 +87,9 @@ object SQLDialect {
 		def paramless[V](query :QuerySQL[RowProduct, V])(context :SQLContext) :SpelledSQL[@~, RowProduct] =
 			query.paramlessSpelling(this, context)
 
+
+		def apply[P, V](query :ParamQuery[P, V])(context :SQLContext) :SpelledSQL[P, RowProduct] =
+			query.defaultSpelling(this, context)
 
 		def apply[P, F <: RowProduct, V]
                  (e :SQLExpression[F, LocalScope, V])
@@ -130,7 +134,7 @@ object SQLDialect {
 			val resultContext = fromSQL.context.copy(whereReversed = Nil)
 			if (fromSQL.context.whereReversed.isEmpty)
 				SpelledSQL(fromSQL.sql, resultContext, fromSQL.params)
-			else { //consider: direction of appending (i.e. if StringSeq is reversed or straight)
+			else {
 				val whereSQL = fromSQL.context.whereReversed.reduceLeft((_1, _2) => _2 + ", " + _1)
 				fromSQL + (" " + WHERE + " ") + whereSQL
 			}
@@ -142,14 +146,6 @@ object SQLDialect {
 		        (join :L Join R, clause :String)(context :SQLContext) :SpelledSQL[join.Params, join.Generalized]
 
 		def groupByHaving(from :GroupByClause)(context :SQLContext) :SpelledSQL[from.Params, from.Generalized] = {
-			//fixme: the context retains indexing of the FromClause under grouping. This makes aggregated expressions
-			// work out of the box and doesn't matter inside the current select as grouping expressions
-			// are completely inlined instead of being referenced by aliases, so no need for the context to track it.
-			// This becomes however a problem in subselects of grouped selects, as indexing becomes off.
-			// In a related problem, GroupParams throw everything completely out of the track.
-			// We can't however adjust it here, as the grouped tables might yet be used by the select clause.
-			// One solution would be to override the visitor method for select and reset it there;
-			// another is to make SQLContext aware of the fact.
 			val groupBySQL = inGroupBy(from)(context)
 			if (from.filter == True) groupBySQL
 			else groupBySQL + (" " + HAVING + " ") + (inHaving(from.filter)(_, _))
@@ -222,6 +218,20 @@ object SQLDialect {
 
 
 		protected def newContext :SQLContext = SQLContext()
+
+
+		protected def defaultSpelling[P](e :ParamQuery[P, _])(implicit context :SQLContext) :SpelledSQL[P, RowProduct] =
+			e.defaultSpelling(this, context)
+
+		protected def defaultSpelling[P, F <: RowProduct, X <: Chain, Y]
+		                             (f :SQLFunction[X, Y])(args :ChainTuple[F, LocalScope, X])
+		                             (implicit context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
+			f.spell(this)(args)
+
+		protected def defaultSpelling[P, F <: RowProduct]
+		                             (f :AggregateFunction)(arg :ColumnSQL[F, LocalScope, _], distinct :Boolean = false)
+		                             (implicit context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
+			f.spell(this)(arg, distinct)
 
 		protected def defaultSpelling[P, F <: RowProduct](e :SQLExpression[F, LocalScope, _])
 		                                                 (implicit context :SQLContext, params :Parameterization[P, F])
@@ -354,52 +364,22 @@ object SQLDialect {
 		                  (table :Table[M])(context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
 			table match {
 				case Aliased(t :Table.*, alias) => this.table(t, alias)(context, params)
-				case t :RelVar[M] =>
-					if (!context.tablesReversed.contains(t.name)) //will that be unambiguous if another occurrence is aliased later?
-						SpelledSQL(t.name, context.join(t.name), params)
-					else {
-						val alias = this.alias(t.name)(context)
-						SpelledSQL(t.name + " " + AS + " " + alias, context.join(alias), params)
-					}
-				case s :SelectRelation[M] =>
-					//SQL expressions can be reused for different clauses, in particular retain references to clauses
-					// with different aliases. For this reason it is imperative that all expressions referencing a table
-					// at a given position use the same alias, the one defined in the from clause. In order
-					// to accomplish this, subselect clauses inherit the context of the outer select.
-					val select = ("(" +: inSelect.paramless(s.query)(context)) + ")"
-					val boundParams = select.params.settersReversed.map(_.unmap { _ :P => @~ })
-					val totalParams = params.reset(boundParams ::: params.settersReversed)
-
-					val alias = tableAliasRoot + context.tablesReversed.length
-					if (!context.contains(alias))
-						SpelledSQL(select.sql, context.join(alias), totalParams)
-					else
-						SpelledSQL(select.sql, context.join(this.alias(selectAliasRoot)(context)), totalParams)
+				case t :RelVar[M] => this.table(t, t.name)(context, params)
 				case _ =>
-					throw new IllegalArgumentException(s"Unsupported relation type of $table: ${table.getClass.getName}.")
+					val default = tableAliasRoot + context.tablesReversed.length
+					if (!context.contains(default)) this.table(table, default)(context, params)
+					else this.table(table, selectAliasRoot)(context, params)
 			}
-
 
 		override def table[P, F <: RowProduct, M[O] <: MappingAt[O]]
 		                  (table :Table[M], alias :String)(context :SQLContext, params :Parameterization[P, F])
 				:SpelledSQL[P, F] =
 		{
-			val sql = table match {
-				case Aliased(t :RelVar.*, _) => SpelledSQL(t.name, context, Parameterization.paramless[ParamlessFrom])
-
-				case Aliased(s :SelectRelation.*, _) =>
-					("(" +: inSelect.paramless(s.query)(context)) + ")"
-
-				case t :RelVar[M] => SpelledSQL(t.name, context, Parameterization.paramless[ParamlessFrom])
-				case s :SelectRelation[M] =>
-					("(" +: inSelect.paramless(s.query)(context)) + ")"
-			}
-			val boundParams = sql.params.settersReversed.map(_.unmap { _ :P => @~ })
-			val totalParams = params.reset(boundParams ::: params.settersReversed)
+			val sql = table.defaultSpelling(this)(context, params)
 			val unique =
 				if (!context.tablesReversed.contains(alias)) alias
 				else this.alias(alias)(context)
-			SpelledSQL(sql.sql + (" " + AS + " " + unique), context.join(unique), totalParams)
+			SpelledSQL(sql.sql + (" " + AS + " " + unique), context.join(unique), sql.params)
 		}
 
 		override def table[P, F <: RowProduct, M[O] <: MappingAt[O]]

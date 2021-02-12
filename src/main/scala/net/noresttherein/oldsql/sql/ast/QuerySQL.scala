@@ -115,6 +115,8 @@ trait QuerySQL[-F <: RowProduct, V]
 	                         dialect :SQLDialect = StandardSQL)
 			:SQLCommand[R] =
 		dialect(this)
+
+	override def canEqual(that :Any) :Boolean = that.getClass == getClass
 }
 
 
@@ -195,6 +197,12 @@ object QuerySQL extends ImplicitDerivedTables {
 		def toRelation :Table[M] = SelectRelation[M, V](self)
 		def toTable :Table[M] = SelectRelation[M, V](self)
 
+		/** Translates the abstract syntax tree of this SQL expression into textual SQL.
+		  * The result is adapted to the DBMS at hand using implicitly available
+		  * [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]] strategy. Aside from the `String`
+		  * representation, returned [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL SpelledSQL]] contains
+		  * write form setting all bound parameters of the query.
+		  */
 		def spell(implicit spelling :SQLSpelling = StandardSQL.spelling) :SpelledSQL[@~, RowProduct] =
 			spelling.spell(self)
 //		def as[A <: Label](alias :A) :With[M] As A = With(alias, this) //todo: With for MappingQuery
@@ -352,11 +360,11 @@ object QuerySQL extends ImplicitDerivedTables {
 			}
 			val r = right match {
 				case CompoundSelectSQL(_, op, _) if op != operator =>
-					"(" +: (spelling(right :QuerySQL[E, V])(l.context, l.params) + ")")
+					"(" +: (spelling(right :QuerySQL[E, V])(context, params.reset()) + ")")
 				case _ =>
-					spelling(right :QuerySQL[E, V])(l.context, l.params)
+					spelling(right :QuerySQL[E, V])(context, l.params)
 			}
-			l.sql +: (" " + spelling(operator) +" ") +: r
+			SpelledSQL(l.sql + (" " + spelling(operator) +" ") + r.sql, context, l.params :++ r.params)
 		}
 
 //		protected override def paramlessSpelling(context :SQLContext)(implicit spelling :SQLSpelling,

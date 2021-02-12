@@ -43,8 +43,9 @@ trait ConversionSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, Y] ext
 	override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectSQL[B, Y] =
 		SelectSQL.subselect[B, from.type, X, Y](from, this)
 
-	override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelect[P, Y] =
-		ParamSelect(from, this)
+	override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
+			:ParamSelect[P, Y] =
+		ParamSelect(from.self)[X, Y, ()](this)
 
 
 	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[F, R]): R[S, Y] =

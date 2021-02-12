@@ -36,17 +36,18 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
   */
 trait TupleSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T] extends CompositeSQL[F, S, T] {
 
+	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
+		matcher.tuple(this)
+
 	override def topSelectFrom[E <: F with GroundFrom](from :E) :TopSelectSQL[T] =
 		SelectSQL(from, this)
 
 	override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectSQL[B, T] =
 		SelectSQL.subselect[B, from.type, T](from, this)
 
-	override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelect[P, T] =
-		ParamSelect(from, this)
-
-	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
-		matcher.tuple(this)
+	override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
+			:ParamSelect[P, T] =
+		ParamSelect(from)[T](this)
 
 
 	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
@@ -367,10 +368,14 @@ object TupleSQL {
 				:SubselectAs[B, IndexedMapping.Of[T]#Projection] =
 			SelectSQL.subselect[B, ExactSubselectOf[F, B], T](from, this)
 
-		override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E)
+		override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
 				:ParamSelectAs[P, IndexedMapping.Of[T]#Projection] =
-			ParamSelect(from, this)
+			ParamSelect(from)(this)
 
+//		override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E)
+//				:ParamSelectAs[P, IndexedMapping.Of[T]#Projection] =
+//			ParamSelect(from, this)
+//
 
 		def |~[E <: F, O >: LocalScope <: S, K <: Label :ValueOf, H]
 		      (head :K :~ ListingValueSQL[E, O, H]) :ListingEntry[E, O, T, K, H] =
@@ -482,10 +487,9 @@ object TupleSQL {
 					:SubselectColumnAs[B, IndexedMapping.Of[V]#Column, V] =
 				SelectSQL.subselect[B, ExactSubselectOf[F, B], N, V](from, this)
 
-			override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E)
+			override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
 					:ParamSelectAs[P, IndexedMapping.Of[V]#Column] =
-				ParamSelect[E, N, V](from, this)
-
+				ParamSelect(from)[N, V](this)
 
 		}
 

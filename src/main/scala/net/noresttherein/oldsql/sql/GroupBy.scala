@@ -222,11 +222,12 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 			:SpelledSQL[Params, Generalized] =
 	{
 		val fromSQL = left.spell(context)(spelling.inFrom)
-		if (expr == True || columnCount == 0)
-			SpelledSQL(fromSQL.sql, fromSQL.context.grouped, fromSQL.params.group[left.Generalized, M](generalized))
-		else {
+		if (expr == True || columnCount == 0) {
+			val groupedParams = fromSQL.params.group[Generalized, left.Generalized, M](generalized)
+			SpelledSQL(fromSQL.sql, fromSQL.context.grouped, groupedParams)
+		} else {
 			val exprSQL = spelling.inline(expr)(fromSQL.context, fromSQL.params)
-			val groupedParams = exprSQL.params.group[left.Generalized, M](generalized)
+			val groupedParams = exprSQL.params.group[Generalized, left.Generalized, M](generalized)
 			val sql = fromSQL.sql + (" " + spelling.GROUP_BY + " ") + exprSQL.sql
 			SpelledSQL(sql, exprSQL.context.grouped, groupedParams)
 		}
@@ -300,7 +301,7 @@ object GroupBy {
 			override val fromClause = left.self
 			override val outer = left.outer
 			override val fullSize = outer.fullSize + 1
-			override val parameterization = left.parameterization.group[left.Generalized, M](generalized)
+			override val parameterization = left.parameterization.group[Self, left.Self, M](self)
 
 			override type Alias = A
 			override type WithLeft[+L <: FromSome] = L GroupBy M As A
@@ -621,7 +622,7 @@ trait By[+G <: GroupByClause, M[A] <: MappingAt[A]]
 			:SpelledSQL[Params, Generalized] =
 	{
 		val preceding = spelling(left)(context)
-		val groupedParams = preceding.params.group[left.Generalized, M]
+		val groupedParams = preceding.params.group[Generalized, left.Generalized, M]
 		if (expr == True || right.export[()].filteredByDefault.isEmpty) //zero columns in expr
 			SpelledSQL(preceding.sql, preceding.context.grouped, groupedParams)
 		else {
@@ -725,7 +726,7 @@ object By {
 			override val fromClause = left.fromClause
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
-			override val parameterization = left.parameterization.group[left.Generalized, T]
+			override val parameterization = left.parameterization.group[Self, left.Self, T]
 			override def lastRelation = last
 
 			override type Alias = A

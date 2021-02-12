@@ -655,7 +655,7 @@ object InnerJoin {
 			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
-			override val parameterization = left.parameterization.join[left.Generalized InnerJoin R, left.Generalized, R]
+			override val parameterization = left.parameterization.join[Self, left.Self, R]
 
 			override type Alias = A
 			override type DealiasedCopy = left.type InnerJoin R
@@ -847,7 +847,7 @@ object OuterJoin {
 			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
-			override val parameterization = left.parameterization.join[left.Generalized OuterJoin R, left.Generalized, R]
+			override val parameterization = left.parameterization.join[Self, left.Self, R]
 
 			override type Alias = A
 			override type DealiasedCopy = left.type OuterJoin R
@@ -1041,7 +1041,7 @@ object LeftJoin {
 			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
-			override val parameterization = left.parameterization.join[left.Generalized LeftJoin R, left.Generalized, R]
+			override val parameterization = left.parameterization.join[Self, left.Self, R]
 
 			override type Alias = A
 			override type DealiasedCopy = left.type LeftJoin R
@@ -1234,7 +1234,7 @@ object RightJoin {
 			override val condition = cond
 			override val outer = left.outer
 			override val fullSize = left.fullSize + 1
-			override val parameterization = left.parameterization.join[left.Generalized RightJoin R, left.Generalized, R]
+			override val parameterization = left.parameterization.join[Self, left.Self, R]
 
 			override type Alias = A
 			override type DealiasedCopy = left.type RightJoin R
@@ -1546,7 +1546,7 @@ object Subselect {
 			override val condition = cond
 			override val outer = left.self
 			override val fullSize = left.fullSize + 1
-			override val parameterization = left.parameterization.join[left.Generalized Subselect R, left.Generalized, R]
+			override val parameterization = left.parameterization.join[Self, left.Self, R]
 			override def lastRelation = last
 
 			override type Alias = A

@@ -379,7 +379,7 @@ object SpelledSQL {
 	  *                        sequentially, all individual columns will be set according to specification. Note that,
 	  *                        due to multi-column forms, applying the forms in the order of this list needs not
 	  *                        result in the written columns being written in the exact reverse of the former.
-	  */
+	  */ //todo: this would be probably better with -F
 	abstract class Parameterization[-Ps, +F <: RowProduct](val settersReversed :List[SQLWriteForm[Ps]])
 		extends Serializable
 	{ left =>
@@ -484,12 +484,12 @@ object SpelledSQL {
 		  * @param groupBy an instance of the associated ''from''/''group by'' clause, needed to determine the number
 		  *                of skipped relations.
 		  */
-		def group[L <: FromSome, R[O] <: MappingAt[O]]
-		         (groupBy :L GroupBy R)(implicit left :F <:< L) :Parameterization[Ps, L GroupBy R] =
-			new JoinParameterization[Ps, F, L GroupBy R](this, "group by") {
+		def group[G <: L GroupBy R, L <: FromSome, R[O] <: MappingAt[O]]
+		         (groupBy :G)(implicit left :F <:< L) :Parameterization[Ps, G] =
+			new JoinParameterization[Ps, F, G](this, "group by") {
 				private[this] val expansion = groupBy.left.size - 1
 
-				override def apply[T[A] <: BaseMapping[S, A], S, O >: L GroupBy R <: RowProduct]
+				override def apply[T[A] <: BaseMapping[S, A], S, O >: G <: RowProduct]
 				                  (param :JoinedRelation[O, T]) :Ps => S =
 					if (param.offset == 0)
 						throw new IllegalArgumentException(
@@ -498,7 +498,7 @@ object SpelledSQL {
 					else
 						left[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset + expansion))
 
-				override def ungroup[E <: FromSome](implicit grouped :(L GroupBy R) <:< E#GeneralizedAggregate) =
+				override def ungroup[E <: FromSome](implicit grouped :G <:< E#GeneralizedAggregate) =
 					new Parameterization[Ps, E](Nil) with UngroupedParameterization[Ps, E] {
 						override type Params = Ps
 						override def params = this
@@ -518,9 +518,9 @@ object SpelledSQL {
 		  * This has the effect of shifting indices of all relations - in particular arguments to
 		  * [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization.apply apply]] - by one.
 		  */
-		def group[L <: GroupByClause, R[O] <: MappingAt[O]](implicit left :F <:< L) :Parameterization[Ps, L By R] =
-			new JoinParameterization[Ps, F, L By R](this, "by") {
-				override def ungroup[E <: FromSome](implicit grouped :(L By R) <:< E#GeneralizedAggregate) =
+		def group[G <: L By R, L <: GroupByClause, R[O] <: MappingAt[O]](implicit left :F <:< L) :Parameterization[Ps, G] =
+			new JoinParameterization[Ps, F, G](this, "by") {
+				override def ungroup[E <: FromSome](implicit grouped :G <:< E#GeneralizedAggregate) =
 					this.left.ungroup[E](grouped.asInstanceOf[F <:< E#GeneralizedAggregate])
 
 				override def aliasedString(aliases :List[String]) :Option[String] =
@@ -532,7 +532,7 @@ object SpelledSQL {
 		  * This has the effect of shifting all relation indices by one, and of associating the last (now at index `0`)
 		  * relation with the new parameter `X`.
 		  */
-		def param[E <: L UnboundParam R, L <: NonEmptyFrom, R[O] <: FromParam[X, O], X, Xs <: Chain with Ps]
+		def param[E <: L UnboundParam R, L <: NonEmptyFrom, R[O] <: FromParam[X, O], Xs <: Chain with Ps, X]
 		         (implicit ev :F <:< L) :Parameterization[Xs ~ X, E] =
 			new Parameterization[Xs ~ X, E](settersReversed.map(_.unmap { xs :(Xs ~ X) => xs.init })) {
 
@@ -568,9 +568,11 @@ object SpelledSQL {
 		  * relation with the new parameter `X`.
 		  */
 		def param[L <: NonEmptyFrom, J[+A <: L, B[O] <: R[O]] <: A UnboundParam B,
-		          R[O] <: FromParam[X, O], X, Xs <: Chain with Ps]
+		          R[O] <: FromParam[X, O], Xs <: Chain with Ps, X]
 		         (join :L J R)(implicit ev :F <:< L) :Parameterization[Xs ~ X, L J R] =
-			param[L J R, L, R, X, Xs]
+			param[L J R, L, R, Xs, X]
+
+//		def subselect()
 
 		/** Lifts this instance to one representing an aggregated select based on `F`, using the special type
 		  * [[net.noresttherein.oldsql.sql.Aggregated Aggregated]]`[F]`. This removes all relations in the deepest

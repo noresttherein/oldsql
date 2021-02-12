@@ -39,7 +39,8 @@ trait SQLFunction[X <: Chain, Y] extends Serializable {
 		((spelling.function(name) +  "(") +: spelling.inline(args)(context, params)) + ")"
 
 	private[sql] final def spell[P, F <: RowProduct](spelling :SQLSpelling)(args :ChainTuple[F, LocalScope, X])
-	                                                (context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
+	                                                (implicit context :SQLContext, params :Parameterization[P, F])
+			:SpelledSQL[P, F] =
 		spell(args)(context, params)(spelling)
 
 

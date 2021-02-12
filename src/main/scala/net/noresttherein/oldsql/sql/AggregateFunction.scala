@@ -39,7 +39,7 @@ trait AggregateFunction extends Serializable {
 
 	private[sql] final def spell[P, F <: RowProduct](spelling :SQLSpelling)
 	                                                (arg :ColumnSQL[F, LocalScope, _], distinct :Boolean)
-	                                                (context :SQLContext, params :Parameterization[P, F])
+	                                                (implicit context :SQLContext, params :Parameterization[P, F])
 			:SpelledSQL[P, F] =
 		spell(arg, distinct)(context, params)(spelling)
 

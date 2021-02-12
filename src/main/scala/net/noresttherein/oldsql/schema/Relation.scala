@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.collection.{Opt, Unique}
+import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
@@ -18,6 +19,7 @@ import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.ast.QuerySQL
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
+import net.noresttherein.oldsql.sql.RowProduct.ParamlessFrom
 
 
 
@@ -294,7 +296,27 @@ object Relation {
 						(this.includes.view ++ includes).filterNot(excludes.contains(_)).to(Unique),
 						(this.excludes.view.filterNot(includes.contains(_)) ++ excludes).to(Unique)
 					)
+
+				override def defaultSpelling[P, F <: RowProduct]
+				                            (context :SQLContext, params :Parameterization[P, F])
+				                            (implicit spelling :SQLSpelling) =
+					outer.defaultSpelling(context, params)
 			}
+
+
+		/** Formats the relation for use in a ''from'' clause. For example,
+		  * a [[net.noresttherein.oldsql.schema.Relation.BaseTable table]] will simply return its name,
+		  * while a [[net.noresttherein.oldsql.schema.Relation.SelectRelation select]] will format its whole SQL.
+		  * This is the default spelling used by [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
+		  */
+		protected def defaultSpelling[P, F <: RowProduct]
+		                             (context :SQLContext, params :Parameterization[P, F])
+		                             (implicit spelling :SQLSpelling) :SpelledSQL[P, F]
+
+		private[oldsql] def defaultSpelling[P, F <: RowProduct]
+		                                   (spelling :SQLSpelling)
+		                                   (context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
+			defaultSpelling(context, params)(spelling)
 
 		protected override def spell[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A], V]
 		                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
@@ -335,6 +357,11 @@ object Relation {
 						(this.excludes.view.filterNot(includes.contains(_)) ++ excludes).to(Unique)
 					)
 			}
+
+		protected override def defaultSpelling[P, F <: RowProduct]
+		                                      (context :SQLContext, params :Parameterization[P, F])
+		                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+			SpelledSQL(name, context, params)
 	}
 
 
@@ -407,6 +434,11 @@ object Relation {
 						(this.includes.view ++ includes).filterNot(excludes.contains(_)).to(Unique),
 						(this.excludes.view.filterNot(includes.contains(_)) ++ excludes).to(Unique)
 					)
+
+				override def defaultSpelling[P, F <: RowProduct]
+				                            (context :SQLContext, params :Parameterization[P, F])
+				                            (implicit spelling :SQLSpelling) =
+					outer.defaultSpelling[P, F](context, params)
 			}
 	}
 
@@ -490,6 +522,16 @@ object Relation {
 						(this.excludes.view.filterNot(includes.contains(_)) ++ excludes).to(Unique)
 					)
 			}
+
+		protected override def defaultSpelling[P, F <: RowProduct]
+		                                      (context :SQLContext, params :Parameterization[P, F])
+		                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+		{
+			val sql =  "(" +: (spelling.inSelect.paramless(query)(context) + ")")
+			val boundParams = sql.params.settersReversed.map(_.unmap { _ :P => @~ })
+			val totalParams = params.reset(boundParams ::: params.settersReversed)
+			SpelledSQL(sql.sql, context, totalParams)
+		}
 
 	}
 
@@ -617,6 +659,11 @@ object Relation {
 			extends Aliased[M, A](relation, alias) with Table[Labeled[A, M]#Projection]
 		{
 			def table :Table[M] = relation
+
+			protected override def defaultSpelling[P, F <: RowProduct]
+			                                      (context :SQLContext, params :Parameterization[P, F])
+			                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+				relation.defaultSpelling(spelling)(context, params)
 		}
 	}
 

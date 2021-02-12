@@ -58,9 +58,7 @@ import net.noresttherein.oldsql.slang._
   * @tparam F the source of data for the ''enclosing'' select - tables from the ''from'' clause and any unbound parameters.
   * @tparam V the combined type of the whole ''select'' clause, to which every returned row maps.
   */
-sealed trait SelectSQL[-F <: RowProduct, V]
-	extends QuerySQL[F, V] with SelectTemplate[V, ({ type S[X] = SelectSQL[F, X] })#S]
-{
+sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] with SelectTemplate[V, ({ type S[X] = SelectSQL[F, X] })#S] {
 	override def readForm :SQLReadForm[Rows[V]] = selectClause.readForm.nullMap(Rows(_))
 
 	/** The from clause of this select. */
@@ -221,6 +219,8 @@ object SelectSQL {
 	{
 		override type From <: GroundFrom
 
+		override def parameterization :Parameterization[@~, From] = Parameterization.paramless[From]
+
 		override def map[X](f :V => X) :TopSelectSQL[X] =
 			new ArbitraryTopSelect[From, X](from, selectClause.map(f), isDistinct)
 
@@ -244,15 +244,13 @@ object SelectSQL {
 		protected override def defaultSpelling[P, E <: RowProduct](context :SQLContext, params :Parameterization[P, E])
 		                                                          (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
 		{
-			val fromPart = spelling(from)(context)
-			val selectExpr = spelling.inline(selectClause)(fromPart.context, Parameterization.paramless)
-			val extraParams = (selectExpr.params :++ fromPart.params) compose { _ :P => @~ }
+			val fromSQL = spelling(from)(context)
+			val selectSQL = spelling.inline(selectClause)(fromSQL.context, Parameterization.paramless)
+			val extraParams = (selectSQL.params :++ fromSQL.params) compose { _ :P => @~ }
 			val allParams = params.reset(extraParams.settersReversed:::params.settersReversed)
-			val select = SpelledSQL(spelling.SELECT + " ", context, allParams)
-			if (fromPart.sql.isEmpty)
-				select + " " + selectExpr.sql
-			else
-				select + " " + selectExpr.sql + (" " + spelling.FROM + " ") + fromPart.sql
+			val select = SpelledSQL(spelling.SELECT + " " + selectSQL.sql, context, allParams) //reset the context!
+			if (fromSQL.sql.isEmpty) select
+			else select + " " + fromSQL.sql
 		}
 
 //		protected override def paramlessSpelling(context :SQLContext)
@@ -333,15 +331,13 @@ object SelectSQL {
 				)
 			else { //this could use RowProduct.asParamless
 				val self = this.asInstanceOf[SelectSQL[F, V] { type From <: ParamlessFrom }]
-				val fromPart = spelling(self.from)(context)
-				val selectExpr = spelling.inline(self.selectClause)(fromPart.context, Parameterization.paramless)
-				val extraParams = (selectExpr.params :++ fromPart.params) compose { _ :P => @~ }
+				val fromSQL = spelling(self.from)(context)
+				val selectSQL = spelling.inline(self.selectClause)(fromSQL.context, Parameterization.paramless)
+				val extraParams = (selectSQL.params :++ fromSQL.params) compose { _ :P => @~ }
 				val allParams = params.reset(extraParams.settersReversed:::params.settersReversed)
-				val select = SpelledSQL(spelling.SELECT + " ", context, allParams)
-				if (fromPart.sql.isEmpty)
-					select + " " + selectExpr.sql
-				else
-					select + " " + selectExpr.sql + (" " + spelling.FROM + " ") + fromPart.sql
+				val select = SpelledSQL(spelling.SELECT + " " + selectSQL.sql, context, allParams) //reset the context!
+				if (fromSQL.sql.isEmpty) select
+				else select + " " + fromSQL.sql
 			}
 
 

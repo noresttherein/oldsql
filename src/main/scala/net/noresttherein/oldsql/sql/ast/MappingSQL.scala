@@ -88,7 +88,8 @@ trait MappingSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, M[O] <: Mapp
 			s"Expression $this :${this.localClassName} can't be used as a select clause."
 		)
 
-	override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, M] =
+	override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
+			:ParamSelectAs[P, M] =
 		throw new UnsupportedOperationException(
 			s"Expression $this :${this.localClassName} can't be used as a select clause."
 		)
@@ -305,8 +306,9 @@ object MappingSQL {
 				:SubselectMapping[B, from.type, M, V] =
 			SelectSQL.subselect(from, anchor(from))
 
-		override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, M] =
-			ParamSelect[E, M, V](from, anchor(from))
+		override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
+				:ParamSelectAs[P, M] =
+			ParamSelect(from)[M, V](anchor(from.generalized))
 
 
 		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
@@ -554,8 +556,9 @@ object MappingSQL {
 				:SubselectColumnMapping[B, from.type, M, V] =
 			SelectSQL.subselect(from, anchor(from))
 
-		override def paramSelectFrom[E <: F with TopFrom {type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, M] =
-			ParamSelect[E, M, V](from, anchor(from))
+		override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
+				:ParamSelectAs[P, M] =
+			ParamSelect(from)[M, V](anchor(from.generalized))
 	}
 
 
@@ -901,8 +904,9 @@ object MappingSQL {
 				:SubselectMapping[B, from.type, M, V] =
 			SelectSQL.subselect(from, this)
 
-		override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, M] =
-			ParamSelect[E, M, V](from, this)
+		override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
+				:ParamSelectAs[P, M] =
+			ParamSelect(from)[M, V](this)
 
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[TypedComponentSQL.* @unchecked]
@@ -1080,8 +1084,9 @@ object MappingSQL {
 				s"Expression $this :${this.localClassName} can't be used as a select clause."
 			)
 
-		override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, M] =
-			ParamSelect[E, M, V](from, this)
+		override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
+				:ParamSelectAs[P, M] =
+			ParamSelect(from.self)[M, V](this)
 
 
 		override def inParens[P, E <: F](context :SQLContext, params :Parameterization[P, E])
@@ -1659,8 +1664,10 @@ object MappingSQL {
 				:SubselectMapping[B, from.type, T, R] =
 			SelectSQL.subselect(from, toRelationSQL)
 
-		override def paramSelectFrom[E <: O with TopFrom { type Params = P }, P <: Chain](from :E) :ParamSelectAs[P, T] =
-			ParamSelect[E, T, R](from, toRelationSQL)
+		override def paramSelectFrom[P <: Chain, G <: O](from :TopFrom { type Generalized <: G; type Params = P })
+				:ParamSelectAs[P, T] =
+			ParamSelect(from)[T, R](toRelationSQL)
+
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
