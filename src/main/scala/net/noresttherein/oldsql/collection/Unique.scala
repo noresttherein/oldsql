@@ -4,7 +4,7 @@ package net.noresttherein.oldsql.collection
 import scala.annotation.nowarn
 
 import net.noresttherein.oldsql.collection.Unique.{UniqueSeqAdapter, UniqueSetAdapter}
-import scala.collection.immutable.{IndexedSeq, Iterable, Seq, Set}
+import scala.collection.immutable.{ArraySeq, IndexedSeq, Iterable, Seq, Set}
 import scala.collection.mutable.Builder
 import scala.collection.{AbstractSeq, AbstractSet, Factory, IterableFactory, IterableFactoryDefaults, IterableOps}
 import scala.reflect.ClassTag
@@ -27,15 +27,12 @@ trait Unique[+T]
 { unique =>
 
 	override def knownSize :Int = size
-
 	override def iterableFactory :IterableFactory[Unique] = Unique
 
 	override def toIndexedSeq :IndexedSeq[T] = new UniqueSeqAdapter(this)
-
 	override def toSeq :Seq[T] = toIndexedSeq
-
 	override def toSet[U >: T] :Set[U] = new UniqueSetAdapter(this)
-
+	def reverseIterator :Iterator[T]
 
 	/** The `n`-th element in this collection.
 	  * @param n the index in the `[0..size-1]` range.
@@ -106,9 +103,9 @@ object Unique extends IterableFactory[Unique] {
 
 	override def newBuilder[T] :Builder[T, Unique[T]] = new UniqueBuilder[T]()
 
-	override def empty[E] :Unique[E] = reusableEmpty
+	override def empty[E] :Unique[E] = EmptyUnique //reusableEmpty
 
-	private[this] val reusableEmpty = new IndexedUnique[Nothing](IndexedSeq.empty, Map.empty)
+//	private[this] val reusableEmpty = new IndexedUnique[Nothing](IndexedSeq.empty, Map.empty)
 
 
 
@@ -259,6 +256,7 @@ object Unique extends IterableFactory[Unique] {
 		override def foreach[U](f :T => U) :Unit = items foreach f
 
 		override def iterator :Iterator[T] = items.iterator
+		override def reverseIterator :Iterator[T] = items.reverseIterator
 	}
 
 
@@ -270,6 +268,7 @@ object Unique extends IterableFactory[Unique] {
 		private[this] val index = map.withDefaultValue(-1)
 
 		override def iterator :Iterator[T] = items.iterator
+		override def reverseIterator :Iterator[T] = items.reverseIterator
 
 		override def size :Int = index.size
 		override def isEmpty :Boolean = size == 0
@@ -336,6 +335,9 @@ object Unique extends IterableFactory[Unique] {
 		override def init = new SmallUnique(elements.init)
 
 		override def iterator = elements.iterator
+		override def reverseIterator = toIndexedSeq.reverseIterator
+		override def toIndexedSeq = ArraySeq.unsafeWrapArray(elements)
+
 		override def foreach[U](f :T => U) :Unit = elements.foreach(f)
 		override def map[B](f :T => B) :Unique[B] = new SmallUnique(elements.map(f)(ClassTag(classOf[Any])))
 
@@ -400,7 +402,7 @@ object Unique extends IterableFactory[Unique] {
 	}
 
 
-	private[this] final val SmallUniqueLimit = 8
+	private[this] final val SmallUniqueLimit = 16
 
 
 
@@ -411,6 +413,7 @@ object Unique extends IterableFactory[Unique] {
 		override def init = Unique.empty[T]
 
 		override def iterator = Iterator.single(head)
+		override def reverseIterator = Iterator.single(head)
 
 		override def foreach[U](f :T => U) :Unit = f(head)
 
@@ -435,6 +438,25 @@ object Unique extends IterableFactory[Unique] {
 
 		override def toString = "Unique(" + head + ")"
 	}
+
+
+
+
+	class EmptyUnique extends Unique[Nothing] {
+		override def apply(n :Int) :Nothing = throw new IndexOutOfBoundsException("Unique()(" + n + ")")
+
+		override def indexOf[U >: Nothing](elem :U) :Int = -1
+
+		override def +:[U >: Nothing](elem :U) :Unique[U] = new SingletonUnique(elem)
+		override def :+[U >: Nothing](elem :U) :Unique[U] = new SingletonUnique(elem)
+		override def :++[U >: Nothing](elems :IterableOnce[U]) :Unique[U] = from(elems)
+		override def -[U >: Nothing](elem :U) :Unique[Nothing] = this
+
+		override def iterator :Iterator[Nothing] = Iterator.empty
+		override def reverseIterator :Iterator[Nothing] = Iterator.empty
+	}
+
+	private val EmptyUnique = new EmptyUnique
 
 
 

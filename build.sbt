@@ -35,6 +35,8 @@ libraryDependencies ++= Seq(
 scalacOptions ++= Seq(
 //	"-Ylog-classpath",
 //	"-Xlog-implicits",
+//	"-Xlint",
+//	"-W",
 	"-Wconf:cat=deprecation&msg=not a part of the public API:silent," +
 		"cat=deprecation&msg=foldLeft:silent,cat=deprecation&msg=foldRight:silent," +
 		"cat=deprecation:w,cat=feature:w",

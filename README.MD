@@ -2,7 +2,7 @@
 _(old school)_
 #### A Scala ORM for programmers not afraid of SQL.
 
-##Philosophy
+## Philosophy
 
 OldSQL implements a certain paradigm shift in thinking about relational database access. 
 Historically, most object-relational mappers featured a black box design, doing most work behind the scenes 

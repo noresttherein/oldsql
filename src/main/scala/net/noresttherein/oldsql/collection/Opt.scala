@@ -206,9 +206,6 @@ object Opt {
 	@inline final implicit def optionToOpt[T](option :Option[T]) :Opt[T] =
 		new Opt(if (option.isDefined) option.get.asInstanceOf[AnyRef] else EmptyMarker)
 
-	@inline final implicit def optToList[T](opt :Opt[T]) :List[T] = //so Opt can be used in flatMap
-		if (opt.isDefined) opt.get::Nil else Nil
-
 
 
 	/** Wraps the given reference in a purely syntactic option-like object erased in the runtime.

@@ -79,6 +79,19 @@ sealed trait BaseChainFactory {
 	  *
 	  */
 	implicit def noUpperBound[C <: Type, U >: Item] :UpperBound[C, U] = noBound.asInstanceOf[UpperBound[C, U]]
+
+	/** Upper bound of fully instantiated chain type `C` replacing initial `@~` with the type of this chain
+	  * (i.e., `Chain`, `Listing`, etc.).
+	  */
+	final class Bound[C <: Type] private () {
+		type T >: C <: Type
+	}
+
+	object Bound {
+		implicit val emptyBound :Bound[@~] { type T = Type } = new Bound[@~].asInstanceOf[Bound[@~] { type T = Type }]
+		implicit def bound[I <: Type, L <: Item](implicit init :Bound[I]) :Bound[I Link L] { type T = init.T Link L } =
+			emptyBound.asInstanceOf[Bound[I Link L] { type T = init.T Link L }]
+	}
 }
 
 
@@ -94,13 +107,11 @@ trait ChainFactory extends BaseChainFactory {
 	implicit def nonSingletonUpperBound[C <: Type] :UpperBound[C, NonSingleton] = noBound.asInstanceOf[UpperBound[C, NonSingleton]]
 
 
-
 	implicit def ordering[I <: Type :Ordering, L <: Item :Ordering] :Ordering[I Link L] =
 		(left :I Link L, right :I Link L) => Ordering[I].compare(left.init, right.init) match {
 			case 0 => Ordering[L].compare(left.last, right.last)
 			case n => n
 		}
-
 }
 
 
@@ -115,7 +126,6 @@ object Chain extends ChainFactory {
 	override type Link[+I <: Chain, +L] = I ~ L
 
 	protected override def link[I <: Chain, L <: Any](init :I, last :L) :I ~ L = new link(init, last)
-
 
 
 	@inline def apply[I <: Chain, L](init :I, last :L) :I ~ L = new link(init, last)
@@ -148,9 +158,7 @@ object Chain extends ChainFactory {
 			case other: ~[_, _] if other.canEqual(this) => other.last == last && other.init == init
 			case _ => false
 		}
-
 		override def hashCode :Int = init.hashCode * 31 + last.hashCode
-
 
 		override def toString :String = {
 			def entry(sb :StringBuilder, e :Any) :StringBuilder = e match {
@@ -163,10 +171,8 @@ object Chain extends ChainFactory {
 			}
 			rec(this, new StringBuilder).toString
 		}
-
 		protected def symbol :String = "~"
 	}
-
 
 
 	object ~ {
@@ -180,6 +186,8 @@ object Chain extends ChainFactory {
 		}
 	}
 
+
+	def ~[T](first :T): @~ ~ T = new link(@~, first)
 
 
 	protected[collection] class link[I <: Chain, L](override val init :I, override val last :L) extends (I ~ L) {
@@ -221,10 +229,29 @@ object Chain extends ChainFactory {
 	}
 
 
-	/** An empty `Chain`, which is also an instance of every `Chain` variants defined here. */
+	/** An empty `Chain`, which is also an instance of every `Chain` variants defined here.
+	  * Importing this symbol additionally imports an implicit conversion from any type `T` adding extension method
+	  * [[net.noresttherein.oldsql.collection.Chain.method_@~.@~ @~]] which allows to shorten the notation for
+	  * constructing chains with multiple elements by starting immediately from the first element rather than
+	  * this object:
+	  * {{{
+	  *     val abc = @~ ~ a ~ b ~ c
+	  *     val abc2 = a @~ b ~ c
+	  *     assert(abc == abc2, "both values are of type @~ ~ A ~ B ~ C")
+	  * }}}
+	  */
 	case object @~ extends @~ {
 		def unapply(chain :Chain) :Boolean = chain.isInstanceOf[@~]
 	}
+
+
+	@inline implicit def @~[T](first :T) = new method_@~[T](first)
+
+	class method_@~[A](private val first :A) extends AnyVal {
+		/** Creates a two-element chain with `this` as the first and the argument as the second element. */
+		@inline def @~[B](second :B): @~ ~ A ~ B = Chain.@~ ~ first ~ second
+	}
+
 
 
 	type Knot = @~
@@ -357,6 +384,21 @@ object Chain extends ChainFactory {
 
 
 
+
+
+	abstract class Init[C <: Chain, I <: Chain] {
+		def apply(chain :C) :I
+	}
+	implicit def chainInit[I <: Chain, L] :Init[I ~ L, I] = init.asInstanceOf[Init[I ~ L, I]]
+
+	private[this] val init :Init[Chain ~ Any, Chain] = _.init
+
+	abstract class Last[C <: Chain, L] {
+		def apply(chain :C) :L
+	}
+	implicit def chainLast[I <: Chain, L] :Last[I ~ L, L] = last.asInstanceOf[Last[I ~ L, L]]
+
+	private[this] val last :Last[Chain ~ Any, Any] = _.last
 
 
 	implicit val EmptyOrdering :Ordering[@~] = (x : @~, y : @~) => 0
