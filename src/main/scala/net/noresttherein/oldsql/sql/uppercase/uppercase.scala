@@ -48,9 +48,10 @@ package object uppercase extends SQLLiteralImplicits {
 	//todo: capitalized FromSomeExtension; best to wait until we are sure is close to final
 
 
-	val NOT = LogicalSQL.NotSQL
+	val NOT = ast.NotSQL
 
-	val EXISTS = ConditionSQL.ExistsSQL
+	val EXISTS = ast.ExistsSQL
+	val LIKE   = ast.LikeSQL
 
 
 

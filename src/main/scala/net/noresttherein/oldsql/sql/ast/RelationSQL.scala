@@ -4,21 +4,20 @@ import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.collection.{Chain, Opt, Unique}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.InferTypeParams
-import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingOf, OriginProjection, RefinedMapping}
-import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.{ColumnMapping, MappingExtract, Relation, SQLForm}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingOf, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.Relation.Table
+import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.{AndFrom, ComponentSetter, Expanded, RowProduct, Select, SQLExpression}
-import net.noresttherein.oldsql.sql.mechanics.{TableCount, TableOffset}
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, PrefixOf, TopFrom}
+import net.noresttherein.oldsql.sql.Select.SelectMapping
+import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.ast.ColumnComponentSQL.TypedColumnComponentSQL
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
-import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, LocalScope, SQLTypeUnification}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectMapping, TopSelectMapping}
-import net.noresttherein.oldsql.sql.Select.SelectMapping
-import net.noresttherein.oldsql.sql.ast.SQLParameter
+import net.noresttherein.oldsql.sql.ast.SelectAs.{SubselectMapping, TopSelectMapping}
 import net.noresttherein.oldsql.sql.ast.TableSQL.TableVisitor
+import net.noresttherein.oldsql.sql.mechanics.{TableCount, TableOffset}
 
 
 
@@ -367,8 +366,7 @@ class RelationSQL[-F <: RowProduct, T[A] <: BaseMapping[R, A], R, O >: F <: RowP
 	override def topSelectFrom[E <: O with GroundFrom](from :E) :TopSelectMapping[E, T, R] =
 		SelectSQL(from, toRelationSQL)
 
-	override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B])
-			:SubselectMapping[B, from.type, T, R] =
+	override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectMapping[B, from.type, T, R] =
 		SelectSQL.subselect(from, toRelationSQL)
 
 	override def paramSelectFrom[P <: Chain, G <: O](from :TopFrom { type Generalized <: G; type Params = P })

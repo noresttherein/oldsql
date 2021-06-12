@@ -17,11 +17,12 @@ import net.noresttherein.oldsql.sql.Query.{CompoundSelect, CompoundSelectMapping
 import net.noresttherein.oldsql.sql.Select.{ArbitrarySelect, Minus, SelectTemplate, SetOperator}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.LocalScope
-import net.noresttherein.oldsql.sql.ast.{ComponentSQL, ConversionSQL, QuerySQL, RelationSQL, SelectSQL, TupleSQL}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnMappingQuery, ColumnQuery, CompoundSelectColumn, CompoundSelectColumnMapping, CompoundSelectMappingSQL, CompoundSelectSQL, MappingQuerySQL}
+import net.noresttherein.oldsql.sql.ast.{ComponentSQL, CompoundSelectColumn, CompoundSelectColumnMapping, CompoundSelectMappingSQL, CompoundSelectSQL, ConversionSQL, QuerySQL, RelationSQL, SelectSQL, TupleSQL}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnMappingQuery, ColumnQuery, MappingQuerySQL}
+import net.noresttherein.oldsql.sql.ast.SelectAs.{TopSelectAs, TopSelectMapping}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingValueSQL}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{TopSelectAs, TopSelectMapping, TopSelectSQL}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
@@ -171,8 +172,8 @@ object Query {
 
 
 
-	/** An SQL query, that is an SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectAs select]] or
-	  * a [[net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectMappingSQL set operation]] on them,
+	/** An SQL query, that is an SQL [[net.noresttherein.oldsql.sql.ast.SelectAs select]] or
+	  * a [[net.noresttherein.oldsql.sql.ast.CompoundSelectMappingSQL set operation]] on them,
 	  * which provides a [[net.noresttherein.oldsql.schema.Mapping Mapping]] for the returned rows.
 	  */
 	trait MappingQuery[P, M[O] <: MappingAt[O]] extends Query[P, M[Unit]#Subject] {
@@ -716,4 +717,6 @@ object Select {
 	}
 
 }
+
+
 

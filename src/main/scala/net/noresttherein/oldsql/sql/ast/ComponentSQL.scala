@@ -23,7 +23,8 @@ import net.noresttherein.oldsql.sql.ast.ComponentLValueSQL.BaseComponentConversi
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.{ComponentConversion, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL.ProperComponent
 import net.noresttherein.oldsql.sql.ast.RelationSQL.{CaseRelation, RelationVisitor}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectColumnAs, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, TopSelectColumnAs, TopSelectColumnMapping, TopSelectMapping}
+import net.noresttherein.oldsql.sql.ast.SelectAs.{SubselectMapping, TopSelectMapping}
+import net.noresttherein.oldsql.sql.ast.SelectColumnAs.{SubselectColumnAs, SubselectColumnMapping, TopSelectColumnAs, TopSelectColumnMapping}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, TableCount, TableOffset}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
@@ -397,8 +398,7 @@ object ComponentSQL { //support for AlteredMapping
 		override def topSelectFrom[E <: F with GroundFrom](from :E) :TopSelectMapping[E, M, V] =
 			SelectSQL(from, this)
 
-		override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B])
-				:SubselectMapping[B, from.type, M, V] =
+		override def subselectFrom[B <: NonEmptyFrom](from :ExactSubselectOf[F, B]) :SubselectMapping[B, from.type, M, V] =
 			SelectSQL.subselect(from, this)
 
 		override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })

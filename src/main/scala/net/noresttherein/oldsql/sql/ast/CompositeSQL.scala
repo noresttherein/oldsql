@@ -9,19 +9,19 @@ import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnVisito
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL, LocalScope}
-import net.noresttherein.oldsql.sql.ast.ConditionSQL.{CaseCondition, ConditionVisitor}
 import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.{ArithmeticVisitor, CaseArithmetic}
+import net.noresttherein.oldsql.sql.ast.ChainSQL.{CaseChain, ChainVisitor}
+import net.noresttherein.oldsql.sql.ast.CompoundSelectColumn.{CaseCompoundSelectColumn, CompoundSelectColumnVisitor}
+import net.noresttherein.oldsql.sql.ast.CompoundSelectSQL.{CaseCompoundSelect, CompoundSelectVisitor}
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.{CompositeColumnVisitor, MatchOnlyCompositeColumn}
 import net.noresttherein.oldsql.sql.ast.ConcatSQL.{CaseConcat, ConcatVisitor}
+import net.noresttherein.oldsql.sql.ast.ConditionSQL.{CaseCondition, ConditionVisitor}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.{CaseColumnConversion, CaseConversion, ColumnConversionSQL, ColumnConversionVisitor, ConversionVisitor}
+import net.noresttherein.oldsql.sql.ast.FunctionSQL.{CaseFunction, FunctionColumnSQL, FunctionVisitor}
 import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumnSQL.{CaseFunctionColumn, FunctionColumnVisitor}
 import net.noresttherein.oldsql.sql.ast.LogicalSQL.{CaseLogical, LogicalVisitor}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumn.{CaseCompoundSelectColumn, CompoundSelectColumnVisitor}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.Rows
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{CaseTuple, TupleVisitor}
-import net.noresttherein.oldsql.sql.ast.ChainSQL.{CaseChain, ChainVisitor}
-import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.{CompositeColumnVisitor, MatchOnlyCompositeColumn}
-import net.noresttherein.oldsql.sql.ast.FunctionSQL.{CaseFunction, FunctionColumnSQL, FunctionVisitor}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.{CompoundSelectColumn, CompoundSelectSQL, Rows}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL.{CaseCompoundSelect, CompoundSelectVisitor}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 

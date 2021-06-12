@@ -20,8 +20,7 @@ import net.noresttherein.oldsql.sql.Expanded.NonSubselect
 import net.noresttherein.oldsql.sql.FromSome.GroundFromSome
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope, LocalSQL}
-import net.noresttherein.oldsql.sql.ast.{ColumnComponentSQL, ComponentSQL, RelationSQL, SelectSQL, TableSQL}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs}
+import net.noresttherein.oldsql.sql.ast.{ColumnComponentSQL, ComponentSQL, RelationSQL, SelectAs, SelectColumn, SelectColumnAs, SelectSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{GroupedUnder, LastTableOf, OuterClauseOf, RowProductVisitor, SelectFactory, SpelledSQL, TableCount}

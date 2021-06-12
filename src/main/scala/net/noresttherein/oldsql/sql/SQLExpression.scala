@@ -18,9 +18,8 @@ import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.SQLExpression.Lift.ComposedLift
 import net.noresttherein.oldsql.sql.StoredProcedure.Out
-import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ChainSQL, CompositeSQL, LooseComponent, MappingSQL, QuerySQL, SelectSQL, SQLNull, SQLParameter, SQLTerm}
+import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ChainSQL, ComparisonSQL, CompositeSQL, EqualitySQL, InequalitySQL, IsNull, LooseComponent, MappingSQL, QuerySQL, SelectSQL, SQLNull, SQLParameter, SQLTerm}
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.{CaseComposite, CompositeVisitor}
-import net.noresttherein.oldsql.sql.ast.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNull}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.{MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{CaseMapping, MappingVisitor}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseQuery, QueryVisitor, Rows}

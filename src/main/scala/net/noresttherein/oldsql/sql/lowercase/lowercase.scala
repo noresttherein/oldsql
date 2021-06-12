@@ -2,7 +2,6 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.RowProduct.NonEmptyFrom
-import net.noresttherein.oldsql.sql.ast.{ConditionSQL, LogicalSQL}
 import net.noresttherein.oldsql.sql.ast.SQLParameter
 import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits
 
@@ -41,13 +40,13 @@ package object lowercase extends SQLLiteralImplicits {
 
 //	type not[-F <: RowProduct, S >: LocalScope <: GlobalScope] = LogicalSQL.NotSQL[F, S]
 
-	val not = LogicalSQL.NotSQL
+	val not = ast.NotSQL
 
 //	type exists[-F <: RowProduct, S >: LocalScope <: GlobalScope, V] = ConditionSQL.ExistsSQL[F, S, V]
 
-	val exists = ConditionSQL.ExistsSQL
+	val exists = ast.ExistsSQL
 
-	val like = ConditionSQL.LikeSQL
+	val like = ast.LikeSQL
 
 
 

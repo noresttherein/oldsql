@@ -12,8 +12,11 @@ import net.noresttherein.oldsql.sql.{Aggregated, ColumnSQL, FromSome, IndexedMap
 import net.noresttherein.oldsql.sql.RowProduct.{GroundFrom, NonEmptyFrom, TopFrom}
 import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.{ChainSQL, ColumnComponentSQL, ComponentSQL, ConversionSQL, SelectSQL, TupleSQL}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
+import net.noresttherein.oldsql.sql.ast.{ChainSQL, ColumnComponentSQL, ComponentSQL, ConversionSQL, SelectAs, SelectColumn, SelectColumnAs, SelectSQL, TupleSQL}
+import net.noresttherein.oldsql.sql.ast.SelectAs.{SubselectAs, TopSelectAs}
+import net.noresttherein.oldsql.sql.ast.SelectColumn.{SubselectColumn, TopSelectColumn}
+import net.noresttherein.oldsql.sql.ast.SelectColumnAs.{SubselectColumnAs, TopSelectColumnAs}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectSQL, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
 
@@ -29,38 +32,38 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
   * Implicit instances exist in the companion object for:
   *   1. `E <: `[[net.noresttherein.oldsql.sql.ast.ColumnComponentSQL ColumnComponentSQL]]`[G, M, T]`,
   *      `M[O] <: `[[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]]`[T, O]`:
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumnAs SelectColumnAs]]`[B, M, T]`
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectColumnAs SelectColumnAs]]`[B, M, T]`
   *          for any `F <: RowProduct`,
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectColumnMapping TopSelectColumnMapping]]`[S, M, T]` for
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectColumnAs.TopSelectColumnMapping TopSelectColumnMapping]]`[S, M, T]` for
   *          `F <: `[[net.noresttherein.oldsql.sql.RowProduct.GroundFrom GroundFrom]] and
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectColumnMapping SubselectColumnMapping]]`[B, S, M, T]`
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectColumnAs.SubselectColumnMapping SubselectColumnMapping]]`[B, S, M, T]`
   *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]];
   *   1. `E <: `[[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]]:
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumnAs SelectColumnAs]]`[B, M, T]`
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectColumnAs SelectColumnAs]]`[B, M, T]`
   *          for any `F <: RowProduct`,
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectColumnMapping TopSelectColumnMapping]]`[S, M, T]` for
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectColumnAs.TopSelectColumnMapping TopSelectColumnMapping]]`[S, M, T]` for
   *          `F <: `[[net.noresttherein.oldsql.sql.RowProduct.GroundFrom GroundFrom]] and
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectColumnMapping SubselectColumnMapping]]`[B, S, M, T]`
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectColumnAs.SubselectColumnMapping SubselectColumnMapping]]`[B, S, M, T]`
   *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]]
   *          (where `M[O]` is the origin [[net.noresttherein.oldsql.schema.Mapping.OriginProjection projection]] of `E`);
   *   1. `E <: `[[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]]`[G, M]`,
   *      `M[O] <: `[[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[T, O]`:
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectAs SelectAs]]`[B, M]` for any `F <: RowProduct`,
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectMapping TopSelectMapping]]`[S, M, T]` for
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectAs SelectAs]]`[B, M]` for any `F <: RowProduct`,
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectAs.TopSelectMapping TopSelectMapping]]`[S, M, T]` for
   *          `F <: `[[net.noresttherein.oldsql.sql.RowProduct.GroundFrom GroundFrom]] and
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectMapping SubselectMapping]]`[B, S, M, T]`
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectAs.SubselectMapping SubselectMapping]]`[B, S, M, T]`
   *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]];
   *   1. `E <: `[[net.noresttherein.oldsql.schema.Mapping Mapping]]:
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectAs SelectAs]]`[B, M]` for any `F <: RowProduct`,
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectMapping TopSelectMapping]]`[S, M, T]` for
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectAs SelectAs]]`[B, M]` for any `F <: RowProduct`,
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectAs.TopSelectMapping TopSelectMapping]]`[S, M, T]` for
   *          `F <: `[[net.noresttherein.oldsql.sql.RowProduct.GroundFrom GroundFrom]] and
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectMapping SubselectMapping]]`[B, S, M, T]`
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectAs.SubselectMapping SubselectMapping]]`[B, S, M, T]`
   *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]]
   *          (where `M[O]` is the origin [[net.noresttherein.oldsql.schema.Mapping.OriginProjection projection]] of `E`);
   *   1. `E <: `[[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`G, LocalScope, T]`:
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumn SelectColumn]]`[B, T]` for any `F <: RowProduct`,
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectColumn TopSelectColumn]]`[T]` for `F <: GroundFrom` and
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectColumn SubselectColumn]]`[B, T]` for `F <: SubselectFrom`;
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectColumn SelectColumn]]`[B, T]` for any `F <: RowProduct`,
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectColumn.TopSelectColumn TopSelectColumn]]`[T]` for `F <: GroundFrom` and
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectColumn.SubselectColumn SubselectColumn]]`[B, T]` for `F <: SubselectFrom`;
   *   1. `E <: `[[net.noresttherein.oldsql.sql.ast.TupleSQL TupleSQL]]`[G, LocalScope, T]`:
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]]`[B, T]` for any `F <: RowProduct`,
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL TopSelectSQL]]`[T]` for `F <: GroundFrom` and

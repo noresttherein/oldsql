@@ -23,8 +23,7 @@ import net.noresttherein.oldsql.sql.TableStatement.{GroundSetClauseFactory, Grou
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
 import net.noresttherein.oldsql.sql.Update.implementation.{updateDomain, DefaultEntityUpdate, DefaultGroundEntitiesUpdate, DefaultGroundEntityUpdate, DefaultGroundUpdate, DefaultUpdate, DefaultUpdateReturningEntityWhereSeed, DefaultUpdateUpdatingEntity, GroundUpdate, ParamUpdate, UpdateReturning, UpdatesReturning}
 import net.noresttherein.oldsql.sql.Update.syntax.{DefaultUpdateReturningEntity, DefaultUpdateUpdatingOne, EntitiesUpdate, EntityUpdate, EntityUpdateWhere, EntityUpdateWhereAll, EntityUpdateWhereSeed, GenericUpdateFactory, GroundEntitiesUpdate, GroundEntitiesUpdateWhereSeed, GroundEntityMultiUpdateFactory, GroundEntityUpdate, GroundEntityUpdateWhereSeed, GroundRowUpdateWhereSeed, GroundUpdateAllFactory, GroundUpdateFactory, GroundUpdateOneFactory, RowUpdate, RowUpdateWhereAll, RowUpdateWhereSeed, UpdateFacade, UpdateMany, UpdateOne, UpdateParam, UpdateUpdatingOne}
-import net.noresttherein.oldsql.sql.ast.SQLParameter
-import net.noresttherein.oldsql.sql.ast.LogicalSQL.OrSQL
+import net.noresttherein.oldsql.sql.ast.{OrSQL, SQLParameter}
 import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.MappingReveal.MappingSubject

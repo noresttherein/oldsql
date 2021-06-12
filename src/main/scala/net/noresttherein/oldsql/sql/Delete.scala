@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.sql.DMLStatement.StatementResult.UpdateCount
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.TableStatement.{GroundWhereClauseFactory, WhereAllClauseFactory, WhereClauseFactory, WhereAnyClauseFactory}
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
-import net.noresttherein.oldsql.sql.ast.LogicalSQL.OrSQL
+import net.noresttherein.oldsql.sql.ast.OrSQL
 import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
 import net.noresttherein.oldsql.sql.mechanics.MappingReveal.MappingSubject

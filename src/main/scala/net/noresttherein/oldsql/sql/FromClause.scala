@@ -18,11 +18,10 @@ import net.noresttherein.oldsql.sql.RowProduct.{As, JoinedMappings, NonEmptyFrom
 import net.noresttherein.oldsql.sql.UnboundParam.{NamedParamRelation, ParamRelation}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalSQL, LocalScope}
-import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ComponentSQL, LooseColumn, RelationSQL}
+import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ComponentSQL, LooseColumn, RelationSQL, SelectColumn}
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.ast.TableSQL.LastTable
-import net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumn
 import net.noresttherein.oldsql.sql.mechanics.{GroupingExpression, LastTableOf, RowProductVisitor, SpelledSQL, SQLNumber, SQLOrdering, TableCount}
 import net.noresttherein.oldsql.sql.mechanics.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.mechanics.LastTableOf.LastBound
@@ -1142,8 +1141,8 @@ object FromSome {
 		  * of any other [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] (and, in particular, inside
 		  * the `Outer` clause).
 		  * @return a `SelectColumn` subtype depending on whether this instance represents an outer select
-		  *         ([[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectColumn TopSelectColumn]])
-		  *         or a subselect ([[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectColumn]])
+		  *         ([[net.noresttherein.oldsql.sql.ast.SelectColumn.TopSelectColumn TopSelectColumn]])
+		  *         or a subselect ([[net.noresttherein.oldsql.sql.ast.SelectColumn.SubselectColumn]])
 		  */
 		def select[V](header :AggregateSQL[Generalized, Aggregated[Generalized], _, V])
 				:SelectColumn[Base, V] =

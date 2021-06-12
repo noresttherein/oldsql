@@ -18,7 +18,8 @@ import net.noresttherein.oldsql.sql.ast.CompositeSQL.{CaseComposite, CompositeCo
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.CaseCompositeColumn
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, CaseQuery, ColumnQuery, Rows}
 import net.noresttherein.oldsql.sql.ast.RelationSQL.CaseRelation
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{CaseTopSelect, CaseTopSelectColumn, SubselectColumn, SubselectSQL, TopSelectColumn, TopSelectSQL}
+import net.noresttherein.oldsql.sql.ast.SelectColumn.{CaseTopSelectColumn, SubselectColumn, TopSelectColumn}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{CaseTopSelect, SubselectSQL, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{CaseTerm, ColumnTerm}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.CaseColumnTerm

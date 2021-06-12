@@ -12,19 +12,17 @@ import net.noresttherein.oldsql.sql.SQLDialect.SpellingScope.SelectScope
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.StoredProcedure.Out
-import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ArithmeticSQL, ConcatSQL, LooseColumn, QuerySQL, SelectSQL, SQLNull}
+import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, AndSQL, ArithmeticSQL, BetweenSQL, ConcatSQL, InSQL, LikeSQL, LooseColumn, NotSQL, OrSQL, QuerySQL, SelectColumn, SelectSQL, SQLNull}
 import net.noresttherein.oldsql.sql.ast.AggregateSQL.{AggregateVisitor, CaseAggregate}
 import net.noresttherein.oldsql.sql.ast.ColumnComponentSQL.TypedColumnComponentSQL
 import net.noresttherein.oldsql.sql.ast.ColumnComponentSQL.TypedColumnComponentSQL.CaseColumnComponent
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnVisitor}
-import net.noresttherein.oldsql.sql.ast.ConditionSQL.{BetweenSQL, InSQL, LikeSQL}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.{ColumnPromotionConversion, MappedColumnSQL, OrNull}
-import net.noresttherein.oldsql.sql.ast.LogicalSQL.{AndSQL, NotSQL, OrSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.MappingColumnVisitor
 import net.noresttherein.oldsql.sql.ast.LooseColumn.CaseLooseColumn
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, ColumnQuery, ColumnQueryVisitor, Rows}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectColumn, SubselectColumn, TopSelectColumn}
+import net.noresttherein.oldsql.sql.ast.SelectColumn.{SubselectColumn, TopSelectColumn}
 import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermVisitor}

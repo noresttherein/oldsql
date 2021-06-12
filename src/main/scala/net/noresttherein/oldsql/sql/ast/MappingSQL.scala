@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL.{CaseComp
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.LooseColumn.LooseColumnVisitor
 import net.noresttherein.oldsql.sql.ast.LooseComponent.{CaseLooseComponent, LooseComponentVisitor}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SubselectAs, TopSelectAs}
+import net.noresttherein.oldsql.sql.ast.SelectAs.{SubselectAs, TopSelectAs}
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
