@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.slang.&&
 import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.ColumnMapping.ColumnOf
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.Table
+import net.noresttherein.oldsql.schema.Table
 
 
 

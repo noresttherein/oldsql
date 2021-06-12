@@ -3,8 +3,8 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.{Chain, ReversedList}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.generic.Self
+import net.noresttherein.oldsql.schema.{RelVar, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.{RelVar, Table}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.forms.{ChainForm, ChainReadForm}
 import net.noresttherein.oldsql.schema.SQLReadForm

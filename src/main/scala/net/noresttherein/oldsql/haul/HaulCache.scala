@@ -2,9 +2,8 @@ package net.noresttherein.oldsql.haul
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.schema.Mapping
+import net.noresttherein.oldsql.schema.{Mapping, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.schema.Relation.Table
 
 
 

@@ -6,9 +6,8 @@ import scala.reflect.ClassTag
 
 import net.noresttherein.oldsql.{DeprecatedAlways, SharedImplDeprecation}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.schema.{RelVar, SQLForm}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.schema.Relation.RelVar
-import net.noresttherein.oldsql.schema.SQLForm
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.Delete.implementation.{GroundDelete, ParamDelete}
 import net.noresttherein.oldsql.sql.Delete.syntax.{DeleteAll, DeleteMany, DeleteOne, GroundMultiDeleteFactory, GroundDeleteOneFactory, DeleteParam, DeleteFacade}

@@ -5,9 +5,9 @@ import scala.collection.mutable
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.schema.Table
 import net.noresttherein.oldsql.schema.Mapping.{MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.MappingExtract
-import net.noresttherein.oldsql.schema.Relation.Table
 
 
 

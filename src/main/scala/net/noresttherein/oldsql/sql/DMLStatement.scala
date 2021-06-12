@@ -15,9 +15,8 @@ import net.noresttherein.oldsql.exceptions.{Bug, IllegalResultArityException, Mi
 import net.noresttherein.oldsql.morsels.ComparableFactory
 import net.noresttherein.oldsql.morsels.Extractor.Optional
 import net.noresttherein.oldsql.pixies.{CachedUpdateCountStatement, CallableStatementOutParams}
-import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, RelVar, SQLReadForm, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.{RelVar, Table}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.Call.{CallVisitor, CaseCall}

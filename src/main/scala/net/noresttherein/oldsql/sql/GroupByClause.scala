@@ -5,11 +5,11 @@ import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.{ChunkedString, InferTypeParams}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, SQLForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, SQLForm, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
-import net.noresttherein.oldsql.schema.Relation.{PseudoRelation, Table}
-import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
+import net.noresttherein.oldsql.schema.Relation.PseudoRelation
+import net.noresttherein.oldsql.schema.Table.StaticTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.{InferAliasedSubject, InferSubject}

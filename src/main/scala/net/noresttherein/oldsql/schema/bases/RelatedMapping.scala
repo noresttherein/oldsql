@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.schema.{Buff, ColumnMapping, PrimaryKeyOf}
 import net.noresttherein.oldsql.schema.Buff.{Nullable, SelectDefault}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.PrimaryKeyOf.PrimaryKeyColumnOf
-import net.noresttherein.oldsql.schema.Relation.RelVar
+import net.noresttherein.oldsql.schema.RelVar
 import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping, JoinedEntityColumn, JoinedEntityComponent, JoinTableCollectionMapping, TableKin}
 
 

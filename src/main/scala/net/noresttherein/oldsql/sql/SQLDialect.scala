@@ -7,9 +7,9 @@ import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.exceptions.InseparableExpressionException
 import net.noresttherein.oldsql.morsels.TextCase
 import net.noresttherein.oldsql.morsels.TextCase.LowerCase
-import net.noresttherein.oldsql.schema.ColumnMapping
+import net.noresttherein.oldsql.schema.{ColumnMapping, RelVar, Table}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.schema.Relation.{Aliased, RelVar, Table}
+import net.noresttherein.oldsql.schema.Relation.Aliased
 import net.noresttherein.oldsql.slang.OptionGuardExtension
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult
 import net.noresttherein.oldsql.sql.Incantation.Cantrip

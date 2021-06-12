@@ -6,10 +6,9 @@ import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.ColumnValues.{ColumnValue, ColumnValuesAliasing, EmptyValues}
 import net.noresttherein.oldsql.haul.ComponentValues.{AliasedComponentValues, DedicatedComponentValues, FallbackValues}
 import net.noresttherein.oldsql.morsels.generic.{=#>, GenericFun, Self}
-import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, MappingExtract}
+import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, MappingExtract, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
-import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 
 //here be implicits

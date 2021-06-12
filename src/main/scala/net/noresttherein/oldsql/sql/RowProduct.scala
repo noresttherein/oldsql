@@ -7,10 +7,9 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainGet}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.{ChunkedString, InferTypeParams}
-import net.noresttherein.oldsql.schema.ColumnMapping
+import net.noresttherein.oldsql.schema.{ColumnMapping, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.Table
-import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
+import net.noresttherein.oldsql.schema.Table.StaticTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql

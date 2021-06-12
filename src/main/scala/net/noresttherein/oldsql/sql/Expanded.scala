@@ -5,8 +5,7 @@ import scala.annotation.implicitNotFound
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.morsels.ChunkedString
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.schema.Relation
-import net.noresttherein.oldsql.schema.Relation.Table
+import net.noresttherein.oldsql.schema.{Relation, Table}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, ExpandingClause, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf, RowComposition, RowDecomposition}

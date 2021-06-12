@@ -1,6 +1,5 @@
-import net.noresttherein.oldsql.schema.{Mapping, Relation}
+import net.noresttherein.oldsql.schema.{Mapping, Relation, Table}
 import net.noresttherein.oldsql.schema.bits.FormMapping
-import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.sql.{AndFrom, From, InnerJoin, Join, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.RowProduct.RowDecomposition
 

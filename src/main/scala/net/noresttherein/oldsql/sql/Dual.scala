@@ -3,9 +3,9 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.morsels.{ChunkedString, InferTypeParams}
+import net.noresttherein.oldsql.schema.Table
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.schema.Relation.Table
-import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
+import net.noresttherein.oldsql.schema.Table.StaticTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate

@@ -8,9 +8,9 @@ import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.{IllegalSQLException, InseparableExpressionException}
 import net.noresttherein.oldsql.morsels.witness.Maybe
-import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadForm, SQLWriteForm, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.schema.Relation.{SelectRelation, Table}
+import net.noresttherein.oldsql.schema.Table.SelectRelation
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLDialect, SQLExpression, StandardSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult

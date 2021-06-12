@@ -14,7 +14,7 @@ import net.noresttherein.oldsql.schema.{composeColumnExtracts, composeExtracts, 
 import net.noresttherein.oldsql.schema.ColumnMapping.{OptimizedColumn, SimpleColumn, StableColumn}
 import net.noresttherein.oldsql.schema.ColumnWriteForm.SingletonColumnWriteForm
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.RelVar
+import net.noresttherein.oldsql.schema.RelVar
 import net.noresttherein.oldsql.schema.SQLForm.{AbstractMappedForm, NullValue}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping, OptimizedMappingAssembly}
 import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.CounterpartComponent

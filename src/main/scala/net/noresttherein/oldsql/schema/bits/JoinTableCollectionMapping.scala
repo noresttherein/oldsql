@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping, StableMapping}
 import net.noresttherein.oldsql.schema.{composeExtracts, Buff, Buffs, MappingExtract}
-import net.noresttherein.oldsql.schema.Relation.RelVar
+import net.noresttherein.oldsql.schema.RelVar
 import net.noresttherein.oldsql.schema.support.EffectivelyEmptyMapping
 
 

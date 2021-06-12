@@ -141,7 +141,7 @@ import slang._
   * For this reason, instances of this class should not be serialized in contexts where their reference would
   * be exposed after deserialization. An exception can be made for mappings of globally defined (i.e., reachable by
   * a path consisting of static identifiers) singleton objects extending
-  * [[net.noresttherein.oldsql.schema.Relation.Table Table]] relation, as they are deserialized to the same instance.
+  * [[net.noresttherein.oldsql.schema.Table Table]] relation, as they are deserialized to the same instance.
   *
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
   * @see [[net.noresttherein.oldsql.schema.bases.BaseMapping]]

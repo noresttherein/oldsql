@@ -7,14 +7,16 @@ import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingOf, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
-import net.noresttherein.oldsql.schema.Relation.{AlteredRelation, RelationTemplate}
-import net.noresttherein.oldsql.schema.Relation.BaseTable.TableFactory
+import net.noresttherein.oldsql.schema.Relation.{AlteredRelation, NamedRelation, ProjectingRelation, RelationTemplate, StaticRelation}
+import net.noresttherein.oldsql.schema.BaseTable.TableFactory
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.ConstantMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.@:.Labeled
 import net.noresttherein.oldsql.schema.support.AdjustedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
+import net.noresttherein.oldsql.schema.BaseTable.TableFactory
+import net.noresttherein.oldsql.schema.Table.DerivedTable
 import net.noresttherein.oldsql.sql.{Adjoin, AndFrom, From, JoinedRelation, RowProduct}
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
@@ -50,8 +52,8 @@ sealed trait AbstractRelation extends Serializable { this :Relation[MappingAt] =
   * same mapping `M` as its 'interface' mapping, but an [[net.noresttherein.oldsql.schema.Relation.export altered]]
   * instance as the ''effective'' mapping, which should be used when accessing the components of `M` for assembly
   * or in order to determine the column set which should be included in a database operation.
-  * @see [[net.noresttherein.oldsql.schema.Relation.Table Table]]
-  * @see [[net.noresttherein.oldsql.schema.Relation.BaseTable BaseTable]]
+  * @see [[net.noresttherein.oldsql.schema.Table Table]]
+  * @see [[net.noresttherein.oldsql.schema.BaseTable BaseTable]]
   * @author Marcin Mościcki
   */
 trait Relation[+M[O] <: MappingAt[O]] extends AbstractRelation with RelationTemplate[M, Relation] {
@@ -272,8 +274,9 @@ object Relation {
 	  * relation `val`s before they are initialized - either have everything declared in a singleton object, or declare
 	  * relations as `lazy val`s (or `object`s themselves).
 	  */
-	private abstract class ProjectingRelation[+M[O] <: BaseMapping[S, O], S]
-	                                         (prototype: => M[Unit])(implicit projection :IsomorphicProjection[M, S, Unit])
+	private[schema] abstract class ProjectingRelation[+M[O] <: BaseMapping[S, O], S]
+	                                                 (prototype: => M[Unit])
+	                                                 (implicit projection :IsomorphicProjection[M, S, Unit])
 		extends Relation[M]
 	{
 		protected[this] lazy val template = prototype
@@ -308,262 +311,6 @@ object Relation {
 	  * but are synthetic instances used by the SQL DSL, such as query parameters or grouping expressions.
 	  */
 	trait PseudoRelation[+M[O] <: MappingAt[O]] extends Relation[M]
-
-
-
-
-
-
-	/** A relation which can occur inside a ''from'' clause of an SQL ''select''. This includes not only 'true'
-	  * database tables and views, but also ''derived tables'' of other ''selects''.
-	  * @see [[net.noresttherein.oldsql.schema.Relation.BaseTable]]
-	  * @see [[net.noresttherein.oldsql.schema.Relation.RelVar]]
-	  * @see [[net.noresttherein.oldsql.schema.Relation.DerivedTable]]
-	  */
-	trait Table[+M[O] <: MappingAt[O]] extends Relation[M] with RelationTemplate[M, Table] {
-
-		private[Table] val expr = TableSQL.LastTable[MappingOf[Any]#TypedProjection, Any](
-			this.asInstanceOf[Table[MappingOf[Any]#TypedProjection]]
-		)
-		private[Table] val fromClause = From[MappingOf[Any]#TypedProjection, Any, Label](expr, None, True)
-
-		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
-				:Table[M] =
-			new AlteredRelation[M, Table](this, includes, excludes) with Table[M] {
-				override def defaultSpelling[P, F <: RowProduct]
-				                            (context :SQLContext, params :Parameterization[P, F])
-				                            (implicit spelling :SQLSpelling) =
-					default.defaultSpelling(spelling)(context, params)
-			}
-
-		/** Formats the relation for use in a ''from'' clause. For example,
-		  * a [[net.noresttherein.oldsql.schema.Relation.BaseTable table]] will simply return its name,
-		  * while a [[net.noresttherein.oldsql.schema.Relation.SelectRelation select]] will format its whole SQL.
-		  * This is the default spelling used by [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-		  */
-		protected def defaultSpelling[P, F <: RowProduct]
-		                             (context :SQLContext, params :Parameterization[P, F])
-		                             (implicit spelling :SQLSpelling) :SpelledSQL[P, F]
-
-		private[oldsql] def defaultSpelling[P, F <: RowProduct]
-		                                   (spelling :SQLSpelling)
-		                                   (context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
-			defaultSpelling(context, params)(spelling)
-
-		protected override def spell[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A], V]
-		                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
-		                            (context :SQLContext, params :Parameterization[P, F])
-		                            (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
-			spelling.column(origin, export[O].export(column))(context, params)
-	}
-
-
-	object Table {
-		def apply[M <: Mapping, S](tableName :String, template : => M)
-		                          (implicit project :OriginProjection[M, S]) :BaseTable[project.WithOrigin] =
-			BaseTable[M, S](tableName, template)
-
-		def apply[S] :TableFactory[S] = BaseTable[S]
-
-		trait StaticTable[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M] {
-			override def name :N
-		}
-
-		type * = Table[M] forSome { type M[O] <: MappingAt[O] }
-
-
-		implicit class TableExtension[M[O] <: MappingAt[O]](private val table :Table[M]) extends AnyVal {
-			@inline def asLast :JoinedTable[RowProduct AndFrom M, M] =
-				table.expr.asInstanceOf[JoinedTable[RowProduct AndFrom M, M]]
-
-			@inline def from :From[M] = table.expr.asInstanceOf[From[M]]
-		}
-
-		class TableExtraExtension[S, M[O] <: BaseMapping[S, O]](private val table :Table[M]) extends AnyVal {
-			@inline def toSQL :TableSQL[RowProduct AndFrom M, M, S, RowProduct AndFrom M] =
-				table.expr.toTableSQL.asInstanceOf[TableSQL[RowProduct AndFrom M, M, S, RowProduct AndFrom M]]
-		}
-
-		@inline implicit def TableExtraExtension[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                                        (table :Table[M])(implicit reveal :MappingSubject[M, T, S])
-				:TableExtraExtension[S, T] =
-			new TableExtraExtension[S, T](reveal(table))
-	}
-
-
-
-
-	/** A named, persistent relation in the schema. This includes [[net.noresttherein.oldsql.schema.Relation.View views]]
-	  * and [[net.noresttherein.oldsql.schema.Relation.BaseTable tables]].
-	  */
-	trait RelVar[+M[O] <: MappingAt[O]] extends Table[M] with NamedRelation[M] with RelationTemplate[M, RelVar] {
-
-		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
-				:RelVar[M] =
-			new AlteredRelation[M, RelVar](this, includes, excludes) with RelVar[M] {
-				override val name = default.name
-				override def toString = alteredString
-			}
-
-		protected override def defaultSpelling[P, F <: RowProduct]
-		                                      (context :SQLContext, params :Parameterization[P, F])
-		                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
-			SpelledSQL(name, context, params)
-	}
-
-
-	object RelVar {
-		type * = RelVar[M] forSome { type M[O] <: MappingAt[O] }
-	}
-
-
-
-
-	/** A 'true', persistent and updatable SQL table. */
-	trait BaseTable[+M[O] <: MappingAt[O]] extends Table[M] with RelVar[M] with RelationTemplate[M, BaseTable] {
-		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
-				:BaseTable[M] =
-			new AlteredRelation[M, BaseTable](this, includes, excludes) with BaseTable[M] {
-				override val name = default.name
-				override def toString = alteredString
-			}
-	}
-
-
-	object BaseTable {
-
-		def apply[M <: Mapping, S](tableName :String, template : => M)
-		                          (implicit project :OriginProjection[M, S]) :BaseTable[project.WithOrigin] =
-			new ProjectingRelation[project.WithOrigin, S](project[Unit](template))(project.isomorphism)
-				with BaseTable[project.WithOrigin]
-			{
-				override val name = tableName
-			}
-
-		def apply[S] :TableFactory[S] = new TableFactory[S] {}
-
-		trait TableFactory[S] extends Any { //fixme: lazy implicit
-			final def apply[M <: Mapping](tableName :String)(implicit mapping :M, project :OriginProjection[M, S])
-					:BaseTable[project.WithOrigin] =
-				BaseTable(tableName, mapping)
-		}
-
-
-		trait StaticBaseTable[N <: String with Singleton, M[O] <: MappingAt[O]]
-			extends BaseTable[M] with StaticRelation[N, M]
-
-		type * = BaseTable[M] forSome { type M[O] <: MappingAt[O] }
-	}
-
-
-
-
-	/** Supertype of all non-persistent (at least semantically) SQL relations.
-	  * This includes [[net.noresttherein.oldsql.schema.Relation.View views]] and
-	  * [[net.noresttherein.oldsql.schema.Relation.SelectRelation selects]] used in ''from'' and ''with'' clauses.
-	  */
-	trait DerivedTable[+M[O] <: MappingAt[O]] extends Table[M] with RelationTemplate[M, DerivedTable] {
-
-		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
-				:DerivedTable[M] =
-			new AlteredRelation[M, DerivedTable](this, includes, excludes) with DerivedTable[M] {
-				override def defaultSpelling[P, F <: RowProduct]
-				                            (context :SQLContext, params :Parameterization[P, F])
-				                            (implicit spelling :SQLSpelling) =
-					default.defaultSpelling(spelling)(context, params)
-			}
-	}
-
-
-	object DerivedTable {
-		type * = DerivedTable[M] forSome { type M[O] <: MappingAt[O] }
-	}
-
-
-
-
-	/** An SQL view. Treated in the same way as [[net.noresttherein.oldsql.schema.Relation.BaseTable tables]]. */
-	trait View[+M[O] <: MappingAt[O]] extends DerivedTable[M] with RelVar[M] with RelationTemplate[M, View] {
-		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
-				:View[M] =
-			new AlteredRelation[M, View](this, includes, excludes) with View[M] {
-				override val name = default.name
-			}
-	}
-
-
-	object View {
-
-		def apply[M <: Mapping, S](tableName :String, template : => M)
-		                          (implicit project :OriginProjection[M, S]) :View[project.WithOrigin] =
-			new ProjectingRelation[project.WithOrigin, S](project[Unit](template))(project.isomorphism)
-				with View[project.WithOrigin]
-			{
-				override val name = tableName
-			}
-
-		def apply[S] :ViewFactory[S] = new ViewFactory[S] {}
-
-		trait ViewFactory[S] extends Any { //fixme: lazy implicit
-			final def apply[M <: Mapping](tableName :String)(implicit mapping :M, project :OriginProjection[M, S])
-					:View[project.WithOrigin] =
-				View(tableName, mapping)
-		}
-
-		trait StaticView[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M] {
-			override def name :N
-		}
-
-		type * = View[M] forSome { type M[O] <: MappingAt[O] }
-
-	}
-
-
-
-
-	trait SelectRelation[M[O] <: MappingAt[O]] extends DerivedTable[M] with RelationTemplate[M, SelectRelation] { outer =>
-		type Row
-		val query :QuerySQL[RowProduct, Row] { type ResultMapping[O] = M[O] }
-
-		override def apply[O] :M[O] = query.mapping[O]
-		override def export[O] :MappingAt[O] = query.export[O]
-
-		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
-				:SelectRelation[M] =
-			new AlteredRelation[M, SelectRelation](this, includes, excludes) with SelectRelation[M] {
-				override type Row = default.Row
-//				override val default = outer //stabilizer for Row type
-				override val query = default.query
-				override def export[O] = super[AlteredRelation].export[O]
-				override lazy val toString :String = alteredString
-			}
-
-		protected override def defaultSpelling[P, F <: RowProduct]
-		                                      (context :SQLContext, params :Parameterization[P, F])
-		                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
-		{
-			val sql =  "(" +: (spelling.paramless(query)(context) + ")")
-			val boundParams = sql.params.settersReversed.map(_.unmap { _ :P => @~ })
-			val totalParams = params.reset(boundParams ::: params.settersReversed)
-			SpelledSQL(sql.sql, context, totalParams)
-		}
-
-		override def refString :String = "select[" + query.mapping.mappingName + "]"
-		override lazy val toString :String = query.toString
-	}
-
-
-	object SelectRelation {
-		def apply[M[O] <: MappingAt[O], V](select :QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
-				:SelectRelation[M] =
-			new SelectRelation[M] {
-				override type Row = V
-				override val query = select
-			}
-
-		type * = SelectRelation[M] forSome { type M[O] <: MappingAt[O] }
-	}
-
 
 
 
@@ -713,4 +460,267 @@ object Relation {
 	private[oldsql] val Dummy = Table("Dummy", new ConstantMapping["Dummy", "Dummy"]("Dummy"))
 
 }
+
+
+
+
+
+
+/** A relation which can occur inside a ''from'' clause of an SQL ''select''. This includes not only 'true'
+  * database tables and views, but also ''derived tables'' of other ''selects''.
+  * @see [[net.noresttherein.oldsql.schema.BaseTable]]
+  * @see [[net.noresttherein.oldsql.schema.RelVar]]
+  * @see [[net.noresttherein.oldsql.schema.Table.DerivedTable]]
+  */
+trait Table[+M[O] <: MappingAt[O]] extends Relation[M] with RelationTemplate[M, Table] {
+
+	private[Table] val expr = TableSQL.LastTable[MappingOf[Any]#TypedProjection, Any](
+		this.asInstanceOf[Table[MappingOf[Any]#TypedProjection]]
+	)
+	private[Table] val fromClause = From[MappingOf[Any]#TypedProjection, Any, Label](expr, None, True)
+
+	protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+			:Table[M] =
+		new AlteredRelation[M, Table](this, includes, excludes) with Table[M] {
+			override def defaultSpelling[P, F <: RowProduct]
+			                            (context :SQLContext, params :Parameterization[P, F])
+			                            (implicit spelling :SQLSpelling) =
+				default.defaultSpelling(spelling)(context, params)
+		}
+
+	/** Formats the relation for use in a ''from'' clause. For example,
+	  * a [[net.noresttherein.oldsql.schema.BaseTable table]] will simply return its name,
+	  * while a [[net.noresttherein.oldsql.schema.Table.SelectRelation select]] will format its whole SQL.
+	  * This is the default spelling used by [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
+	  */
+	protected def defaultSpelling[P, F <: RowProduct]
+	                             (context :SQLContext, params :Parameterization[P, F])
+	                             (implicit spelling :SQLSpelling) :SpelledSQL[P, F]
+
+	private[oldsql] def defaultSpelling[P, F <: RowProduct]
+	                                   (spelling :SQLSpelling)
+	                                   (context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
+		defaultSpelling(context, params)(spelling)
+
+	protected override def spell[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A], V]
+	                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
+	                            (context :SQLContext, params :Parameterization[P, F])
+	                            (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+		spelling.column(origin, export[O].export(column))(context, params)
+}
+
+
+
+
+object Table {
+	def apply[M <: Mapping, S](tableName :String, template : => M)
+	                          (implicit project :OriginProjection[M, S]) :BaseTable[project.WithOrigin] =
+		BaseTable[M, S](tableName, template)
+
+	def apply[S] :TableFactory[S] = BaseTable[S]
+
+	trait StaticTable[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M] {
+		override def name :N
+	}
+
+	type * = Table[M] forSome { type M[O] <: MappingAt[O] }
+
+
+	implicit class TableExtension[M[O] <: MappingAt[O]](private val table :Table[M]) extends AnyVal {
+		@inline def asLast :JoinedTable[RowProduct AndFrom M, M] =
+			table.expr.asInstanceOf[JoinedTable[RowProduct AndFrom M, M]]
+
+		@inline def from :From[M] = table.expr.asInstanceOf[From[M]]
+	}
+
+	class TableExtraExtension[S, M[O] <: BaseMapping[S, O]](private val table :Table[M]) extends AnyVal {
+		@inline def toSQL :TableSQL[RowProduct AndFrom M, M, S, RowProduct AndFrom M] =
+			table.expr.toTableSQL.asInstanceOf[TableSQL[RowProduct AndFrom M, M, S, RowProduct AndFrom M]]
+	}
+
+	@inline implicit def TableExtraExtension[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+	                                        (table :Table[M])(implicit reveal :MappingSubject[M, T, S])
+			:TableExtraExtension[S, T] =
+		new TableExtraExtension[S, T](reveal(table))
+
+
+
+
+
+	/** Supertype of all non-persistent (at least semantically) SQL relations.
+	  * This includes [[net.noresttherein.oldsql.schema.View views]] and
+	  * [[net.noresttherein.oldsql.schema.Table.SelectRelation selects]] used in ''from'' and ''with'' clauses.
+	  */
+	trait DerivedTable[+M[O] <: MappingAt[O]] extends Table[M] with RelationTemplate[M, DerivedTable] {
+
+		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+				:DerivedTable[M] =
+			new AlteredRelation[M, DerivedTable](this, includes, excludes) with DerivedTable[M] {
+				override def defaultSpelling[P, F <: RowProduct]
+				                            (context :SQLContext, params :Parameterization[P, F])
+				                            (implicit spelling :SQLSpelling) =
+					default.defaultSpelling(spelling)(context, params)
+			}
+	}
+
+
+	object DerivedTable {
+		type * = DerivedTable[M] forSome { type M[O] <: MappingAt[O] }
+	}
+
+
+
+
+	trait SelectRelation[M[O] <: MappingAt[O]] extends DerivedTable[M] with RelationTemplate[M, SelectRelation] { outer =>
+		type Row
+		val query :QuerySQL[RowProduct, Row] { type ResultMapping[O] = M[O] }
+
+		override def apply[O] :M[O] = query.mapping[O]
+		override def export[O] :MappingAt[O] = query.export[O]
+
+		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+				:SelectRelation[M] =
+			new AlteredRelation[M, SelectRelation](this, includes, excludes) with SelectRelation[M] {
+				override type Row = default.Row
+//				override val default = outer //stabilizer for Row type
+				override val query = default.query
+				override def export[O] = super[AlteredRelation].export[O]
+				override lazy val toString :String = alteredString
+			}
+
+		protected override def defaultSpelling[P, F <: RowProduct]
+		                                      (context :SQLContext, params :Parameterization[P, F])
+		                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+		{
+			val sql =  "(" +: (spelling.paramless(query)(context) + ")")
+			val boundParams = sql.params.settersReversed.map(_.unmap { _ :P => @~ })
+			val totalParams = params.reset(boundParams ::: params.settersReversed)
+			SpelledSQL(sql.sql, context, totalParams)
+		}
+
+		override def refString :String = "select[" + query.mapping.mappingName + "]"
+		override lazy val toString :String = query.toString
+	}
+
+
+	object SelectRelation {
+		def apply[M[O] <: MappingAt[O], V](select :QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
+				:SelectRelation[M] =
+			new SelectRelation[M] {
+				override type Row = V
+				override val query = select
+			}
+
+		type * = SelectRelation[M] forSome { type M[O] <: MappingAt[O] }
+	}
+
+}
+
+
+
+
+/** A named, persistent relation in the schema. This includes [[net.noresttherein.oldsql.schema.View views]]
+  * and [[net.noresttherein.oldsql.schema.BaseTable tables]].
+  */
+trait RelVar[+M[O] <: MappingAt[O]] extends Table[M] with NamedRelation[M] with RelationTemplate[M, RelVar] {
+
+	protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+			:RelVar[M] =
+		new AlteredRelation[M, RelVar](this, includes, excludes) with RelVar[M] {
+			override val name = default.name
+			override def toString = alteredString
+		}
+
+	protected override def defaultSpelling[P, F <: RowProduct]
+	                                      (context :SQLContext, params :Parameterization[P, F])
+	                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+		SpelledSQL(name, context, params)
+}
+
+
+object RelVar {
+	type * = RelVar[M] forSome { type M[O] <: MappingAt[O] }
+}
+
+
+
+
+/** A 'true', persistent and updatable SQL table. */
+trait BaseTable[+M[O] <: MappingAt[O]] extends Table[M] with RelVar[M] with RelationTemplate[M, BaseTable] {
+	protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+			:BaseTable[M] =
+		new AlteredRelation[M, BaseTable](this, includes, excludes) with BaseTable[M] {
+			override val name = default.name
+			override def toString = alteredString
+		}
+}
+
+
+object BaseTable {
+
+	def apply[M <: Mapping, S](tableName :String, template : => M)
+	                          (implicit project :OriginProjection[M, S]) :BaseTable[project.WithOrigin] =
+		new ProjectingRelation[project.WithOrigin, S](project[Unit](template))(project.isomorphism)
+			with BaseTable[project.WithOrigin]
+		{
+			override val name = tableName
+		}
+
+	def apply[S] :TableFactory[S] = new TableFactory[S] {}
+
+	trait TableFactory[S] extends Any { //fixme: lazy implicit
+		final def apply[M <: Mapping](tableName :String)(implicit mapping :M, project :OriginProjection[M, S])
+				:BaseTable[project.WithOrigin] =
+			BaseTable(tableName, mapping)
+	}
+
+
+	trait StaticBaseTable[N <: String with Singleton, M[O] <: MappingAt[O]]
+		extends BaseTable[M] with StaticRelation[N, M]
+
+	type * = BaseTable[M] forSome { type M[O] <: MappingAt[O] }
+}
+
+
+
+
+/** An SQL view. Treated in the same way as [[net.noresttherein.oldsql.schema.BaseTable tables]]. */
+trait View[+M[O] <: MappingAt[O]] extends DerivedTable[M] with RelVar[M] with RelationTemplate[M, View] {
+	protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+			:View[M] =
+		new AlteredRelation[M, View](this, includes, excludes) with View[M] {
+			override val name = default.name
+		}
+}
+
+
+object View {
+
+	def apply[M <: Mapping, S](tableName :String, template : => M)
+	                          (implicit project :OriginProjection[M, S]) :View[project.WithOrigin] =
+		new ProjectingRelation[project.WithOrigin, S](project[Unit](template))(project.isomorphism)
+			with View[project.WithOrigin]
+		{
+			override val name = tableName
+		}
+
+	def apply[S] :ViewFactory[S] = new ViewFactory[S] {}
+
+	trait ViewFactory[S] extends Any { //fixme: lazy implicit
+		final def apply[M <: Mapping](tableName :String)(implicit mapping :M, project :OriginProjection[M, S])
+				:View[project.WithOrigin] =
+			View(tableName, mapping)
+	}
+
+	trait StaticView[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M] {
+		override def name :N
+	}
+
+	type * = View[M] forSome { type M[O] <: MappingAt[O] }
+
+}
+
+
+
+
 

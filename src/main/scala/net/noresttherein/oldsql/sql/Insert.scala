@@ -7,9 +7,8 @@ import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.exceptions.MisspelledSQLException
 import net.noresttherein.oldsql.morsels.ChunkedString
 import net.noresttherein.oldsql.morsels.Extractor.Requisite
-import net.noresttherein.oldsql.schema.{ColumnMapping, SQLForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, RelVar, SQLForm, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.{RelVar, Table}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.forms.ChainForm
 import net.noresttherein.oldsql.sql.ComponentSetter.:=

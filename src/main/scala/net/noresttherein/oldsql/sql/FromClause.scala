@@ -2,10 +2,9 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, SQLForm}
+import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, SQLForm, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
-import net.noresttherein.oldsql.schema.Relation.Table
-import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
+import net.noresttherein.oldsql.schema.Table.StaticTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.bits.DirectRelationshipMapping

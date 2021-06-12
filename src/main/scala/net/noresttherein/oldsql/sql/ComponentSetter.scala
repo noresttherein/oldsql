@@ -6,9 +6,8 @@ import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.OperationType.{INSERT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.schema.ColumnMapping
+import net.noresttherein.oldsql.schema.{ColumnMapping, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.ast.{denullify, ColumnComponentSQL, ColumnLValueSQL, ComponentLValueSQL, ComponentSQL, SQLNull, SQLParameter}

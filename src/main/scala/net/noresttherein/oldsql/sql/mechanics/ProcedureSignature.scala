@@ -2,9 +2,8 @@ package net.noresttherein.oldsql.sql.mechanics
 
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.schema.{SQLForm, Table}
 import net.noresttherein.oldsql.schema.Mapping.MappingOf
-import net.noresttherein.oldsql.schema.Relation.Table
-import net.noresttherein.oldsql.schema.SQLForm
 import net.noresttherein.oldsql.schema.bits.ConstantMapping
 import net.noresttherein.oldsql.schema.forms.ChainForm
 import net.noresttherein.oldsql.sql.{Call, Dual, From, JoinParam, RowProduct, SQLExpression, StoredFunction, StoredProcedure, WithParam}

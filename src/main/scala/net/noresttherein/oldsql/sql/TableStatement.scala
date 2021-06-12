@@ -7,9 +7,8 @@ import net.noresttherein.oldsql.collection.ReversedList
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.Bug
 import net.noresttherein.oldsql.morsels.Extractor.Optional
-import net.noresttherein.oldsql.schema.ColumnMapping
+import net.noresttherein.oldsql.schema.{ColumnMapping, RelVar}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.RelVar
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.ComponentSetter.:=
 import net.noresttherein.oldsql.sql.DML.{BoundDML, ComposedDML, DMLAPI, RepeatedDML}

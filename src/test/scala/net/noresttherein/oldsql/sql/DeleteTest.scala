@@ -1,8 +1,8 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.bases.SimpleMapping
+import net.noresttherein.oldsql.schema.{BaseTable, Table}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.schema.Relation.{BaseTable, Table}
+import net.noresttherein.oldsql.schema.bases.SimpleMapping
 import net.noresttherein.oldsql.sql.ComponentSetter.:=
 
 

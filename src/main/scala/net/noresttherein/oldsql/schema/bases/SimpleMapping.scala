@@ -23,7 +23,7 @@ import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnForm, ColumnMapping, 
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, NoSelect, OptionalSelect}
 import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StableColumn}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.Relation.RelVar
+import net.noresttherein.oldsql.schema.RelVar
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.ReadFormNullValue
 import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping, JoinedEntityComponent, JoinTableCollectionMapping, RelationshipMapping}
