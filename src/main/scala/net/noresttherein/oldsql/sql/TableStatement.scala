@@ -353,7 +353,7 @@ object TableStatement {
 		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.opt[T:SQLForm](pick:P=>Option[T])* opt]],
 		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.col[T:ColumnForm](pick:P=>T)* col]] and
 		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.optcol[T:ColumnForm](pick:P=>Option[T])* optcol]],
-		  * which create a synthetic [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component]]
+		  * which create a synthetic [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]]
 		  * expression for the parameter property, the usages of which will translate to additional JDBC parameters
 		  * initialized with values derived from $Arg:
 		  * {{{
@@ -622,7 +622,7 @@ object TableStatement {
 		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.opt[T:SQLForm](pick:P=>Option[T])* opt]],
 		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.col[T:ColumnForm](pick:P=>T)* col]] and
 		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.optcol[T:ColumnForm](pick:P=>Option[T])* optcol]],
-		  * which create a synthetic [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component]]
+		  * which create a synthetic [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]]
 		  * expression for the parameter property, the usages of which will translate to additional JDBC parameters
 		  * initialized with values derived from $Arg:
 		  * {{{
@@ -815,7 +815,7 @@ object TableStatement {
 		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.opt[T:SQLForm](pick:P=>Option[T])* opt]],
 		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.col[T:ColumnForm](pick:P=>T)* col]] and
 		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.optcol[T:ColumnForm](pick:P=>Option[T])* optcol]],
-		  * which create a synthetic [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component]]
+		  * which create a synthetic [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]]
 		  * expression for the parameter property, the usages of which will translate to additional JDBC parameters
 		  * initialized with values derived from $Arg:
 		  * {{{

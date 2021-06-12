@@ -238,10 +238,10 @@ object Buff {
 	  * It is still included by default and needs to be excluded explicitly. Created values carry a placeholder
 	  * value to assign to the annotated component on assembly if the component is excluded.
 	  * The column can be excluded from a [[net.noresttherein.oldsql.sql.ast.SelectSQL select]] expression by
-	  * providing it to the [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.exclude exclude]]
-	  * (or [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.exclude exclude]])
-	  * and [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.alter alter]]
-	  * (or [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.alter alter]]
+	  * providing it to the [[net.noresttherein.oldsql.sql.ast.ComponentSQL.exclude exclude]]
+	  * (or [[net.noresttherein.oldsql.sql.ast.LooseComponent.exclude exclude]])
+	  * and [[net.noresttherein.oldsql.sql.ast.ComponentSQL.alter alter]]
+	  * (or [[net.noresttherein.oldsql.sql.ast.LooseComponent.alter alter]]
 	  * method of the expression from the ''select'' clause for an owning entity/component,
 	  * or on the level of [[net.noresttherein.oldsql.schema.Relation Relation]]:
 	  * [[net.noresttherein.oldsql.schema.Relation.exclude exclude]] and
@@ -256,8 +256,8 @@ object Buff {
 	  * [[net.noresttherein.oldsql.hoard.Pile Pile]] methods,
 	  * by [[net.noresttherein.oldsql.schema.Relation.apply Relation(...)]],
 	  * [[net.noresttherein.oldsql.schema.Relation.include Relation.include]],
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.include include]] & [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.include include]],
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.alter alter]] & [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.alter alter]],
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL.include include]] & [[net.noresttherein.oldsql.sql.ast.LooseComponent.include include]],
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL.alter alter]] & [[net.noresttherein.oldsql.sql.ast.LooseComponent.alter alter]],
 	  * or simply by explicitly including it in a [[net.noresttherein.oldsql.sql.ast.SelectSQL select]] expression
 	  * along the containing entity/component.
 	  */
@@ -277,10 +277,10 @@ object Buff {
 	  * whole subjects of a multi column mapping, rather than listing the columns individually. The annotated component
 	  * is still included by default when comparing the owning mapping's subjects and needs to be excluded explicitly.
 	  * The component can be excluded through the 'alter' methods of expressions for any owning component:
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.exclude]]
-	  * (and [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.exclude]]),
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.alter]]
-	  * (and [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.alter]]), thusly excluding the component
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL.exclude]]
+	  * (and [[net.noresttherein.oldsql.sql.ast.LooseComponent.exclude]]),
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL.alter]]
+	  * (and [[net.noresttherein.oldsql.sql.ast.LooseComponent.alter]]), thusly excluding the component
 	  * from that particular expression. Alternatively, corresponding methods of
 	  * [[net.noresttherein.oldsql.schema.Relation Relation]] can be used, which will exclude it
 	  * (unless explicitly included) from all occurrences of any owning component in an SQL ''select''
@@ -294,10 +294,10 @@ object Buff {
 	  * happens on the level of the subject of a multi column mapping enclosing the buffed component without listing
 	  * its columns individually. It implies `OptionalFilter` and `NoFilterByDefault`.
 	  * The component can be included through the 'alter' methods of expressions for any owning component:
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.include]]
-	  * (and [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.include]]),
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.alter]]
-	  * (and [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent.alter]]), thusly including the component
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL.include]]
+	  * (and [[net.noresttherein.oldsql.sql.ast.LooseComponent.include]]),
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL.alter]]
+	  * (and [[net.noresttherein.oldsql.sql.ast.LooseComponent.alter]]), thusly including the component
 	  * as part of that particular expression. Alternatively, corresponding methods of
 	  * [[net.noresttherein.oldsql.schema.Relation Relation]] can be used, which will include it
 	  * (unless explicitly excluded) in all its occurrences in an SQL ''select'' using the relation:

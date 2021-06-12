@@ -144,16 +144,16 @@ trait Update[-Args, M[O] <: MappingAt[O], +Res]
   * }}}
   *
   * @see [[net.noresttherein.oldsql.sql.ComponentSetter]]
-  * @see [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentLValueSQL.:=]]
-  * @see [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentLValueSQL.:=?]]
-  * @see [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnLValueSQL.+=]]
-  * @see [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnLValueSQL.-=]]
-  * @see [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnLValueSQL.*=]]
-  * @see [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnLValueSQL./=]]
-  * @see [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnLValueSQL.%=]]
-  * @see [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnLValueSQL.&&=]]
-  * @see [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnLValueSQL.||=]]
-  * @see [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnLValueSQL.++=]]
+  * @see [[net.noresttherein.oldsql.sql.ast.ComponentLValueSQL.:=]]
+  * @see [[net.noresttherein.oldsql.sql.ast.ComponentLValueSQL.:=?]]
+  * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.+=]]
+  * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.-=]]
+  * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.*=]]
+  * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL./=]]
+  * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.%=]]
+  * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.&&=]]
+  * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.||=]]
+  * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.++=]]
   * @author Marcin Mościcki
   */
 object Update {

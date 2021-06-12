@@ -25,8 +25,10 @@ import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, NonEmptyFrom, Pa
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, NamedParamRelation, ParamAt, ParamRelation}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TypedColumnComponentSQL, TypedComponentSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.LastRelation
+import net.noresttherein.oldsql.sql.ast.ColumnComponentSQL.TypedColumnComponentSQL
+import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
+import net.noresttherein.oldsql.sql.ast.RelationSQL
+import net.noresttherein.oldsql.sql.ast.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{RowProductVisitor, SpelledSQL, SQLScribe}
@@ -381,7 +383,7 @@ object UnboundParam {
 	  * we can represent any value obtainable from `P` by a function `P => T` as a component
 	  * `FromParam[P, _]#Component[T]` wrapping that function, which can be used to create component expressions
 	  * for that function. In particular,
-	  * a [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]]`[F, ParamRelation[P]#Param]`
+	  * a [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]]`[F, ParamRelation[P]#Param]`
 	  * is a expression which value will be substituted by a statement parameter `P`.
 	  *
 	  * This implementation breaks the `Mapping` contract in several ways due to its narrow use case,
@@ -660,7 +662,7 @@ object UnboundParam {
   * derivable from the value of the parameter) can be represented as pseudo 'components' of the synthetic mapping
   * for a parameter. Factory methods for expressions representing such parts of a parameter are available in
   * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] mapping class. Any 'components' created this way
-  * for use in [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component]] expressions are virtual:
+  * for use in [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expressions are virtual:
   * they do not show on any of the component or column lists declared by the mapping. This whole class performs
   * mainly a declarative role, translating to no changes in the generated SQL (beside enabling the use of the declared
   * parameter), unless a [[net.noresttherein.oldsql.sql.Adjoin.condition condition]] is provided with it, in which case

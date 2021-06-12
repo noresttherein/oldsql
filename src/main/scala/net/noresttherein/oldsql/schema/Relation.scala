@@ -18,8 +18,7 @@ import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
 import net.noresttherein.oldsql.sql.{Adjoin, AndFrom, From, JoinedRelation, RowProduct}
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{JoinedTable, TableSQL}
-import net.noresttherein.oldsql.sql.ast.QuerySQL
+import net.noresttherein.oldsql.sql.ast.{JoinedTable, QuerySQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{False, True}
 import net.noresttherein.oldsql.sql.mechanics.MappingReveal.MappingSubject
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL

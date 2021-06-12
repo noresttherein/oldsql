@@ -11,12 +11,12 @@ import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, NonEmptyFrom, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMapper, ExpressionVisitor, GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, UnboundParamSQL}
-import net.noresttherein.oldsql.sql.ast.{AggregateSQL, MappingSQL, QuerySQL, SQLTerm}
-import net.noresttherein.oldsql.sql.ast.CompositeSQL
+import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ComponentSQL, CompositeSQL, LooseColumn, LooseComponent, MappingSQL, QuerySQL, RelationSQL, SQLTerm}
+import net.noresttherein.oldsql.sql.ast.ColumnComponentSQL.TypedColumnComponentSQL
+import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.{CaseComposite, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.CaseCompositeColumn
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, LooseColumn, LooseComponent, RelationSQL, TypedColumnComponentSQL, TypedComponentSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.CaseRelation
+import net.noresttherein.oldsql.sql.ast.RelationSQL.CaseRelation
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, CaseQuery, ColumnQuery, Rows}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{CaseTopSelect, CaseTopSelectColumn, SubselectColumn, SubselectSQL, TopSelectColumn, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{CaseTerm, ColumnTerm, CompositeNull, SQLNull, SQLParameter, SQLParameterColumn, True}

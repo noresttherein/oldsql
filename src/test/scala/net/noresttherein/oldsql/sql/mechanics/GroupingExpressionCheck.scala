@@ -4,7 +4,7 @@ import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
-import net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL
+import net.noresttherein.oldsql.sql.ast.ComponentSQL
 import net.noresttherein.oldsql.sql.{AndFrom, By, ByOne, ByVal, ColumnSQL, From, GroupBy, GroupByOne, GroupByVal, InnerJoin, Join, LeftJoin, NonParam, RowProduct, SQLExpression, Subselect}
 
 

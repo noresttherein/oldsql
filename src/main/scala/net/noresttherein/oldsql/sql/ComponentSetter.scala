@@ -11,8 +11,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, SQLTypeUnification}
-import net.noresttherein.oldsql.sql.ast.denullify
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ColumnLValueSQL, ComponentLValueSQL, ComponentSQL}
+import net.noresttherein.oldsql.sql.ast.{ColumnComponentSQL, ColumnLValueSQL, ComponentLValueSQL, ComponentSQL, denullify}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{SQLNull, SQLParameter}
 
 
@@ -23,8 +22,8 @@ import net.noresttherein.oldsql.sql.ast.SQLTerm.{SQLNull, SQLParameter}
 //todo: ComponentUpdates - a collection object joining them
 /** Representation of assignment of a value to a table's component as a pair
   * of SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]]. It is typically created by the expression
-  * `lvalue `[[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.:= :=]]` rvalue`, where
-  * `lvalue :`[[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL]]`[L, M]` and
+  * `lvalue `[[net.noresttherein.oldsql.sql.ast.ComponentSQL.:= :=]]` rvalue`, where
+  * `lvalue :`[[net.noresttherein.oldsql.sql.ast.ComponentSQL]]`[L, M]` and
   * `rvalue :SQLExpression[R, GlobalScope, X]`, with the mapping's `M` subject type and `X` being either equal
   * or equivalent in the terms of [[net.noresttherein.oldsql.sql.SQLExpression.SQLTypeUnification SQLTypeUnification]].
   * It is used in the creation of [[net.noresttherein.oldsql.sql.Insert Insert]]
@@ -52,11 +51,11 @@ trait ComponentSetter[-L <: RowProduct, -R <: RowProduct, V] extends Serializabl
 	type Component[O] <: MappingAt[O]
 
 	/** An expression for the component to which a value is being assigned. `ComponentLValueSQL` has only two
-	  * (direct) subtypes: [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]] - representing
+	  * (direct) subtypes: [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] - representing
 	  * the component directly -
-	  * and [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentLValueSQL ComponentLValueSQL]],
+	  * and [[net.noresttherein.oldsql.sql.ast.ComponentLValueSQL ComponentLValueSQL]],
 	  * which is a [[net.noresttherein.oldsql.sql.ast.ConversionSQL ConversionSQL]] subtype with a `ComponentSQL` as
-	  * the adapted expression type, created by [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.:= :=]]
+	  * the adapted expression type, created by [[net.noresttherein.oldsql.sql.ast.ComponentSQL.:= :=]]
 	  * if the types of both sides do not match exactly, but are automatically convertible in SQL.
 	  */
 	val lvalue :ComponentLValueSQL[L, Component, V]
@@ -64,9 +63,9 @@ trait ComponentSetter[-L <: RowProduct, -R <: RowProduct, V] extends Serializabl
 	/** An expression for the value assigned to the component. */
 	val rvalue :SQLExpression[R, GlobalScope, V]
 
-	/** Replaces all occurrences of [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent LooseComponent]]
+	/** Replaces all occurrences of [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]]
 	  * in both left and right sides of the assignment
-	  * with a [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]], using the relation at
+	  * with a [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]], using the relation at
 	  * the given position in `L`/`R` as its parent.
 	  */
 	def anchor(table :L, params :R) :ComponentSetter[L, R, V] =
@@ -108,8 +107,8 @@ object ComponentSetter {
 	  * which in most of its use cases is not needed. When used in an infix manner,
 	  * `T := F` (for some `T, F <: RowProduct)`, it represents an assignment
 	  * of an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, GlobalScope, X]` to
-	  * a [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentLValueSQL ComponentLValueSQL]]`[T, GlobalScope, X]`.
-	  * The latter is a supertype of [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component]] expressions -
+	  * a [[net.noresttherein.oldsql.sql.ast.ComponentLValueSQL ComponentLValueSQL]]`[T, GlobalScope, X]`.
+	  * The latter is a supertype of [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expressions -
 	  * representations of column sets of some table in `T` and their SQL-transparent conversions (used to unify
 	  * the types of both ''lvalue'' and ''rvalue'' by applying available implicit conversions to the expressions,
 	  * in order to bring them both to some common type - for example by number type promotion). The former
@@ -132,13 +131,13 @@ object ComponentSetter {
 	  * as in the previous case. For both of these statement types, additional parameters can be added by subsequent use
 	  * of [[net.noresttherein.oldsql.sql.WithParam WithParam]].
 	  *
-	  * Instances can be created with overloaded [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentLValueSQL.:= :=]]
-	  * method available on [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]] expressions,
+	  * Instances can be created with overloaded [[net.noresttherein.oldsql.sql.ast.ComponentLValueSQL.:= :=]]
+	  * method available on [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] expressions,
 	  * as well as other, related assignment operators with more traditional forms
-	  * such as [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnLValueSQL.+= +=]]. Additionally,
+	  * such as [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.+= +=]]. Additionally,
 	  * most of these operators have a version ending with `?`- for example,
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentLValueSQL.:=? :=?]]
-	  * or [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnLValueSQL.+=? +=?]] - which accept any scala value
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentLValueSQL.:=? :=?]]
+	  * or [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.+=? +=?]] - which accept any scala value
 	  * of a compatible type with an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] type class,
 	  * and use it, wrapping it in a [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]]
 	  * (rather than a [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral SQLLiteral]] to which it would be otherwise
@@ -148,7 +147,7 @@ object ComponentSetter {
 	  *
 	  * Note that `Mapping` subtypes `M[F]` - with an evident type constructor `M[O] <: Mapping { type Origin = O }`
 	  * including an implicit [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] type class -
-	  * are implicitly convertible to [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]]`[F, M]`
+	  * are implicitly convertible to [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]]`[F, M]`
 	  * when used in the ''lvalue'' position of operator `:=` and its kin (just as invoking other operator-methods
 	  * of `SQLExpression`, including in particular comparisons
 	  * such as [[net.noresttherein.oldsql.sql.SQLExpression.=== ===]]
@@ -190,8 +189,8 @@ object ComponentSetter {
 
 /** Representation of assignment of a value to a single column of a table as a pair
   * of SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]]. It is typically created by the expression
-  * `lvalue `[[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnComponentSQL.:= :=]]` rvalue`, where
-  * `lvalue :`[[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnComponentSQL]]`[L, M]` and
+  * `lvalue `[[net.noresttherein.oldsql.sql.ast.ColumnComponentSQL.:= :=]]` rvalue`, where
+  * `lvalue :`[[net.noresttherein.oldsql.sql.ast.ColumnComponentSQL]]`[L, M]` and
   * `rvalue :`[[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`[R, GlobalScope, X]`, with the mapping's `M`
   * subject type and `X` being either equal or equivalent in the terms of
   * [[net.noresttherein.oldsql.sql.SQLExpression.SQLTypeUnification SQLTypeUnification]].

@@ -27,7 +27,7 @@ import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
 import net.noresttherein.oldsql.sql.{AndFrom, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
-import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent
+import net.noresttherein.oldsql.sql.ast.LooseComponent
 import net.noresttherein.oldsql.sql.mechanics.TableCount
 
 
@@ -1068,7 +1068,7 @@ trait Mapping {
 	  *
 	  * Applications probably will find the analogical methods of
 	  * [[net.noresttherein.oldsql.schema.Relation.apply(components* Relation]] or
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.alter ComponentSQL]] more useful.
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL.alter ComponentSQL]] more useful.
 	  * @param adjustments a sequence of components of this mapping wrapped in either
 	  *                    [[net.noresttherein.oldsql.schema.Mapping.IncludedComponent IncludedComponent]],
 	  *                    if the component is to be included, or in
@@ -1091,7 +1091,7 @@ trait Mapping {
  	  *
 	  * Applications probably will find the analogical methods of
 	  * [[net.noresttherein.oldsql.schema.Relation.apply(components* Relation]] or
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.alter ComponentSQL]] more useful.
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL.alter ComponentSQL]] more useful.
 	  * @param include a collection of components of this mapping which should be included in every operation, if possible.
 	  * @param exclude a collection of components of this mapping which should be excluded from every operation, if possible.
 	  */ //consider: maybe this should be named alterBuffs?

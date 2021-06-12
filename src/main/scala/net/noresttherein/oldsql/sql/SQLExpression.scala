@@ -18,11 +18,11 @@ import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.SQLExpression.Lift.ComposedLift
 import net.noresttherein.oldsql.sql.StoredProcedure.Out
-import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ChainSQL, CompositeSQL, MappingSQL, QuerySQL, SelectSQL, SQLTerm}
+import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ChainSQL, CompositeSQL, LooseComponent, MappingSQL, QuerySQL, SelectSQL, SQLTerm}
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.{CaseComposite, CompositeVisitor}
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNull}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.{MappedSQL, PromotionConversion}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{CaseMapping, LooseComponent, MappingVisitor}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{CaseMapping, MappingVisitor}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseQuery, QueryVisitor, Rows}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectSQL, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{CaseTerm, SQLNull, SQLParameter, TermVisitor}
@@ -48,7 +48,7 @@ import slang._
   * [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]] is an expression representing a whole
   * table from a ''select's'' ''from'' clause. Some expressions do not translate to unique final SQL for two reasons:
   *   1. How it is rendered may depend on the context, for example
-  *      [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component]] expressions can include different
+  *      [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expressions can include different
   *      columns depending on the SQL statement or clause it is used in;
   *   1. Different DBMS may use different expressions to achieve the same effect (in particular common functions).
   *      Instead, before execution, a root [[net.noresttherein.oldsql.sql.ast.QuerySQL select]] expression
@@ -132,7 +132,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	/** Default form for reading of the values of this expression from an SQL [[java.sql.ResultSet ResultSet]]
 	  * (if this expression is used as the ''select'' clause of a query). In case of multi column expressions,
 	  * this might not represent exactly how it will be rendered in SQL.
-	  * Primarily, [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component]] expressions can vary
+	  * Primarily, [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expressions can vary
 	  * the included column set based on the scope (SQL clause) and/or operation the expression is used in,
 	  * such as different in an SQL ''insert'' and different in an SQL ''update''. Moreover, when comparing
 	  * two expressions or otherwise using them in a context, where their column sets must be equal, in some cases
@@ -219,7 +219,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 
 	/** An SQL expression comparing the value of this expression with the value of a given relation component.
 	  * The component mapping is converted to an unanchored
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent LooseComponent]] and must
+	  * [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]] and must
 	  * be [[net.noresttherein.oldsql.sql.SQLExpression.anchor anchored]] before being translated into final SQL.
 	  * This however happens automatically for every expression used to create
 	  * a [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]] expression.
@@ -569,7 +569,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	def groundValue :Opt[V]
 
 	/** True, if this expression does not contain any
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent LooseComponent]] subexpression. Loose components
+	  * [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]] subexpression. Loose components
 	  * are placeholder expression adapters of [[net.noresttherein.oldsql.schema.Mapping Mapping]] instances
 	  * with a `RowProduct` subtype as their `Origin` type. They are not tied to any particular relation in `F`,
 	  * which makes converting any enclosing expression into valid SQL impossible.
@@ -577,8 +577,8 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  */
 	def isAnchored :Boolean
 
-	/** Replaces all occurrences of [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent LooseComponent]]
-	  * with a [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]] using the relation at
+	/** Replaces all occurrences of [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]]
+	  * with a [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] using the relation at
 	  * the given position in `F`, (the first relation in its `RowProduct` type parameter) as its parent.
 	  */
 	def anchor(from :F) :SQLExpression[F, S, V]
@@ -599,7 +599,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  * This method is supported only by chosen expression types, which have a well defined, unique SQL representation.
 	  * These are mainly
 	  * [[net.noresttherein.oldsql.sql.ast.TupleSQL TupleSQL]],
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]]
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]]
 	  * and all [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]] subclasses.
 	  * It is considered low level API exposed only to support potential extension by custom expression types
 	  * and should not be used by the client code directly; prefer using
@@ -634,7 +634,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 
 	/** Creates a `SelectSQL` with this expression as the ''select'' clause and the given `from` clause.
 	  * This method is supported only by a few expression types, mainly [[net.noresttherein.oldsql.sql.ast.TupleSQL TupleSQL]]
-	  * and [[net.noresttherein.oldsql.sql.ast.MappingSQL.TypedComponentSQL TypedComponentSQL]] subclasses. It is considered
+	  * and [[net.noresttherein.oldsql.sql.ast.ast.TypedComponentSQL TypedComponentSQL]] subclasses. It is considered
 	  * low level API exposed only to support potential extension by custom expression types and should not be used
 	  * by the client code directly; prefer using
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductExtension.select select]] and its relatives instead.
@@ -648,7 +648,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 
 	/** Creates a subselect expression selecting this expression from the given `from` clause.
 	  * This method is supported only by a few expression types, mainly [[net.noresttherein.oldsql.sql.ast.TupleSQL TupleSQL]]
-	  * and [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]] subclasses. It is considered
+	  * and [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] subclasses. It is considered
 	  * low level API exposed only to support potential extension by custom expression types and should not be used
 	  * by the client code directly; prefer using
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductExtension.select select]] and its relatives instead.
@@ -666,7 +666,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  * This method is supported only by chosen expression types, which have a well defined, unique SQL representation.
 	  * These are mainly
 	  * [[net.noresttherein.oldsql.sql.ast.TupleSQL TupleSQL]],
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]]
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]]
 	  * and all [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]] subclasses.
 	  * It is considered low level API exposed only to support potential extension by custom expression types
 	  * and should not be used by the client code directly; prefer using

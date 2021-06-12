@@ -9,7 +9,8 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.{By, ByOne, ByVal, ColumnSQL, FromSome, GroupBy, GroupByClause, GroupByOne, GroupByVal, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.RowProduct.GroupingOfGeneralized
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL, TypedComponentSQL}
+import net.noresttherein.oldsql.sql.ast.{ComponentSQL, RelationSQL}
+import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 
 
 
@@ -33,8 +34,8 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL, T
   *           for:
   *             - [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`V, O]` subtypes,
   *               where `O >: F <: RowProduct`,
-  *             - [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]] and
-  *               [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnComponentSQL ColumnComponentSQL]],
+  *             - [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] and
+  *               [[net.noresttherein.oldsql.sql.ast.ColumnComponentSQL ColumnComponentSQL]],
   *             - [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, `[[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope GlobalScope]]`, V]`
   *               and [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`[F, GlobalScope, V]`.
   */

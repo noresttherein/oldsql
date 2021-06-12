@@ -230,7 +230,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 	  *   1. `Delete from table `[[net.noresttherein.oldsql.sql.Delete.syntax.GroundDeleteWhereFactory.where(condition:M* where]]` { mapping => condition }` -
 	  *      provides the filter condition as a constructor function accepting mapping `M[From[M]]`,
 	  *      which can be used to access any its components, all of which are implicitly convertible
-	  *      to SQL component [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL expressions]] and can be parts
+	  *      to SQL component [[net.noresttherein.oldsql.sql.ast.ComponentSQL expressions]] and can be parts
 	  *      of larger expressions;
 	  *   1. `Delete from table `[[net.noresttherein.oldsql.sql.Delete.syntax.GroundDeleteWhereFactory.where(condition:(M* where]]` { (mapping, mapping) => condition }` -
 	  *      provides the filter condition as a constructor function accepting two copies of mapping `M[From[M]]`;
@@ -1484,7 +1484,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 //			  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.opt[T:SQLForm](pick:P=>Option[T])* opt]],
 //			  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.col[T:ColumnForm](pick:P=>T)* col]] and
 //			  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.optcol[T:ColumnForm](pick:P=>Option[T])* optcol]],
-//			  * which create a synthetic [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component]]
+//			  * which create a synthetic [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]]
 //			  * expression for the parameter property, the usages of which will translate to additional JDBC parameters
 //			  * initialized with values derived from `S`:
 //			  * {{{
@@ -2277,7 +2277,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 		  * The implementation is centered around [[net.noresttherein.oldsql.sql.Delete.implementation.ParamDelete.condition condition]]
 		  * property, which is an SQL Boolean [[net.noresttherein.oldsql.sql.ColumnSQL expression]] dependent
 		  * only on the table with deleted rows (parameterized with [[net.noresttherein.oldsql.sql.From From]]`[M]`) -
-		  * all terms must either be [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL components]]
+		  * all terms must either be [[net.noresttherein.oldsql.sql.ast.ComponentSQL components]]
 		  * of its mapping `M` (in particular table columns), [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literals]],
 		  * or [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter parameters]] with already provided values.
 		  *

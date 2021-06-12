@@ -19,7 +19,8 @@ import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, Join
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.UnboundParam.{NamedParamRelation, ParamRelation}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL, TypedComponentSQL}
+import net.noresttherein.oldsql.sql.ast.{ComponentSQL, RelationSQL}
+import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.EmptyChain
@@ -666,14 +667,14 @@ object GroupByClause {
 		  *               [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] (which exists
 		  *               for all subtypes of `BaseMapping` taking the `Origin` type as its last type parameter),
 		  *             - components of relations:
-		  *               [[net.noresttherein.oldsql.sql.ast.MappingSQL.TypedComponentSQL TypedComponentSQL]]`[F, _, _, _, _, O]`
-		  *               and [[net.noresttherein.oldsql.sql.ast.MappingSQL.TypedColumnComponentSQL TypedColumnComponentSQL]]`[F, _, _, _, _, O]`,
+		  *               [[net.noresttherein.oldsql.sql.ast.ast.TypedComponentSQL TypedComponentSQL]]`[F, _, _, _, _, O]`
+		  *               and [[net.noresttherein.oldsql.sql.ast.ast.TypedColumnComponentSQL TypedColumnComponentSQL]]`[F, _, _, _, _, O]`,
 		  *             - any single column expressions [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`[F, _]`,
 		  *             - base [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, _]`,
 		  *           where type `F =:= this.GeneralizedDiscrete` is the 'true', ''from'' clause grouped by this
 		  *           ''group by'' clause, and `O` is its some supertype, with the origin relation of the component
 		  *           expression being the first relation following an abstract type (typically `FromSome`).
-		  * @param expr a function accepting the last [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation relation]]
+		  * @param expr a function accepting the last [[net.noresttherein.oldsql.sql.ast.JoinedRelation relation]]
 		  *             of the grouped ''from clause'' clause (that is, the one directly preceding
 		  *             [[net.noresttherein.oldsql.sql.GroupBy GroupBy]]), and which returns either
 		  *             a [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]] with a supertype of this clause
@@ -683,7 +684,7 @@ object GroupByClause {
 		  *             in which case all columns of the expression will be inlined in the ''group by'' clause
 		  *             in the order defined by its [[net.noresttherein.oldsql.schema.SQLReadForm form]].
 		  *             If the returned value is a a mapping `M[O] <: MappingAt[O]` or a
-		  *             [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component expression]]
+		  *             [[net.noresttherein.oldsql.sql.ast.ComponentSQL component expression]]
 		  *             for such a mapping - then the return type of the method will be
 		  *             `F `[[net.noresttherein.oldsql.sql.GroupBy GroupBy]]` M`, allowing selecting of any
 		  *             of its components/columns, just as with components of tables joined using
@@ -697,7 +698,7 @@ object GroupByClause {
 		  *         by the passed function: if it is a
 		  *         [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]], it is used directly after anchoring
 		  *         to the relation based on its `Origin` type. In case of
-		  *         [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]] (including its column
+		  *         [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] (including its column
 		  *         subtypes), the mapping is the mapping type parameter of the component expression.
 		  *         Otherwise a generic [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]
 		  *         (or [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] if `E` is
@@ -720,8 +721,8 @@ object GroupByClause {
 		  *               [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] (which exists
 		  *               for all subtypes of `BaseMapping` taking the `Origin` type as its last type parameter),
 		  *             - components of relations:
-		  *               [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]]`[F, _]`
-		  *               and [[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnComponentSQL ColumnComponentSQL]]`[F, _]`,
+		  *               [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]]`[F, _]`
+		  *               and [[net.noresttherein.oldsql.sql.ast.ColumnComponentSQL ColumnComponentSQL]]`[F, _]`,
 		  *             - any single column expressions [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`[F, _]`,
 		  *             - base [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, _]`,
 		  *           where type `F =:= this.GeneralizedDiscrete` is the 'true', ''from'' clause grouped by this
@@ -740,7 +741,7 @@ object GroupByClause {
 		  *                 in which case all columns of the expression will be inlined in the ''group by'' clause
 		  *                 in the order defined by its [[net.noresttherein.oldsql.schema.SQLReadForm form]].
 		  *                 If the returned value is a a mapping `M[O] <: MappingAt[O]` or
-		  *                 a [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component expression]]
+		  *                 a [[net.noresttherein.oldsql.sql.ast.ComponentSQL component expression]]
 		  *                 for such a mapping, then the return type of the method will be
 		  *                 `G `[[net.noresttherein.oldsql.sql.By By]]` M`, allowing selecting of any
 		  *                 of its components/columns, just as with components of tables joined using
@@ -756,7 +757,7 @@ object GroupByClause {
 		  *         by the passed function: if it is a
 		  *         [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]], it is used directly after anchoring
 		  *         to the relation based on its `Origin` type. In case of
-		  *         [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]] (including its column
+		  *         [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] (including its column
 		  *         subtype), the mapping is the mapping type parameter of the component expression.
 		  *         Otherwise a generic [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]
 		  *         (or [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] if `E` is
@@ -820,7 +821,7 @@ object GroupByClause {
 		  * Not all possible expressions are supported; the expression may consist of
 		  *   - any single [[net.noresttherein.oldsql.sql.ColumnSQL column expressions]] (atomic SQL values),
 		  *     in particular [[net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm terms]],
-		  *   - [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL components]] (ranging from whole entities
+		  *   - [[net.noresttherein.oldsql.sql.ast.ComponentSQL components]] (ranging from whole entities
 		  *     to single columns),
 		  *   - [[net.noresttherein.oldsql.sql.ast.ConversionSQL conversion]] nodes,
 		  *   - any [[net.noresttherein.oldsql.sql.ast.CompositeSQL composites]] combining the above, in particular:

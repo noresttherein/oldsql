@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.{Aggregated, By, DecoratedFrom, FromSome, GroupBy, GroupByClause, JoinedRelation, NonParam, RowProduct, UnboundParam}
 import net.noresttherein.oldsql.sql.RowProduct.{NonEmptyFrom, ParameterizedFrom, ParamlessFrom}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamAt}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
+import net.noresttherein.oldsql.sql.ast.RelationSQL
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{ver, Parameterization, SQLContext}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization.{JoinParameterization, MappedParameterization, UngroupedParameterization}
@@ -141,7 +141,7 @@ object SpelledSQL {
 	  * It contains primarily the aliases of all the tables in the ''from'' clause of the ''select'' using the fragment,
 	  * as well as those of any outer ''selects'' in which the current ''select'' is embedded.
 	  * @param tablesReversed an indexed table containing aliases of all relations, with indexing congruent with that
-	  *                       of [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]]
+	  *                       of [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]]
 	  *                       expressions used in the SQL [[net.noresttherein.oldsql.sql.SQLExpression expression]]
 	  *                       being translated. This means that the first alias in the sequence is that for the ''last''
 	  *                       relation in the ''from'' clause, and so on. The exception are expressions based on
@@ -242,7 +242,7 @@ object SpelledSQL {
 
 		/** The alias for the `idx-th` last table (that is, counting from the rightmost table in the ''from'' clause).
 		  * This is the alias corresponding to a
-		  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]] with that offset.
+		  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]] with that offset.
 		  * An empty string indicates that the table does not feature an alias and its columns should be rendered
 		  * using their unqualified names (without prefixing them with the name of the table).
 		  */
@@ -374,7 +374,7 @@ object SpelledSQL {
 	  * Adapting of the former to the required argument type `Ps` can happen by a trivial constant function
 	  * returning `()`, while the composition of the latter consists of the accessor function `Ps => P` returned by
 	  * [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization.apply apply]]
-	  * for a [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]]`[_ >: F, P]`, being the
+	  * for a [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]]`[_ >: F, P]`, being the
 	  * synthetic relation taken from an `UnboundParam` pseudo join, and - if the value required is not that of the
 	  * parameter `P` itself, but a derived one `X` represented by a component of `FromParam` - an optional selector
 	  * `P => X` for the particular parameter component taken from `FromParam`, as with all mappings.

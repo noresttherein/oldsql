@@ -135,7 +135,7 @@ object SQLDialect {
 	  * The formatting happens recursively, by dividing any composite expressions/syntactic constructs into
 	  * subexpressions, formatting them in a mostly sequential, left-to-right manner, and concatenating the results.
 	  * The devil is in the context passing and combining of the meta data of the concatenated `SpelledSQL` fragments:
-	  * expressions refer to table [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL components]]
+	  * expressions refer to table [[net.noresttherein.oldsql.sql.ast.ComponentSQL components]]
 	  * and [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters, which must be properly resolved into,
 	  * respectively, their actual aliases in the SQL and getter functions of the parameter(s) of the complete,
 	  * final query/statement. The scope with visible symbols changes neither in a top-down, nor left-to-right fashion,
@@ -286,8 +286,8 @@ object SQLDialect {
 		  *                forms for all parameters in `e` should be appended to it and returned as the parameterization
 		  *                included in `SpelledSQL`. As its second function, it provides getter functions `P => X`
 		  *                for all ''unbound'' parameters `X` in the scope of the formatted expression, given
-		  *                the [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedTable JoinedTable]]
-		  *                of the [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component]] expression
+		  *                the [[net.noresttherein.oldsql.sql.ast.JoinedTable JoinedTable]]
+		  *                of the [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expression
 		  *                representing them. These getters are in turn necessary to adapt the forms of individual
 		  *                expression to the type `P` of the parameter(s) of the final SQL.
 		  *                Note that this means that rendering of a ''select'' clause requires the parameterization
@@ -335,8 +335,8 @@ object SQLDialect {
 		  *                forms for all parameters in `e` should be appended to it and returned as the parameterization
 		  *                included in `SpelledSQL`. As its second function, it provides getter functions `P => X`
 		  *                for all ''unbound'' parameters `X` in the scope of the formatted expression, given
-		  *                the [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedTable JoinedTable]]
-		  *                of the [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component]] expression
+		  *                the [[net.noresttherein.oldsql.sql.ast.JoinedTable JoinedTable]]
+		  *                of the [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expression
 		  *                representing them. These getters are in turn necessary to adapt the forms of individual
 		  *                expression to the type `P` of the parameter(s) of the final SQL.
 		  *                Note that this means that rendering of a ''select'' clause requires the parameterization
@@ -653,7 +653,7 @@ object SQLDialect {
 
 		/** The spelling scope specifying what kind of statement is being currently formatted (''insert'', ''update'',
 		  * ''select'', etc) and what clause. This affects primarily which columns will be included by default
-		  * for [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL component]] expressions, but can have
+		  * for [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expressions, but can have
 		  * also other effects. The scope is changed with [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.in in]]
 		  * method or dedicated properties as the formatted expression/statement is recursively inspected.
 		  */

@@ -26,12 +26,12 @@ import net.noresttherein.oldsql.sql.DML.{BoundDML, ComposedDML, DMLAdapter, DMLA
 import net.noresttherein.oldsql.sql.DMLStatement.{AlteredResultStatement, BoundStatement, ComposedStatement, DMLStatementAPI, StatementResult, StatementVisitor}
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult.{BatchResult, LargeUpdateCount, MappedResult, RepeatedResult, UpdateCount}
 import net.noresttherein.oldsql.sql.Insert.implementation.{CaseInsert, InsertVisitor}
+import net.noresttherein.oldsql.sql.Returning.implementation.{CaseReturning, ReturningVisitor}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamRelation}
 import net.noresttherein.oldsql.sql.Update.implementation.{CaseUpdate, UpdateVisitor}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{False, SQLParameter, True}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
-import net.noresttherein.oldsql.sql.Returning.implementation.{CaseReturning, ReturningVisitor}
 
 //implicits
 import net.noresttherein.oldsql.slang._
@@ -853,7 +853,7 @@ object DMLStatement {
 	  * creating SQL expressions for use in ''where'' and ''set'' clauses of parameterized SQL ''updates''
 	  * (and in similar contexts for other DML statements). It exposes the mappings for the updated table
 	  * and the statement parameter(s) with proper `Origin` types to allow their implicit conversions to
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]] expressions for the whole table.
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] expressions for the whole table.
 	  */
 	class DMLScope[X, M[O] <: MappingAt[O]](val domain :From[M] WithParam X) {
 		/** The mapping of the modified table, for use on the left side

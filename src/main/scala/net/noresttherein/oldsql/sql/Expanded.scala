@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, ExpandingClause, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf, RowComposition, RowDecomposition}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
+import net.noresttherein.oldsql.sql.ast.RelationSQL
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 
@@ -75,7 +75,7 @@ trait Adjoin[+L <: RowProduct, R[O] <: MappingAt[O]]
 	def right :Relation[R] = last.relation
 
 	/** The right side of the join - representation of a table/relation alias containing the mapping of its schema
-	  * as a subtype of [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]]`[`[[net.noresttherein.oldsql.sql.RowProduct.FromLast FromLast]]`, `[[net.noresttherein.oldsql.sql.RowProduct.LastMapping LastMapping]]`]`.
+	  * as a subtype of [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]]`[`[[net.noresttherein.oldsql.sql.RowProduct.FromLast FromLast]]`, `[[net.noresttherein.oldsql.sql.RowProduct.LastMapping LastMapping]]`]`.
 	  * It identifies the SQL relation (table, view or ''select'') which is being added to the clause and its index,
 	  * to distinguish between possible multiple occurrences of the same relation.
 	  *
@@ -103,8 +103,8 @@ trait Adjoin[+L <: RowProduct, R[O] <: MappingAt[O]]
 	  * clause, and cannot be joined the same way as relations for tables.
 	  *
 	  * All instances created internally (rather than provided by the application as an argument to a factory method)
-	  * have empty [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation.includes includes]] and
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation.excludes excludes]] list, meaning the operative
+	  * have empty [[net.noresttherein.oldsql.sql.ast.JoinedRelation.includes includes]] and
+	  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation.excludes excludes]] list, meaning the operative
 	  * column set for the relation was not altered from the default provided by the wrapped
 	  * [[net.noresttherein.oldsql.schema.Relation Relation]]. It is a recommended practice, although not
 	  * validated. Deviating from this principle will not result in an error, but can introduce unexpected alterations

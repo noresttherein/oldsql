@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.schema.support.{ColumnMappingFactoryMethods, Map
 import net.noresttherein.oldsql.schema.support.MappingProxy.ExportColumnProxy
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
-import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseColumn
+import net.noresttherein.oldsql.sql.ast.LooseColumn
 import net.noresttherein.oldsql.sql.mechanics.TableCount
 
 

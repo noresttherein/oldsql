@@ -11,8 +11,7 @@ import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, ColumnSQL, From, IndexedMapping, InnerJoin, Join, JoinParam, LeftJoin, NonParam, OuterJoin, RightJoin, RowProduct, Select, SQLBoolean, Subselect, WithParam}
 import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
-import net.noresttherein.oldsql.sql.ast.{ChainSQL, ConversionSQL, SelectSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL}
+import net.noresttherein.oldsql.sql.ast.{ChainSQL, ColumnComponentSQL, ComponentSQL, ConversionSQL, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectColumnMapping, TopSelectMapping, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, ListingSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn

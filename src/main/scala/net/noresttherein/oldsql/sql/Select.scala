@@ -17,8 +17,7 @@ import net.noresttherein.oldsql.sql.Query.{CompoundSelect, CompoundSelectMapping
 import net.noresttherein.oldsql.sql.Select.{ArbitrarySelect, Minus, SelectTemplate, SetOperator}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.LocalScope
-import net.noresttherein.oldsql.sql.ast.{ConversionSQL, QuerySQL, SelectSQL, TupleSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL}
+import net.noresttherein.oldsql.sql.ast.{ComponentSQL, ConversionSQL, QuerySQL, RelationSQL, SelectSQL, TupleSQL}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnMappingQuery, ColumnQuery, CompoundSelectColumn, CompoundSelectColumnMapping, CompoundSelectMappingSQL, CompoundSelectSQL, MappingQuerySQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingValueSQL}

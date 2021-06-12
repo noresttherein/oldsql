@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.sql.GroupBy.AndBy
 import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseTemplate
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL}
+import net.noresttherein.oldsql.sql.ast.{ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.EmptyChain
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
@@ -72,8 +72,8 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext
   * (that is, `F#Generalized`), not this clause - as with expressions used for the grouping expression.
   *
   * Factory methods are available in the [[net.noresttherein.oldsql.sql.GroupBy$ companion]] object, accepting
-  * either a [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent LooseComponent]] or
-  * a [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]]. Similar methods
+  * either a [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]] or
+  * a [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]]. Similar methods
   * accepting a [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] and
   * [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]] exist in the 'companion' objects to the type aliases:
   * [[net.noresttherein.oldsql.sql.GroupByVal$ GroupByVal]] and [[net.noresttherein.oldsql.sql.GroupByOne$ GroupByOne]].
@@ -514,8 +514,8 @@ object GroupBy {
   * (that is, `G#Generalized`), not this clause - as with expressions used for the grouping expression.
   *
   * Factory methods are available in the [[net.noresttherein.oldsql.sql.By$ companion]] object, accepting
-  * either a [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent LooseComponent]] or
-  * a [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]]. Similar methods
+  * either a [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]] or
+  * a [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]]. Similar methods
   * accepting a [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] and
   * [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]] exist in the 'companion' objects to the type aliases:
   * [[net.noresttherein.oldsql.sql.ByVal$ ByVal]] and [[net.noresttherein.oldsql.sql.ByOne$ ByOne]].

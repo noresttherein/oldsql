@@ -96,9 +96,9 @@ package object sql {
 	  * are grouping relations which represent a subset of attributes from a ''group by'' clause.
 	  * @see [[net.noresttherein.oldsql.sql.JoinedTable]]
 	  */
-	type JoinedRelation[F <: RowProduct, M[O] <: MappingAt[O]] = ast.MappingSQL.JoinedRelation[F, M]
+	type JoinedRelation[F <: RowProduct, M[O] <: MappingAt[O]] = ast.JoinedRelation[F, M]
 
-	val JoinedRelation = ast.MappingSQL.JoinedRelation
+	val JoinedRelation = ast.JoinedRelation
 
 	/** An occurrence of an SQL [[net.noresttherein.oldsql.schema.Relation.Table Table]] in a ''from'' clause
 	  * of an SQL ''select''. It declares the [[net.noresttherein.oldsql.schema.Mapping mapping]] for that table
@@ -106,17 +106,17 @@ package object sql {
 	  * of its second type parameter.
 	  * @see [[net.noresttherein.oldsql.sql.JoinedRelation]]
 	  */
-	type JoinedTable[F <: RowProduct, M[O] <: MappingAt[O]] = ast.MappingSQL.JoinedTable[F, M]
+	type JoinedTable[F <: RowProduct, M[O] <: MappingAt[O]] = ast.JoinedTable[F, M]
 
-	val JoinedTable = ast.MappingSQL.JoinedTable
+	val JoinedTable = ast.JoinedTable
 
-	type JoinedParam[F <: RowProduct, X] = ast.MappingSQL.JoinedRelation[F, FromParam.Of[X]#P]
+	type JoinedParam[F <: RowProduct, X] = ast.JoinedRelation[F, FromParam.Of[X]#P]
 
 	object JoinedParam {
 		type Last[X] = JoinedParam[RowProduct AndFrom ParamRelation[X]#Param, X]
 	}
 
-	type JoinedGroup[F <: RowProduct, X] = ast.MappingSQL.JoinedRelation[F, Group[X]#T]
+	type JoinedGroup[F <: RowProduct, X] = ast.JoinedRelation[F, Group[X]#T]
 
 	object JoinedGroup {
 		type First[X] = JoinedGroup[FromSome GroupBy Group[X]#T, X]

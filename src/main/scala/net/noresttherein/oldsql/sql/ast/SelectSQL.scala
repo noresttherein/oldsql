@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundFrom, NonEmpty
 import net.noresttherein.oldsql.sql.Select.SelectTemplate
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, LocalScope, LocalSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL}
+import net.noresttherein.oldsql.sql.ast.{ColumnComponentSQL, ComponentSQL}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnMappingQuery, ColumnQuery, MappingQuerySQL, Rows}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingValueSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL

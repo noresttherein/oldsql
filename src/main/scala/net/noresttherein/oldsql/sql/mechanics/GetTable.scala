@@ -92,7 +92,7 @@ object LastTableOf {
   * [[net.noresttherein.oldsql.sql.mechanics.GetTable.RelationEvidence RelationEvidence]]. Each instance
   * implements type safe access to relations/mappings of any `RowProduct` based on some specific criteria, such as
   * the alias given to the relation or its relative position. The returned
-  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]]
+  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]]
   * (or [[net.noresttherein.oldsql.schema.Mapping Mapping]]) will not only be of the correct type,
   * but also use an `Origin` type uniquely identifying the relation within the clause, which distinguishes
   * between its potential multiple occurrences and provides its positional index.
@@ -396,7 +396,7 @@ object GetTable {
 		  * defines its right-based index in `F`. This type is used as
 		  * the [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type of the returned mapping
 		  * and the (invariant) base type for the returned
-		  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]], which allows to trace back
+		  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]], which allows to trace back
 		  * any component of their components back to their source.
 		  */
 		type O >: G <: RowProduct

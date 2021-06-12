@@ -20,8 +20,7 @@ import net.noresttherein.oldsql.sql.Expanded.NonSubselect
 import net.noresttherein.oldsql.sql.FromSome.GroundFromSome
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope, LocalSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL, RelationSQL, TableSQL}
-import net.noresttherein.oldsql.sql.ast.SelectSQL
+import net.noresttherein.oldsql.sql.ast.{ColumnComponentSQL, ComponentSQL, RelationSQL, SelectSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
@@ -44,7 +43,7 @@ import net.noresttherein.oldsql.slang._
   * statement, declaring the relations taking part in a query. More generally, it is the domain over which SQL
   * expressions (instances of the [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] class hierarchy)
   * are defined, providing all non-constant values available to them. It consists of a list of
-  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation relations]], with associated
+  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation relations]], with associated
   * [[net.noresttherein.oldsql.schema.Mapping Mapping]]s, together with an optional filter working on those relations,
   * especially any required join conditions. While the individual elements of a clause are referred to often as tables
   * for simplicity, they can not only be arbitrary relations such as other ''selects'', but also synthetic artifacts
@@ -1222,7 +1221,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  *         including setters for all bound and unbound parameters of SQL subexpressions present in this instance
 	  *         and [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext SQLContext]] with aliases of
 	  *         all tables in this instance, indexed consistently with the indexing of
-	  *         [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]] declared by it.
+	  *         [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]] declared by it.
 	  *         The `SQLContext` of the returned SQL will reflect this instance: subselect clauses will expand
 	  *         the context given as the argument here, while ''top'' clauses (without
 	  *         a [[net.noresttherein.oldsql.sql.Subselect Subselect]] subcomponent) will build up on a fresh instance.
@@ -1249,7 +1248,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 
 	/** A provider of accessor functions returning the values of the appropriate parameter in
 	  * [[net.noresttherein.oldsql.sql.RowProduct.Params this.Params]] chain based on
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]] expressions of the associated
+	  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]] expressions of the associated
 	  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] clause. It is used to provide write
 	  * [[net.noresttherein.oldsql.schema.SQLWriteForm forms]] setting the values of the parameters of SQL
 	  * [[net.noresttherein.oldsql.sql.Incantation commands]] based on this ''from'' clause.
@@ -1354,7 +1353,7 @@ object RowProduct {
 		  * with any preexisting filters. This is the lower level method than
 		  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] methods, differing in three aspects:
 		  *   - the `filter` argument is not anchored before use and thus cannot contain any
-		  *     [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent LooseComponent]] expressions resulting from
+		  *     [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]] expressions resulting from
 		  *     implicit conversions of `Mapping`s;
 		  *   - the `filter`'s argument scope type argument is the type parameter of this method, allowing it to
 		  *     be loosened to [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope LocalScope]] in
@@ -1368,7 +1367,7 @@ object RowProduct {
 		/** Creates a `RowProduct` of the same type as this one, but with its `filter` being the conjunction of this
 		  * instance's filter and the given `SQLBoolean`. The filter becomes the ''where'' clause of the SQL ''select''
 		  * created from the returned instance. The `filter` must not contain any
-		  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent LooseComponent]] expressions (results of
+		  * [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]] expressions (results of
 		  * implicit conversions from a [[net.noresttherein.oldsql.schema.Mapping Mapping]] to
 		  * [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]].
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where]]
@@ -1377,7 +1376,7 @@ object RowProduct {
 
 		/** Apply a filter condition to this clause. The condition is combined using `&&` with `this.condition`
 		  * and becomes a part of `this.filter` representing the ''where'' clause of the SQL statement.
-		  * Any [[net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent LooseComponent]] expressions, created
+		  * Any [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]] expressions, created
 		  * through implicit conversions from mappings exposed by the function's argument and present in the
 		  * function's result, are anchored into appropriate relations.
 		  * @param condition a function which accepts a
@@ -1533,7 +1532,7 @@ object RowProduct {
 		  * @see [[net.noresttherein.oldsql.sql.AndFrom]]
 		  * @see [[net.noresttherein.oldsql.sql.AndFrom.GeneralizedLeft]]
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.FromLast]]
-		  * @see [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation]]
+		  * @see [[net.noresttherein.oldsql.sql.ast.JoinedRelation]]
 		  */
 		def on(condition :JoinFilter) :F = filtered(condition)
 
@@ -2521,7 +2520,7 @@ object RowProduct {
 
 
 	/** A facade to a ''from'' clause of type `F`, providing access to all relations listed in its type as
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]] SQL expressions, which can be used,
+	  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]] SQL expressions, which can be used,
 	  * either directly or through their components, as part of other SQL expressions - in particular `SQLBoolean`
 	  * filters based on the `clause.Generalized`. The `RowProduct` type parameter of every returned relation
 	  * is the generalized super type of `F` formed by replacing all mappings preceding `M` in its type definition
@@ -3044,7 +3043,7 @@ object RowProduct {
 	  * The difference from the similar witness [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]
 	  * is that this type is invariant in both its parameters and hence attests that `F` occurs exactly in this form
 	  * as a part of type `E`. It is primarily used in conjunction with invariant
-	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]], to make sure the type parameters
+	  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]], to make sure the type parameters
 	  * is preserved exactly for the purpose of indexing, or in operations where one of its type parameters is a part
 	  * of the output. In contrast, `F ExpandedBy E` is covariant/contravariant and used primarily
 	  * when there is a need to confirm that `E` contains all the relations listed in `F`.

@@ -12,8 +12,7 @@ import net.noresttherein.oldsql.sql.{Aggregated, ColumnSQL, FromSome, IndexedMap
 import net.noresttherein.oldsql.sql.RowProduct.{GroundFrom, NonEmptyFrom, TopFrom}
 import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.{ChainSQL, ConversionSQL, SelectSQL, TupleSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL}
+import net.noresttherein.oldsql.sql.ast.{ChainSQL, ColumnComponentSQL, ComponentSQL, ConversionSQL, SelectSQL, TupleSQL}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
@@ -28,7 +27,7 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
   * an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] subtype (or some other type) as selectable
   * from the point of view the `select` method of `RowProduct`.
   * Implicit instances exist in the companion object for:
-  *   1. `E <: `[[net.noresttherein.oldsql.sql.ast.MappingSQL.ColumnComponentSQL ColumnComponentSQL]]`[G, M, T]`,
+  *   1. `E <: `[[net.noresttherein.oldsql.sql.ast.ColumnComponentSQL ColumnComponentSQL]]`[G, M, T]`,
   *      `M[O] <: `[[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]]`[T, O]`:
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumnAs SelectColumnAs]]`[B, M, T]`
   *          for any `F <: RowProduct`,
@@ -44,7 +43,7 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectColumnMapping SubselectColumnMapping]]`[B, S, M, T]`
   *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]]
   *          (where `M[O]` is the origin [[net.noresttherein.oldsql.schema.Mapping.OriginProjection projection]] of `E`);
-  *   1. `E <: `[[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL ComponentSQL]]`[G, M]`,
+  *   1. `E <: `[[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]]`[G, M]`,
   *      `M[O] <: `[[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[T, O]`:
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectAs SelectAs]]`[B, M]` for any `F <: RowProduct`,
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectMapping TopSelectMapping]]`[S, M, T]` for

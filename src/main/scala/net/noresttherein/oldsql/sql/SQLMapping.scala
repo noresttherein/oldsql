@@ -24,9 +24,9 @@ import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, CaseColumn}
 import net.noresttherein.oldsql.sql.ListingSQLMapping.GetListingComponent
 import net.noresttherein.oldsql.sql.SQLExpression.{BaseExpressionVisitor, CaseExpression, ExpressionVisitor, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
-import net.noresttherein.oldsql.sql.ast.{ChainSQL, ConversionSQL}
+import net.noresttherein.oldsql.sql.ast.{ChainSQL, ComponentSQL, ConversionSQL}
+import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, ListingSQL, SeqTuple}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.MatchChainTuple
@@ -48,7 +48,7 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, List
   * Not all possible expressions are supported; the expression may consist of
   *   - any single [[net.noresttherein.oldsql.sql.ColumnSQL column expressions]] (distinct SQL types),
   *     in particular [[net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm terms]],
-  *   - [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL components]] (ranging from whole entities
+  *   - [[net.noresttherein.oldsql.sql.ast.ComponentSQL components]] (ranging from whole entities
   *     to single columns),
   *   - [[net.noresttherein.oldsql.sql.ast.ConversionSQL conversion]] nodes,
   *   - any [[net.noresttherein.oldsql.sql.ast.CompositeSQL composites]] combining the above, in particular:
