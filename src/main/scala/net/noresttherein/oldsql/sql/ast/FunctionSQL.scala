@@ -7,9 +7,10 @@ import net.noresttherein.oldsql.exceptions.InseparableExpressionException
 import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm}
 import net.noresttherein.oldsql.sql.{ColumnFunction, ColumnSQL, RowProduct, SQLExpression, StoredFunction}
 import net.noresttherein.oldsql.sql.Call.CallFunction.GroundCallFunction
-import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnVisitor, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionVisitor, GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL
 import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumnSQL.FunctionColumnVisitor
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}

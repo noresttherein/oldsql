@@ -4,13 +4,14 @@ import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.ColumnReadForm
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
-import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnVisitor, CompositeColumnSQL}
-import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{BinaryColumnOperator, UnaryColumnOperator}
+import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.BinaryOperationSQL.{BinaryOperation, BinaryOperationVisitor}
 import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.UnaryOperationSQL.{UnaryOperation, UnaryOperationVisitor}
 import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.UnaryPostfixOperationSQL.{UnaryPostfixOperation, UnaryPostfixOperationVisitor}
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.{BinaryColumnOperator, UnaryColumnOperator}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLNumber}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 import net.noresttherein.oldsql.sql.mechanics.SQLNumber.{SQLFraction, SQLInteger}

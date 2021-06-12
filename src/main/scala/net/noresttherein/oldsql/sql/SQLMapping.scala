@@ -51,7 +51,7 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, List
   *   - [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL components]] (ranging from whole entities
   *     to single columns),
   *   - [[net.noresttherein.oldsql.sql.ast.ConversionSQL conversion]] nodes,
-  *   - any [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL composites]] combining the above, in particular:
+  *   - any [[net.noresttherein.oldsql.sql.ast.CompositeSQL composites]] combining the above, in particular:
   *   - [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuples]] and
   *     [[ast.TupleSQL.ListingSQL indexed tuples]].
   *

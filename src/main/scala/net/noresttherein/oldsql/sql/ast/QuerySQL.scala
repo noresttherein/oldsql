@@ -12,14 +12,15 @@ import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadFo
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.{SelectRelation, Table}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLDialect, SQLExpression, StandardSQL}
-import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnVisitor, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult
 import net.noresttherein.oldsql.sql.Incantation.Cantrip
 import net.noresttherein.oldsql.sql.Query.QueryTemplate
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, ParamlessFrom, PartOf}
 import net.noresttherein.oldsql.sql.Select.{Intersect, Minus, SetOperator, Union, UnionAll}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionVisitor, GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.ExistsSQL
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnQuery, Rows}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumnMapping.CompoundSelectColumnMappingVisitor

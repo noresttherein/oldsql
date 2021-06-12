@@ -4,10 +4,11 @@ import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLBoolean, SQLExpression}
-import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnVisitor, CompositeColumnSQL}
-import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.UnaryColumnOperator
+import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.UnaryColumnOperator
 import net.noresttherein.oldsql.sql.ast.LogicalSQL.AndSQL.{AndVisitor, CaseAnd}
 import net.noresttherein.oldsql.sql.ast.LogicalSQL.NotSQL.{CaseNot, NotVisitor}
 import net.noresttherein.oldsql.sql.ast.LogicalSQL.OrSQL.{CaseOr, OrVisitor}

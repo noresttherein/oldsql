@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, Select, SQLExpression}
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, TopFrom}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionVisitor, GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectSQL, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}

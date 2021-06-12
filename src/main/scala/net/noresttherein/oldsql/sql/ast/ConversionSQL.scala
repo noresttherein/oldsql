@@ -5,11 +5,11 @@ import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm}
 import net.noresttherein.oldsql.sql.{sanitize, ColumnSQL, RowProduct, Select, SQLExpression, SQLString}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
-import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.UnaryColumnOperator
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, GroundFrom, NonEmptyFrom, TopFrom}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionVisitor, GlobalScope, Lift, LocalScope}
-import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.UnaryOperatorSQL
+import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, Lift, LocalScope}
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.UnaryColumnOperator
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.UnaryOperatorSQL
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.ColumnPromotionConversion.{CaseColumnPromotion, ColumnPromotionVisitor}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion.{CasePromotion, PromotionVisitor}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.SanitizedStringSQL.SanitizedStringVisitor
@@ -26,7 +26,7 @@ import net.noresttherein.oldsql.slang._
 
 
 /**
-  * @see [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.UnaryOperatorSQL UnaryOperatorSQL]]
+  * @see [[net.noresttherein.oldsql.sql.ast.CompositeSQL.UnaryOperatorSQL UnaryOperatorSQL]]
   * @author Marcin Mościcki
   */
 trait ConversionSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, Y] extends UnaryOperatorSQL[F, S, X, Y] {

@@ -16,7 +16,7 @@ import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionVisitor, GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumnAs, SubselectAs, SubselectColumnAs, SubselectSQL, TopSelectAs, TopSelectColumnAs, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.{CaseChainTuple, ChainEntry, ChainTupleVisitor, EmptyChain}

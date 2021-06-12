@@ -6,28 +6,23 @@ import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
-import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnVisitor, CaseAliasedColumn}
-import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnVisitor, GlobalColumn}
-import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnVisitor}
+import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnVisitor}
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.SQLDialect.SpellingScope.SelectScope
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionVisitor, GlobalScope, Lift, LocalScope, SQLTypeUnification}
+import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.StoredProcedure.Out
-import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, LogicalSQL, QuerySQL, SelectSQL}
+import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ArithmeticSQL, ConcatSQL, QuerySQL, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.AggregateSQL.{AggregateVisitor, CaseAggregate}
-import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.{ArithmeticVisitor, CaseArithmetic}
-import net.noresttherein.oldsql.sql.ast.ConcatSQL.{CaseConcat, ConcatVisitor}
-import net.noresttherein.oldsql.sql.ast.ConditionSQL.{BetweenSQL, CaseCondition, ConditionVisitor, InSQL, LikeSQL}
-import net.noresttherein.oldsql.sql.ast.ConversionSQL.{CaseColumnConversion, ColumnConversionVisitor, ColumnConversionSQL, ColumnPromotionConversion, MappedColumnSQL, OrNull}
-import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumnSQL.{CaseFunctionColumn, FunctionColumnVisitor}
-import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumnSQL
-import net.noresttherein.oldsql.sql.ast.LogicalSQL.{AndSQL, CaseLogical, LogicalVisitor, NotSQL, OrSQL}
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnVisitor}
+import net.noresttherein.oldsql.sql.ast.ConditionSQL.{BetweenSQL, InSQL, LikeSQL}
+import net.noresttherein.oldsql.sql.ast.ConversionSQL.{ColumnPromotionConversion, MappedColumnSQL, OrNull}
+import net.noresttherein.oldsql.sql.ast.LogicalSQL.{AndSQL, NotSQL, OrSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{LooseColumn, MappingColumnVisitor, TypedColumnComponentSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseColumn.CaseLooseColumn
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedColumnComponentSQL.CaseColumnComponent
-import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, ColumnQuery, ColumnQueryVisitor, CompoundSelectColumn, Rows}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumn.{CaseCompoundSelectColumn, CompoundSelectColumnVisitor}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, ColumnQuery, ColumnQueryVisitor, Rows}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectColumn, SubselectColumn, TopSelectColumn}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{ColumnTerm, False, SQLNull, True}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermVisitor}
@@ -605,175 +600,6 @@ object ColumnSQL {
 
 		type CaseAliasedColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = AliasedColumnVisitor[F, Y]
 	}
-
-
-
-	/** Base type of [[net.noresttherein.oldsql.sql.ColumnSQL column expressions]] which are composed of other
-	  * expressions. It is fully analogous to its supertype
-	  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL CompositeSQL]], redefining the implementations
-	  * of methods which needed narrowing of their result type to `ColumnSQL`.
-	  */ //todo: move it together with CompositeSQL to sql.ast
-	trait CompositeColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X]
-		extends CompositeSQL[F, S, X] with ColumnSQL[F, S, X]
-	{
-		override def asGlobal :Option[ColumnSQL[F, GlobalScope, X]] =
-			if (isGlobal) Some(this.asInstanceOf[ColumnSQL[F, GlobalScope, X]])
-			else None
-
-		override def anchor(from :F) :ColumnSQL[F, S, X] = rephrase(SQLScribe.anchor(from))
-
-		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, X]
-
-		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ColumnSQL[E, S, X] =
-			rephrase(SQLScribe.expand(base))
-
-		override def expand[U <: F, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :ColumnSQL[E, S, X] =
-			rephrase(SQLScribe.expand(base))
-
-//		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnVisitor[F, Y]) :Y[S, X] =
-//			matcher.composite(this)
-
-		override def inParens[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-		                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-			("(" +: defaultSpelling(context, params)) + ")"
-	}
-
-
-
-	object CompositeColumnSQL {
-
-		/** Implementation-oriented base trait for `CompositeSQL` subclasses which consist of a single subexpression
-		  * column with the same value type as this trait. It is unwise to reference this type directly and rely on any
-		  * particular expression type expanding it (other than in having the `value` subexpression property),
-		  * as it is considered an implementation detail and is subject to change.
-		  */
-		trait UnaryColumnOperator[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, V]
-			extends CompositeColumnSQL[F, S, V]
-		{
-			val value :ColumnSQL[F, S, X]
-			protected override def parts :Seq[ColumnSQL[F, S, X]] = value::Nil
-
-			override def isGlobal :Boolean = value.isGlobal
-			override def isAnchored :Boolean = value.isAnchored
-
-			override def anchor(form :F) :ColumnSQL[F, S, V] = value.anchor(form) match {
-				case same if same eq value => this
-				case anchored => reapply(anchored)
-			}
-
-			override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, V] =
-				reapply(mapper(value))
-
-			protected def reapply[E <: RowProduct, C >: LocalScope <: GlobalScope]
-			                     (e :ColumnSQL[E, C, X]) :ColumnSQL[E, C, V]
-
-
-			override def contentsIsomorphic(other :CompositeSQL.*) :Boolean = other match {
-				case unary :UnaryColumnOperator[_, _, _, _] => value isomorphic unary.value
-				case _ => false
-			}
-
-			override def equals(that :Any) :Boolean = that match {
-				case self :AnyRef if self eq this => true
-				case unary :UnaryColumnOperator[_, _, _, _] if canEqual(unary) && unary.canEqual(this) =>
-					value == unary.value
-				case _ => false
-			}
-
-			override def hashCode :Int = value.hashCode
-		}
-
-
-
-		/** Implementation oriented base trait for `CompositeSQL` subclasses which consist of two column subexpressions
-		  * with the same type (but possibly different than the value type of this trait).
-		  * It is unwise to reference this type directly and rely on any
-		  * particular expression type expanding it (other than in having `left` and `right` subexpression properties),
-		  * as it is considered an implementation detail and is subject to change.
-		  */
-		trait BinaryColumnOperator[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, V]
-			extends CompositeColumnSQL[F, S, V]
-		{
-			val left :ColumnSQL[F, S, X]
-			val right :ColumnSQL[F, S, X]
-
-			protected override def parts :Seq[ColumnSQL[F, S, X]] = left::right::Nil
-
-			override def isGlobal :Boolean = left.isGlobal && right.isGlobal
-			override def isAnchored :Boolean = left.isAnchored && right.isAnchored
-
-			override def anchor(from :F) :ColumnSQL[F, S, V] = (left.anchor(from), right.anchor(from)) match {
-				case (l, r) if (l eq left) && (r eq right) => this
-				case (l, r) => reapply(l, r)
-			}
-
-			override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, V] =
-				reapply(mapper(left), mapper(right))
-
-			protected def reapply[E <: RowProduct, C >: LocalScope <: GlobalScope]
-			                     (left :ColumnSQL[E, C, X], right :ColumnSQL[E, C, X]) :ColumnSQL[E, C, V]
-
-
-			override def contentsIsomorphic(other :CompositeSQL.*) :Boolean = other match {
-				case e :BinaryColumnOperator[_, _, _, _] => (left isomorphic e.left) && (right isomorphic e.right)
-				case _ => false
-			}
-
-			override def equals(that :Any) :Boolean = that match {
-				case self :AnyRef if self eq this => true
-				case other :BinaryColumnOperator[_, _, _, _] if canEqual(other) && other.canEqual(this) =>
-					left == other.left && right == other.right
-				case _ => false
-			}
-
-			override def hashCode :Int = left.hashCode * 31 + right.hashCode
-		}
-
-		trait CompositeColumnVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends AliasedColumnVisitor[F, Y] with ArithmeticVisitor[F, Y] with ColumnConversionVisitor[F, Y]
-			   with ConcatVisitor[F, Y] with ConditionVisitor[F, Y] with CompoundSelectColumnVisitor[F, Y]
-			   with FunctionColumnVisitor[F, Y] with LogicalVisitor[F, Y]
-		{
-			def composite[S >: LocalScope <: GlobalScope, X](e :CompositeColumnSQL[F, S, X]) :Y[S, X]
-		}
-
-		trait MatchOnlyCompositeColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends CompositeColumnVisitor[F, Y]
-			   with CaseAliasedColumn[F, Y] with CaseArithmetic[F, Y] with CaseConcat[F, Y] with CaseCondition[F, Y]
-			   with CaseLogical[F, Y]
-
-
-		trait MatchCompositeColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends MatchOnlyCompositeColumn[F, Y] with CaseColumnConversion[F, Y] with CaseCompoundSelectColumn[F, Y]
-			   with CaseFunctionColumn[F, Y]
-
-		trait CaseCompositeColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends MatchCompositeColumn[F, Y]
-		{
-			override def alias[S >: LocalScope <: GlobalScope, V](e :AliasedColumn[F, S, V]) :Y[S, V] = composite(e)
-
-			override def arithmetic[S >: LocalScope <: GlobalScope, V](e :ArithmeticSQL[F, S, V]) :Y[S, V] =
-				composite(e)
-
-			override def concat[S >: LocalScope <: GlobalScope](e :ConcatSQL[F, S]) :Y[S, String] = composite(e)
-
-			override def condition[S >: LocalScope <: GlobalScope](e :ConditionSQL[F, S]) :Y[S, Boolean] = composite(e)
-
-			override def conversion[S >: LocalScope <: GlobalScope, Z, X](e :ColumnConversionSQL[F, S, Z, X]) :Y[S, X] =
-				composite(e)
-
-			override def function[S >: LocalScope <: GlobalScope, X <: Chain, Z](e :FunctionColumnSQL[F, S, X, Z]) :Y[S, Z] =
-				composite(e)
-
-			override def logical[S >: LocalScope <: GlobalScope](e :LogicalSQL[F, S]) :Y[S, Boolean] = composite(e)
-
-			override def compoundSelect[V](e :CompoundSelectColumn[F, V]) :Y[GlobalScope, Rows[V]] =
-				composite(e)
-		}
-	}
-
-
 
 
 

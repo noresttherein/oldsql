@@ -4,13 +4,13 @@ import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLBoolean, SQLExpression, SQLString}
-import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnVisitor, CompositeColumnSQL}
-import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.BinaryColumnOperator
+import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.{BinaryOperatorSQL, UnaryOperatorSQL}
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.{BinaryOperatorSQL, CompositeColumnSQL, UnaryOperatorSQL}
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.BinaryColumnOperator
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.BetweenSQL.{BetweenVisitor, CaseBetween}
-import net.noresttherein.oldsql.sql.ast.ConditionSQL.ComparisonSQL.{CaseComparison, ComparisonVisitor, ComparisonOperator}
+import net.noresttherein.oldsql.sql.ast.ConditionSQL.ComparisonSQL.{CaseComparison, ComparisonOperator, ComparisonVisitor}
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.EqualitySQL.EqualityVisitor
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.ExistsSQL.{CaseExists, ExistsVisitor}
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.InequalitySQL.InequalityVisitor

@@ -6,14 +6,15 @@ import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, By, ColumnSQL, From, FromSome, GlobalBoolean, GroupBy, GroupByClause, Join, RowProduct, SQLExpression, Subselect}
-import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnVisitor, CompositeColumnSQL}
-import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.CaseCompositeColumn
+import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnVisitor}
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, NonEmptyFrom, PartOf}
-import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, CompositeSQL, ExpressionMapper, ExpressionVisitor, GlobalScope, GlobalSQL, LocalScope}
-import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.CaseComposite
+import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMapper, ExpressionVisitor, GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, UnboundParamSQL}
 import net.noresttherein.oldsql.sql.ast.{AggregateSQL, MappingSQL, QuerySQL, SQLTerm}
+import net.noresttherein.oldsql.sql.ast.CompositeSQL
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.{CaseComposite, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.CaseCompositeColumn
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, LooseColumn, LooseComponent, RelationSQL, TypedColumnComponentSQL, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.CaseRelation
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, CaseQuery, ColumnQuery, Rows}
@@ -54,7 +55,7 @@ object SQLScribe {
 
 	/** Base `SQLScribe` trait implementing methods for all `SQLExpression` types which do not depend on the clause `F`
 	  * (such as terms) as well as for `CompositeSQL` subclasses by recursively applying itself using their
-	  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.rephrase rephrase]] method.
+	  * [[net.noresttherein.oldsql.sql.ast.CompositeSQL.rephrase rephrase]] method.
 	  */
 	trait AbstractSQLScribe[+F <: RowProduct, -R <: RowProduct] extends SQLScribe[F, R]
 		with ExpressionVisitor[F, ExpressionResult[R]#T] with ColumnVisitor[F, ColumnResult[R]#T]
