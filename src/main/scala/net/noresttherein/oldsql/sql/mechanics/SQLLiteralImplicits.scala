@@ -2,8 +2,10 @@ package net.noresttherein.oldsql.sql.mechanics
 
 import scala.annotation.implicitAmbiguous
 
+import net.noresttherein.oldsql.schema.{ColumnForm, SQLForm}
 import net.noresttherein.oldsql.sql.{GlobalBoolean, RowProduct}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.{False, SQLLiteral, SQLNull, SQLParameter, True}
+import net.noresttherein.oldsql.sql.ast.SQLTerm.{ColumnTerm, False, SQLNull, SQLParameter, True}
+import net.noresttherein.oldsql.sql.ast.SQLTerm
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter.ParameterFactory
 import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.nullSQL
 
@@ -20,15 +22,15 @@ import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.nullSQL
 trait implicitSQLLiterals
 
 
-
 /** Namespace with implicit conversions from Scala literals providing extension methods for creating bound SQL parameter
   * expressions as well as SQL `null` literals.
   */
 object implicitSQLLiterals extends SQLLiteralImplicits
 
 
-
-
+sealed trait LowPrioritySQLLiteralImplicits {
+	implicit def implicitLiteral[T :SQLForm](value :T) :SQLTerm[T] = SQLTerm(value)
+}
 
 
 /** A trait grouping definitions of implicit conversions from Scala literals to
@@ -43,12 +45,12 @@ object implicitSQLLiterals extends SQLLiteralImplicits
   * but can also be extended by user's package objects (or other classes/objects) to bring them into the lexical scope
   * of nested types (which will be required for the `null` and parameter factories).
   */
-trait SQLLiteralImplicits {
+trait SQLLiteralImplicits extends LowPrioritySQLLiteralImplicits {
 	//We don't want implicit conversions from Boolean because a common mistake of using == instead of ===
 	// would get unnoticed. We don't need it anyhow, as it can be either used  directly in a condition,
 	// or is compared with an expression derived from some columns, in which case it will be propagated automatically
 	@implicitAmbiguous("Boolean values are not implicitly convertible to SQLBoolean due to a high risk " +
-	                   "of inadvertent conversions of expressions which should produce an SQLExpression " +
+	                   "of inadvertent conversions of expressions, which should produce an SQLExpression " +
 	                   "but instead erroneously result in a Boolean, such as using == instead of ===.")
 	implicit def noImplicitBoolean1(value :Boolean) :GlobalBoolean[RowProduct] = if (value) True else False
 	implicit def noImplicitBoolean2(value :Boolean) :GlobalBoolean[RowProduct] = if (value) True else False
@@ -56,8 +58,8 @@ trait SQLLiteralImplicits {
 	implicit def implicitBooleanLiteral[B <: Boolean with Singleton](value :B) :GlobalBoolean[RowProduct] =
 		if (value) True else False
 
-	implicit def implicitColumnLiteral[T](value :T)(implicit factory :SQLLiteral.Factory[T]) :factory.Res =
-		SQLLiteral(value)
+	implicit def implicitColumnLiteral[T :ColumnForm](value :T) :ColumnTerm[T] =
+		SQLTerm(value)
 
 
 
@@ -65,7 +67,7 @@ trait SQLLiteralImplicits {
 	  * or an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] exists with a `?` method creating
 	  * an [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]] expression representing a JDBC parameter
 	  * together with its value.
-	  */
+	  */ //todo: move it someplace better than mechanics and make it AnyVal
 	implicit class boundParameterSQL[T, P <: SQLParameter[T]](value :T)(implicit factory :ParameterFactory[T, P]) {
 		/** Creates a ''bound'' parameter of an SQL statement represented as an
 		  * [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]. The value of the parameter

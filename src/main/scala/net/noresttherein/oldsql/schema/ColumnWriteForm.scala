@@ -4,11 +4,12 @@ import java.sql.{JDBCType, PreparedStatement}
 
 import scala.annotation.implicitNotFound
 
-import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.{Opt, ReversedList}
 import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.schema.ColumnWriteForm.SingletonColumnWriteForm
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLWriteForm.{ConstSQLWriteForm, CustomNullSQLWriteForm, CustomSQLWriteForm, ErrorSQLWriteForm, EvalSQLWriteForm, FlatMappedSQLWriteForm, IgnoringWriteForm, LazyWriteForm, MappedSQLWriteForm, NonLiteralWriteForm, NotNullSQLWriteForm, NotNullWriteForm, NullSQLWriteForm, NullValueSQLWriteForm, ProxyWriteForm, WriteFormNullGuard}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{ConstSQLWriteForm, CustomNullSQLWriteForm, CustomSQLWriteForm, ErrorSQLWriteForm, EvalSQLWriteForm, FlatMappedSQLWriteForm, GapSQLWriteForm, IgnoringWriteForm, LazyWriteForm, MappedSQLWriteForm, NonLiteralWriteForm, NotNullSQLWriteForm, NotNullWriteForm, NullifiedSQLWriteForm, NullValueSQLWriteForm, ProxyWriteForm, WriteFormNullGuard}
 import net.noresttherein.oldsql.schema.forms.{SQLForms, SuperColumnForm}
 import net.noresttherein.oldsql.schema.forms.SQLForms.SuperAdapterColumnForm
 
@@ -29,6 +30,10 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with SuperColumnForm { outer =
 
 	final override def writtenColumns = 1
 
+	override def param = "?"
+	override def inlineParam = "?"
+
+	override def split :Seq[ColumnWriteForm[T]] = this::Nil
 
 	override def unmap[X](fun :X => T) :ColumnWriteForm[X] = ColumnWriteForm.map(fun)(this)
 
@@ -38,23 +43,22 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with SuperColumnForm { outer =
 
 	override def compose[X](extractor :X =?> T) :ColumnWriteForm[X] = ColumnWriteForm(extractor)(this)
 
-
 	override def toOpt :ColumnWriteForm[Option[T]] = SQLForms.OptionColumnWriteForm(this)
 
 	override def nullSafe :ColumnWriteForm[T] =
-		new ProxyWriteForm[T] with WriteFormNullGuard[T] with ColumnWriteForm[T] with SuperAdapterColumnForm {
+		new SuperAdapterColumnForm with ProxyWriteForm[T] with SingletonColumnWriteForm[T] with WriteFormNullGuard[T] {
 			override def form = outer
 			override def nullSafe :ColumnWriteForm[T] = this
 		}
 
 	override def notNull :ColumnWriteForm[T] =
-		new NotNullSQLWriteForm[T](this) with ColumnWriteForm[T] {
+		new NotNullSQLWriteForm[T](this) with SingletonColumnWriteForm[T] {
 			override def notNull :this.type = this
 			override def sqlType = form.asInstanceOf[ColumnWriteForm[_]].sqlType
 		}
 
 	override def withNull(implicit nulls :NullValue[T]) :ColumnWriteForm[T] =
-		new CustomNullSQLWriteForm[T](this) with ColumnWriteForm[T] {
+		new CustomNullSQLWriteForm[T](this) with SingletonColumnWriteForm[T] {
 			override val sqlType = outer.sqlType
 		}
 
@@ -66,7 +70,7 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with SuperColumnForm { outer =
 		case _ => super.<>(read)
 	}
 
-	def <>[O <: T](read :ColumnReadForm[O]) :ColumnForm[O] = ColumnForm.join(this, read)
+	def <>[O <: T](read :ColumnReadForm[O]) :ColumnForm[O] = ColumnForm.combine(this, read)
 
 
 
@@ -76,6 +80,9 @@ trait ColumnWriteForm[-T] extends SQLWriteForm[T] with SuperColumnForm { outer =
 	}
 
 
+	private[schema] def superToString :String = super.toString
+	private[schema] def superEquals(that :Any) :Boolean = super.equals(that)
+	private[schema] def superHashCode :Int = super.hashCode
 }
 
 
@@ -168,8 +175,8 @@ object ColumnWriteForm {
 	  * explicitly to the backing form's [[net.noresttherein.oldsql.schema.SQLWriteForm.set set]] method,
 	  * rather than delegate null handling to its [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull setNull]],
 	  * like the latter.
-	  */ //consider: renaming to something like default
-	def nulls[T :ColumnWriteForm :NullValue] :ColumnWriteForm[Any] = nulls[T](null)
+	  */
+	def defaults[T :ColumnWriteForm :NullValue] :ColumnWriteForm[Any] = defaults[T](null)
 
 	/** An `SQLWriteForm` ignoring its input and always writing `null` values using the implicitly given
 	  * `SQLWriteForm[T]`. Null is defined here by the [[net.noresttherein.oldsql.schema.SQLForm.NullValue NullValue]]
@@ -180,8 +187,8 @@ object ColumnWriteForm {
 	  * like the latter.
 	  * @param name the name of the form, used in its `toString` implementation (and thrown exceptions).
 	  */
-	def nulls[T :ColumnWriteForm :NullValue](name :String) :ColumnWriteForm[Any] =
-		new NullValueSQLWriteForm[T](name) with ColumnWriteForm[Any] { outer =>
+	def defaults[T :ColumnWriteForm :NullValue](name :String) :ColumnWriteForm[Any] =
+		new NullValueSQLWriteForm[T](name) with SingletonColumnWriteForm[Any] { outer =>
 			override def notNull :ColumnWriteForm[Any] =
 				new NullValueSQLWriteForm[T](toString + ".notNull")(ColumnWriteForm[T].notNull, NullValue[T])
 					with IgnoringColumnWriteForm with NotNullWriteForm[Any]
@@ -204,9 +211,9 @@ object ColumnWriteForm {
 	  * will delegate all calls accepting `T` as an argument to their counterpart dedicated to `null` representation.
 	  */
 	def none[T :ColumnWriteForm](name :String) :ColumnWriteForm[Any] =
-		new NullSQLWriteForm[T](name) with IgnoringColumnWriteForm { outer =>
+		new NullifiedSQLWriteForm[T](name) with IgnoringColumnWriteForm { outer =>
 			override def notNull :ColumnWriteForm[Any] =
-				new NullSQLWriteForm[T](name)(ColumnWriteForm[T].notNull)
+				new NullifiedSQLWriteForm[T](name)(ColumnWriteForm[T].notNull)
 					with IgnoringColumnWriteForm with NotNullWriteForm[Any]
 				{
 					override val sqlType = outer.sqlType
@@ -214,20 +221,26 @@ object ColumnWriteForm {
 			override val sqlType = ColumnWriteForm[T].sqlType
 		}
 
+	/** A column form which always writes `null` values. */
+	def nulls[T] :ColumnWriteForm[T] = ColumnForm.nulls
 
+	val gap :ColumnWriteForm[Any] =
+		new GapSQLWriteForm(1) with IgnoringColumnWriteForm {
+			override def sqlType = JDBCType.NULL
+		}
 
 	/** A write form which will throw the given exception at every write attempt. */
 	def error(raise: => Nothing) :ColumnWriteForm[Any] = error(JDBCType.OTHER, "<ERROR")(raise)
 
 	/** A write form which will throw the given exception at every write attempt. */
 	def error(columnType :JDBCType, name :String)(raise: => Nothing) :ColumnWriteForm[Any] =
-		new ErrorSQLWriteForm[Any](1, raise, name) with ColumnWriteForm[Any] {
+		new ErrorSQLWriteForm[Any](1, raise, name) with SingletonColumnWriteForm[Any] {
 			override def notNull :this.type = this
 			override val sqlType = columnType
 		}
 
 	/** A dummy column form which throws an `UnsupportedOperationException` at each write attempt.
-	  * Used as part of `ColumnForm.join` to convert a `ColumnReadForm` into a `ColumnForm` for situations
+	  * Used as part of `ColumnForm.combine` to convert a `ColumnReadForm` into a `ColumnForm` for situations
 	  * where its write functionality is known not to be used. Be careful!
 	  */
 	def unsupported(columnType :JDBCType, name :String = null)(message :String) :ColumnWriteForm[Any] =
@@ -236,7 +249,7 @@ object ColumnWriteForm {
 		}
 
 	/** A dummy column form which throws an `UnsupportedOperationException` at each write attempt.
-	  * Used as part of `ColumnForm.join` to convert a `ColumnReadForm` into a `ColumnForm` for situations
+	  * Used as part of `ColumnForm.combine` to convert a `ColumnReadForm` into a `ColumnForm` for situations
 	  * where its write functionality is known not to be used. Be careful!
 	  */
 	def unsupported(message :String) :ColumnWriteForm[Any] =
@@ -273,24 +286,24 @@ object ColumnWriteForm {
 	/** Composes an implicitly available write form `ColumnWriteForm[S]` with a given getter function to create
 	  * an `ColumnWriteForm[T]`. This function can in particular be used to present a `ColumnWriteForm` for the type
 	  * of a property of some entity type as a write form for said entity type. Such forms can be later combined
-	  * together with [[net.noresttherein.oldsql.schema.SQLWriteForm.combine SQLWriteForm.combine(forms)]] to create
+	  * together with [[net.noresttherein.oldsql.schema.SQLWriteForm.join SQLWriteForm.join(forms)]] to create
 	  * an `SQLWriteForm` for the whole entity.
 	  */
-	def map[S :ColumnWriteForm, T](map :T => S) :ColumnWriteForm[T] =
-		ColumnWriteForm.map(null :String)(map)
+	def map[S :ColumnWriteForm, T](f :T => S) :ColumnWriteForm[T] =
+		ColumnWriteForm.map(null :String)(f)
 
 	/** Composes an implicitly available write form `ColumnWriteForm[S]` with a given getter function to create
 	  * a `ColumnWriteForm[T]`. This function can in particular be used to present a `ColumnWriteForm` for the type
 	  * of a property of some entity type as a write form for said entity type. Such forms can be later combined
-	  * together with [[net.noresttherein.oldsql.schema.SQLWriteForm.combine SQLWriteForm.combine(forms)]] to create
+	  * together with [[net.noresttherein.oldsql.schema.SQLWriteForm.join SQLWriteForm.join(forms)]] to create
 	  * an `SQLWriteForm` for the whole entity.
 	  */
-	def map[S :ColumnWriteForm, T](name :String)(map :T => S) :ColumnWriteForm[T] =
-		new MappedSQLWriteForm[S, T](map, name) with ColumnWriteForm[T] with SuperAdapterColumnForm { outer =>
+	def map[S :ColumnWriteForm, T](name :String)(f :T => S) :ColumnWriteForm[T] =
+		new MappedSQLWriteForm[S, T](f, name) with SingletonColumnWriteForm[T] with SuperAdapterColumnForm { outer =>
 			override val form = ColumnWriteForm[S]
 			override def notNull :ColumnWriteForm[T] =
-				new MappedSQLWriteForm[S, T](map, name)(form.notNull)
-					with ColumnWriteForm[T] with SuperAdapterColumnForm with NotNullWriteForm[T]
+				new MappedSQLWriteForm[S, T](f, name)(form.notNull)
+					with SuperAdapterColumnForm with SingletonColumnWriteForm[T] with NotNullWriteForm[T]
 				{
 					override val form = outer.form
 				}
@@ -301,20 +314,20 @@ object ColumnWriteForm {
 	  * [[net.noresttherein.oldsql.schema.ColumnWriteForm.setNull setNull]] method of the base form instead of
 	  * [[net.noresttherein.oldsql.schema.ColumnWriteForm.set set]].
 	  */
-	def flatMap[S :ColumnWriteForm, T](map :T => Option[S]) :ColumnWriteForm[T] =
-		flatMap(null :String)(map)
+	def flatMap[S :ColumnWriteForm, T](f :T => Option[S]) :ColumnWriteForm[T] =
+		flatMap(null :String)(f)
 
 	/** Composes an implicitly available write form `ColumnWriteForm[S]` with a given getter to create
 	  * a `ColumnWriteForm[T]`. If the function returns `None`, the created form will use
 	  * [[net.noresttherein.oldsql.schema.ColumnWriteForm.setNull setNull]] method of the base form instead of
 	  * [[net.noresttherein.oldsql.schema.ColumnWriteForm.set set]].
 	  */
-	def flatMap[S :ColumnWriteForm, T](name :String)(map :T => Option[S]) :ColumnWriteForm[T] =
-		new FlatMappedSQLWriteForm[S, T](map, name) with ColumnWriteForm[T] with SuperAdapterColumnForm { outer =>
+	def flatMap[S :ColumnWriteForm, T](name :String)(f :T => Option[S]) :ColumnWriteForm[T] =
+		new FlatMappedSQLWriteForm[S, T](f, name) with SingletonColumnWriteForm[T] with SuperAdapterColumnForm { outer =>
 			override val form = ColumnWriteForm[S]
 			override def notNull :ColumnWriteForm[T] =
-				new FlatMappedSQLWriteForm[S, T](map, name)(form.notNull)
-					with ColumnWriteForm[T] with SuperAdapterColumnForm with NotNullWriteForm[T]
+				new FlatMappedSQLWriteForm[S, T](f, name)(form.notNull)
+					with SingletonColumnWriteForm[T] with SuperAdapterColumnForm with NotNullWriteForm[T]
 				{
 					override val form = outer.form
 				}
@@ -334,7 +347,7 @@ object ColumnWriteForm {
 	  */
 	def delayed[T](delayed: => ColumnWriteForm[T]) :ColumnWriteForm[T] =
 		new LazyColumnWriteForm[T] {
-			override protected[this] var init: () => SQLWriteForm[T] = () => delayed
+			protected[this] override var initializer: () => SQLWriteForm[T] = () => delayed
 		}
 
 
@@ -361,23 +374,55 @@ object ColumnWriteForm {
 	}
 
 
-	trait NonLiteralColumnWriteForm[-T] extends NonLiteralWriteForm[T] with ColumnWriteForm[T] {
+
+
+	protected[schema] trait NonLiteralColumnWriteForm[-T] extends NonLiteralWriteForm[T] with ColumnWriteForm[T] {
 		override def nullLiteral :String = "null"
 		override def inlineNullLiteral :String = nullLiteral
 	}
 
 
+	/** An implementation mixin for column write forms which optimizes
+	  * [[net.noresttherein.oldsql.schema.ColumnWriteForm.SingletonColumnWriteForm.split split]] by extending `Seq`
+	  * and returning itself, without a need for creating a (likely temporary) singleton wrapper object.
+	  */
+	private[oldsql] trait SingletonColumnWriteForm[-T] extends ColumnWriteForm[T] with Seq[ColumnWriteForm[T]] {
+		override def split :Seq[ColumnWriteForm[T]] = this
 
+		override def apply(i :Int) :ColumnWriteForm[T] =
+			if (i == 0) this else throw new IndexOutOfBoundsException(i)
 
+		override def length :Int = 1
+		override def iterator :Iterator[ColumnWriteForm[T]] = Iterator.single(this)
 
+		override def map[B](f :ColumnWriteForm[T] => B) = f(this) match {
+			//s.type <:< B with SingletonColumnWriteForm[x] => s.type <:< B with Seq[s.type] => s <:< Seq[B]
+			case singleton :SingletonColumnWriteForm[_] => singleton.asInstanceOf[Seq[B]]
+			case res => ReversedList :+ res
+		}
 
+		override def flatMap[B](f :ColumnWriteForm[T] => IterableOnce[B]) = f(this) match {
+			case empty :Iterable[B] if empty.isEmpty => ReversedList.empty
+			case one :Iterable[B] if one.sizeIs == 1 && one.head.isInstanceOf[SingletonColumnWriteForm[_]] =>
+				one.head.asInstanceOf[Seq[B]]
+			case iter :Iterable[B] => iter.toSeq
+			case iter :Iterator[B] => if (iter.hasNext) iter.toSeq else ReversedList.empty
+			case other => other.iterator.toSeq
+		}
+
+		override def canEqual(that :Any) = super[ColumnWriteForm].canEqual(that)
+		override def equals(that :Any) = superEquals(that)
+		override def hashCode :Int = superHashCode
+		//skip the `toString` of Seq which would cause infinite recursion and use whatever was before we were mixed in
+		override def toString :String = superToString
+	}
 
 
 	/** A simple mix-in trait for write forms which ignore passed arguments when setting parameters.
 	  * It directs [[net.noresttherein.oldsql.schema.SQLWriteForm.set set]] method
 	  * to [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull setNull]].
 	  */
-	private[schema] trait IgnoringColumnWriteForm extends IgnoringWriteForm with ColumnWriteForm[Any] {
+	private[schema] trait IgnoringColumnWriteForm extends IgnoringWriteForm with SingletonColumnWriteForm[Any] {
 		override def unmap[X](fun :X => Any) :ColumnWriteForm[X] = this
 		override def flatUnmap[X](fun :X => Option[Any]) :ColumnWriteForm[X] = this
 		override def compose[X](extractor :X =?> Any) :ColumnWriteForm[X] = this
@@ -390,18 +435,18 @@ object ColumnWriteForm {
 	private[schema] class CustomColumnWriteForm[-T](override val sqlType :JDBCType, name :String = null)
 	                                               (write :(PreparedStatement, Int, T) => Unit)
 		extends CustomSQLWriteForm[T](1, name)(write)(NullValue.NotNull)
-		   with DirectColumnWriteForm[T] with NonLiteralColumnWriteForm[T]
+		   with DirectColumnWriteForm[T] with NonLiteralColumnWriteForm[T] with SingletonColumnWriteForm[T]
 	{
 		override def notNull :ColumnWriteForm[T] =
 			new CustomColumnWriteForm[T](sqlType, toString + ".notNull")(write) with NotNullWriteForm[T]
 
-		override val toString =
+		override val toString :String =
 			if (name != null) name else "ColumnWriteForm(" + sqlType + ")@" + System.identityHashCode(this)
 	}
 
 
 	private[schema] trait LazyColumnWriteForm[-T]
-		extends LazyWriteForm[T] with ColumnWriteForm[T] with SuperAdapterColumnForm
+		extends LazyWriteForm[T] with SingletonColumnWriteForm[T] with SuperAdapterColumnForm
 	{
 		override def form :ColumnWriteForm[T] = super[LazyWriteForm].form.asInstanceOf[ColumnWriteForm[T]]
 

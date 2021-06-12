@@ -23,7 +23,10 @@ import net.noresttherein.oldsql.slang._
 /** Base trait for client implementations of the `Mapping` type having subjects from the application domain model.
   * Extending classes typically provide individual access to its columns and components, with detailed types
   * for the latter, so they can be used as part of SQL expressions. For this reason, they are also typically accessible
-  * through a stable path in the application code, adding further to their static nature.
+  * through a stable path in the application code, adding further to their static nature. Results of parameterless
+  * methods are typically cached/computed on initialization, and implementations are optimized for speed in use
+  * at the cost of initialization time.
+  *
   * Overrides `optionally` and `assemble`: the former for efficiency, making use of precomputed `Buff` data,
   * the latter for convenience, declaring `Pieces` as implicit and providing implicit conversion
   * from a `Component[T]` to `T`, allowing their use directly as constructor parameters to the assembled subject.

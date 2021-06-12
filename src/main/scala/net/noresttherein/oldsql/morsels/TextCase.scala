@@ -1,5 +1,10 @@
 package net.noresttherein.oldsql.morsels
 
+import java.util.Locale
+
+
+
+
 
 
 /** Enum-like type for string capitalization strategies. Includes `LowerCase`, `UpperCase` and `CamelCase`. */
@@ -8,30 +13,48 @@ trait TextCase extends Serializable {
 }
 
 
-/** Constants of `TextCase` applying specific capitalizations to strings. */
+/** Constants of `TextCase` applying specific capitalization strategies to strings. */
 object TextCase {
-	val LowerCase :TextCase = _.toLowerCase
-	val UpperCase :TextCase = _.toUpperCase
-	val CamelCase :TextCase = { text =>
-		val res = new java.lang.StringBuilder(text.length)
-		var i = 0; var wordStart = 0
-		@inline
-		def toCamel() =
-			if (wordStart < i) {
-				res append text.charAt(wordStart).toUpper
-				while ({wordStart += 1; wordStart < i })
-					res append text.charAt(wordStart).toLower
-			}
+	case class LowerCase(locale :Locale) extends TextCase {
+		override def apply(text :String) :String = text.toLowerCase(locale)
+	}
+	object LowerCase extends LowerCase(Locale.getDefault()) {
+		override def toString = "LowerCase"
+	}
+	case class UpperCase(locale :Locale) extends TextCase {
+		override def apply(text :String) :String = text.toUpperCase(locale)
+	}
+	object UpperCase extends UpperCase(Locale.getDefault) {
+		override def toString :String = "UpperCase"
+	}
+	case object OriginalCase extends TextCase {
+		override def apply(text :String) :String = text
+	}
+	case class CamelCase(locale :Locale) extends TextCase {
+		override def apply(text :String) :String = {
+			val res = new java.lang.StringBuilder(text.length)
+			var i = 0; var wordStart = 0
+			@inline
+			def toCamel() =
+				if (wordStart < i) {
+					res append text.charAt(wordStart).toUpper
+					while ({wordStart += 1; wordStart < i })
+						res append text.charAt(wordStart).toLower
+				}
 
-		while (i < text.length) {
-			val char = text.charAt(i)
-			if (!char.isLetter) {
-				toCamel()
-				wordStart += 1
+			while (i < text.length) {
+				val char = text.charAt(i)
+				if (!char.isLetter) {
+					toCamel()
+					wordStart += 1
+				}
+				i += 1
 			}
-			i += 1
+			toCamel()
+			res.toString
 		}
-		toCamel()
-		res.toString
+	}
+	object CamelCase extends CamelCase(Locale.getDefault) {
+		override def toString :String = "CamelCase"
 	}
 }

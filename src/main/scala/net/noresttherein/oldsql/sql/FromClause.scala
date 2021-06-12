@@ -23,7 +23,7 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, LooseColumn, R
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumn
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
-import net.noresttherein.oldsql.sql.mechanics.{GroupingExpression, LastTableOf, RowProductMatcher, SpelledSQL, TableCount}
+import net.noresttherein.oldsql.sql.mechanics.{GroupingExpression, LastTableOf, RowProductVisitor, SpelledSQL, SQLNumber, SQLOrdering, TableCount}
 import net.noresttherein.oldsql.sql.mechanics.GetTable.ByIndex
 import net.noresttherein.oldsql.sql.mechanics.LastTableOf.LastBound
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext
@@ -48,6 +48,7 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 
 
 	override type AppliedParam <: FromClause
+	override type GeneralizedParamless >: Paramless <: FromClause
 	override type Paramless <: FromClause { type Params = @~ }
 	override type BoundParamless >: Paramless <: FromClause { type Params = @~ }
 
@@ -103,18 +104,12 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 	def joinWith[F <: FromSome](suffix :F, join :JoinLike.* = InnerJoin.template) :JoinWith[join.LikeJoin, F]
 
 
-	//foiled by JoinParam
-//	override def tableStack :LazyList[TableSQL.AnyIn[Generalized]] = tableStack(generalized)
-//
-//	override def tableStack[E <: RowProduct]
-//	                       (target :E)(implicit expansion :Generalized ExpandedBy E) :LazyList[TableSQL.AnyIn[E]]
-
 
 	override def spell(context :SQLContext)(implicit spelling :SQLSpelling) :SpelledSQL[Params, Generalized] =
 		spelling.fromWhere(this)(context)
 
 
-	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.fromClause(this)
+	protected override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.fromClause(this)
 
 
 	private[sql] def concrete_RowProduct_subclass_must_extend_FromClause_or_GroupByClause :Nothing =
@@ -129,6 +124,13 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 
 object FromClause {
 
+	/** A factory interface mixed providing a covariant upper bound of `F` on produced `RowProduct` instances.
+	  * It works in the vein of `IterableOps` from the standard Scala library, allowing for better type
+	  * inference of the return type by upcasting it to its most specific known concrete type.
+	  * For instantiated types, it should always be preferred over member types such as `Copy`, which exist
+	  * to allow declaring abstract types simply as `F <: RowProduct` (or `FromSome`, `GroupByClause`, etc.), instead
+	  * of `F <: RowProduct with RowProductTemplate[F]`, making for much cleaner and shorter signatures.
+	  */
 	trait FromClauseTemplate[+F <: FromClause] extends RowProductTemplate[F] { this :F with FromClauseTemplate[F] =>
 		override def fromClause :F = this
 	}
@@ -215,6 +217,27 @@ object FromClause {
 		type Params = @~
 	}
 
+	/** An upper bound for all ''from'' clauses without a ''group by'' clause, which do not contain
+	  * any [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] 'joins' in their concrete type. In order to prove this
+	  * conformity the clause type must be complete and cannot contain [[net.noresttherein.oldsql.sql.AndFrom AndFrom]]
+	  * joins (all joins in its static type must be at least as specific as their
+	  * [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form).
+	  * Note that `ParamlessFromClause &lt;: `[[net.noresttherein.oldsql.sql.RowProduct.ParamlessFrom ParamlessFrom]]
+	  * and `ParamlessFromClause =:= `[[net.noresttherein.oldsql.sql.FromClause.ParameterizedFromClause ParameterizedFromClause]]`[@~]`.
+	  */
+	type ParamlessFromClause = FromClause {
+		type Params = @~
+	}
+
+	/** An upper bound for all ''from'' clauses without a ''group by'' clause, which are known to contain at least one
+	  * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] 'join' in their static type. Note that a `FromClause`
+	  * not conforming to this type does not mean that it indeed contains no parameters, as the information
+	  * may have been lost by type abstraction. Note that
+	  * `ParameterizedFromClause[P] &lt;: `[[net.noresttherein.oldsql.sql.RowProduct.ParameterizedFrom ParameterizedFrom]]`[P]`.
+	  */
+	type ParameterizedFromClause[P] = FromClause {
+		type Params = P
+	}
 
 
 
@@ -224,7 +247,6 @@ object FromClause {
 		LastBound.asInstanceOf[LastTableOf[LastBound[JoinedTable.Of[M]#T, U, M]] {
 			type FromLast = U; type LastMapping[O] = M[O]; type Last[O <: RowProduct] = JoinedTable[O, M]
 		}]
-
 }
 
 
@@ -234,7 +256,7 @@ object FromClause {
 
 
 /** Common upper bound for all ''from'' clauses containing at least one relation, but no ''group by'' clause.
-  * Extended by every [[net.noresttherein.oldsql.sql.FromClause FromClause]] implementations
+  * Extended by all [[net.noresttherein.oldsql.sql.FromClause FromClause]] implementations
   * other than [[net.noresttherein.oldsql.sql.Dual Dual]]. Most types do not do this directly however, but
   * through the [[net.noresttherein.oldsql.sql.Expanded Expanded]], which is the base trait for recursively built
   * clauses by adding a [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]] to a prefix
@@ -244,7 +266,6 @@ trait FromSome
 	extends FromClause with NonEmptyFrom with FromClauseTemplate[FromSome] with NonEmptyFromTemplate[FromSome, FromSome]
 { thisClause =>
 
-//	override type Last[F <: RowProduct] = JoinedTable[F, LastMapping]
 	override type FromLast >: Generalized <: FromSome
 	override type FromNext[E[+L <: FromSome] <: RowProduct] = E[FromLast]
 
@@ -290,7 +311,6 @@ trait FromSome
 	}
 
 
-
 	override type FilterNext[E[+L <: FromSome] <: L Expanded N, S <: RowProduct Expanded N, G <: S, N[O] <: MappingAt[O]] =
 		                    (JoinedRelation[FromNext[E], LastMapping], JoinedRelation[S, N]) => GlobalBoolean[G]
 
@@ -303,6 +323,7 @@ trait FromSome
 	}
 
 	override type AppliedParam <: FromSome
+	override type GeneralizedParamless >: Paramless <: FromSome
 	override type Paramless <: BoundParamless
 	override type BoundParamless = FromSome { type Params = @~ } //only because JoinParam requires FromSome on the left
 
@@ -318,7 +339,6 @@ trait FromSome
 	                   (right :LastTable[T, S], alias :Option[A], filter :GlobalBoolean[Generalized NonParam T])
 			:this.type NonParam T As A =
 		InnerJoin[this.type, T, S, A](this, right, alias)(filter)
-
 
 
 	override type JoinWith[+J[+L <: FromSome, R[O] <: MappingAt[O]] <: L NonParam R, F <: RowProduct] =
@@ -352,14 +372,13 @@ trait FromSome
 
 object FromSome {
 
-
 	/** Extension methods for `FromSome` classes (non-empty ''from'' clauses) which benefit from having a static,
 	  * invariant self type. These include methods for joining with other relations and clauses as well as
 	  * select methods creating SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL selects]] using
 	  * [[net.noresttherein.oldsql.sql.ast.AggregateSQL aggregate]] expressions.
 	  */
-	implicit class FromSomeExtension[F <: FromSome](val thisClause :F) extends AnyVal {
-		import thisClause.{Base, Generalized, FromLast, Last}
+	implicit class FromSomeExtension[F <: FromSome](val thisClause :F) /*extends AnyVal*/ {
+		import thisClause.{Base, FromLast, Generalized, Last, LastMapping}
 
 		/** Performs an inner join between this clause on the left side, and the table given as a `Table`
 		  * object on the right side.
@@ -390,29 +409,6 @@ object FromSome {
 			InnerJoin(thisClause, table)
 
 		/** Performs an inner join between this clause on the left side, and a table referenced by a foreign key
-		  * from its last table on the right side. The foreign key mapping returned by the passed function
-		  * can represent both a true foreign key (linking 0-1 rows from the referenced table) and a foreign key inverse:
-		  * a key in the last table (typically its primary key) referenced by a foreign key in the joined table.
-		  * Returned join will already include a join condition matching the two keys from its last two tables.
-		  * @param table a function selecting a foreign key component from the mapping of the last table in this clause.
-		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
-		  */
-/*
-		@inline def join[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                (table :LastMapping[thisClause.type] => DirectRelationshipMapping[R, _, thisClause.type])
-		                (implicit cast :InferSubject[F, InnerJoin, R, T, S]) :F InnerJoin R =
-		{
-			val key = table(thisClause.last.relation.row[thisClause.type])
-			val join = InnerJoin(thisClause, cast(key.table))
-			val narrowed = join.narrow
-			import narrowed.left.lastTableOffset
-			val local = key.key.withOrigin[narrowed.left.FromLast Join T].toSQL[narrowed.left.FromLast Join T, key.Key]
-			val remote = key.target.withOrigin[FromSome Join T].toSQL[FromSome Join T, key.Key]
-			narrowed where local === remote
-		}
-*/
-
-		/** Performs an inner join between this clause on the left side, and a table referenced by a foreign key
 		  * from one of its tables on the right side. The foreign key mapping returned by the passed function
 		  * can represent both a true foreign key (linking 0-1 rows from the referenced table) and a foreign key inverse:
 		  * a key in the last table (typically its primary key) referenced by a foreign key in the joined table.
@@ -432,6 +428,26 @@ object FromSome {
 			val local = key.key.toSQL[E, key.Key].expand(narrowed.generalized :E Join T)
 			val remote = key.target.withOrigin[FromSome Join T].toSQL[FromSome Join T, key.Key]
 			narrowed where local === remote
+		}
+
+		/** Performs an inner join between this clause on the left side, and a table referenced by a foreign key
+		  * from its last table on the right side. The foreign key mapping returned by the passed function
+		  * can represent both a true foreign key (linking 0-1 rows from the referenced table) and a foreign key inverse:
+		  * a key in the last table (typically its primary key) referenced by a foreign key in the joined table.
+		  * Returned join will already include a join condition matching the two keys from its last two tables.
+		  * @param foreignKey a function selecting a foreign key component from the mapping of the last table
+		  *                   in this clause.
+		  * @param cast       an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  */ //todo: copy&paste for other join kinds
+		@inline def joinLast[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                    (foreignKey :LastMapping[FromLast] => DirectRelationshipMapping[R, _, FromLast])
+		                    (implicit cast :InferSubject[F, InnerJoin, R, T, S]) :F InnerJoin R =
+		{
+			val key = foreignKey(thisClause.last.relation.row[FromLast])
+			val join = InnerJoin[thisClause.type, T, T, S](thisClause, cast(key.table))
+			val local = (thisClause.last \ key.key).expand(join.generalized :FromLast Join T) //:GlobalSQL[FromLast Join T, key.Key]
+			val remote = join.last \ key.target.withOrigin[RowProduct AndFrom T]
+			join where local === remote
 		}
 
 		/** Performs an inner join between this clause on the left side, and all relations listed by the `other`
@@ -498,6 +514,26 @@ object FromSome {
 			narrowed where local === remote
 		}
 
+		/** Performs an outer join between this clause on the left side, and a table referenced by a foreign key
+		  * from its last table on the right side. The foreign key mapping returned by the passed function
+		  * can represent both a true foreign key (linking 0-1 rows from the referenced table) and a foreign key inverse:
+		  * a key in the last table (typically its primary key) referenced by a foreign key in the joined table.
+		  * Returned join will already include a join condition matching the two keys from its last two tables.
+		  * @param foreignKey a function selecting a foreign key component from the mapping of the last table
+		  *                   in this clause.
+		  * @param cast       an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  */
+		@inline def outerJoinLast[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                         (foreignKey :LastMapping[FromLast] => DirectRelationshipMapping[R, _, FromLast])
+		                         (implicit cast :InferSubject[F, OuterJoin, R, T, S]) :F OuterJoin R =
+		{
+			val key = foreignKey(thisClause.last.relation.row[FromLast])
+			val join = OuterJoin[thisClause.type, T, T, S](thisClause, cast(key.table))
+			val local = (thisClause.last \ key.key).expand(join.generalized :FromLast Join T)
+			val remote = join.last \ key.target.withOrigin[RowProduct AndFrom T]
+			join where local === remote
+		}
+
 		/** Performs a symmetric outer join between this clause on the left side, and all relations listed by the `other`
 		  * clause on the right side, unless the first join in `other` is a `JoinParam` (or any other type different
 		  * than `From`), in which case that join type is preserved, with this clause replacing `Dual` in `other`.
@@ -538,6 +574,26 @@ object FromSome {
 		                    (table :StaticTable[N, R])
 		                    (implicit cast :InferAliasedSubject[F, LeftJoin, R, T, S, N]) :F LeftJoin R As N =
 			LeftJoin(thisClause, table)
+
+		/** Performs a left outer join between this clause on the left side, and a table referenced by a foreign key
+		  * from its last table on the right side. The foreign key mapping returned by the passed function
+		  * can represent both a true foreign key (linking 0-1 rows from the referenced table) and a foreign key inverse:
+		  * a key in the last table (typically its primary key) referenced by a foreign key in the joined table.
+		  * Returned join will already include a join condition matching the two keys from its last two tables.
+		  * @param foreignKey a function selecting a foreign key component from the mapping of the last table
+		  *                   in this clause.
+		  * @param cast       an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  */
+		@inline def leftJoinLast[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                        (foreignKey :LastMapping[FromLast] => DirectRelationshipMapping[R, _, FromLast])
+		                        (implicit cast :InferSubject[F, LeftJoin, R, T, S]) :F LeftJoin R =
+		{
+			val key = foreignKey(thisClause.last.relation.row[FromLast])
+			val join = LeftJoin[thisClause.type, T, T, S](thisClause, cast(key.table))
+			val local = (thisClause.last \ key.key).expand(join.generalized :FromLast Join T)
+			val remote = join.last \ key.target.withOrigin[RowProduct AndFrom T]
+			join where local === remote
+		}
 
 		/** Performs a left outer join between this clause on the left side, and a table referenced
 		  * by a foreign key from one of its tables on the right side. The foreign key mapping returned
@@ -602,6 +658,26 @@ object FromSome {
 		                     (table :StaticTable[N, R])
 		                     (implicit cast :InferAliasedSubject[F, RightJoin, R, T, S, N]) :F RightJoin R As N =
 			RightJoin(thisClause, table)
+
+		/** Performs a right outer join between this clause on the left side, and a table referenced by a foreign key
+		  * from its last table on the right side. The foreign key mapping returned by the passed function
+		  * can represent both a true foreign key (linking 0-1 rows from the referenced table) and a foreign key inverse:
+		  * a key in the last table (typically its primary key) referenced by a foreign key in the joined table.
+		  * Returned join will already include a join condition matching the two keys from its last two tables.
+		  * @param foreignKey a function selecting a foreign key component from the mapping of the last table
+		  *                   in this clause.
+		  * @param cast       an implicit witness helping with type inference of the subject type of the mapping type `R`.
+		  */
+		@inline def rightJoinLast[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
+		                         (foreignKey :LastMapping[FromLast] => DirectRelationshipMapping[R, _, FromLast])
+		                         (implicit cast :InferSubject[F, RightJoin, R, T, S]) :F RightJoin R =
+		{
+			val key = foreignKey(thisClause.last.relation.row[FromLast])
+			val join = RightJoin[thisClause.type, T, T, S](thisClause, cast(key.table))
+			val local = (thisClause.last \ key.key).expand(join.generalized :FromLast Join T)
+			val remote = join.last \ key.target.withOrigin[RowProduct AndFrom T]
+			join where local === remote
+		}
 
 		/** Performs a right outer join between this clause on the left side, and a table referenced
 		  * by a foreign key from one of its tables on the right side. The foreign key mapping returned
@@ -1102,8 +1178,8 @@ object FromSome {
 		/** Creates a single column SQL ''select'' returning the smallest value of some column or a single column
 		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]].
 		  * @param column a column of any of the joined relations, or a single column
-		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  *               The column must be of a type with [[net.noresttherein.oldsql.sql.SQLOrdering SQLOrdering]]
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause. The column
+		  *               must be of a type with [[net.noresttherein.oldsql.sql.mechanics.SQLOrdering SQLOrdering]]
 		  *               type class. Note that the type class serves here solely to artificially restrict
 		  *               allowed column types based on their scala counterparts and is not used in implementation.
 		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
@@ -1118,8 +1194,8 @@ object FromSome {
 		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]].
 		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
 		  *               returning any of their columns, or a single column
-		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  *               The column must be of a type with [[net.noresttherein.oldsql.sql.SQLOrdering SQLOrdering]]
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause. The column
+		  *               must be of a type with [[net.noresttherein.oldsql.sql.mechanics.SQLOrdering SQLOrdering]]
 		  *               type class. Note that the type class serves here solely to artificially restrict
 		  *               allowed column types based on their scala counterparts and is not used in implementation.
 		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general
@@ -1134,8 +1210,8 @@ object FromSome {
 		/** Creates a single column SQL ''select'' returning the largest value of some column or a single column
 		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]].
 		  * @param column a column of any of the joined relations, or a single column
-		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  *               The column must be of a type with [[net.noresttherein.oldsql.sql.SQLOrdering SQLOrdering]]
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause. The column
+		  *               must be of a type with [[net.noresttherein.oldsql.sql.mechanics.SQLOrdering SQLOrdering]]
 		  *               type class. Note that the type class serves here solely to artificially restrict
 		  *               allowed column types based on their scala counterparts and is not used in implementation.
 		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
@@ -1149,11 +1225,11 @@ object FromSome {
 		  * SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]].
 		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
 		  *               returning any of their columns, or a single column
-		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  *               The column must be of a type with [[net.noresttherein.oldsql.sql.SQLOrdering SQLOrdering]]
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause. The column
+		  *               must be of a type with [[net.noresttherein.oldsql.sql.mechanics.SQLOrdering SQLOrdering]]
 		  *               type class. Note that the type class serves here solely to artificially restrict
 		  *               allowed column types based on their scala counterparts and is not used in implementation.
-		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.		  *
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
 		  * @return an SQL expression representing `select max(column) from this`.
 		  * @see [[net.noresttherein.oldsql.sql.AggregateFunction.Max]]
 		  */
@@ -1166,8 +1242,8 @@ object FromSome {
 		  * Null values are ignored; the created SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL select]] can be modified
 		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.ast.SelectSQL.distinct distinct]] method.
 		  * @param column a column of any of the joined relations, or a single column
-		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause. The column
+		  *               must be of a numeric type with [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]]
 		  *               type class. Note that the type class serves here solely to artificially restrict
 		  *               allowed column types based on their scala counterparts and is not used in implementation.
 		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
@@ -1184,11 +1260,11 @@ object FromSome {
 		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.ast.SelectSQL.distinct distinct]] method.
 		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
 		  *               returning any of their columns, or a single column
-		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause. The column
+		  *               must be of a numeric type with [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]]
 		  *               type class. Note that the type class serves here solely to artificially restrict
 		  *               allowed column types based on their scala counterparts and is not used in implementation.
-		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.		  *
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
 		  *               It cannot be used to provide custom arithmetic.
 		  * @return an SQL expression representing `select sum(column) from this`.
 		  * @see [[net.noresttherein.oldsql.sql.AggregateFunction.Sum]]
@@ -1202,8 +1278,8 @@ object FromSome {
 		  * Null values are ignored; the created SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL select]] can be modified
 		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.ast.SelectSQL.distinct distinct]] method.
 		  * @param column a column of any of the joined relations, or a single column
-		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause. The column
+		  *               must be of a numeric type with [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]]
 		  *               type class. Note that the type class serves here solely to artificially restrict
 		  *               allowed column types based on their scala counterparts and is not used in implementation.
 		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
@@ -1220,11 +1296,11 @@ object FromSome {
 		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.ast.SelectSQL.distinct distinct]] method.
 		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
 		  *               returning any of their columns, or a single column
-		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause. The column
+		  *               must be of a numeric type with [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]]
 		  *               type class. Note that the type class serves here solely to artificially restrict
 		  *               allowed column types based on their scala counterparts and is not used in implementation.
-		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.		  *
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
 		  *               It cannot be used to provide custom arithmetic.
 		  * @return an SQL expression representing `select avg(column) from this`.
 		  * @see [[net.noresttherein.oldsql.sql.AggregateFunction.Var]]
@@ -1239,8 +1315,8 @@ object FromSome {
 		  * Null values are ignored; the created SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL select]] can be modified
 		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.ast.SelectSQL.distinct distinct]] method.
 		  * @param column a column of any of the joined relations, or a single column
-		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause. The column
+		  *               must be of a numeric type with [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]]
 		  *               type class. Note that the type class serves here solely to artificially restrict
 		  *               allowed column types based on their scala counterparts and is not used in implementation.
 		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
@@ -1257,11 +1333,11 @@ object FromSome {
 		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.ast.SelectSQL.distinct distinct]] method.
 		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
 		  *               returning any of their columns, or a single column
-		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause. The column
+		  *               must be of a numeric type with [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]]
 		  *               type class. Note that the type class serves here solely to artificially restrict
 		  *               allowed column types based on their scala counterparts and is not used in implementation.
-		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.		  *
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
 		  *               It cannot be used to provide custom arithmetic.
 		  * @return a SQL expression representing `select var(column) from this`.
 		  * @see [[net.noresttherein.oldsql.sql.AggregateFunction.StdDev]]
@@ -1277,8 +1353,8 @@ object FromSome {
 		  * Null values are ignored; the created SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL select]] can be modified
 		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.ast.SelectSQL.distinct distinct]] method.
 		  * @param column a column of any of the joined relations, or a single column
-		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause. The column
+		  *               must be of a numeric type with [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]]
 		  *               type class. Note that the type class serves here solely to artificially restrict
 		  *               allowed column types based on their scala counterparts and is not used in implementation.
 		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
@@ -1296,11 +1372,11 @@ object FromSome {
 		  * to ignore duplicate values using its [[net.noresttherein.oldsql.sql.ast.SelectSQL.distinct distinct]] method.
 		  * @param column a function from a facade to this clause providing access to the mappings of its relations,
 		  *               returning any of their columns, or a single column
-		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause.
-		  *               The column must be of a numeric type with [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]]
+		  *               SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] based on this clause. The column
+		  *               must be of a numeric type with [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]]
 		  *               type class. Note that the type class serves here solely to artificially restrict
 		  *               allowed column types based on their scala counterparts and is not used in implementation.
-		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.		  *
+		  *               In particular, it can guarantee neither complete correctness nor exhaustiveness in general.
 		  *               It cannot be used to provide custom arithmetic.
 		  * @return an SQL expression representing `select stddev(column) from this`.
 		  * @see [[net.noresttherein.oldsql.sql.AggregateFunction.StdDev]]
@@ -1319,8 +1395,11 @@ object FromSome {
 	/** Extension methods for `TopFromSome` objects (''from'' clauses without any `Subselect`s which can serve
 	  * as the basis for independent selects). It provides methods for introducing unbound parameters
 	  * to the clause in the form of [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] 'joins',
-	  * which can be substituted with
-	  */
+	  * which are available to SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] in the same way
+	  * as tables in `this` ''from'' clause. They do not add any entries to the generated SQL string's ''from'' clause,
+	  * but instead each their usage (or their components, which represent some property or otherwise derivable value
+	  * from the parameter type) is rendered as a separate statement parameter '?'.
+	  */ //consider: making them available for any FromSome
 	implicit class TopFromSomeExtension[F <: TopFromSome](private val thisClause :F) extends AnyVal {
 
 		/** Creates a parameterized `RowProduct` instance allowing the use of a statement parameter `X` in the SQL
@@ -1470,5 +1549,30 @@ object FromSome {
 		type Params = @~
 	}
 
+	/** An upper bound for all non-empty, 'true' ''from'' clauses which do not contain any
+	  * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] 'joins' in their concrete type. In order to prove
+	  * this conformity the clause type must be complete and cannot contain
+	  * [[net.noresttherein.oldsql.sql.AndFrom AndFrom]] joins  (all joins in its static type must be at least
+	  * as specific as their [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form).
+	  * It is possible however to propagate this constraint to incomplete clauses simply
+	  * by declaring them as `ParamlessFromSome Join X ...` instead of `FromSome Join X ...`.
+	  * Note that `ParamlessFromSome &lt;: `[[net.noresttherein.oldsql.sql.RowProduct.ParamlessFrom ParamlessFrom]] and
+	  * `ParamlessFromSome =:= `[[net.noresttherein.oldsql.sql.FromSome.ParameterizedFromSome ParameterizedFromSome]]`[@~]`.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.ParamlessFromClause]]
+	  */
+	type ParamlessFromSome = FromSome {
+		type Params = @~
+	}
+
+	/** An upper bound for all non empty, 'true' ''from'' clauses which are known to contain at least one
+	  * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] 'join' in their static type. Note that a `FromSome`
+	  * not conforming to this type does not mean that it indeed contains no parameters, as the information
+	  * may have been lost by type abstraction. Note that
+	  * `ParameterizedFromSome[P] &lt;: `[[net.noresttherein.oldsql.sql.RowProduct.ParameterizedFrom ParameterizedFrom]]`[P]`.
+	  * @see [[net.noresttherein.oldsql.sql.FromClause.ParameterizedFromClause]]
+	  */
+	type ParameterizedFromSome[P] = FromSome {
+		type Params = P
+	}
 
 }

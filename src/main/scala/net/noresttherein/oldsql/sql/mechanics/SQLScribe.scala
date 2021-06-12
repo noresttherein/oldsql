@@ -6,20 +6,21 @@ import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, By, ColumnSQL, From, FromSome, GlobalBoolean, GroupBy, GroupByClause, Join, RowProduct, SQLExpression, Subselect}
-import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.{CaseColumn, ColumnVisitor, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.CaseCompositeColumn
 import net.noresttherein.oldsql.sql.DecoratedFrom.FromSomeDecorator
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, NonEmptyFrom, PartOf}
-import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, CompositeSQL, ExpressionMapper, ExpressionMatcher, GlobalScope, GlobalSQL, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, CompositeSQL, ExpressionMapper, ExpressionVisitor, GlobalScope, GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.CaseComposite
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, UnboundParamSQL}
 import net.noresttherein.oldsql.sql.ast.{AggregateSQL, MappingSQL, QuerySQL, SQLTerm}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, LooseColumn, LooseComponent, RelationSQL, TypedColumnComponentSQL, TypedComponentSQL}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.CaseRelation
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, CaseQuery, ColumnQuery, Rows}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{CaseTopSelect, CaseTopSelectColumn, SubselectColumn, SubselectSQL, TopSelectColumn, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{CaseTerm, ColumnTerm, CompositeNull, SQLNull, SQLParameter, SQLParameterColumn, True}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.CaseColumnTerm
-import net.noresttherein.oldsql.sql.mechanics.SQLScribe.{ColumnResult, ExpressionResult}
+import net.noresttherein.oldsql.sql.mechanics.SQLScribe.ExpressionResult
 
 
 
@@ -31,7 +32,7 @@ import net.noresttherein.oldsql.sql.mechanics.SQLScribe.{ColumnResult, Expressio
   * If the expression is a subtype of [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]], the result will
   * also be a `ColumnSQL` of the same value type and scope, but based on the clause `R`.
   * It is implemented through the visitor pattern as defined by the
-  * [[net.noresttherein.oldsql.sql.SQLExpression.ExpressionMatcher ExpressionMatcher]] trait.
+  * [[net.noresttherein.oldsql.sql.SQLExpression.ExpressionVisitor ExpressionVisitor]] trait.
   * @author Marcin Mościcki
   */
 trait SQLScribe[+F <: RowProduct, -R <: RowProduct] extends ExpressionMapper[F, ExpressionResult[R]#T] {
@@ -56,16 +57,17 @@ object SQLScribe {
 	  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL.rephrase rephrase]] method.
 	  */
 	trait AbstractSQLScribe[+F <: RowProduct, -R <: RowProduct] extends SQLScribe[F, R]
-		with ExpressionMatcher[F, ExpressionResult[R]#T] with ColumnMatcher[F, ColumnResult[R]#T]
+		with ExpressionVisitor[F, ExpressionResult[R]#T] with ColumnVisitor[F, ColumnResult[R]#T]
 		with CaseComposite[F, ExpressionResult[R]#T] with CaseCompositeColumn[F, ColumnResult[R]#T]
 		with CaseTerm[F, ExpressionResult[R]#T] with CaseColumnTerm[F, ColumnResult[R]#T]
 		with CaseTopSelect[F, ExpressionResult[R]#T] with CaseTopSelectColumn[F, ColumnResult[R]#T]
+		with CaseRelation[F, ExpressionResult[R]#T]
 	{
 		override def apply[S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V]) :SQLExpression[R, S, V] =
-			e.applyTo(this)
+			e.applyToForwarder(this)
 
 		override def apply[S >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, S, V]) :ColumnSQL[R, S, V] =
-			e.applyTo(this)
+			e.applyToForwarder(this)
 
 
 		override def *(e :ColumnSQL[RowProduct, LocalScope, Nothing]) :ColumnSQL[R, LocalScope, Nothing] = e
@@ -120,7 +122,7 @@ object SQLScribe {
 			unhandled(e)
 
 		override def mapping[S >: LocalScope <: GlobalScope, M[O] <: MappingAt[O]]
-		                    (e :MappingSQL[F, S, M]) :SQLExpression[G, S, M[()]#Subject] =
+		                    (e :MappingSQL[F, S, M]) :SQLExpression[G, S, M[Unit]#Subject] =
 			unhandled(e)
 
 		override def query[V](e :QuerySQL[F, V]) :SQLExpression[G, GlobalScope, Rows[V]] = unhandled(e)
@@ -129,12 +131,11 @@ object SQLScribe {
 
 		override def looseComponent[O >: F <: RowProduct, M[A] <: BaseMapping[V, A], V]
 		                          (e :LooseComponent[O, M, V]) :SQLExpression[G, GlobalScope, V] =
-			e.anchor(oldClause).applyTo(this)
+			this(e.anchor(oldClause))
 
 		override def looseComponent[O >: F <: RowProduct, M[A] <: ColumnMapping[V, A], V]
 		                          (e :LooseColumn[O, M, V]) :ColumnSQL[G, GlobalScope, V] =
-			e.anchor(oldClause).applyTo(this)
-
+			this(e.anchor(oldClause))
 
 
 		override def aggregate[D <: FromSome, X, Y](e :AggregateSQL[D, F, X, Y]) :ColumnSQL[G, LocalScope, Y] =
@@ -447,12 +448,13 @@ object SQLScribe {
 	/** Replaces an unbound parameter, together with all its 'components', with one given as the relation `newParam`
 	  * (with the same offset/position). The value of the new parameter must be derivable from the old one.
 	  * This scribe is used when aliasing a JoinParam with the `as` method.
-	  */  //currently unused
+	  */
 	private[sql] def replaceParam[F <: RowProduct, T[A] <: FromParam[P, A], P,
 	                              G <: RowProduct, M[A] <: FromParam[X, A], X, O >: G <: RowProduct]
 	                             (oldClause :F, newClause :G,
 	                              oldParam :RelationSQL[F, T, P, _ >: F <: RowProduct],
-	                              newParam :RelationSQL[G, M, X, O], substitute :X =?> P)
+	                              newParam :RelationSQL[G, M, X, O])
+	                             (substitute :X =?> P)
 			:SQLScribe[F, G] =
 		new ReplaceParam[F, T, P, G, M, X, O](oldClause, newClause)(oldParam, newParam, substitute)
 
@@ -490,7 +492,7 @@ object SQLScribe {
 		                      (e :TypedComponentSQL[F, T, R, C, V, U]) :GlobalSQL[G, V] =
 			e match {
 				case oldParam.mapping(old) if e.origin.offset == oldParam.offset =>
-					val component = newParam.mapping(extractor andThen old.extract.asInstanceOf[P =?> V])(old.form)
+					val component = newParam.mapping.comp(extractor andThen old.extract.asInstanceOf[P =?> V])(old.form)
 					(newParam \ component).upcast
 				case _ =>
 					e.asInstanceOf[GlobalSQL[G, V]]
@@ -689,6 +691,24 @@ object SQLScribe {
 
 
 
+	/** A very simple expression mapper which invokes [[net.noresttherein.oldsql.sql.SQLExpression.anchor anchor]]
+	  * on all its arguments, at root [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] and
+	  * [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]] levels.
+	  */
+	def anchor[F <: RowProduct](from :F) :SQLScribe[F, F] = new Anchorage[F](from)
+
+	private class Anchorage[F <: RowProduct](from :F)
+		extends AbstractSQLScribe[F, F]
+		   with CaseExpression[F, ExpressionResult[F]#T] with CaseColumn[F, ColumnResult[F]#T]
+	{
+		override def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) = e.anchor(from)
+
+		override def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) = e.anchor(from)
+
+		override def toString = s"Anchorage($from)"
+	}
+
+
 
 
 	/** A scribe rewriting `SQLExpression` instances based on a ''from'' clause `F` into expressions based on
@@ -736,13 +756,13 @@ object SQLScribe {
 
 		override def apply[S >: LocalScope <: GlobalScope, V](e :SQLExpression[F, S, V]) :GlobalSQL[E, V] =
 			e.asGlobal match {
-				case Some(global) => global.applyTo(this)
+				case Some(global) => this(global)
 				case _ => nonGlobal(e)
 			}
 
 		override def apply[S >: LocalScope <: GlobalScope, V](e :ColumnSQL[F, S, V]) :ColumnSQL[E, GlobalScope, V] =
 			e.asGlobal match {
-				case Some(global) => global.applyTo(this)
+				case Some(global) => this(global)
 				case _ => nonGlobal(e)
 			}
 
@@ -762,8 +782,6 @@ object SQLScribe {
 
 		override def toString = s"Expand[$clause]"
 	}
-
-
 
 
 

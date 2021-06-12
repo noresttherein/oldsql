@@ -255,13 +255,14 @@ trait ColumnMapping[S, O]
 
 
 
-	override def toString :String = name + "[" + form + "]"
-
 	override def mappingName :String = name
 
-	override def debugString :String = buffs.mkString(toString + "(", ", ", ")")
+	override def buffString :String =
+		if (buffs.isEmpty) name + "[" + form + "]" else buffs.mkString(name + "[" + form + "](", ",", ")")
 
-	override def columnString :String = toString
+	override def columnString :String = buffString
+
+	override def debugString :String = buffString
 
 }
 
@@ -647,7 +648,7 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 	trait StableColumn[S, O] extends OptimizedColumn[S, O] {
 
 		override def apply[T](component :Component[T]) :Extract[T] =
-			if (component == this)
+			if (component eq this)
 				selfExtract.asInstanceOf[Extract[T]]
 			else
 				throw new IllegalArgumentException(
@@ -655,7 +656,7 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 				)
 
 		override def apply[T](column :Column[T]) :ColumnExtract[T] =
-			if (column == this)
+			if (column eq this)
 				selfExtract.asInstanceOf[ColumnExtract[T]]
 			else
 				throw new IllegalArgumentException(
@@ -682,6 +683,22 @@ object ColumnMapping extends LowPriorityColumnMappingImplicits {
 		override def insertForm :SQLWriteForm[S] = superInsertForm
 		override def updateForm :SQLWriteForm[S] = superUpdateForm
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
+
+
+		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
+			if (components == selectedByDefault) selectForm else super.selectForm(components)
+
+		override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+			if (components == filteredByDefault) filterForm else super.filterForm(components)
+
+		override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+			if (components == insertedByDefault) insertForm else super.insertForm(components)
+
+		override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+			if (components == updatedByDefault) updateForm else super.updateForm(components)
+
+		override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
+			op.form(this)
 	}
 
 

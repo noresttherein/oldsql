@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.model
 
-import scala.collection.{immutable, EvidenceIterableFactory, Factory, IterableFactory, MapFactory, SortedMapFactory}
+import scala.collection.{immutable, EvidenceIterableFactory, Factory, IterableFactory, MapFactory}
 import scala.collection.mutable.Builder
 
 import net.noresttherein.oldsql.collection.Opt
@@ -9,6 +9,7 @@ import net.noresttherein.oldsql.exceptions.IllegalKinArityException
 import net.noresttherein.oldsql.model.ComposedOf.{Arity, CollectionOf, ComposableFrom, ConstructFrom, DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.ToCollection
 import net.noresttherein.oldsql.model.Kin.Derived
+import net.noresttherein.oldsql.morsels.ComparableFactory
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -30,6 +31,7 @@ object -> {
 	implicit def fromTuple2[_1, _2](t2 :(_1, _2)) : _1->_2 = ->(t2._1, t2._2)
 	implicit def toTuple2[_1, _2](pair :_1->_2) :(_1, _2) = (pair._1, pair._2)
 }
+
 
 
 
@@ -196,7 +198,23 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 				override val decomposer = decompose
 			}
 
-		def apply[C <: Iterable[E], E](factory :Factory[E, C]) :C CollectionOf E =
+		/** Creates an instance of `C CollectionOf E` for an `Iterable` collection built using the specified factory.
+		  * Implicit conversions exist from [[scala.collection.IterableFactory IterableFactory]] and all other
+		  * standard scala collection factories, meaning you can pass the companion object to the desired
+		  * collection type as the argument. This is equivalent to
+		  * [[net.noresttherein.oldsql.model.ComposedOf.CollectionOf.factory]] method accepting
+		  * [[scala.collection.Factory Factory]], but the custom factory argument implements meaningful `equals`
+		  * and `toString`.
+		  */
+		def apply[C <: Iterable[E], E](factory :ComparableFactory[E, C]) :C CollectionOf E =
+			apply(ComposableFrom.Collection()(factory), DecomposableTo.Iterable())
+
+		/** Creates an instance of `C CollectionOf E` for an `Iterable` collection built using the specified factory.
+		  * Note that implicit conversions exist from [[scala.collection.IterableFactory IterableFactory]] and all other
+		  * standard scala collection factories mean you can pass the companion object to the desired
+		  * collection type as the argument.
+		  */
+		def factory[C <: Iterable[E], E](factory :Factory[E, C]) :C CollectionOf E =
 			apply(ComposableFrom.Collection()(factory), DecomposableTo.Iterable())
 	}
 
@@ -367,7 +385,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			new Custom(items => (factory.newBuilder ++= items).result())
 
 		implicit def collection[C <: Iterable[T], T](implicit factory :Factory[T, C]) :C ConstructFrom T =
-			if (iterableFactoryOf(factory).contains(scala.collection.Iterable))
+			if (companionFactoryOf(factory).contains(scala.collection.Iterable))
 				Iterable().asInstanceOf[C ConstructFrom T]
 			else
 				Collection[C, T]()
@@ -527,24 +545,30 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			def apply[T, E]()(implicit factory :Factory[E, T]) :T ConstructFrom E =
 				new ToCollection[T, E](factory)
 
+			def apply[T, E](factory :ComparableFactory[E, T]) :T ConstructFrom E =
+				new ToCollection[T, E](factory)
+
 			/** Returns a factory of instances `_ ComposedOf E`, allowing a possibly shorter syntax of
 			  * `Collection.of[E].in[Seq]` rather than `Collection[Seq[E], E]()`.
 			  */
 			@inline def of[E] :CollectionComposer[E] = new CollectionComposer[E] {}
 
 			trait CollectionComposer[E] extends Any {
-				final def as[T <: Iterable[E]](factory :Factory[E, T]) :T ConstructFrom E =
+				final def factory[T <: Iterable[E]](factory :Factory[E, T]) :T ConstructFrom E =
+					new ToCollection[T, E](factory)
+
+				final def as[T <: Iterable[E]](factory :ComparableFactory[E, T]) :T ConstructFrom E =
 					new ToCollection[T, E](factory)
 
 				final def in[C[X] <: Iterable[X]](implicit factory :Factory[E, C[E]]) :C[E] ConstructFrom E =
 					new ToCollection[C[E], E](factory)
 
 				final def apply[C[X]](factory :IterableFactory[C]) :C[E] ConstructFrom E =
-					new ToCollection[C[E], E](factory)
+					new ToCollection[C[E], E](ComparableFactory(factory))
 
 				final def apply[C[X], P[X]](factory :EvidenceIterableFactory[C, P])
 				                           (implicit ev :P[E]) :C[E] ConstructFrom E =
-					new ToCollection[C[E], E](factory)
+					new ToCollection[C[E], E](ComparableFactory(factory))
 			}
 
 			def unapply[T, E](composition :T ComposableFrom E) :Opt[Factory[E, T]] = composition match {
@@ -571,6 +595,10 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 					:M[K, V] ConstructFrom (K -> V) =
 				new ToMap[M, K, V](factory)("Map[" + factory.innerClassName + "]")
 
+			def apply[M[A, B] <: Map[A, B], K, V](factory :ComparableFactory[(K, V), M[K, V]])
+					:M[K, V] ConstructFrom (K -> V) =
+				new ToMap[M, K, V](factory)("Map[" + factory + "]")
+
 			@inline def of[K, V] :MapComposer[K, V] = new MapComposer[K, V] {}
 
 			sealed trait MapComposer[K, V] extends Any {
@@ -580,12 +608,15 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 				final def in[M[_, _]](implicit factory :Factory[(K, V), M[K, V]]) :M[K, V] ConstructFrom (K -> V) =
 					new ToMap[M, K, V](factory)("Map[" + factory.innerClassName + "]")
 
-				final def apply[M[_, _]](factory :MapFactory[M]) :M[K, V] ConstructFrom (K -> V) =
-					new ToMap[M, K, V](factory)(factory.toString)
-
-				final def apply[M[_, _]](factory :SortedMapFactory[M])
-				                        (implicit ord :Ordering[K]) :M[K, V] ConstructFrom (K -> V) =
-					new ToMap[M, K, V](factory)(factory.toString)
+				final def apply[M[_, _]](factory :ComparableFactory[(K, V), M[K, V]]) :M[K, V] ConstructFrom (K -> V) =
+					new ToMap[M, K, V](factory)("Map[" + factory + "]")
+//
+//				final def apply[M[_, _]](factory :MapFactory[M]) :M[K, V] ConstructFrom (K -> V) =
+//					new ToMap[M, K, V](ComparableFactory(factory))(factory.toString)
+//
+//				final def apply[M[_, _]](factory :SortedMapFactory[M])
+//				                        (implicit ord :Ordering[K]) :M[K, V] ConstructFrom (K -> V) =
+//					new ToMap[M, K, V](ComparableFactory(factory))(factory.toString)
 			}
 
 
@@ -617,6 +648,9 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			def apply[S, V]()(implicit factory :Factory[V, S]) :S ConstructFrom (Int -> V) =
 				new ToOrdered[S, V](factory)("Ordered[" + factory.innerClassName + "]")
 
+			def apply[S, V](factory :ComparableFactory[V, S]) :S ConstructFrom (Int -> V) =
+				new ToOrdered[S, V](factory)("Ordered[" + factory + "]")
+
 			@inline def of[V] :OrderedComposer[V] = new OrderedComposer[V] {}
 
 			sealed trait OrderedComposer[V] extends Any {
@@ -625,7 +659,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 				final def in[S[_]](implicit factory :Factory[V, S[V]]) :S[V] ConstructFrom (Int -> V) = as(factory)
 
-				final def apply[S[_]](factory :IterableFactory[S]) :S[V] ConstructFrom (Int -> V) =
+				final def apply[S[_]](factory :ComparableFactory[V, S[V]]) :S[V] ConstructFrom (Int -> V) =
 					new ToOrdered[S[V], V](factory)(factory.toString)
 			}
 
@@ -815,8 +849,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		{
 			override def builder = factory.newBuilder
 
-			def iterableFactory = iterableFactoryOf(factory)
-
+			def iterableFactory :Option[Any] = companionFactoryOf(factory)
 
 			override def compatibleWith[X >: C](other: ComposableFrom[X, _]): Boolean = canEqual(other)
 			override def compatibleWith(decomposer :DecomposableTo[C, _]) :Boolean =
@@ -826,10 +859,11 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 			override def equals(that :Any) :Boolean = that match {
 				case self :AnyRef if self eq this => true
-				case col :ToCollection[_, _] if col canEqual this => (iterableFactory, col.iterableFactory) match {
-					case (Some(x), Some(y)) => x == y
-					case _ => false
-				}
+				case other :ToCollection[_, _] if other canEqual this =>
+					factory == other.factory || ((iterableFactory, other.iterableFactory) match {
+						case (Some(x), Some(y)) => x == y
+						case _ => false
+					})
 				case _ => false
 			}
 
@@ -854,7 +888,6 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 				private val target = factory.newBuilder
 
 				override def clear() :Unit = target.clear()
-
 				override def result() = target.result()
 
 				override def addOne(elem :K -> V) = {
@@ -864,34 +897,45 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 			override def compatibleWith(decomposer :DecomposableTo[M[K, V], _]) :Boolean =
 				DecomposableTo.Map.unapply(decomposer)
+
+			private def mapFactory :Option[Any] = companionFactoryOf(factory)
+
+			override def equals(that :Any) :Boolean = that match {
+				case self :AnyRef if self eq this => true
+				case other :ToMap[_, _, _] =>
+					factory == other.factory || ((mapFactory, other.mapFactory) match {
+						case (Some(x), Some(y)) => x == y
+						case _ => false
+					})
+				case _ => false
+			}
+			override def hashCode :Int = mapFactory.mapOrElse(_.hashCode, System.identityHashCode(this))
 		}
 
 		private object ToMap extends ToMap[Map, Any, Any](immutable.Map)("Map")
 
-		private class ToOrdered[S, E](val factory :Factory[E, S])(override val toString :String)
+		private case class ToOrdered[S, E](factory :Factory[E, S])(override val toString :String)
 			extends Custom[S, Int -> E](_.toArray.sorted(Ordering.by((_ :Int -> E)._1)).view.map(_._2).to(factory))
 			   with ConstructFrom[S, Int -> E]
 		{
 			override def builder =
 				Array.newBuilder[Int -> E].mapResult(_.sorted(Ordering.by((_ :Int -> E)._1)).view.map(_._2).to(factory))
 
-			def iterableFactory = iterableFactoryOf(factory)
-
 			override def compatibleWith(decomposer :DecomposableTo[S, _]) :Boolean =
 				DecomposableTo.Ordered.unapply(decomposer)
 
-			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ToOrdered[_, _]]
+			private def mapFactory :Option[Any] = companionFactoryOf(factory)
 
 			override def equals(that :Any) :Boolean = that match {
 				case self :AnyRef if self eq this => true
-				case col :ToOrdered[_, _] if col canEqual this => (iterableFactory, col.iterableFactory) match {
-					case (Some(x), Some(y)) => x == y
-					case _ => false
-				}
+				case other :ToOrdered[_, _] =>
+					factory == other.factory || ((mapFactory, other.mapFactory) match {
+						case (Some(x), Some(y)) => x == y
+						case _ => false
+					})
 				case _ => false
 			}
-
-			override def hashCode :Int = iterableFactory.mapOrElse(_.hashCode, System.identityHashCode(this))
+			override def hashCode :Int = mapFactory.mapOrElse(_.hashCode, System.identityHashCode(this))
 		}
 
 		private object ToOrdered extends ToOrdered[Seq[Any], Any](Seq)("Seq")
@@ -904,14 +948,21 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		}
 
 
+		//todo: compare also factories with implicit evidence
+		private val IterableToFactoryClass = scala.collection.Iterable.iterableFactory.getClass
+		private val iterableFactoryField = IterableToFactoryClass.getFields.find(_.getType == classOf[IterableFactory[Iterable]])
+		private val MapToFactoryClass = scala.collection.Map.mapFactory.getClass
+		private val mapFactoryField = MapToFactoryClass.getFields.find(_.getType == classOf[MapFactory[Map]])
 
-		private val ToFactoryClass = scala.collection.Iterable.iterableFactory.getClass
-		private val iterableFactoryField = ToFactoryClass.getFields.find(_.getType == classOf[IterableFactory[Iterable]])
-
-		private def iterableFactoryOf[E, T](factory :Factory[E, T]) :Option[IterableFactory[Iterable]] =
-			if (ToFactoryClass isAssignableFrom factory.getClass)
-				iterableFactoryField.map(_.get(factory).asInstanceOf[IterableFactory[Iterable]])
-			else None
+		private def companionFactoryOf[E, T](factory :Factory[E, T]) :Option[Any] =
+			factory match {
+				case comparable: ComparableFactory[_, _] => Some(comparable.factory)
+				case _ if IterableToFactoryClass isAssignableFrom factory.getClass =>
+					iterableFactoryField.map(_.get(factory).asInstanceOf[IterableFactory[Iterable]])
+				case _ if MapToFactoryClass isAssignableFrom factory.getClass =>
+					mapFactoryField.map(_.get(factory).asInstanceOf[MapFactory[Map]])
+				case _ => None
+			}
 	}
 
 
@@ -1076,11 +1127,11 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		  * is the zero-based index of the given element in the sequence.
 		  */
 		object Ordered {
-			def apply[V]() :Iterable[V] ExtractAs (Int -> V) = FromIndexed.asInstanceOf[Iterable[V] ExtractAs (Int -> V)]
+			def apply[V]() :Iterable[V] ExtractAs (Int -> V) = FromOrdered.asInstanceOf[Iterable[V] ExtractAs (Int -> V)]
 
-			def unapply[T, E](decomposer :T DecomposableTo E) :Boolean = decomposer == FromIndexed
+			def unapply[T, E](decomposer :T DecomposableTo E) :Boolean = decomposer == FromOrdered
 
-			def unapply[T, E](composition :T ComposedOf E) :Boolean = composition.decomposer == FromIndexed
+			def unapply[T, E](composition :T ComposedOf E) :Boolean = composition.decomposer == FromOrdered
 		}
 
 
@@ -1146,7 +1197,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			override def toString = "Map"
 		}
 
-		private case object FromIndexed extends ExtractAs[Iterable[Any], Int -> Any] {
+		private case object FromOrdered extends ExtractAs[Iterable[Any], Int -> Any] {
 			override def arity = Arity._0_n
 
 			override def apply(composite :Iterable[Any]) :Iterable[Int -> Any] =

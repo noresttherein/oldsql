@@ -9,12 +9,12 @@ import net.noresttherein.oldsql.morsels.Extractor.{=?>, IdentityExtractor}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.ColumnReadForm.{DirectColumnReadForm, FlatMappedColumnReadForm, LazyColumnReadForm, MappedColumnReadForm}
-import net.noresttherein.oldsql.schema.SQLForm.{FlatMappedSQLForm, JoinedForms, LazyForm, MappedSQLForm, NotNullForm, NotNullSQLForm, NullValue, ReifiedSQLForm}
-import net.noresttherein.oldsql.schema.forms.SQLForms
-import net.noresttherein.oldsql.schema.ColumnWriteForm.{DirectColumnWriteForm, LazyColumnWriteForm}
+import net.noresttherein.oldsql.schema.ColumnWriteForm.{DirectColumnWriteForm, LazyColumnWriteForm, SingletonColumnWriteForm}
+import net.noresttherein.oldsql.schema.SQLForm.{CombinedForms, FlatMappedSQLForm, LazyForm, MappedSQLForm, NotNullForm, NotNullSQLForm, NullValue, SQLMetaForm}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull
 import net.noresttherein.oldsql.schema.SQLReadForm.{NullableReadForm, ProxyReadForm, ReadFormNullGuard, ReadFormNullValue}
 import net.noresttherein.oldsql.schema.SQLWriteForm.{CustomNullSQLWriteForm, NullableWriteForm, ProxyWriteForm, WriteFormNullGuard}
+import net.noresttherein.oldsql.schema.forms.SQLForms
 import net.noresttherein.oldsql.slang
 
 //here be implicits
@@ -91,7 +91,9 @@ trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteFo
 
 
 	override def nullSafe :ColumnForm[T] =
-		new ProxyReadForm[T] with ProxyWriteForm[T] with WriteFormNullGuard[T] with ColumnForm[T] {
+		new ProxyReadForm[T] with ProxyWriteForm[T] with ColumnForm[T]
+			with SingletonColumnWriteForm[T] with WriteFormNullGuard[T]
+		{
 			override def form = outer
 			override def sqlType = outer.sqlType
 			override def nullSafe = this
@@ -104,7 +106,9 @@ trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteFo
 		}
 
 	override def withNull(implicit nullVal :NullValue[T]) :ColumnForm[T] =
-		new CustomNullSQLWriteForm[T](this) with ProxyReadForm[T] with ColumnForm[T] {
+		new CustomNullSQLWriteForm[T](this)
+			with ProxyReadForm[T] with ColumnForm[T] with SingletonColumnWriteForm[T]
+		{
 			override val form = outer
 			override val sqlType = outer.sqlType
 			override val nulls = nullVal
@@ -114,11 +118,14 @@ trait ColumnForm[T] extends SQLForm[T] with ColumnReadForm[T] with ColumnWriteFo
 
 	override def withNull(nullValue :T) :ColumnForm[T] = withNull(NullValue(nullValue))
 
+	override def writer :ColumnWriteForm[T] = this
+	override def reader :ColumnReadForm[T] = this
+
+
 	override def compatible(other: SQLForm[_]): Boolean = other match {
 		case a :ColumnForm[_] => a.sqlType == sqlType
 		case _ => false
 	}
-
 
 }
 
@@ -147,19 +154,22 @@ object ColumnForm {
 
 
 	/** Creates a `ColumnForm` delegating all calls to the implicitly provided read and write forms. */
-	def join[T](implicit write :ColumnWriteForm[T], read :ColumnReadForm[T]) :ColumnForm[T] =
-		join(null)
+	def combine[T](implicit write :ColumnWriteForm[T], read :ColumnReadForm[T]) :ColumnForm[T] =
+		combine(null)
 
 	/** Creates a `ColumnForm` delegating all calls to the implicitly provided read and write forms. */
-	def join[T](name :String)(implicit write :ColumnWriteForm[T], read :ColumnReadForm[T]) :ColumnForm[T] =
+	def combine[T](name :String)(implicit write :ColumnWriteForm[T], read :ColumnReadForm[T]) :ColumnForm[T] =
 		if (read.sqlType != write.sqlType)
 			throw new IllegalArgumentException(
 				s"Can't combine column forms $read and $write with different underlying sql types: ${read.sqlType} != ${write.sqlType}."
 			)
 		else
-			new JoinedForms[T](read, write, name) with ColumnForm[T] {
-				override def notNull = join(toString + ".notNull")(write.notNull, read.notNull)
-				override val sqlType = r.asInstanceOf[ColumnReadForm[T]].sqlType
+			new CombinedForms[T](read, write, name) with ColumnForm[T] with SingletonColumnWriteForm[T] {
+				override val reader = read
+				override val writer = write
+				override def split = writer.split
+				override def notNull = combine(toString + ".notNull")(writer.notNull, reader.notNull)
+				override val sqlType = reader.asInstanceOf[ColumnReadForm[T]].sqlType
 			}
 
 
@@ -168,39 +178,43 @@ object ColumnForm {
 	  * reevaluating the given expression.
 	  */
 	def eval[T :ColumnWriteForm](expr: => T, name :String = null) :ColumnForm[T] =
-		join(name)(ColumnWriteForm.eval(expr), ColumnReadForm.eval(ColumnWriteForm[T].sqlType, expr))
+		combine(name)(ColumnWriteForm.eval(expr), ColumnReadForm.eval(ColumnWriteForm[T].sqlType, expr))
 
 	/** Creates a dummy form which ignores its input and always reads and writes the value resulting from
 	  * reevaluating the given expression.
 	  */
 	def evalopt[T :ColumnWriteForm :NullValue](expr: => Option[T], name :String = null) :ColumnForm[T] =
-		join(name)(ColumnWriteForm.evalopt(expr), ColumnReadForm.evalopt(ColumnWriteForm[T].sqlType, expr))
+		combine(name)(ColumnWriteForm.evalopt(expr), ColumnReadForm.evalopt(ColumnWriteForm[T].sqlType, expr))
 
 
 
 	/** Creates a dummy form which always returns and writes the same value. */
 	def const[T :ColumnWriteForm](value :T, name :String = null) :ColumnForm[T] =
-		join(name)(ColumnWriteForm.const(value), ColumnReadForm.const(ColumnWriteForm[T].sqlType, value))
+		combine(name)(ColumnWriteForm.const(value), ColumnReadForm.const(ColumnWriteForm[T].sqlType, value))
 
 	/** Creates a dummy form which always returns and writes the same value. */
 	def constopt[T :ColumnWriteForm :NullValue](value :Option[T], name :String = null) :ColumnForm[T] =
-		join(name)(ColumnWriteForm.constopt(value), ColumnReadForm.constopt(ColumnWriteForm[T].sqlType, value))
+		combine(name)(ColumnWriteForm.constopt(value), ColumnReadForm.constopt(ColumnWriteForm[T].sqlType, value))
 
 
 
-	/** Creates a dummy form which always writes the null value as defined by the implicit `write` form,
+	/** Creates a dummy form which always writes the null value as defined by the implicit `NullValue`,
 	  * and returns `None`/`nulls.value` when reading.
 	  */
-	def nulls[T :ColumnWriteForm :NullValue] :ColumnForm[T] =
-		join(ColumnWriteForm.none[T], ColumnReadForm.nulls[T](ColumnWriteForm[T].sqlType))
+	def defaults[T :ColumnWriteForm :NullValue] :ColumnForm[T] =
+		combine(ColumnWriteForm.defaults[T], ColumnReadForm.defaults[T](ColumnWriteForm[T].sqlType))
 
 	/** Creates a dummy form which always writes the null value as defined by the implicit `write` form,
 	  * and returns `None` when reading. All calls to `apply` will result in a `NullPointerException`.
 	  */
 	def none[T :ColumnWriteForm] :ColumnForm[T] =
-		join(ColumnWriteForm.none[T], ColumnReadForm.none[T](ColumnWriteForm[T].sqlType))
+		combine(ColumnWriteForm.none[T], ColumnReadForm.none[T](ColumnWriteForm[T].sqlType))
 
+//	/** Creates a dummy form which always writes `null` and returns `None` (and throws `NullPointerException` in `apply`). */
+//	def nulls[T] :ColumnForm[T] = SQLForms.NotNullNull.asInstanceOf[ColumnForm[T]]
 
+	/** Creates a dummy form which always reads and writes `null` values, except from the `opt` method, which returns `None`. */
+	def nulls[T >: Null] :ColumnForm[T] = SQLForms.NullForm
 
 	/** Creates a `ColumnForm[T]` based on implicit `ColumnForm[S]` and, optionally, `NullValue[T]`.
 	  * If no [[net.noresttherein.oldsql.schema.SQLForm.NullValue]] type class is present for the target type,
@@ -287,7 +301,9 @@ object ColumnForm {
 	  * of checking for initialization and delegation at every call.
 	  */
 	def delayed[T](delayed: => ColumnForm[T]) :ColumnForm[T] =
-		new LazyForm[T](() => delayed) with LazyColumnReadForm[T] with LazyColumnWriteForm[T] with ColumnForm[T] {
+		new LazyForm[T](() => delayed)
+			with LazyColumnReadForm[T] with LazyColumnWriteForm[T] with ColumnForm[T] //with SingletonColumnWriteForm[T]
+		{
 			override def form :ColumnForm[T] = super.form.asInstanceOf[ColumnForm[T]]
 
 			override def bimap[X :NullValue](map :T => X)(unmap :X => T) =
@@ -331,7 +347,7 @@ object ColumnForm {
 	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue null value]] and the provided JDBC code.
 	  * @see [[net.noresttherein.oldsql.schema.ColumnReadForm.DirectColumnReadForm]]
 	  * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm.DirectColumnWriteForm]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiteralsBackFeed]]
 	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.NonLiteralWriteForm]]
 	  */
 	abstract class AbstractColumnForm[T](override val sqlType :JDBCType)(implicit override val nulls :NullValue[T])
@@ -346,12 +362,15 @@ object ColumnForm {
 	  * inner class name in its `toString` method instead.
 	  * @see [[net.noresttherein.oldsql.schema.ColumnReadForm.DirectColumnReadForm]]
 	  * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm.DirectColumnWriteForm]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiteralsBackFeed]]
 	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.NonLiteralWriteForm]]
 	  */
-	abstract class NamedColumnForm[T](override val toString :String, override val sqlType :JDBCType)
+	abstract class NamedColumnForm[T](name :String, override val sqlType :JDBCType)
 	                                 (implicit override val nulls :NullValue[T])
 		extends ColumnForm[T] with ReadFormNullValue[T]
+	{
+		override def toString :String = name
+	}
 
 	/** A convenience base class for `ColumnForm` implementations using an implicit
 	  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue NullValue]] for their
@@ -360,11 +379,11 @@ object ColumnForm {
 	  * this class uses the local class name of type `T` rather than the form class name.
 	  * @see [[net.noresttherein.oldsql.schema.ColumnReadForm.DirectColumnReadForm]]
 	  * @see [[net.noresttherein.oldsql.schema.ColumnWriteForm.DirectColumnWriteForm]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiteralsBackFeed]]
 	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.NonLiteralWriteForm]]
 	  */
-	abstract class ReifiedColumnForm[T :NullValue :ClassTag](override val sqlType :JDBCType)
-		extends ReifiedSQLForm[T] with ColumnForm[T] with ReadFormNullValue[T]
+	abstract class ColumnMetaForm[T :NullValue :ClassTag](override val sqlType :JDBCType)
+		extends SQLMetaForm[T] with ColumnForm[T] with ReadFormNullValue[T]
 
 
 
@@ -375,7 +394,7 @@ object ColumnForm {
 	  * representation in SQL.
 	  * @see [[net.noresttherein.oldsql.schema.ColumnForm.AbstractColumnForm]]
 	  * @see [[net.noresttherein.oldsql.schema.ColumnForm.NamedColumnForm]]
-	  * @see [[net.noresttherein.oldsql.schema.ColumnForm.ReifiedColumnForm]]
+	  * @see [[net.noresttherein.oldsql.schema.ColumnForm.ColumnMetaForm]]
 	  */
 	abstract class JDBCForm[T](override val sqlType :JDBCType)(implicit override val nulls :NullValue[T])
 		extends ColumnForm[T] with ReadFormNullValue[T] with DirectColumnReadForm[T] with DirectColumnWriteForm[T]
@@ -410,7 +429,7 @@ object ColumnForm {
 			res.getObject(position, cls)
 
 		override def notNull :ColumnForm[T] =
-			new JDBCObjectForm[T](cls, sqlType)(NotNull) {
+			new JDBCObjectFormSingleton[T](cls, sqlType)(NotNull) {
 				override def apply(res :ResultSet, position :Int) :T = {
 					val t = super.apply(res, position)
 					if (res.wasNull) throw new NullPointerException("Cannot return null from " + this + ".")
@@ -429,7 +448,18 @@ object ColumnForm {
 
 		override def hashCode :Int = cls.hashCode * 31 + sqlType.hashCode
 
-		override val toString :String = innerNameOf(cls)
+		override def toString :String = string
+		private[this] val string = innerNameOf(cls)
+	}
+
+	private[schema] class JDBCObjectFormSingleton[T](cls :Class[T], sqlType :JDBCType = JDBCType.JAVA_OBJECT)
+	                                                (implicit override val nulls :NullValue[T])
+		extends JDBCObjectForm[T](cls, sqlType) with SingletonColumnWriteForm[T]
+	{
+		def this(sqlType :JDBCType)(implicit nulls :NullValue[T], tag :ClassTag[T]) =
+			this(tag.runtimeClass.asInstanceOf[Class[T]], sqlType)
+
+		def this()(implicit nulls :NullValue[T], tag :ClassTag[T]) = this(tag.runtimeClass.asInstanceOf[Class[T]])
 	}
 
 
@@ -438,9 +468,13 @@ object ColumnForm {
 
 
 
-	private[schema] class MappedColumnForm[S :ColumnForm, T :NullValue](f :S => T, g :T => S, name :String = null)
-		extends MappedSQLForm(f, g, name) with MappedColumnReadForm[S, T] with ColumnForm[T]
+	private[schema] class MappedColumnForm[S, T](f :S => T, g :T => S, name :String = null)
+	                                            (implicit override val form :ColumnForm[S], nulls :NullValue[T])
+		extends MappedSQLForm(f, g, name)
+		   with MappedColumnReadForm[S, T] with ColumnForm[T] with SingletonColumnWriteForm[T]
 	{
+		override def split :Seq[ColumnWriteForm[T]] = form.compose(unmap)::Nil
+
 		override def notNull :ColumnForm[T] =
 			new MappedColumnForm[S, T](map, unmap, toString + ".notNull")(form.asInstanceOf[ColumnForm[S]], NotNull)
 				with NotNullForm[T] with ReadFormNullGuard[T]
@@ -450,7 +484,8 @@ object ColumnForm {
 
 	private[schema] class FlatMappedColumnForm[S :ColumnForm, T :NullValue]
 	                                          (f :S => Option[T], g :T => Option[S], name :String = null)
-		extends FlatMappedSQLForm(f, g, name) with FlatMappedColumnReadForm[S, T] with ColumnForm[T]
+		extends FlatMappedSQLForm(f, g, name)
+			with FlatMappedColumnReadForm[S, T] with ColumnForm[T] with SingletonColumnWriteForm[T]
 	{
 		override def notNull :ColumnForm[T] =
 			new FlatMappedColumnForm[S, T](map, unmap, toString + ".notNull")(form.asInstanceOf[ColumnForm[S]], NotNull)

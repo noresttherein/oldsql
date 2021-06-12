@@ -24,7 +24,7 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.{RowProductVisitor, SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext
 
 
@@ -308,6 +308,7 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 
 
 	override type AppliedParam = WithLeft[left.AppliedParam] //WithLeft because it is overriden by As
+	override type GeneralizedParamless = left.GeneralizedParamless LikeJoin R
 	override type Paramless = WithLeft[left.Paramless]
 
 	override def bind(param :LastParam) :AppliedParam = {
@@ -360,6 +361,10 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 	}
 
 
+	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext = alias match {
+		case "" => left.spellingContext.subselect("")
+		case name => spelling.table(right, name)(left.spellingContext, parameterization).context
+	}
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Join.*]
 
@@ -371,7 +376,6 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 
 
 object Join {
-
 
 	/** Create an (inner) cross join between the given two relations `left` and `right`.
 	  * The ''where'' clause can be subsequently specified using
@@ -520,7 +524,7 @@ object Join {
 			withLeft(left.appendedTo(prefix))(condition :GlobalBoolean[left.Generalized GeneralizedJoin R])
 
 
-		protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.join[L, R, S](this)
+		protected override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.join[L, R, S](this)
 	}
 
 }
@@ -670,7 +674,7 @@ object InnerJoin {
 			override def aliased[N <: Label](alias :N) =
 				InnerJoin[left.type, R, S, N](left, last, Option(alias))(condition)
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.innerJoin[L, R, S](this)
+			override def applyTo[Y](matcher :RowProductVisitor[Y]) = matcher.innerJoin[L, R, S](this)
 
 		}.asInstanceOf[L InnerJoin R As A]
 
@@ -862,7 +866,7 @@ object OuterJoin {
 			override def aliased[N <: Label](alias :N) =
 				OuterJoin[left.type, R, S, N](left, last, Option(alias))(condition)
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.outerJoin[L, R, S](this)
+			override def applyTo[Y](matcher :RowProductVisitor[Y]) = matcher.outerJoin[L, R, S](this)
 		
 		}.asInstanceOf[L OuterJoin R As A]
 
@@ -1055,7 +1059,7 @@ object LeftJoin {
 			override def aliased[N <: Label](alias :N) =
 				LeftJoin[left.type, R, S, N](left, last, Option(alias))(condition)
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.leftJoin[L, R, S](this)
+			override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.leftJoin[L, R, S](this)
 			
 		}.asInstanceOf[L LeftJoin R As A]
 
@@ -1248,7 +1252,7 @@ object RightJoin {
 			override def aliased[N <: Label](alias :N) = 
 				RightJoin[left.type, R, S, N](left, last, Option(alias))(condition)
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.rightJoin[L, R, S](this)
+			override def applyTo[Y](matcher :RowProductVisitor[Y]) = matcher.rightJoin[L, R, S](this)
 			
 		}.asInstanceOf[L RightJoin R As A]
 
@@ -1383,6 +1387,7 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 
 
 	override type AppliedParam = WithLeft[left.AppliedParam]
+	override type GeneralizedParamless = left.GeneralizedParamless Subselect T
 	override type Paramless = WithLeft[left.Paramless]
 
 	override def bind(param :LastParam) :AppliedParam = {
@@ -1458,6 +1463,11 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 		val aliased = spelling.table(right, aliasOpt)(context.subselect, parameterization)
 		val sql = (spelling.FROM + " ") +: aliased
 		if (condition == True) sql else sql && spelling.inWhere(filter)
+	}
+
+	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext = alias match {
+		case "" => left.spellingContext.subselect("")
+		case name => spelling.table(right, name)(left.spellingContext.subselect, parameterization).context
 	}
 
 
@@ -1585,7 +1595,7 @@ object Subselect {
 				last.expand(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
 
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.subselect[L, R, S](this)
+			override def applyTo[Y](matcher :RowProductVisitor[Y]) = matcher.subselect[L, R, S](this)
 
 		}.asInstanceOf[L Subselect R As A]
 

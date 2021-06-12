@@ -215,7 +215,7 @@ object MappingAdapter {
 			)
 
 		override val body :M = backer
-
+		//todo: why these abstract overrides here?
 		abstract override def unexport[X](component :Component[X]) :Component[X] = super.unexport(component)
 		abstract override def unexport[X](column :Column[X]) :Column[X] = super.unexport(column)
 	}
@@ -240,7 +240,7 @@ object MappingAdapter {
 			)
 
 		override val body :M = backer.body
-
+		//todo: why these abstract overrides? what do they do?
 		abstract override def unexport[X](component :Component[X]) :Component[X] = super.unexport(component)
 		abstract override def unexport[X](column :Column[X]) :Column[X] = super.unexport(column)
 	}
@@ -271,7 +271,7 @@ object MappingAdapter {
 			super[ColumnMappingFactoryMethods].alter(op, include, exclude)
 
 
-		override protected def thisColumn :ColumnAdapter[M, T, S, O] = this
+		protected override def thisColumn :ColumnAdapter[M, T, S, O] = this
 
 		protected override def copy(name :String, buffs :Buffs[S]) :ColumnAdapter[M, T, S, O] =
 			new ExportComposedColumnAdapter[M, T, S, O](this, name, buffs)
@@ -415,7 +415,7 @@ object MappingAdapter {
 	/** An adapter which changes nothing about the adapted mapping. It can be used where `Adapted[M]` (or similar)
 	  * type is required, but the mapping should remain unmodified.
 	  */
-	class IdentityAdapter[M <: RefinedMapping[S, O], S, O](override protected val backer :M)
+	class IdentityAdapter[M <: RefinedMapping[S, O], S, O](protected override val backer :M)
 		extends DirectProxy[S, O] with DelegateAdapter[M, S, O]
 
 }

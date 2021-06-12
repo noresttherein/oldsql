@@ -28,11 +28,11 @@ class GetTableCheck {{
 	class Y[O] extends FormMapping[Byte, O]
 	class Z[O] extends FormMapping[Byte, O]
 
-	val A :Relation[A] = Table("A", new A[()])
-	val B :Relation[B] = Table("B", new B[()])
-	val C :Relation[C] = Table("C", new C[()])
-	val D :Relation[D] = Table("D", new D[()])
-	val E :Relation[E] = Table("E", new E[()])
+	val A :Relation[A] = Table("A", new A[Unit])
+	val B :Relation[B] = Table("B", new B[Unit])
+	val C :Relation[C] = Table("C", new C[Unit])
+	val D :Relation[D] = Table("D", new D[Unit])
+	val E :Relation[E] = Table("E", new E[Unit])
 
 	type Test = (
 		From[A] As "A" LeftJoin B As "B" WithParam Int As "Int" RightJoin C As "C" WithParam Long As "Long"
@@ -287,76 +287,76 @@ class GetTableCheck {{
 
 	//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ByType ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
-	expect[ByType.Return, A[()], A[
+	expect[ByType.Return, A[Unit], A[
 		RowProduct AndFrom A Join B WithParam Int Join C WithParam Long
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, B[()], B[
+	expect[ByType.Return, B[Unit], B[
 		RowProduct AndFrom B WithParam Int Join C WithParam Long
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, FromParam[Int, ()], FromParam[Int,
+	expect[ByType.Return, FromParam[Int, Unit], FromParam[Int,
 		RowProduct AndFrom ParamRelation[Int]#Param Join C WithParam Long
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, C[()], C[
+	expect[ByType.Return, C[Unit], C[
 		RowProduct AndFrom C WithParam Long
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, FromParam[Long, ()], FromParam[Long,
+	expect[ByType.Return, FromParam[Long, Unit], FromParam[Long,
 		RowProduct AndFrom ParamRelation[Long]#Param
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, D[()], D[
+	expect[ByType.Return, D[Unit], D[
 		FromSome GroupBy D By E
 		Subselect M Join N
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, E[()], E[
+	expect[ByType.Return, E[Unit], E[
 		GroupByClause AndBy E
 		Subselect M Join N
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, M[()], M[
+	expect[ByType.Return, M[Unit], M[
 		RowProduct AndFrom M Join N
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, N[()], N[
+	expect[ByType.Return, N[Unit], N[
 		RowProduct AndFrom N
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, Y[()], Y[
+	expect[ByType.Return, Y[Unit], Y[
 		FromSome GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, X[()], X[
+	expect[ByType.Return, X[Unit], X[
 		GroupByClause AndBy X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, FromParam[Byte, ()], FromParam[Byte,
+	expect[ByType.Return, FromParam[Byte, Unit], FromParam[Byte,
 		GroupByClause AndBy ParamRelation[Byte]#Param
 		Subselect Z
 	]]
-	expect[ByType.Return, Z[()], Z[RowProduct AndFrom Z]]
+	expect[ByType.Return, Z[Unit], Z[RowProduct AndFrom Z]]
 
 
 

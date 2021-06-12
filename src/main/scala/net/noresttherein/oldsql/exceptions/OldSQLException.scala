@@ -11,10 +11,15 @@ import scala.collection.mutable
 
 /** Base ''trait'' of all exceptions thrown directly the framework, which either describe a specific situation,
   * or are thrown due to caller error (rather than an internal error). It is a trait so it can be mixed in to
-  * standard Scala/Java exception classes, such as `NoSuchElementException`.
+  * standard Scala/Java exception classes, such as `NoSuchElementException`. The default, generic implementation
+  * which, at the same time, serves as a base class for more specific implementations is
+  * [[net.noresttherein.oldsql.exceptions.BaseOldSQLException BaseOldSQLException]]. An instance can be created
+  * simply by factory `apply` method of the [[net.noresttherein.oldsql.exceptions.OldSQLException$ companion]] object
+  * of this class.
   */
 trait OldSQLException extends Throwable {
 
+	/** Standard [[Throwable.getSuppressed getSuppressed]] array as a scala [[Seq]]. */
 	def suppressed :Seq[Throwable] = ArraySeq.unsafeWrapArray(getSuppressed)
 
 	/** Reverses the exception stack, where `_.getCause` is treated as the next element on the list.
@@ -33,9 +38,23 @@ trait OldSQLException extends Throwable {
 		push(this, Nil)
 	}
 
+	/** Standard [[Throwable.getCause getCause]] wrapped in an [[Option]]. */
 	val cause :Option[Throwable] = Option(getCause)
 
+	/** Denullified [[Throwable.getMessage getMessage]] returning an empty string instead of `null` if no message
+	  * was provided. */
 	val message :String = if (getMessage == null) "" else getMessage
+}
+
+
+
+object OldSQLException {
+	def apply(msg :String, cause :Throwable = null) :OldSQLException = new BaseOldSQLException(msg, cause)
+
+	def unapply(e :Throwable) :Option[(String, Option[Throwable])] = e match {
+		case ex :OldSQLException => Some((ex.message, ex.cause))
+		case _ => None
+	}
 }
 
 
@@ -52,4 +71,24 @@ class BaseOldSQLException protected (val msg :String, init :Throwable,
 }
 
 
+
+
+
+/** An exception indicating that the error is (most likely) a result of a bug in the framework
+  * (or its custom extensions), rather than in the application code or a data error.
+  */
+trait Bug extends OldSQLException
+
+object Bug {
+
+	def apply(msg :String, cause :Throwable = null) :Bug = new BugException(msg, cause)
+
+	def unapply(e :Throwable) :Option[(String, Option[Throwable])] = e match {
+		case bug :Bug => Some((bug.message, bug.cause))
+		case _ => None
+	}
+
+	private class BugException(msg :String, cause :Throwable = null)
+		extends BaseOldSQLException(msg, cause) with Bug
+}
 

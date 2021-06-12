@@ -3,25 +3,25 @@ package net.noresttherein.oldsql.sql.ast
 import scala.annotation.tailrec
 import scala.collection.immutable.Seq
 
-import net.noresttherein.oldsql.collection.{Chain, Listing, Opt}
+import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.collection.{Chain, Listing, Opt, ReversedList}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.morsels.ChunkedString
-import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.forms.SQLForms
-import net.noresttherein.oldsql.sql.{ast, ColumnSQL, IndexedMapping, ListingColumnSQLMapping, ListingSQLMapping, ParamSelect, RowProduct, SQLExpression, SQLMapping}
+import net.noresttherein.oldsql.sql.{ast, ColumnSQL, IndexedMapping, ListingColumnSQLMapping, ListingSQLMapping, RowProduct, Select, SQLExpression, SQLMapping}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn
-import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
+import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionVisitor, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumnAs, SubselectAs, SubselectColumnAs, SubselectSQL, TopSelectAs, TopSelectColumnAs, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.{CaseChain, ChainEntry, ChainMatcher, EmptyChain}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingEntry, ListingMatcher, ListingValueSQL}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.SeqTuple.{CaseSeq, SeqMatcher}
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.{CaseChainTuple, ChainEntry, ChainTupleVisitor, EmptyChain}
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingEntry, ListingVisitor, ListingValueSQL}
+import net.noresttherein.oldsql.sql.ast.TupleSQL.SeqTuple.{CaseSeq, SeqVisitor}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
@@ -35,9 +35,10 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
   * may not be all instances of `ColumnSQL`, but any multi-column expressions are inlined in the resulting `SQL`.
   */
 trait TupleSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T] extends CompositeSQL[F, S, T] {
+	def toSeq :Seq[SQLExpression[F, S, _]] = parts
 
-	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
-		matcher.tuple(this)
+	protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ExpressionVisitor[F, Y]) :Y[S, T] =
+		visitor.tuple(this)
 
 	override def topSelectFrom[E <: F with GroundFrom](from :E) :TopSelectSQL[T] =
 		SelectSQL(from, this)
@@ -46,22 +47,26 @@ trait TupleSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T] extends Com
 		SelectSQL.subselect[B, from.type, T](from, this)
 
 	override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
-			:ParamSelect[P, T] =
-		ParamSelect(from)[T](this)
+			:Select[P, T] =
+		Select(from)[T](this)
 
+
+	override def columnCount(implicit spelling :SQLSpelling) :Int = (0 /: parts)(_ + _.columnCount)
 
 	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
 	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		SpelledSQL("(", context, params) + (inlineSpelling(_, _)) + ")"
+		inlineSpelling(context, params) match {
+			case Seq() => SpelledSQL("()", context, params)
+			case columns => ( "(" +: columns.reduce(_.sql +: ", " +: _)) + ")"
+		}
 
 	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		if (parts.isEmpty)
-			SpelledSQL(context, params)
-		else
-			inOrder.view.scanLeft(SpelledSQL(context, params)) {
-				(sql, item) => spelling.inline(item :SQLExpression[E, S, _])(sql.context, sql.params)
-			}.tail.reduce(_.sql +: ", " +: _)
+	                                                (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
+		inOrder.foldLeft(List.empty[SpelledSQL[P, E]]) {
+			(parts, item) => //we must assemble left to right for params, but the result is reversed due to prepending
+				val (ctx, ps) = if (parts.isEmpty) (context, params) else (parts.head.context, parts.head.params)
+				spelling.explode(item :SQLExpression[E, S, _])(ctx, ps).toList reverse_::: parts
+		}.reverse
 
 
 	override def sameAs(other :CompositeSQL.*) :Boolean = other.isInstanceOf[TupleSQL[_, _, _]]
@@ -90,13 +95,20 @@ object TupleSQL {
 
 		override def readForm :SQLReadForm[Seq[T]] = SQLReadForm.seq(inOrder.map(_.readForm))
 
+		override def groundValue :Opt[Seq[T]] = inOrder.flatMap(_.groundValue.toOption) match {
+			case res if res.length == inOrder.length => Got(res)
+			case _ => Lack
+		}
+
 		override def anchor(from :F) :SQLExpression[F, S, Seq[T]] = new SeqTuple(parts.map(_.anchor(from)))
 
 		override def rephrase[E <: RowProduct](mapper: SQLScribe[F, E]) :SeqTuple[E, S, T] =
 			SeqTuple(inOrder.map(mapper(_)))
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher: ExpressionMatcher[F, Y]): Y[S, Seq[T]] =
-			matcher.seq(this)
+		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor: ExpressionVisitor[F, Y]): Y[S, Seq[T]] =
+			visitor.seq(this)
+
+		override def split(implicit scope :OperationType) :Seq[ColumnSQL[F, S, _]] = parts.flatMap(_.split)
 
 		override def toString :String = inOrder.mkString("Seq(", ", ", ")")
 	}
@@ -112,13 +124,13 @@ object TupleSQL {
 			new SeqTuple(items)
 
 
-		trait SeqMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+		trait SeqVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
 			def seq[S >: LocalScope <: GlobalScope, X](e :SeqTuple[F, S, X]) :Y[S, Seq[X]]
 		}
 
-		type MatchSeq[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = SeqMatcher[F, Y]
+		type MatchSeq[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = SeqVisitor[F, Y]
 
-		type CaseSeq[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = SeqMatcher[F, Y]
+		type CaseSeq[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = SeqVisitor[F, Y]
 	}
 
 
@@ -128,27 +140,36 @@ object TupleSQL {
 
 	/** A tuple expression implementation with flexible length, mapping nominally
 	  * to a [[net.noresttherein.oldsql.collection.Chain Chain]] subtype containing the member expressions.
-	  */
+	  */ //todo: conversion from tuples of SQLExpressions
 	sealed trait ChainTuple[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T <: Chain] extends TupleSQL[F, S, T] {
 		def size :Int
 
+		@inline def init[I <: Chain](implicit nonEmpty :Chain.Init[T, I]) :ChainTuple[F, S, I] =
+			this.asInstanceOf[ChainEntry[F, S, I, _]].init
+
+		@inline def last[L](implicit nonEmpty :Chain.Last[T, L]) :SQLExpression[F, S, L] =
+			this.asInstanceOf[ChainEntry[F, S, _, L]].last
+
+		def ~[E <: F, O >: LocalScope <: S, H](head :SQLExpression[E, O, H]) :ChainEntry[E, O, T, H] =
+			new ChainEntry(this, head)
+
 		protected override def parts :Seq[SQLExpression[F, S, _]] = {
-			@tailrec def rec(formula :ChainTuple[F, S, _], acc :List[SQLExpression[F, S, _]] = Nil)
+			@tailrec def rec(e :ChainTuple[F, S, _], acc :List[SQLExpression[F, S, _]] = Nil)
 					:Seq[SQLExpression[F, S, _]] =
-				formula match {
+				e match {
 					case ChainEntry(tail, head) => rec(tail, head::acc)
 					case _ => acc
 				}
 			rec(this)
 		}
 
-		def toSeq :Seq[SQLExpression[F, S, _]] = parts
+//		def toSeq :Seq[SQLExpression[F, S, _]] = parts
 
 		override def asGlobal :Option[ChainTuple[F, GlobalScope, T]] =
 			if (isGlobal) Some(this.asInstanceOf[ChainTuple[F, GlobalScope, T]])
 			else None
 
-		override def anchor(from :F) :ChainTuple[F, S, T]
+		override def anchor(from :F) :ChainTuple[F, S, T] = rephrase(SQLScribe.anchor(from))
 
 		//overriden to narrow down the result type
 		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ChainTuple[E, S, T]
@@ -163,12 +184,9 @@ object TupleSQL {
 		                   (base :E)(implicit ext :U ExpandedBy E, global :GlobalScope <:< S) :ChainTuple[E, S, T] =
 			rephrase(SQLScribe.expand(base))
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
-			matcher.chain(this)
+		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ExpressionVisitor[F, Y]) :Y[S, T] =
+			visitor.chainTuple(this)
 
-
-		def ~[E <: F, O >: LocalScope <: S, H](head :SQLExpression[E, O, H]) :ChainEntry[E, O, T, H] =
-			new ChainEntry(this, head)
 
 		override def toString :String = inOrder.mkString("(", " ~ ", ")")
 	}
@@ -183,37 +201,50 @@ object TupleSQL {
 			new ChainEntry(EmptyChain, e)
 
 
-
-		case class ChainEntry[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T <: Chain, H]
-		                     (init :ChainTuple[F, S, T], last :SQLExpression[F, S, H])
-			extends ChainTuple[F, S, T ~ H]
+		class ChainEntry[-F <: RowProduct, -S >: LocalScope <: GlobalScope, I <: Chain, L]
+		                (override val init :ChainTuple[F, S, I], override val last :SQLExpression[F, S, L])
+			extends ChainSQL[F, S, I, L](init, last) with ChainTuple[F, S, I ~ L]
 		{
 			override def size :Int = init.size + 1
 
-			//todo: get rid of explicit references to SQLForms & SQLForms
-			override val readForm :SQLReadForm[T ~ H] = (init.readForm, last.readForm) match {
-				case (i :SQLForm[T @unchecked], l :SQLForm[H @unchecked]) =>
-					SQLForms.ChainForm(i, l)
-				case _ =>
-					SQLForms.ChainReadForm[T, H](init.readForm, last.readForm)
-			}
+			override def groundValue :Opt[I ~ L] = for { i <- init.groundValue; l <- last.groundValue } yield i ~ l
 
-			override def isGlobal :Boolean = last.isGlobal && init.isGlobal
-			override def isAnchored :Boolean = last.isAnchored && init.isAnchored
+			override def anchor(from :F) :ChainEntry[F, S, I, L] =
+				(init.anchor(from), last.anchor(from)) match {
+					case (i, l) if (i eq init) && (l eq last) => this
+					case (i, l) => new ChainEntry(i, l)
+				}
 
-			override def anchor(from :F) = (init.anchor(from), last.anchor(from)) match {
-				case (i, l) if (i eq init) && (l eq last) => this
-				case (i, l) => new ChainEntry(i, l)
-			}
-
-			override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ChainTuple[E, S, T ~ H] =
+			override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ChainTuple[E, S, I ~ L] =
 				init.rephrase(mapper) ~ mapper(last)
 
 			override def expand[U <: F, E <: RowProduct]
-			                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :ChainTuple[E, S, T ~ H] =
+			                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :ChainTuple[E, S, I ~ L] =
 				init.expand(base) ~ last.expand(base)
+
+			override def canEqual(that :Any) :Boolean = that.getClass == getClass
 		}
 
+
+		object ChainEntry {
+			def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, I <: Chain, L]
+			         (init :ChainTuple[F, S, I], last :SQLExpression[F, S, L]) :ChainEntry[F, S, I, L] =
+				new ChainEntry(init, last)
+
+			def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, C]
+			           (e :SQLExpression[F, S, C]) :Option[(ChainTuple[F, S, _ <: Chain], SQLExpression[F, S, _])] =
+				e match {
+					case entry :ChainEntry[F, S, _, _] => Some((entry.init, entry.last))
+					case _ => None
+				}
+
+			def unapply[F <: RowProduct, S >: LocalScope <: GlobalScope, I <: Chain, L]
+			           (e :ChainTuple[F, S, I ~ L]) :Option[(ChainTuple[F, S, I], SQLExpression[F, S, L])] =
+				e match {
+					case entry :ChainEntry[F, S, I @unchecked, L @unchecked] => Some((entry.init, entry.last))
+					case _ => None
+				}
+		}
 
 
 		case object EmptyChain extends SQLTerm[@~]
@@ -223,11 +254,9 @@ object TupleSQL {
 
 			override def toSeq :List[Nothing] = Nil
 
-			protected override def form :SQLForm[@~] = SQLForm[@~]
-			override def writeForm :SQLWriteForm[Unit] = SQLWriteForm.empty
 			override def readForm :SQLReadForm[@~] = SQLReadForm[@~]
 
-			override val groundValue :Option[@~] = Option(@~)
+			override val groundValue :Opt[@~] = Got(@~)
 			override def isGlobal = true
 			override def asGlobal :Option[EmptyChain.type] = Some(this)
 			override def isAnchored = true
@@ -240,35 +269,39 @@ object TupleSQL {
 			override def expand[U <: RowProduct, E <: RowProduct]
 			             (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope) :this.type = this
 
+
+			override def split(implicit scope :OperationType) :Seq[ColumnSQL[RowProduct, GlobalScope, _]] =
+				ReversedList.empty
+
 			protected override def defaultSpelling[P, E <: RowProduct]
 			                                      (context :SQLContext, params :Parameterization[P, E])
 			                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-				SpelledSQL(ChunkedString.empty, context, params)
+				SpelledSQL(context, params)
 
 			protected override def inlineSpelling[P, E <: RowProduct]
 			                                     (context :SQLContext, params :Parameterization[P, E])
-			                                     (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-				defaultSpelling(context, params)
+			                                     (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
+				Nil
 		}
 
 
-
-		trait ChainMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
-			def chain[S >: LocalScope <: GlobalScope, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X]
+		trait ChainTupleVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+			def chainTuple[S >: LocalScope <: GlobalScope, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X]
 		}
 
-		type CaseChain[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = ChainMatcher[F, Y]
+		type CaseChainTuple[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = ChainTupleVisitor[F, Y]
 
-		trait MatchChain[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ChainMatcher[F, Y] {
+		trait MatchChainTuple[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ChainTupleVisitor[F, Y] {
 			def emptyChain :Y[GlobalScope, @~]
 
 			def chainHead[S >: LocalScope <: GlobalScope, I <: Chain, L]
 			             (init :ChainTuple[F, S, I], last :SQLExpression[F, S, L]) :Y[S, I ~ L]
 
-			override def chain[S >: LocalScope <: GlobalScope, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X] = (e match {
-				case ChainEntry(tail, head) => chainHead(tail, head)
-				case _ => emptyChain
-			}).asInstanceOf[Y[S, X]]
+			override def chainTuple[S >: LocalScope <: GlobalScope, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X] =
+				(e match {
+					case ChainEntry(tail, head) => chainHead(tail, head)
+					case _ => emptyChain
+				}).asInstanceOf[Y[S, X]]
 		}
 
 	}
@@ -315,7 +348,7 @@ object TupleSQL {
 			rec(this)
 		}
 
-		def toSeq :Seq[ListingValueSQL[F, S, _]] = parts
+		override def toSeq :Seq[ListingValueSQL[F, S, _]] = parts
 
 		def toMap :Map[String, ListingValueSQL[F, S, _]] = {
 			@tailrec def rec(e :ListingSQL[F, S, _], acc :Map[String, ListingValueSQL[F, S, _]])
@@ -331,7 +364,7 @@ object TupleSQL {
 			if (isGlobal) Some(this.asInstanceOf[ListingSQL[F, GlobalScope, T]])
 			else None
 
-		override def anchor(from :F) :ListingSQL[F, S, T]
+		override def anchor(from :F) :ListingSQL[F, S, T] = rephrase(SQLScribe.anchor(from))
 
 		//overriden to narrow down the result type
 		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ListingSQL[E, S, T]
@@ -346,8 +379,8 @@ object TupleSQL {
 			rephrase(SQLScribe.expand(base))
 
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, T] =
-			matcher.listing(this)
+		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ExpressionVisitor[F, Y]) :Y[S, T] =
+			visitor.listing(this)
 
 
 		override def selectFrom(from :F) :SelectAs[from.Base, IndexedMapping.Of[T]#Projection] =
@@ -369,12 +402,12 @@ object TupleSQL {
 			SelectSQL.subselect[B, ExactSubselectOf[F, B], T](from, this)
 
 		override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
-				:ParamSelectAs[P, IndexedMapping.Of[T]#Projection] =
-			ParamSelect(from)(this)
+				:SelectMapping[P, IndexedMapping.Of[T]#Projection] =
+			Select(from)(this)
 
 //		override def paramSelectFrom[E <: F with TopFrom { type Params = P }, P <: Chain](from :E)
-//				:ParamSelectAs[P, IndexedMapping.Of[T]#Projection] =
-//			ParamSelect(from, this)
+//				:SelectAs[P, IndexedMapping.Of[T]#Projection] =
+//			Select(from, this)
 //
 
 		def |~[E <: F, O >: LocalScope <: S, K <: Label :ValueOf, H]
@@ -488,8 +521,8 @@ object TupleSQL {
 				SelectSQL.subselect[B, ExactSubselectOf[F, B], N, V](from, this)
 
 			override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
-					:ParamSelectAs[P, IndexedMapping.Of[V]#Column] =
-				ParamSelect(from)[N, V](this)
+					:SelectMapping[P, IndexedMapping.Of[V]#Column] =
+				Select(from)[N, V](this)
 
 		}
 
@@ -511,6 +544,8 @@ object TupleSQL {
 					SQLForms.ListingReadForm[T, K, H](init.readForm, implicitly[ValueOf[K]], last.readForm)
 			}
 
+			override def groundValue :Opt[T |~ (K :~ H)] =
+				for { i <- init.groundValue; l <- last.groundValue } yield i |~ :~[K](l)
 
 			override def isGlobal :Boolean = last.isGlobal && init.isGlobal
 			override def isAnchored :Boolean = last.isAnchored && init.isAnchored
@@ -533,17 +568,20 @@ object TupleSQL {
 			                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S)
 					:ListingSQL[E, S, T |~ (K :~ H)] =
 				init.expand(base) |~ :~[K](last.expand(base))
+
+
+			override def split(implicit scope :OperationType) :Seq[ColumnSQL[F, S, _]] = init.split ++ last.split
 		}
 
 
 
-		trait ListingMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+		trait ListingVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
 			def listing[S >: LocalScope <: GlobalScope, X <: Listing](e :ListingSQL[F, S, X]) :Y[S, X]
 		}
 
-		type CaseListing[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = ListingMatcher[F, Y]
+		type CaseListing[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = ListingVisitor[F, Y]
 
-		trait MatchListing[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ListingMatcher[F, Y] {
+		trait MatchListing[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ListingVisitor[F, Y] {
 			def emptyChain :Y[GlobalScope, @~]
 
 			def listingEntry[S >: LocalScope <: GlobalScope, I <: Listing, K <: Label :ValueOf, L]
@@ -562,19 +600,19 @@ object TupleSQL {
 
 
 
-	trait TupleMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends ChainMatcher[F, Y] with ListingMatcher[F, Y] with SeqMatcher[F, Y]
+	trait TupleVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends ChainTupleVisitor[F, Y] with ListingVisitor[F, Y] with SeqVisitor[F, Y]
 	{
 		def tuple[S >: LocalScope <: GlobalScope, X](e: TupleSQL[F, S, X]): Y[S, X]
 	}
 
 	trait MatchTuple[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends TupleMatcher[F, Y] with CaseChain[F, Y] with CaseSeq[F, Y]
+		extends TupleVisitor[F, Y] with CaseChainTuple[F, Y] with CaseSeq[F, Y]
 
 
-	trait CaseTuple[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends TupleMatcher[F, Y] with MatchTuple[F, Y] {
+	trait CaseTuple[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends TupleVisitor[F, Y] with MatchTuple[F, Y] {
 
-		override def chain[S >: LocalScope <: GlobalScope, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X] = tuple(e)
+		override def chainTuple[S >: LocalScope <: GlobalScope, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X] = tuple(e)
 
 		override def listing[S >: LocalScope <: GlobalScope, X <: Listing](e :ListingSQL[F, S, X]) :Y[S, X] = tuple(e)
 

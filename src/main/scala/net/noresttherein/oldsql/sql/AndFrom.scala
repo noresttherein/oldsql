@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.morsels.Lazy
+import net.noresttherein.oldsql.morsels.{ChunkedString, Lazy}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.Relation.Table
@@ -22,7 +22,7 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SpelledSQL}
+import net.noresttherein.oldsql.sql.mechanics.{RowProductVisitor, SpelledSQL}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
@@ -248,7 +248,7 @@ object AndFrom {
 		override type JoinFilter = left.FilterNext[GeneralizedLeft, FromLast, Generalized, LastMapping]
 
 		override def filtered(condition :left.FilterNext[GeneralizedLeft, FromLast, Generalized, LastMapping]) :Copy =
-			left.bridgeFilterNext[U, LastMapping](this)(condition)
+			left.filterNextForwarder[U, LastMapping](this)(condition)
 
 	}
 
@@ -258,6 +258,7 @@ object AndFrom {
 	  * without generating compiler warnings about erasure.
 	  */
 	type * = AndFrom[_ <: RowProduct, M] forSome { type M[O] <: MappingAt[O] }
+
 
 	/** A curried type constructor for `AndFrom` instances, accepting the left `RowProduct` type parameter
 	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
@@ -285,6 +286,7 @@ trait NonParam[+L <: RowProduct, R[O] <: MappingAt[O]] extends AndFrom[L, R] wit
 
 	override val last :JoinedTable[RowProduct AndFrom R, R]
 	override def right :Table[R] = last.table
+	def table :Table[R] = last.table
 
 	override def lastAsIn[E <: RowProduct](implicit expansion :FromLast PrefixOf E) :JoinedTable[E, R] =
 		last.asIn[E]
@@ -387,8 +389,6 @@ sealed trait From[T[O] <: MappingAt[O]]
 	extends NonParam[Dual, T] with NonSubselect[Dual, T] with AndFromTemplate[Dual, T, From[T]]
 { thisClause =>
 	override val last :JoinedTable[RowProduct AndFrom T, T]
-	override def right :Table[T] = last.table
-	def table :Table[T] = last.relation
 
 	override def lastAsIn[E <: RowProduct](implicit expansion :FromLast PrefixOf E) :Last[E] =
 		last.asIn[E]
@@ -421,6 +421,7 @@ sealed trait From[T[O] <: MappingAt[O]]
 	override type LastParam = Nothing
 	override type Params = @~
 	override type AppliedParam = Nothing
+	override type GeneralizedParamless = Generalized
 	override type Paramless = Self
 	override type DecoratedParamless[D <: BoundParamless] = D
 
@@ -458,22 +459,28 @@ sealed trait From[T[O] <: MappingAt[O]]
 	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
 			:SpelledSQL[Params, Generalized] =
 	{
-		//From clause does not depend on anything other than itself, so we reset the context for the purpose of this select
-		val aliased = spelling.table(table, aliasOpt)(context.fresh, parameterization)
+		val aliased = spelling.table(table, aliasOpt)(context.subselect, parameterization)
 		val sql = (spelling.FROM + " ") +: aliased
 		if (filter == True) sql else sql && (spelling.inWhere(filter)(_, _))
 	}
 
+	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext = alias match {
+		case "" => spelling.newContext.join("")
+		case name => spelling.table(table, name)(spelling.newContext, parameterization).context
+	}
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[From.*]
 
 	override def name :String = "from"
 
+	override def chunkedString :ChunkedString =
+		if (filter == True) From.chunkedString + last.relation.toString
+		else From.chunkedString + last.relation.toString + " where " + filter.toString
+
 	override def toString :String =
 		if (filter == True) "from " + last.relation
 		else "from " + last.relation + " where " + filter
-
 }
 
 
@@ -511,7 +518,7 @@ object From {
 	def apply[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (table :Table[R])(implicit cast :JoinedRelationSubject[From, R, T, MappingOf[S]#TypedProjection])
 			:From[R] =
-		cast(From(LastTable[T, S](cast(table)), None, True))
+		cast(cast(table).from)
 
 	/** Creates a ''from'' clause consisting of a single table (or view, select, even a surrogate temporary
 	  * mapping) with `Mapping` `R`, using the name of the table as the alias given in
@@ -534,7 +541,7 @@ object From {
 	         (table :StaticTable[N, R])
 	         (implicit cast :JoinedRelationSubject[({ type F[M[O] <: MappingAt[O]] = From[M] As N })#F, R, T, MappingOf[S]#TypedProjection])
 			:From[R] As N =
-		cast(custom(Dual, LastTable[T, S](cast(table)), Some(table.name), True))
+		cast(custom(Dual, cast(table).toSQL, Some(table.name), True))
 
 
 	/** Creates a ''from'' clause consisting of a single relation (table, view, select, or even a surrogate temporary
@@ -549,11 +556,12 @@ object From {
 	  */
 	def apply[T[O] <: BaseMapping[S, O], S]
 	         (relation :Table[T], filter: GlobalBoolean[RowProduct NonParam T] = True) :From[T] =
-		From(LastTable[T, S](relation), None, filter)
+		if (filter == True) relation.from
+		else From(relation.toSQL, None, filter)
 
 
-	private[sql] def apply[T[O] <: BaseMapping[S, O], S, A <: Label]
-	                      (relation :LastTable[T, S], alias :Option[A], filter :GlobalBoolean[RowProduct NonParam T])
+	private[oldsql] def apply[T[O] <: BaseMapping[S, O], S, A <: Label]
+	                         (relation :LastTable[T, S], alias :Option[A], filter :GlobalBoolean[RowProduct NonParam T])
 			:From[T] =
 		custom(Dual, relation, alias, filter)
 
@@ -618,7 +626,7 @@ object From {
 				Subselect[newOuter.type, T, S, A](newOuter, last, aliasOpt)(filter)
 
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.from[T, S](this)
+			override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.from[T, S](this)
 
 		}.asInstanceOf[dual.type EmptyJoin T As A]
 
@@ -675,6 +683,18 @@ object From {
 	  * be matched directly with the wildcard '_'.
 	  */
 	type * = From[M] forSome { type M[O] <: MappingAt[O] }
+
+	/** Type alias for the upper bound of all [[net.noresttherein.oldsql.sql.FromClause FromClause]] subclasses
+	  * (but not subtypes in general) with `M` as the mapping type of the last table.
+	  * It is the [[net.noresttherein.oldsql.sql.AndFrom.FromLast FromLast]] type of
+	  * [[net.noresttherein.oldsql.sql.AndFrom AndFrom]] (all joins, [[net.noresttherein.oldsql.sql.From From]]
+	  * and [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]) and, as such,
+	  * it it opens every [[net.noresttherein.oldsql.sql.RowProduct.Generalized Generalized]] form
+	  * of all non-aggregated clauses. In particular, it is also
+	  * the [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type used for the mapping of a last
+	  * table in a ''from'' clause.
+	  */
+	type Last[M[O] <: MappingAt[O]] = RowProduct AndFrom M
 
 
 
@@ -737,9 +757,11 @@ object From {
 			Subselect[newOuter.type, T, S, A](newOuter, last, aliasOpt)(filter)
 
 
-		override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.from[T, S](this)
+		override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.from[T, S](this)
 	}
 
+
+	private val chunkedString = ChunkedString("from ")
 }
 
 

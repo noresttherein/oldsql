@@ -4,7 +4,7 @@ name := "oldsql"
 
 version := "Imoen"
 
-scalaVersion := "2.13.4"
+scalaVersion := "2.13.6"
 
 fork in Compile := true
 
@@ -22,8 +22,8 @@ resolvers ++= Seq(
 
 
 libraryDependencies ++= Seq(
-	"org.scala-lang" % "scala-library" % "2.13.4",
-	"org.scala-lang" % "scala-reflect" % "2.13.4",
+	"org.scala-lang" % "scala-library" % "2.13.6",
+	"org.scala-lang" % "scala-reflect" % "2.13.6",
 	"net.bytebuddy" % "byte-buddy" % "1.10.8",
 //	"org.postgresql" % "postgresql" % "9.2-1004-jdbc41",
 //	"org.hibernate" % "hibernate-core" % "5.4.24.Final",
@@ -37,8 +37,11 @@ scalacOptions ++= Seq(
 //	"-Xlog-implicits",
 //	"-Xlint",
 //	"-W",
-	"-Wconf:cat=deprecation&msg=not a part of the public API:silent," +
-		"cat=deprecation&msg=foldLeft:silent,cat=deprecation&msg=foldRight:silent," +
+//	"-verbose",
+//	"-Vdebug",
+//	"-Vtyper",
+//	"-Vprint-types",
+	"-Wconf:cat=deprecation&msg=foldLeft:silent,cat=deprecation&msg=foldRight:silent," +
 		"cat=deprecation:w,cat=feature:w",
 	"-language:implicitConversions",
 	"-language:higherKinds",

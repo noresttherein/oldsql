@@ -6,7 +6,6 @@ import net.noresttherein.oldsql.collection.NaturalMap.WhenNoKey
 import net.noresttherein.oldsql.collection.NaturalMap.WhenNoKey.Throw
 import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{Buffs, ColumnMapping, ColumnMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, SelectAudit, SelectDefault}
@@ -15,7 +14,6 @@ import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.OptionMapping
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
-import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, BuffedMapping, MappedMapping, PrefixedMapping, RenamedMapping}
 
 
@@ -106,10 +104,10 @@ trait BaseMapping[S, O] extends Mapping { self =>
 
 
 
-	def apply[M >: this.type <: RefinedMapping[S, O], X <: Mapping, C <: RefinedMapping[T, O], T]
-	         (component :M => X)(implicit hint :InferTypeParams[X, C, RefinedMapping[T, O]])
-			:ComponentPath[M, C, S, T, O] =
-		ComponentPath(this :M, component(this))
+//	def apply[M >: this.type <: RefinedMapping[S, O], X <: Mapping, C <: RefinedMapping[T, O], T]
+//	         (component :M => X)(implicit hint :InferTypeParams[X, C, RefinedMapping[T, O]])
+//			:ComponentPath[M, C, S, T, O] =
+//		ComponentPath(this :M, component(this))
 
 
 
@@ -154,6 +152,10 @@ trait BaseMapping[S, O] extends Mapping { self =>
 	  * @return `MappingWriteForm(op, this)` unless overriden. */
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = MappingWriteForm(op, this)
 
+	override def selectForm[T](component :Component[T]) :SQLReadForm[T] = export(component).selectForm
+	override def filterForm[T](component :Component[T]) :SQLWriteForm[T] = export(component).filterForm
+	override def insertForm[T](component :Component[T]) :SQLWriteForm[T] = export(component).insertForm
+	override def updateForm[T](component :Component[T]) :SQLWriteForm[T] = export(component).updateForm
 
 	override def apply(adjustments :ComponentSelection[_, O]*) :Component[S] =
 		apply(
@@ -196,7 +198,7 @@ trait BaseMapping[S, O] extends Mapping { self =>
 		MappedMapping[BaseMapping[S, O], S, X, O](this, there, back)
 
 
-	protected[oldsql] override def everyConcreteMappingMustExtendBaseMapping :Nothing =
+	protected[oldsql] override def every_concrete_Mapping_must_extend_BaseMapping :Nothing =
 		throw new UnsupportedOperationException
 }
 

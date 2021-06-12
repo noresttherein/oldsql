@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.collection.Chain.@~
-import net.noresttherein.oldsql.morsels.InferTypeParams
+import net.noresttherein.oldsql.morsels.{ChunkedString, InferTypeParams}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.Relation.Table.StaticTable
@@ -16,7 +16,7 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SpelledSQL}
+import net.noresttherein.oldsql.sql.mechanics.{RowProductVisitor, SpelledSQL}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
@@ -39,7 +39,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	override type LastMapping[O] = Nothing
 	override type Last[-F <: RowProduct] = Nothing
 	override type FromLast = RowProduct
-	override type FromNext[E[+L <: RowProduct] <: RowProduct] = Nothing
+	override type FromNext[E[+L <: FromSome] <: RowProduct] = Nothing
 
 	override def last :Nothing = throw new NoSuchElementException("Dual.last")
 
@@ -78,6 +78,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	override type LastParam = Nothing
 	override type Params = @~
 	override type AppliedParam = Nothing
+	override type GeneralizedParamless = FromClause
 	override type Paramless = Dual
 	override type BoundParamless = FromClause { type Params = @~ } //todo: FromClause | WithClause
 	override type DecoratedParamless[D <: BoundParamless] = D
@@ -222,10 +223,12 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 		if (filter == True) spelling.emptyFrom(context)
 		else spelling.emptyFrom(context) && (spelling(filter)(_, _))
 
+	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext = spelling.newContext
+
 	override def parameterization :Parameterization[@~, Dual] = Parameterization.paramless[Dual]
 
 
-	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.dual(this)
+	protected override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.dual(this)
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Dual]
@@ -236,8 +239,10 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	}
 
 
-	override def toString :String = if (filter == True) "Dual" else "Dual where " + filter
+	override def chunkedString :ChunkedString =
+		if (filter == True) Dual.chunkedString else Dual.chunkedString + " where " + filter.toString
 
+	override def toString :String = if (filter == True) "Dual" else "Dual where " + filter.toString
 }
 
 
@@ -256,5 +261,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 object Dual extends Dual(True) {
 
 	def unapply(source :RowProduct) :Boolean = source.isInstanceOf[Dual]
+
+	override val chunkedString = ChunkedString("Dual")
 }
 

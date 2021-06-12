@@ -226,6 +226,7 @@ object Chain extends ChainFactory {
 		protected[collection] override def mapCat[P <: ChainMap](prefix :P) :P = prefix
 		protected[collection] override def recordCat[P <: Record](prefix :P) :P = prefix
 
+		override def hashCode :Int = 0
 	}
 
 
@@ -2379,14 +2380,14 @@ sealed trait ChainMapFactory extends ListingFactory {
 			throw new IllegalArgumentException(s"Key $key matches the type, but not the value of the first key in index $entry")
 	}
 
-	override protected def set[I <: Type, K <: Key, V <: Value](index :I Link (K, V), key :K, value :V) :I Link (K, V) = {
+	protected override def set[I <: Type, K <: Key, V <: Value](index :I Link (K, V), key :K, value :V) :I Link (K, V) = {
 		val entry = index.last
 		if (entry._1 == key) link(index.init, (key, value))
 		else
 			throw new IllegalArgumentException(s"Key $key matches the type, but not the value of the key in entry $entry")
 	}
 
-	override protected def append[I <: Type, K <: Key, V <: Value](index :I, key :K, value :V) :I Link (K, V) =
+	protected override def append[I <: Type, K <: Key, V <: Value](index :I, key :K, value :V) :I Link (K, V) =
 		link(index, (key, value))
 
 }

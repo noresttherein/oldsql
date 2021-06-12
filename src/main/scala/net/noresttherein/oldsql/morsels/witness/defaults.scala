@@ -8,10 +8,14 @@ import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 
 
 
-/** A type for which an implicit value is always present, however, if an implicit value for `T` can be found,
-  * it is exposed as `Some[T]` through this instances [[net.noresttherein.oldsql.morsels.witness.Maybe.opt opt]] property.
+/** An optional evidence provider for type `T`. An implicit `Maybe[T]` is always present, but, if an implicit value
+  * for `T` can be found, it is exposed as [[net.noresttherein.oldsql.collection.Opt.Got Got]]`[T]`
+  * through this instance's [[net.noresttherein.oldsql.morsels.witness.Maybe.opt opt]] property.
   */
-class Maybe[+T] private[witness] (val opt :Opt[T])
+class Maybe[+T] private[witness] (val opt :Opt[T]) {
+	@inline final def getOrElse[U >: T](alternative: => U) :U =
+		if (opt.isEmpty) alternative else opt.get //don't use opt.getOrElse as it won't be inlined
+}
 
 
 

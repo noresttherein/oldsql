@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema.bits
 
-import scala.annotation.tailrec
+import scala.annotation.{nowarn, tailrec}
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
@@ -54,7 +54,7 @@ sealed trait LabelPath[P] extends Any with Serializable {
 	@inline final def split(implicit split :SplitLabelPath[P]) :(split.First, split.Suffix) = (split.first, split.suffix)
 
 	def toSeq :Seq[String] = {
-		@tailrec def rec(path :LabelPath[_], acc :List[String]) :List[String] = path match {
+		@tailrec @nowarn def rec(path :LabelPath[_], acc :List[String]) :List[String] = path match {
 			case :/(first) => first::acc
 			case prefix / last => rec(prefix, last::acc)
 		}

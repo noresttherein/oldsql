@@ -10,10 +10,10 @@ import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, Empty
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.ColumnReadForm.FallbackColumnReadForm
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLReadForm.{ConstSQLReadForm, CustomOptSQLReadForm, CustomSQLReadForm, EvalSQLReadForm, FallbackSQLReadForm, FlatMappedSQLReadForm, LazySQLReadForm, MappedSQLReadForm, NotNullReadForm, NotNullSQLReadForm, NullSQLReadForm, ReadFormNullGuard}
+import net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull
+import net.noresttherein.oldsql.schema.SQLReadForm.{ConstSQLReadForm, CustomOptSQLReadForm, CustomSQLReadForm, EvalSQLReadForm, FallbackSQLReadForm, FlatMappedSQLReadForm, LazySQLReadForm, MappedSQLReadForm, NotNullReadForm, NotNullSQLReadForm, NullValueSQLReadForm, ReadFormNullGuard}
 import net.noresttherein.oldsql.schema.forms.{SQLForms, SuperColumnForm}
 import net.noresttherein.oldsql.schema.forms.SQLForms.SuperAdapterColumnForm
-import net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull
 
 
 
@@ -98,7 +98,7 @@ trait ColumnReadForm[+T] extends SQLReadForm[T] with SuperColumnForm {
 		case _ => super.<>(write)
 	}
 
-	def <>[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] = ColumnForm.join(write, this)
+	def <>[O >: T](write :ColumnWriteForm[O]) :ColumnForm[O] = ColumnForm.combine(write, this)
 
 
 
@@ -204,7 +204,7 @@ object ColumnReadForm {
 	/** A form always throwing the given exception instead of producing a value. Note that this applies also to
 	  * [[net.noresttherein.oldsql.schema.ColumnReadForm!.opt opt]] method.
 	  * See [[net.noresttherein.oldsql.schema.ColumnReadForm.none none]] and
-	  * [[net.noresttherein.oldsql.schema.ColumnReadForm.nulls nulls]] if you wish the form to simply return `None`.
+	  * [[net.noresttherein.oldsql.schema.ColumnReadForm.defaults defaults]] if you wish the form to simply return `None`.
 	  * This functions the same way as `eval`, but can more clearly define intent.
 	  */
 	def error(raise: => Nothing) :ColumnReadForm[Nothing] = error(JDBCType.OTHER, "ERROR>")(raise)
@@ -212,7 +212,7 @@ object ColumnReadForm {
 	/** A form always throwing the given exception instead of producing a value. Note that this applies also to
 	  * [[net.noresttherein.oldsql.schema.ColumnReadForm!.opt opt]] method.
 	  * See [[net.noresttherein.oldsql.schema.ColumnReadForm.none none]] and
-	  * [[net.noresttherein.oldsql.schema.ColumnReadForm.nulls nulls]] if you wish the form to simply return `None`.
+	  * [[net.noresttherein.oldsql.schema.ColumnReadForm.defaults defaults]] if you wish the form to simply return `None`.
 	  * This functions the same way as `eval`, but can more clearly define intent.
 	  */
 	def error(jdbcType :JDBCType, name :String)(raise: => Nothing)
@@ -237,12 +237,12 @@ object ColumnReadForm {
 
 	/** Creates a dummy form which produces no values. Every call to `opt` will return `None`, while `apply`
 	  * will always return the implicitly available `NullValue[T]`. Note that it, being a column form, still represents
-	  * a single column in the result set, unlike [[net.noresttherein.oldsql.schema.SQLReadForm.nulls SQLReadForm.nulls]]
+	  * a single column in the result set, unlike [[net.noresttherein.oldsql.schema.SQLReadForm.defaults SQLReadForm.defaults]]
 	  * which, by default, consists of zero columns. As such, it only suppresses a present value rather than
 	  * excludes the column from the schema.
 	  */
-	def nulls[T](jdbcType :JDBCType, name :String = null)(implicit nulls :NullValue[T]) :ColumnReadForm[T] =
-		new NullSQLReadForm[T](1)(if (nulls == null) NullValue.NotNull else nulls) with ColumnReadForm[T] {
+	def defaults[T](jdbcType :JDBCType, name :String = null)(implicit nulls :NullValue[T]) :ColumnReadForm[T] =
+		new NullValueSQLReadForm[T](1)(if (nulls == null) NullValue.NotNull else nulls) with ColumnReadForm[T] {
 
 			protected override def errorMessage(position :Int, res :ResultSet) :String =
 				res.getMetaData.getColumnName(position) + ":" + this + " does not allow null values."
@@ -263,19 +263,21 @@ object ColumnReadForm {
 	  * which, by default, consists of zero columns. As such, it only suppresses a present value rather than
 	  * excludes the column from the schema.
 	  */
-	def none[T](jdbcType :JDBCType, name :String = null) :ColumnReadForm[T] =
-		nulls(jdbcType, name)(NullValue.NotNull)
+	def none[T](jdbcType :JDBCType = JDBCType.NULL, name :String = null) :ColumnReadForm[T] =
+		defaults(jdbcType, name)(NullValue.NotNull)
+
+	val nulls :ColumnReadForm[Null] = SQLForms.NullForm
 
 
 
 	/** Creates a `ColumnReadForm[T]` based on implicit `ColumnReadForm[S]` and, optionally, `NullValue[T]`.
 	  * If no [[net.noresttherein.oldsql.schema.SQLForm.NullValue]] type class is present for the target type,
-	  * the [[net.noresttherein.oldsql.schema.ColumnReadForm.nulls one in the source form]] will be
+	  * the [[net.noresttherein.oldsql.schema.ColumnReadForm.defaults one in the source form]] will be
 	  * mapped/flat mapped, depending on the mapping extractor.
 	  */
 	def apply[S, T](extract :S =?> T)(implicit source :ColumnReadForm[S], nulls :Maybe[NullValue[T]]) :ColumnReadForm[T] =
 		extract match {
-			case _ :EmptyExtractor[_, _] => ColumnReadForm.nulls(source.sqlType)(nulls.opt getOrElse NullValue.NotNull)
+			case _ :EmptyExtractor[_, _] => ColumnReadForm.defaults(source.sqlType)(nulls.opt getOrElse NullValue.NotNull)
 			case _ :OptionalExtractor[_, _] => flatMap(extract.optional)
 			case _ :IdentityExtractor[_] => source.asInstanceOf[ColumnReadForm[T]]
 			case const :ConstantExtractor[_, T @unchecked] => ColumnReadForm.const(source.sqlType, const.constant)
@@ -285,13 +287,13 @@ object ColumnReadForm {
 
 	/** Creates a `ColumnReadForm[T]` based on implicit `ColumnReadForm[S]` and, optionally, `NullValue[T]`.
 	  * If no [[net.noresttherein.oldsql.schema.SQLForm.NullValue]] type class is present for the target type,
-	  * the [[net.noresttherein.oldsql.schema.ColumnReadForm.nulls one in the source form]] will be
+	  * the [[net.noresttherein.oldsql.schema.ColumnReadForm.defaults one in the source form]] will be
 	  * mapped/flat mapped, depending on the mapping extractor.
 	  */
 	def apply[S, T](name :String)(extract :S =?> T)
 	               (implicit source :ColumnReadForm[S], nulls :Maybe[NullValue[T]]) :ColumnReadForm[T] =
 		extract match {
-			case _ :EmptyExtractor[_, _] => ColumnReadForm.nulls(source.sqlType, name)(nulls.opt getOrElse NullValue.NotNull)
+			case _ :EmptyExtractor[_, _] => ColumnReadForm.defaults(source.sqlType, name)(nulls.opt getOrElse NullValue.NotNull)
 			case _ :OptionalExtractor[_, _] => flatMap(name)(extract.optional)
 //			case _ :IdentityExtractor[_] => source.asInstanceOf[ColumnReadForm[T]]
 			case const :ConstantExtractor[_, T @unchecked] => ColumnReadForm.const(source.sqlType, const.constant, name)
@@ -315,75 +317,75 @@ object ColumnReadForm {
 
 	/** Creates a `ColumnReadForm[T]` based on implicit `ColumnReadForm[S]` and, optionally, `NullValue[T]`.
 	  * If no [[net.noresttherein.oldsql.schema.SQLForm.NullValue]] type class is present for the target type,
-	  * the [[net.noresttherein.oldsql.schema.ColumnReadForm.nulls one in the source form]] will be
+	  * the [[net.noresttherein.oldsql.schema.ColumnReadForm.defaults one in the source form]] will be
 	  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue.map mapped]].
 	  */
-	def map[S, T](map :S => T)(implicit source :ColumnReadForm[S], nulls :Maybe[NullValue[T]]) :ColumnReadForm[T] = {
-		val nullValue = nulls.opt getOrElse source.nulls.map(map)
-		new MappedSQLReadForm[S, T](map)(source, nullValue) with MappedColumnReadForm[S, T]
+	def map[S, T](f :S => T)(implicit source :ColumnReadForm[S], nulls :Maybe[NullValue[T]]) :ColumnReadForm[T] = {
+		val nullValue = nulls.opt getOrElse source.nulls.map(f)
+		new MappedSQLReadForm[S, T](f)(source, nullValue) with MappedColumnReadForm[S, T]
 	}
 
 	/** Creates a `ColumnReadForm[T]` based on implicit `ColumnReadForm[S]` and, optionally, `NullValue[T]`.
 	  * If no [[net.noresttherein.oldsql.schema.SQLForm.NullValue]] type class is present for the target type,
-	  * the [[net.noresttherein.oldsql.schema.ColumnReadForm.nulls one in the source form]] will be
+	  * the [[net.noresttherein.oldsql.schema.ColumnReadForm.defaults one in the source form]] will be
 	  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue.map mapped]].
 	  */
-	def map[S, T](name :String)(map :S => T)
+	def map[S, T](name :String)(f :S => T)
 	             (implicit source :ColumnReadForm[S], nulls :Maybe[NullValue[T]]) :ColumnReadForm[T] =
 	{
-		val nullValue = nulls.opt getOrElse source.nulls.map(map)
-		new MappedSQLReadForm[S, T](map, name)(source, nullValue) with MappedColumnReadForm[S, T]
+		val nullValue = nulls.opt getOrElse source.nulls.map(f)
+		new MappedSQLReadForm[S, T](f, name)(source, nullValue) with MappedColumnReadForm[S, T]
 	}
 
 	/** Creates a `ColumnReadForm[T]` based on implicit `ColumnReadForm[S]` and a by-name expression as its
 	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue nullValue]].
 	  */
-	def map[S :ColumnReadForm, T](map :S => T, nullValue: => T) :ColumnReadForm[T] =
-		ColumnReadForm.map(map)(ColumnReadForm[S], NullValue.eval(nullValue))
+	def map[S :ColumnReadForm, T](f :S => T, nullValue: => T) :ColumnReadForm[T] =
+		ColumnReadForm.map(f)(ColumnReadForm[S], NullValue.eval(nullValue))
 
 	/** Creates a `ColumnReadForm[T]` based on implicit `ColumnReadForm[S]` and a by-name expression as its
 	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue nullValue]].
 	  */
-	def map[S :ColumnReadForm, T](name :String, map :S => T, nullValue: => T) :ColumnReadForm[T] =
-		ColumnReadForm.map(name)(map)(ColumnReadForm[S], NullValue.eval(nullValue))
+	def map[S :ColumnReadForm, T](name :String, f :S => T, nullValue: => T) :ColumnReadForm[T] =
+		ColumnReadForm.map(name)(f)(ColumnReadForm[S], NullValue.eval(nullValue))
 
 
 
 	/** Creates a `ColumnReadForm[T]` based on implicit `ColumnReadForm[S]` and, optionally, `NullValue[T]`.
 	  * If no [[net.noresttherein.oldsql.schema.SQLForm.NullValue]] type class is present for the target type,
-	  * the [[net.noresttherein.oldsql.schema.ColumnReadForm.nulls one in the source form]] will be
+	  * the [[net.noresttherein.oldsql.schema.ColumnReadForm.defaults one in the source form]] will be
 	  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue.flatMap flat mapped]].
 	  */
-	def flatMap[S, T](map :S => Option[T])
+	def flatMap[S, T](f :S => Option[T])
 	                 (implicit source :ColumnReadForm[S], nulls :Maybe[NullValue[T]]) :ColumnReadForm[T] =
 	{
-		val nullValue = nulls.opt getOrElse source.nulls.flatMap(map)
-		new FlatMappedSQLReadForm[S, T](map)(source, nullValue) with FlatMappedColumnReadForm[S, T]
+		val nullValue = nulls.opt getOrElse source.nulls.flatMap(f)
+		new FlatMappedSQLReadForm[S, T](f)(source, nullValue) with FlatMappedColumnReadForm[S, T]
 	}
 
 	/** Creates a `ColumnReadForm[T]` based on implicit `ColumnReadForm[S]` and, optionally, `NullValue[T]`.
 	  * If no [[net.noresttherein.oldsql.schema.SQLForm.NullValue]] type class is present for the target type,
-	  * the [[net.noresttherein.oldsql.schema.ColumnReadForm.nulls one in the source form]] will be
+	  * the [[net.noresttherein.oldsql.schema.ColumnReadForm.defaults one in the source form]] will be
 	  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue.flatMap flat mapped]].
 	  */
-	def flatMap[S, T](name :String)(map :S => Option[T])
+	def flatMap[S, T](name :String)(f :S => Option[T])
 	                 (implicit source :ColumnReadForm[S], nulls :Maybe[NullValue[T]]) :ColumnReadForm[T] =
 	{
-		val nullValue = nulls.opt getOrElse source.nulls.flatMap(map)
-		new FlatMappedSQLReadForm[S, T](map, name)(source, nullValue) with FlatMappedColumnReadForm[S, T]
+		val nullValue = nulls.opt getOrElse source.nulls.flatMap(f)
+		new FlatMappedSQLReadForm[S, T](f, name)(source, nullValue) with FlatMappedColumnReadForm[S, T]
 	}
 
 	/** Creates a `ColumnReadForm[T]` based on implicit `ColumnReadForm[S]` and a by-name expression as its
 	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue nullValue]].
 	  */
-	def flatMap[S :ColumnReadForm, T](map :S => Option[T], nullValue: => T) :ColumnReadForm[T] =
-		flatMap(map)(ColumnReadForm[S], NullValue.eval(nullValue))
+	def flatMap[S :ColumnReadForm, T](f :S => Option[T], nullValue: => T) :ColumnReadForm[T] =
+		flatMap(f)(ColumnReadForm[S], NullValue.eval(nullValue))
 
 	/** Creates a `ColumnReadForm[T]` based on implicit `ColumnReadForm[S]` and a by-name expression as its
 	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue nullValue]].
 	  */
-	def flatMap[S :ColumnReadForm, T](name :String, map :S => Option[T], nullValue: => T) :ColumnReadForm[T] =
-		flatMap(name)(map)(ColumnReadForm[S], NullValue.eval(nullValue))
+	def flatMap[S :ColumnReadForm, T](name :String, f :S => Option[T], nullValue: => T) :ColumnReadForm[T] =
+		flatMap(name)(f)(ColumnReadForm[S], NullValue.eval(nullValue))
 
 
 

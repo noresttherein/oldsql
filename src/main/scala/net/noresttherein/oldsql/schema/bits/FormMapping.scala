@@ -2,10 +2,10 @@ package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.OperationType.WriteOperationType
 import net.noresttherein.oldsql.collection.Unique
-import net.noresttherein.oldsql.schema.support.EmptyMapping
-import net.noresttherein.oldsql.schema.{Buff, Buffs, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
+import net.noresttherein.oldsql.schema.{Buffs, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.support.EmptyMapping
 
 
 
@@ -32,7 +32,7 @@ class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O
 	override def updateValues(subject :S) :ComponentValues[S, O] = ComponentValues(this, subject)
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		if (components.isEmpty) SQLReadForm.nulls(form.nulls)
+		if (components.isEmpty) SQLReadForm.defaults(form.nulls)
 		else if (components.size == 1 && components.head == this) form
 		else throw new IllegalArgumentException("Mappings " + components + " are not components of " + this)
 

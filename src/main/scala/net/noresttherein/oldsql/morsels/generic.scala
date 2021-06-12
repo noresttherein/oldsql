@@ -1,12 +1,16 @@
 package net.noresttherein.oldsql.morsels
 
+
+
+
 /**
   * @author Marcin Mościcki
   */
 object generic {
 //	type Subtype[U] = { type T[X <: U] = X }
-	type Self[X] = X
+	type Self[+X] = X
 	type Fixed[Y] = { type T[X] = Y }
+	type FunctionOf[X] = { type F[Y] = X => Y }
 
 	type =#>[-X[A], +Y[A]] = GenericFun[X, Y]
 

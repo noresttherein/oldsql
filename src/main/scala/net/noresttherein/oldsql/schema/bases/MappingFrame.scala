@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory, PropertyPath, RelatedEntityFactory}
-import net.noresttherein.oldsql.model.Kin.Derived
+import net.noresttherein.oldsql.model.Kin.{some_?, Derived}
 import net.noresttherein.oldsql.model.KinFactory.DerivedKinFactory
 import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
@@ -25,14 +25,14 @@ import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnExtract, ColumnForm, 
 import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, ReadOnly}
 import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StandardColumn}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.Relation.RelVar
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.ReadFormNullValue
-import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.{InverseForeignKeyMapping, RelatedEntityForeignKey, RelatedEntityForeignKeyColumn}
-import net.noresttherein.oldsql.schema.support.MappingProxy.{DeepProxy, ExportColumnProxy, OpaqueColumnProxy}
-import net.noresttherein.oldsql.schema.Relation.RelVar
 import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping, JoinedEntityComponent, JoinTableCollectionMapping, RelationshipMapping}
+import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.{InverseForeignKeyMapping, RelatedEntityForeignKey, RelatedEntityForeignKeyColumn}
 import net.noresttherein.oldsql.schema.bits.JoinTableCollectionMapping.{JoinTableKinMapping, JoinTableManyMapping}
 import net.noresttherein.oldsql.schema.support.{BuffedMapping, EffectivelyEmptyMapping}
+import net.noresttherein.oldsql.schema.support.MappingProxy.{DeepProxy, ExportColumnProxy, OpaqueColumnProxy}
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -99,6 +99,17 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 		@inline private[MappingFrame] final def belongsTo(mapping :MappingFrame[_, _]) :Boolean = mapping eq frame
 
+		//the results of MappingFrame.this.<collection>(this)
+		private[MappingFrame] var exportedSelectable        :Unique[Column[_]] = _
+		private[MappingFrame] var exportedFilterable        :Unique[Column[_]] = _
+		private[MappingFrame] var exportedInsertable        :Unique[Column[_]] = _
+		private[MappingFrame] var exportedUpdatable         :Unique[Column[_]] = _
+		private[MappingFrame] var exportedAutoInserted      :Unique[Column[_]] = _
+		private[MappingFrame] var exportedAutoUpdated       :Unique[Column[_]] = _
+		private[MappingFrame] var exportedSelectedByDefault :Unique[Column[_]] = _
+		private[MappingFrame] var exportedFilteredByDefault :Unique[Column[_]] = _
+		private[MappingFrame] var exportedInsertedByDefault :Unique[Column[_]] = _
+		private[MappingFrame] var exportedUpdatedByDefault  :Unique[Column[_]] = _
 
 		/** Extractor for the value of the component to be used before the component is fully initialized
 		  * and the `extract` property is computed. Typically given as the constructor parameter or initialized
@@ -136,6 +147,17 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 				fastExtract = init()
 				safeExtract = fastExtract
 				initExtracts = initExtracts.updated(this, fastExtract)
+
+				exportedSelectable        = columns.map(frame.export(_)).filter(NoSelect.inactive)
+				exportedFilterable        = columns.map(frame.export(_)).filter(NoFilter.inactive)
+				exportedInsertable        = columns.map(frame.export(_)).filter(NoInsert.inactive)
+				exportedUpdatable         = columns.map(frame.export(_)).filter(NoUpdate.inactive)
+				exportedAutoInserted      = columns.map(frame.export(_)).filter(AutoInsert.active)
+				exportedAutoUpdated       = columns.map(frame.export(_)).filter(AutoUpdate.active)
+				exportedSelectedByDefault = columns.map(frame.export(_)).filter(NoSelectByDefault.inactive)
+				exportedFilteredByDefault = columns.map(frame.export(_)).filter(NoFilterByDefault.inactive)
+				exportedInsertedByDefault = columns.map(frame.export(_)).filter(NoInsertByDefault.inactive)
+				exportedUpdatedByDefault  = columns.map(frame.export(_)).filter(NoUpdateByDefault.inactive)
 			}
 			this
 		}
@@ -553,7 +575,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 				new ExportColumn(column, selector, renameColumn(column.name), buffsFor(column))
 		}
 
-		override def toString :String = "{{" + backer + "}}"
+		override def mappingName :String = "${" + backer.mappingName + "}"
+		override def toString :String = "${" + backer + "}"
 	}
 
 
@@ -784,7 +807,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * The export version will have exactly the buffs and column name prefix specified here; this allows
 	  * bypassing their inheritance from this mapping as well as removing any buffs present on the component.
 	  * @param component  a mapping embedded as a component in the enclosing mapping.
-	  *                   It must be a unique instance, appearing neither elsewhere as a component of this maping,
+	  *                   It must be a unique instance, appearing neither elsewhere as a component of this mapping,
 	  *                   not as a component of any other mapping.
 	  * @param extractor  an extractor returning the value of this component for a given subject value of this mapping.
 	  * @param fullPrefix a string prepended to all column names.
@@ -803,8 +826,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	/** Embeds a mapping of type `T` as a component of this instance. The 'export' version of the component will
 	  * be included on the `components` list of this mapping, and all its subcomponents and columns will likewise
 	  * receive export versions included on the `subcomponents` and appropriate columns list.
-	  * The buffs of the export version of the component will consist of the buffs provided here, followed by the buffs
-	  * by any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
+	  * The buffs of the export version of the component will consist of the buffs provided here, followed by
+	  * any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
 	  * @param mapping a mapping embedded as a component in the enclosing mapping.
 	  *                It must be a unique instance, appearing neither elsewhere as a component of this mapping,
 	  *                not as a component of any other mapping.
@@ -897,7 +920,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * The buffs of the export version of the component will consist of the buffs provided here, followed by the buffs
 	  * by any buffs inherited from this mapping frame, with the original buffs of `mapping` as a suffix.
 	  * @param mapping a mapping embedded as a component in the enclosing mapping.
-	  *                It must be a unique instance, appearing neither elsewhere as a component of this maping,
+	  *                It must be a unique instance, appearing neither elsewhere as a component of this mapping,
 	  *                not as a component of any other mapping.
 	  * @param value   a getter function returning the value of this component for a given subject value of this mapping.
 	  * @param rename  a function returning the name for the exported column for the name of a `mapping`'s column.
@@ -907,7 +930,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * @return the `component` argument.
 	  * @throws IllegalArgumentException if the mapping is already embedded in this instance as part of another
 	  *                                  component
-	  */
+	  */ //todo: type class for implicit constructors of mappings
 	protected def component[M <: Component[T], T](value :S => T, buffs :Buff[T]*)(rename :String => String)
 	                                             (implicit mapping :M) :M =
 		component[M, T](mapping, value, buffs:_*)(rename)
@@ -1123,14 +1146,14 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	                             (value :S => R, buffs :Buff[R]*)
 	                             (table :RelVar[M], pk :M[_] => C[_], reference :RelatedEntityFactory[K, E, T, R])
 	                             (rename :String => String) :ForeignKeyMapping[M, C, K, R, O] =
-		initPreceding(new FKComponent(value, rename, buffs)(reference, table, pk.asInstanceOf[M[()] => C[()]]))
+		initPreceding(new FKComponent(value, rename, buffs)(reference, table, pk.asInstanceOf[M[Unit] => C[Unit]]))
 
 	protected override def inverseFKImpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R]
 	                       (value :S => R, key :C[O], reference :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
 	                       (table :RelVar[M], fk :M[_] => ForeignKeyMapping[MappingAt, C, K, _, _])
 			:JoinedEntityComponent[M, C, K, R, O] =
-		initPreceding(new InverseFKComponent[M, C, K, E, T, R, ()](value, key, buffs)(
-			reference, table, fk.asInstanceOf[M[()] => ForeignKeyMapping[MappingAt, C, K, _, ()]]
+		initPreceding(new InverseFKComponent[M, C, K, E, T, R, Unit](value, key, buffs)(
+			reference, table, fk.asInstanceOf[M[Unit] => ForeignKeyMapping[MappingAt, C, K, _, Unit]]
 		))
 
 	protected override def kinimpl[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
@@ -1415,7 +1438,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	                             (name :String, value :S => R, buffs :Buff[R]*)
 	                             (table :RelVar[M], pk :M[_] => ColumnMapping[K, _],
 	                              reference :RelatedEntityFactory[K, E, T, R]) :ForeignKeyColumnMapping[M, K, R, O] =
-		initPreceding(new FKColumn(value, name, buffs)(reference, table, pk.asInstanceOf[M[()] => ColumnMapping[K, ()]]))
+		initPreceding(new FKColumn(value, name, buffs)(reference, table, pk.asInstanceOf[M[Unit] => ColumnMapping[K, Unit]]))
 
 
 //	protected override def inverseFKImpl[M[A] <: RefinedMapping[E, A], K, E, X, R]
@@ -1424,7 +1447,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 //	                                    (table :RelVar[M], fk :M[_] => ForeignKeyColumnMapping[MappingAt, K, _, _])
 //			:ForeignKeyColumnMapping[M, K, R, O] =
 //		initPreceding(new InverseFKColumn(value, buffs)(key, reference)(
-//			table, fk.asInstanceOf[M[()] => ForeignKeyColumnMapping[MappingAt, K, _, ()]]
+//			table, fk.asInstanceOf[M[Unit] => ForeignKeyColumnMapping[MappingAt, K, _, Unit]]
 //		))
 
 
@@ -1774,35 +1797,46 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		override def lastIndexOf[B >: C](elem :B, end :Int) :Int = items.lastIndexOf(elem, end)
 	}
 
+	private def framed[T](component :Component[T]) = export(component).asInstanceOf[FrameComponent[T]]
 
+	override def selectable(component :Component[_])        :Unique[Column[_]] = framed(component).exportedSelectable
+	override def filterable(component :Component[_])        :Unique[Column[_]] = framed(component).exportedFilterable
+	override def insertable(component :Component[_])        :Unique[Column[_]] = framed(component).exportedInsertable
+	override def updatable(component :Component[_])         :Unique[Column[_]] = framed(component).exportedUpdatable
+	override def autoInserted(component :Component[_])      :Unique[Column[_]] = framed(component).exportedAutoInserted
+	override def autoUpdated(component :Component[_])       :Unique[Column[_]] = framed(component).exportedAutoUpdated
+	override def selectedByDefault(component :Component[_]) :Unique[Column[_]] = framed(component).exportedSelectedByDefault
+	override def filteredByDefault(component :Component[_]) :Unique[Column[_]] = framed(component).exportedFilteredByDefault
+	override def insertedByDefault(component :Component[_]) :Unique[Column[_]] = framed(component).exportedInsertedByDefault
+	override def updatedByDefault(component :Component[_])  :Unique[Column[_]] = framed(component).exportedUpdatedByDefault
 
-	private[this] final val initComponents = new LateInitComponents[FrameComponent[_]]
-	private[this] final val initSubcomponents = new LateInitComponents[FrameComponent[_]]
-	private[this] final val initColumns = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initSelectable = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initFilterable = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initInsertable = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initUpdatable = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initAutoInsert = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initAutoUpdate = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initComponents        = new LateInitComponents[FrameComponent[_]]
+	private[this] final val initSubcomponents     = new LateInitComponents[FrameComponent[_]]
+	private[this] final val initColumns           = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initSelectable        = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initFilterable        = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initInsertable        = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initUpdatable         = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initAutoInsert        = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initAutoUpdate        = new LateInitComponents[FrameColumn[_]]
 	private[this] final val initSelectedByDefault = new LateInitComponents[FrameColumn[_]]
 	private[this] final val initFilteredByDefault = new LateInitComponents[FrameColumn[_]]
 	private[this] final val initInsertedByDefault = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initUpdatedByDefault = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initUpdatedByDefault  = new LateInitComponents[FrameColumn[_]]
 
-	final override def components :Unique[Component[_]] = initComponents.items
-	final override def subcomponents :Unique[Component[_]] = initSubcomponents.items
-	final override def columns :Unique[Column[_]] = initColumns.items
-	final override def selectable :Unique[Column[_]] = initSelectable.items
-	final override def filterable :Unique[Column[_]] = initFilterable.items
-	final override def insertable :Unique[Column[_]] = initInsertable.items
-	final override def updatable :Unique[Column[_]] = initUpdatable.items
-	final override def autoInserted :Unique[Column[_]] = initAutoInsert.items
-	final override def autoUpdated :Unique[Column[_]] = initAutoUpdate.items
-	final override def selectedByDefault :Unique[Column[_]] = initSelectedByDefault.items
-	final override def filteredByDefault :Unique[Column[_]] = initFilteredByDefault.items
-	final override def insertedByDefault :Unique[Column[_]] = initInsertedByDefault.items
-	final override def updatedByDefault :Unique[Column[_]] = initUpdatedByDefault.items
+	final override def components        :Unique[Component[_]] = initComponents.items
+	final override def subcomponents     :Unique[Component[_]] = initSubcomponents.items
+	final override def columns           :Unique[Column[_]]    = initColumns.items
+	final override def selectable        :Unique[Column[_]]    = initSelectable.items
+	final override def filterable        :Unique[Column[_]]    = initFilterable.items
+	final override def insertable        :Unique[Column[_]]    = initInsertable.items
+	final override def updatable         :Unique[Column[_]]    = initUpdatable.items
+	final override def autoInserted      :Unique[Column[_]]    = initAutoInsert.items
+	final override def autoUpdated       :Unique[Column[_]]    = initAutoUpdate.items
+	final override def selectedByDefault :Unique[Column[_]]    = initSelectedByDefault.items
+	final override def filteredByDefault :Unique[Column[_]]    = initFilteredByDefault.items
+	final override def insertedByDefault :Unique[Column[_]]    = initInsertedByDefault.items
+	final override def updatedByDefault  :Unique[Column[_]]    = initUpdatedByDefault.items
 
 
 	private[this] val columnNames = Lazy { initialize(); columns.map { c => c.name -> c }.toMap }
@@ -2004,10 +2038,12 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 
 	//must only be created after full initialization of the mapping.
-	private class ReadForm(columns :Unique[ColumnMapping[_, O]],
-	                       read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
+	private class ReadForm(val columns :Unique[ColumnMapping[_, O]],
+	                       val read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
 		extends SQLReadForm[S] with ReadFormNullValue[S]
 	{
+		private def frame = MappingFrame.this
+
 		private[this] val fastColumns = columns.toArray
 		private val forms :Array[SQLReadForm[_]] = fastColumns.map(read)
 		override val readColumns: Int = fastColumns.length //(0 /: forms)(_ + _.readColumns)
@@ -2034,7 +2070,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 		override def nulls :NullValue[S] = frame.nullValue
 
-
 		override def register(call :CallableStatement, position :Int) :Unit = {
 			var i = 0; val end = fastColumns.length
 			while (i < end) {
@@ -2043,44 +2078,60 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 			}
 		}
 
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :MappingFrame[_, _]#ReadForm => //this function equality should work, as there is no reason for closure
+				other.frame == frame && other.columns == columns && read == read
+			case _ => false
+		}
+		override def hashCode :Int = (frame.hashCode * 31 + columns.hashCode) * 31 + read.hashCode
+
 		override def toString :String = columns.map(read).mkString(s"$frame{", ",", "}>")
 	}
 
 
 
-	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = {
-		//_.selectable aren't export components, but should have correct column names
-		//call to frame.export makes sure that the whole mapping is initialized and access to not synchronized fields is safe.
-		val columns = components.map(frame.export(_)).flatMap(_.selectedByDefault)
+	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
+		if (components == selectedByDefault)
+			selectForm
+		else {
+			//_.selectable aren't export components, but should have correct column names
+			//call to frame.export makes sure that the whole mapping is initialized and access to not synchronized fields is safe.
+			val columns = components.map(frame.export(_)).flatMap(_.selectedByDefault)
+			if (columns.exists(NoSelect.active))
+				throw new IllegalArgumentException(
+					s"Can't create a select form for $frame using $components: NoSelect buff present among the selection.")
 
-		if (columns.exists(NoSelect.active))
-			throw new IllegalArgumentException(
-				s"Can't create a select form for $frame using $components: NoSelect buff present among the selection.")
-
-		if (selectable.exists(c => !columns.contains(c) && OptionalSelect.inactive(c))) {
-			val missing = (selectable.toSet -- columns.toSet).filter(OptionalSelect.inactive)
-			throw new IllegalArgumentException(
-				missing.mkString(
-					s"Can't create a select form for $frame using $components: missing mandatory columns ", ", ", ""
+			if (selectable.exists(c => !columns.contains(c) && OptionalSelect.inactive(c))) {
+				val missing = (selectable.toSet -- columns.toSet).filter(OptionalSelect.inactive)
+				throw new IllegalArgumentException(
+					missing.mkString(
+						s"Can't create a select form for $frame using $components: missing mandatory columns ", ", ", ""
+					)
 				)
-			)
+			}
+			val extra = columns ++ ExtraSelect.Active.columns(frame)
+			new ReadForm(columns :++ extra)
 		}
 
-		val extra = columns ++ ExtraSelect.Active.columns(frame)
-		new ReadForm(columns :++ extra)
-	}
+	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
+		if (op.defaultColumns(this) == components)
+			op.form(this)
+		else
+			super.writeForm(op, components)
 
 	//initialize first, especially for selectForm, as it reads not synchronized member variables.
-	override val selectForm :SQLReadForm[S] = SQLReadForm.delayed { initialize(); new ReadForm(selectedByDefault) }
-	override val filterForm :SQLWriteForm[S] = SQLWriteForm.delayed { initialize(); super.filterForm }
-	override val insertForm :SQLWriteForm[S] = SQLWriteForm.delayed { initialize(); super.insertForm }
-	override val updateForm :SQLWriteForm[S] = SQLWriteForm.delayed { initialize(); super.updateForm }
+	override lazy val selectForm :SQLReadForm[S] = { initialize(); new ReadForm(selectedByDefault) }
+	override lazy val filterForm :SQLWriteForm[S] = { initialize(); super.filterForm }
+	override lazy val insertForm :SQLWriteForm[S] = { initialize(); super.insertForm }
+	override lazy val updateForm :SQLWriteForm[S] = { initialize(); super.updateForm }
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
+
 
 }
 
 
 
 
-
+//todo: EntityFrame/TableFrame (non-pk columns have NoFilterByDefault)
 

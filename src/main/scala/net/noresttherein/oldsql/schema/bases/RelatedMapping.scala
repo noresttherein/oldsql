@@ -99,8 +99,8 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	              (table :RelVar[M], key :M[_] => RefinedMapping[K, _])
 	              (implicit composition :T ComposedOf E, referencedType :TypeTag[E]) :KinFactory[K, E, T] =
 		KinFactory.delay {
-			val comp = key(table.row).withOrigin[()]
-			val extract = table.row[()](comp)
+			val comp = key(table.row).withOrigin[Unit]
+			val extract = table.row[Unit](comp)
 			extract.requisite match {
 				case Got(property) => Kin(Restraint.Property(property)).as[T]
 				case _ => Kin(Restraint.Property(extract.optional).flatten).as[T]
@@ -142,8 +142,8 @@ trait RelatedMapping[S, O] extends BaseMapping[S, O] {
 	                                          (implicit composition :T ComposedOf E, referenceType :TypeTag[E])
 			:DerivedKinFactory[K, E, T] =
 		KinFactory.delay { () =>
-			val key = pk(table.row).withOrigin[()]
-			val extract = table.row[()](key)
+			val key = pk(table.row).withOrigin[Unit]
+			val extract = table.row[Unit](key)
 			extract.requisite match {
 				case Got(property) => Kin.Restrained.required(Restraint.Property(property)).as[T]
 				case _ => Kin.Restrained.required(Restraint.Property(extract.optional).flatten).as[T]

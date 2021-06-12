@@ -3,6 +3,7 @@ package net.noresttherein.oldsql.sql
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.morsels.ChunkedString
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.Relation.Table
@@ -73,7 +74,8 @@ trait Adjoin[+L <: RowProduct, R[O] <: MappingAt[O]]
 	  */
 	def right :Relation[R] = last.relation
 
-	/** The right side of the join - representation of a table/relation alias containing the mapping of its schema.
+	/** The right side of the join - representation of a table/relation alias containing the mapping of its schema
+	  * as a subtype of [[net.noresttherein.oldsql.sql.ast.MappingSQL.JoinedRelation JoinedRelation]]`[`[[net.noresttherein.oldsql.sql.RowProduct.FromLast FromLast]]`, `[[net.noresttherein.oldsql.sql.RowProduct.LastMapping LastMapping]]`]`.
 	  * It identifies the SQL relation (table, view or ''select'') which is being added to the clause and its index,
 	  * to distinguish between possible multiple occurrences of the same relation.
 	  *
@@ -188,9 +190,18 @@ trait Adjoin[+L <: RowProduct, R[O] <: MappingAt[O]]
 	/** Name of the join for use by the `toString` method. */
 	def name :String
 
-	override def toString :String =
-		left.toString + " " + name + " " + right +
-			(if (aliasOpt.isEmpty) "" else " as " + alias) + (if (condition == True) "" else " on " + condition)
+	override def chunkedString :ChunkedString = {
+		var res = left.chunkedString + (" " + name + " ") + right.toString
+		if (aliasOpt.nonEmpty)
+			res += " as " + alias
+		if (condition != True)
+			res = res + " on " + condition.toString
+		res
+	}
+
+//	override def toString :String = chunkedString.toString
+//		left.toString + " " + name + " " + right +
+//			(if (aliasOpt.isEmpty) "" else " as " + alias) + (if (condition == True) "" else " on " + condition)
 
 }
 

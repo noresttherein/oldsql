@@ -5,18 +5,21 @@ import java.math.{BigDecimal => JBigDecimal}
 import java.io.{InputStream, Reader}
 import java.net.URL
 import java.sql
-import java.sql.{Blob, Clob, Date, JDBCType, NClob, PreparedStatement, Ref, ResultSet, RowId, SQLXML, Time, Timestamp, Types}
+import java.sql.{Blob, Clob, Date, JDBCType, NClob, PreparedStatement, Ref, ResultSet, RowId, SQLXML, Time, Timestamp}
 import java.sql.JDBCType._
 import java.time.format.DateTimeFormatter
-import java.time.{Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime, ZonedDateTime, ZoneId, ZoneOffset}
+import java.time.{Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime, ZonedDateTime, ZoneId}
 import java.time.temporal.{ChronoField, TemporalAccessor}
 
 import net.noresttherein.oldsql.collection.NaturalMap
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.collection.Opt.Lack
 import net.noresttherein.oldsql.morsels.Stateless
 import net.noresttherein.oldsql.schema.ColumnForm
-import net.noresttherein.oldsql.schema.ColumnForm.JDBCObjectForm
+import net.noresttherein.oldsql.schema.ColumnForm.{JDBCObjectFormSingleton, NamedColumnForm}
+import net.noresttherein.oldsql.schema.ColumnWriteForm.{DirectColumnWriteForm, SingletonColumnWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{NonLiteralForm, NullValue}
+import net.noresttherein.oldsql.sql.sanitize
 
 
 
@@ -61,6 +64,7 @@ trait NotNullBasicForms { this :BasicForms =>
 	val NotNullNCharacterStream           :ColumnForm[Reader]        = NCharacterStreamForm
 	implicit val NotNullNClob             :ColumnForm[NClob]         = NCLobForm
 	val NotNullNString                    :ColumnForm[String]        = NStringForm
+	val NotNullNull                       :ColumnForm[Null]          = NullValueForm(NotNull)
 	implicit val NotNullRef               :ColumnForm[Ref]           = RefForm
 	implicit val NotNullRowId             :ColumnForm[RowId]         = RowIdForm
 	implicit val NotNullShort             :ColumnForm[Short]         = ShortForm
@@ -225,7 +229,7 @@ trait BasicForms extends NotNullBasicForms {
 
 	implicit def CharForm(implicit nulls :NullValue[Char]) :ColumnForm[Char] =
 		new Basic[Char](CHAR) {
-			override protected def read(res :ResultSet, position :Int) :Char =
+			protected override def read(res :ResultSet, position :Int) :Char =
 				res.getString(position) match {
 					case null => 0
 					case s if s.length != 1 =>
@@ -321,7 +325,27 @@ trait BasicForms extends NotNullBasicForms {
 
 			override def literal(value :String) :String =
 				if (value == null) "NULL"
-				else "'" + value.replace("'", "''") + "'"
+				else "'" + sanitize(value) + "'"
+		}
+
+	def NullValueForm[T :NullValue] :ColumnForm[T] =
+		new NamedColumnForm[T](NullValue[T].toString + ":NULL", NULL)
+			with DirectColumnWriteForm[T] with SingletonColumnWriteForm[T]
+		{
+			override def set(statement :PreparedStatement, position :Int, value :T) :Unit =
+				statement.setNull(position, NULL.getVendorTypeNumber)
+
+			override def opt(res :ResultSet, position :Int) = Lack
+
+			override def literal(value :T) = "NULL"
+		}
+
+	def NullForm[T >: Null] :ColumnForm[T] =
+		new Basic[T](NULL)(NullValue.Null) with Stateless {
+			override def set(statement :PreparedStatement, position :Int, value :T) :Unit =
+				statement.setNull(position, NULL.getVendorTypeNumber)
+
+			protected override def read(res :ResultSet, column :Int) :T = null
 		}
 
 	implicit def RefForm(implicit nulls :NullValue[Ref]) :ColumnForm[Ref] =
@@ -337,7 +361,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :RowId) :Unit =
 				statement.setRowId(position, value)
 
-			override protected def read(res :ResultSet, position :Int) :RowId = res.getRowId(position)
+			protected override def read(res :ResultSet, position :Int) :RowId = res.getRowId(position)
 		}
 	implicit def ShortForm(implicit nulls :NullValue[Short]) :ColumnForm[Short] =
 		new Basic[Short](SMALLINT) {
@@ -364,7 +388,7 @@ trait BasicForms extends NotNullBasicForms {
 
 			override def literal(value: String): String =
 				if (value == null) "NULL"
-				else "'" + value.replace("'", "''") + "'"
+				else "'" + sanitize(value) + "'"
 		}
 
 	implicit def TimeForm(implicit nulls :NullValue[Time]) :ColumnForm[Time] =
@@ -395,15 +419,6 @@ trait BasicForms extends NotNullBasicForms {
 			protected override def read(res :ResultSet, column :Int) :URL = res.getURL(column)
 
 			override def toString = "URL"
-		}
-
-
-	def NullForm[T >: Null] :ColumnForm[T] =
-		new Basic[T](NULL)(NullValue.Null) with Stateless {
-			override def set(statement :PreparedStatement, position :Int, value :T) :Unit =
-				statement.setNull(position, NULL.getVendorTypeNumber)
-
-			protected override def read(res :ResultSet, column :Int) :T = null
 		}
 
 	
@@ -446,7 +461,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :JChar) :Unit =
 				statement.setString(position, if (value == null) null else String.valueOf(value))
 			
-			override protected def read(res :ResultSet, position :Int) :JChar =
+			protected override def read(res :ResultSet, position :Int) :JChar =
 				res.getString(position) match {
 					case null => null
 					case s if s.length != 1 => throw new IllegalArgumentException(
@@ -519,38 +534,38 @@ trait BasicForms extends NotNullBasicForms {
 	//todo: verify how these work when the timezones differ
 	implicit def InstantForm(implicit nulls :NullValue[Instant], timeZone :ZoneId = ZoneId.systemDefault())
 			:ColumnForm[Instant] =
-		new JDBCObjectForm[Instant](TIMESTAMP_WITH_TIMEZONE) {
+		new JDBCObjectFormSingleton[Instant](TIMESTAMP_WITH_TIMEZONE) {
 			override def literal(value :Instant) :String =
 				formatTimestamp(value.atOffset(timeZone.getRules.getOffset(value)))
 		}
 
 	implicit def LocalTimeForm(implicit nulls :NullValue[LocalTime]) :ColumnForm[LocalTime] =
-		new JDBCObjectForm[LocalTime](TIME) {
+		new JDBCObjectFormSingleton[LocalTime](TIME) {
 			override def literal(value :LocalTime) :String = formatTime(value)
 		}
 
 	implicit def LocalDateForm(implicit nulls :NullValue[LocalDate]) :ColumnForm[LocalDate] =
-		new JDBCObjectForm[LocalDate](DATE) {
+		new JDBCObjectFormSingleton[LocalDate](DATE) {
 			override def literal(value :LocalDate) :String = formatDate(value)
 		}
 
 	implicit def LocalDateTimeForm(implicit nulls :NullValue[LocalDateTime]) :ColumnForm[LocalDateTime] =
-		new JDBCObjectForm[LocalDateTime](TIMESTAMP) {
+		new JDBCObjectFormSingleton[LocalDateTime](TIMESTAMP) {
 			override def literal(value :LocalDateTime) :String = formatTimestamp(value)
 		}
 
 	implicit def OffsetTimeForm(implicit nulls :NullValue[OffsetTime]) :ColumnForm[OffsetTime] =
-		new JDBCObjectForm[OffsetTime](TIME_WITH_TIMEZONE) {
+		new JDBCObjectFormSingleton[OffsetTime](TIME_WITH_TIMEZONE) {
 			override def literal(value :OffsetTime) :String = formatTimeWithOffset(value)
 		}
 
 	implicit def OffsetDateTimeForm(implicit nulls :NullValue[OffsetDateTime]) :ColumnForm[OffsetDateTime] =
-		new JDBCObjectForm[OffsetDateTime](TIMESTAMP_WITH_TIMEZONE) {
+		new JDBCObjectFormSingleton[OffsetDateTime](TIMESTAMP_WITH_TIMEZONE) {
 			override def literal(value :OffsetDateTime) :String = formatTimestampWithOffset(value)
 		}
 
 	implicit def ZonedDateTimeForm(implicit nulls :NullValue[ZonedDateTime]) :ColumnForm[ZonedDateTime] =
-		new JDBCObjectForm[ZonedDateTime](TIMESTAMP_WITH_TIMEZONE) {
+		new JDBCObjectFormSingleton[ZonedDateTime](TIMESTAMP_WITH_TIMEZONE) {
 			override def literal(value :ZonedDateTime) :String = formatTimestampWithTimeZone(value)
 		}
 

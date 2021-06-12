@@ -47,7 +47,7 @@ trait TableKin[+T] extends Kin[T] {
 
 	/** Mapping from column names to column values. Used in `equals` in order to preserve equality over serialization. */
 	def byName :Map[String, Any] = columns.view.map {
-		case Assoc(column, value) => (table.export[()].export(column.asInstanceOf[ColumnMapping[_, ()]]).name, value)
+		case Assoc(column, value) => (table.export[Unit].export(column.asInstanceOf[ColumnMapping[_, Unit]]).name, value)
 	}.toMap
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[TableKin[_]]

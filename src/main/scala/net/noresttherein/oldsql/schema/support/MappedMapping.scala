@@ -96,18 +96,24 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 	override def subcomponents :Unique[Component[_]] = backerComponents
 
 
-	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = {
-		val comps =
-			if (components.contains(backer)) backer.selectedByDefault ++ components.view.filter(_ != backer)
-			else components
-		val form = backer.selectForm(comps)
-		if (nulls == null) form.nullTo(map) else form.to(map)
-	}
+	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
+		if (components == selectedByDefault)
+			selectForm
+		else {
+			val comps =
+				if (components.contains(backer)) backer.selectedByDefault ++ components.view.filter(_ != backer)
+				else components
+			val form = backer.selectForm(comps)
+			if (nulls == null) form.nullTo(map) else form.to(map)
+		}
 
-	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] = {
-		val form = backer.writeForm(op, if (components.contains(backer)) op.defaultColumns(backer) else components)
-		form.from(unmap)
-	}
+	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
+		if (op.defaultColumns(backer) == components)
+			op.form(this)
+		else {
+			val form = backer.writeForm(op, if (components.contains(backer)) op.defaultColumns(backer) else components)
+			form.from(unmap)
+		}
 
 	private val defaultSelectForm :SQLReadForm[S] =
 		if (nulls == null) backer.selectForm.nullTo(map)

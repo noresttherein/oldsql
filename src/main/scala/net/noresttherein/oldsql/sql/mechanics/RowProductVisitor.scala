@@ -13,8 +13,10 @@ import net.noresttherein.oldsql.sql.UnboundParam.FromParam
 
 
 /** A visitor interface working for the [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] type hierarchy. */
-trait RowProductMatcher[Y] {
-	def apply(from :RowProduct) :Y = from.bridgeMatchWith(this)
+//todo: this should probably be moved to RowProduct for consistency with ExpressionVisitor and StatementVisitor
+//todo: rename to visitor
+trait RowProductVisitor[Y] {
+	def apply(from :RowProduct) :Y = from.applyToForwarder(this)
 
 	def rowProduct(from :RowProduct) :Y
 	def fromClause(from :FromClause) :Y = rowProduct(from)

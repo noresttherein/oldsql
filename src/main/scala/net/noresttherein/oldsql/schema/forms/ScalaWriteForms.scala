@@ -2,8 +2,10 @@ package net.noresttherein.oldsql.schema.forms
 
 import java.sql.PreparedStatement
 
+import scala.collection.immutable.ArraySeq
+
 import net.noresttherein.oldsql.schema.SQLWriteForm
-import net.noresttherein.oldsql.schema.SQLWriteForm.NullableWriteFormLiterals
+import net.noresttherein.oldsql.schema.SQLWriteForm.NullableWriteFormLiteralsBackFeed
 
 
 
@@ -345,6 +347,11 @@ trait ScalaWriteForms {
 
 		override def inlineNullLiteral: String = _1.inlineNullLiteral + ", " + _2.inlineNullLiteral
 
+		override def split =
+			(_1.split.view.map(_.compose((_:(L, R))._1)) ++ 
+				_2.split.view.map(_.compose((_:(L, R))._2))
+			).to(ArraySeq)
+			
 	}
 
 	private[schema] case class Tuple2WriteForm[-L, -R](_1 :SQLWriteForm[L], _2 :SQLWriteForm[R])
@@ -355,7 +362,7 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple3WriteForm[-A, -B, -C] extends NullableWriteFormLiterals[(A, B, C)] {
+	private[schema] trait AbstractTuple3WriteForm[-A, -B, -C] extends NullableWriteFormLiteralsBackFeed[(A, B, C)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
@@ -399,6 +406,11 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_:(A, B, C))._1)) ++
+				_2.split.view.map(_.compose((_:(A, B, C))._2)) ++
+				_3.split.view.map(_.compose((_:(A, B, C))._3))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple3WriteForm[-A, -B, -C](_1 :SQLWriteForm[A], _2 :SQLWriteForm[B], _3 :SQLWriteForm[C])
@@ -409,7 +421,7 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple4WriteForm[-A, -B, -C, -D] extends NullableWriteFormLiterals[(A, B, C, D)] {
+	private[schema] trait AbstractTuple4WriteForm[-A, -B, -C, -D] extends NullableWriteFormLiteralsBackFeed[(A, B, C, D)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
@@ -459,6 +471,12 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D))._4))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple4WriteForm[-A, -B, -C, -D](_1 :SQLWriteForm[A], _2 :SQLWriteForm[B], _3 :SQLWriteForm[C], _4 :SQLWriteForm[D])
@@ -469,7 +487,7 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple5WriteForm[-A, -B, -C, -D, -E] extends NullableWriteFormLiterals[(A, B, C, D, E)] {
+	private[schema] trait AbstractTuple5WriteForm[-A, -B, -C, -D, -E] extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
@@ -525,6 +543,13 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E))._5))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple5WriteForm[-A, -B, -C, -D, -E](
@@ -536,7 +561,7 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple6WriteForm[-A, -B, -C, -D, -E, -F] extends NullableWriteFormLiterals[(A, B, C, D, E, F)] {
+	private[schema] trait AbstractTuple6WriteForm[-A, -B, -C, -D, -E, -F] extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
@@ -598,6 +623,14 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F))._6))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple6WriteForm[-A, -B, -C, -D, -E, -F](
@@ -610,7 +643,7 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple7WriteForm[-A, -B, -C, -D, -E, -F, -G] extends NullableWriteFormLiterals[(A, B, C, D, E, F, G)] {
+	private[schema] trait AbstractTuple7WriteForm[-A, -B, -C, -D, -E, -F, -G] extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
@@ -678,6 +711,15 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G))._7))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple7WriteForm[-A, -B, -C, -D, -E, -F, -G](
@@ -691,7 +733,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple8WriteForm[-A, -B, -C, -D, -E, -F, -G, -H]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -766,6 +808,16 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H))._8))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple8WriteForm[-A, -B, -C, -D, -E, -F, -G, -H](
@@ -779,7 +831,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple9WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -860,6 +912,17 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I))._9))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple9WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I](
@@ -873,7 +936,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple10WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -960,6 +1023,18 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J))._10))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple10WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J](
@@ -973,7 +1048,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple11WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1066,6 +1141,19 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._10)) ++
+				_11.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._11))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple11WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K](
@@ -1080,7 +1168,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple12WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1179,6 +1267,20 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._10)) ++
+				_11.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._11)) ++
+				_12.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._12))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple12WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L](
@@ -1193,7 +1295,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple13WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1298,6 +1400,21 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._10)) ++
+				_11.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._11)) ++
+				_12.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._12)) ++
+				_13.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._13))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple13WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M](
@@ -1312,7 +1429,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple14WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1423,6 +1540,22 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split = 
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._10)) ++
+				_11.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._11)) ++
+				_12.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._12)) ++
+				_13.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._13)) ++
+				_14.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._14))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple14WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N](
@@ -1437,7 +1570,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple15WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1555,6 +1688,23 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._10)) ++
+				_11.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._11)) ++
+				_12.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._12)) ++
+				_13.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._13)) ++
+				_14.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._14)) ++
+				_15.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._15)) 
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple15WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O](
@@ -1569,7 +1719,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple16WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1693,6 +1843,24 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._10)) ++
+				_11.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._11)) ++
+				_12.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._12)) ++
+				_13.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._13)) ++
+				_14.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._14)) ++
+				_15.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._15)) ++
+				_16.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._16)) 
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple16WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P](
@@ -1708,7 +1876,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple17WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1838,6 +2006,25 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._10)) ++
+				_11.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._11)) ++
+				_12.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._12)) ++
+				_13.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._13)) ++
+				_14.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._14)) ++
+				_15.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._15)) ++
+				_16.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._16)) ++
+				_17.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._17))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple17WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q](
@@ -1853,7 +2040,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple18WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1989,6 +2176,26 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._10)) ++
+				_11.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._11)) ++
+				_12.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._12)) ++
+				_13.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._13)) ++
+				_14.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._14)) ++
+				_15.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._15)) ++
+				_16.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._16)) ++
+				_17.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._17)) ++
+				_18.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._18))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple18WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R](
@@ -2004,7 +2211,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple19WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2146,6 +2353,27 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._10)) ++
+				_11.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._11)) ++
+				_12.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._12)) ++
+				_13.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._13)) ++
+				_14.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._14)) ++
+				_15.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._15)) ++
+				_16.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._16)) ++
+				_17.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._17)) ++
+				_18.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._18)) ++
+				_19.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._19)) 
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple19WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S](
@@ -2161,7 +2389,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple20WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S, -T]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2309,6 +2537,28 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._10)) ++
+				_11.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._11)) ++
+				_12.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._12)) ++
+				_13.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._13)) ++
+				_14.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._14)) ++
+				_15.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._15)) ++
+				_16.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._16)) ++
+				_17.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._17)) ++
+				_18.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._18)) ++
+				_19.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._19)) ++
+				_20.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._20))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple20WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S, -T](
@@ -2324,7 +2574,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple21WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S, -T, -U]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2478,6 +2728,29 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._10)) ++
+				_11.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._11)) ++
+				_12.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._12)) ++
+				_13.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._13)) ++
+				_14.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._14)) ++
+				_15.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._15)) ++
+				_16.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._16)) ++
+				_17.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._17)) ++
+				_18.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._18)) ++
+				_19.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._19)) ++
+				_20.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._20)) ++
+				_21.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._21)) 
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple21WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S, -T, -U](
@@ -2494,7 +2767,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple22WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S, -T, -U, -V]
-		extends NullableWriteFormLiterals[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)]
+		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2654,6 +2927,30 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def split =
+			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._1)) ++
+				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._2)) ++
+				_3.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._3)) ++
+				_4.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._4)) ++
+				_5.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._5)) ++
+				_6.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._6)) ++
+				_7.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._7)) ++
+				_8.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._8)) ++
+				_9.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._9)) ++
+				_10.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._10)) ++
+				_11.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._11)) ++
+				_12.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._12)) ++
+				_13.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._13)) ++
+				_14.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._14)) ++
+				_15.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._15)) ++
+				_16.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._16)) ++
+				_17.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._17)) ++
+				_18.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._18)) ++
+				_19.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._19)) ++
+				_20.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._20)) ++
+				_21.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._21)) ++
+				_22.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._22))
+			).to(ArraySeq)
 	}
 
 	private[schema] case class Tuple22WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S, -T, -U, -V](

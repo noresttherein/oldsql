@@ -3,6 +3,7 @@ package net.noresttherein.oldsql
 import java.lang.{StringBuilder => JStringBuilder}
 
 import scala.annotation.tailrec
+import scala.collection.{IterableOnce, IterableOps}
 import scala.reflect.{classTag, ClassTag}
 import scala.util.Try
 
@@ -22,12 +23,46 @@ package object slang {
 
 
 
-	/** An implicit conversion extending Int with a method 'repeat' which executes a block the given number of times. */
-	private[oldsql] implicit class repeat(private val count :Int) extends AnyVal {
-		/** Execute the given block the number of times specified by 'this' argument. */
-		@inline def times(block : => Unit): Unit =
-			for (_ <- 0 until count) block
+	/** Additional extension methods for collections of the standard library framework. */
+	implicit class IterableExtension[C[X] <: Iterable[X], E](private val self :IterableOps[E, C, C[E]]) extends AnyVal {
+		/** Maps this collection from left to right with an accumulating state updated by the mapping function.
+		  * The state is discarded after the operation and only the mapping results (the second elements
+		  * of the tuples returned by the given function) are returned in a collection of the same dynamic type
+		  * as this collection.
+		  */
+		def mapWith[A, O](z :A)(f :(A, E) => (A, O)) :C[O] =
+			self.view.scanLeft((z, null.asInstanceOf[O])) {
+				(acc, e) => f(acc._1, e)
+			}.tail.map(_._2).to(self.iterableFactory)
 
+		/** Flat maps this collection from left to right with an accumulating state updated by the mapping function.
+		  * The state is discarded after the operation and only the mapping results (the collections returned by
+		  * by the given function) are returned in a collection of the same dynamic type as this collection.
+		  */
+		def flatMapWith[A, O](z :A)(f :(A, E) => (A, IterableOnce[O])) :C[O] =
+			self.view.scanLeft((z, Nil :IterableOnce[O])) {
+				(acc, e) => f(acc._1, e)
+			}.flatMap(_._2).to(self.iterableFactory)
+
+		/** Maps this collection in order consistent with `foreach`, passing as the first argument the index
+		  * of the mapped element.
+		  */
+		def mapWithIndex[O](f :(Int, E) => O) :C[O] = {
+			var i = 0
+			val b = self.iterableFactory.newBuilder[O]
+			self foreach { e => b += f(i, e); i += 1 }
+			b.result()
+		}
+
+		/** Flat maps this collection in order consistent with `foreach`, passing as the first argument the index
+		  * of the mapped element.
+		  */
+		def flatMapWithIndex[O](f :(Int, E) => IterableOnce[O]) :C[O] = {
+			var i = 0
+			val b = self.iterableFactory.newBuilder[O]
+			self foreach { e => b ++= f(i, e); i += 1 }
+			b.result()
+		}
 	}
 
 
@@ -568,32 +603,47 @@ package object slang {
 
 
 
-	private[oldsql] implicit class CastingExtension[T](private val value :T) extends AnyVal {
-		def downcast[S <: T] :S = value.asInstanceOf[S]
-//		def upcast[S>:T] :S = value.asInstanceOf[S]
+	private[oldsql] implicit class CastingExtension[X](private val value :X) extends AnyVal {
+		def downcast[S <: X] :S = value.asInstanceOf[S]
+
+		/** A safer casting expression which, in addition to the target type, accepts also the type of the cast
+		  * expression itself (`this`).
+		  * Providing both is a defence against inadvertent casting from a wrongly presumed source type and,
+		  * more importantly, against an expression changing type silently due to a refactor.
+		  * @tparam U the (super)type of `this` expression.
+		  * @tparam Y the target type of the expression after casting.
+		  */
+		@inline def castTo[U >: X, Y] :Y = value.asInstanceOf[Y]
+
+		/** A safer casting expression which, in addition to the target type, accepts also the type of the cast
+		  * expression itself (`this`). Both types are given as a single argument function `X => Y`,
+		  * with `X` being the type to which `this` must conform, and `Y` the desired target type.
+		  * Providing both is a defence against inadvertent casting from a wrongly presumed source type and,
+		  * more importantly, against an expression changing type silently due to a refactor.
+		  */
+		@inline def castWith[F <: X => Any](implicit function :ReturnTypeOf[F]) :function.Return =
+			value.asInstanceOf[function.Return]
 
 
-		@inline def castTo[S](implicit S :ClassTag[S]) :S =
-			castTo[S](new ClassCastException(s"expected class ${S.runtimeClass}; got $value :${value.getClass}"))
-
-		@inline def castTo[S](excp : => Exception)(implicit S :ClassTag[S]) :S = value match {
-			case S(s) => s
-			case _ => throw excp
-		}
-
-
-		@inline def asSubclass[S <: T](implicit S :ClassTag[S]) :Option[S] = S.unapply(value)
+		@inline def asSubclass[S <: X](implicit S :ClassTag[S]) :Option[S] = S.unapply(value)
 
 		@inline def asSubclassOf[S](implicit S :ClassTag[S]) :Option[S] = S.unapply(value)
 
-		@inline def ifSubclassOf[S] :CastValueGuard[T, S] = new CastValueGuard[T, S](value)
+		@inline def ifSubclassOf[S] :CastValueGuard[X, S] = new CastValueGuard[X, S](value)
 
-		@inline def ifSubclass[S <: T] :CastValueGuard[T, S] = ifSubclassOf[S]
+		@inline def ifSubclass[S <: X] :CastValueGuard[X, S] = ifSubclassOf[S]
 
 //		@inline def explicitCast[F>:T, S] :S = value.asInstanceOf[S]
 
 	}
 
+	private[oldsql] final class ReturnTypeOf[F <: Nothing => Any] private { type Return }
+
+	private[oldsql] object ReturnTypeOf {
+		implicit def returnTypeOf[X, Y] :ReturnTypeOf[X => Y] { type Return = Y } =
+			instance.asInstanceOf[ReturnTypeOf[X => Y] { type Return = Y }]
+		private[this] val instance = new ReturnTypeOf[Nothing]
+	}
 
 
 
@@ -612,16 +662,17 @@ package object slang {
 
 
 
+
 	private[oldsql] implicit class TypeParameterCastingExtension1[G[_]](private val value: G[_]) extends AnyVal {
-		@inline def crosstyped[S] :G[S] = value.asInstanceOf[G[S]]
+		@inline def withTypeParam[S] :G[S] = value.asInstanceOf[G[S]]
 	}
 
 	private[oldsql] implicit class TypeParameterCastingExtension2[G[_, _]](private val value :G[_, _]) extends AnyVal {
-		@inline def crosstyped[S, T] :G[S, T] = value.asInstanceOf[G[S, T]]
+		@inline def with2TypeParams[S, T] :G[S, T] = value.asInstanceOf[G[S, T]]
 	}
 
 	private[oldsql] implicit class TypeParameterCastingExtension3[G[_, _, _]](private val value :G[_, _, _]) extends AnyVal {
-		@inline def crosstyped[S, T, U] :G[S, T, U] = value.asInstanceOf[G[S, T, U]]
+		@inline def with3TypeParams[S, T, U] :G[S, T, U] = value.asInstanceOf[G[S, T, U]]
 	}
 
 

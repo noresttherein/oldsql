@@ -12,8 +12,8 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy
 class RenamedMapping[M <: RefinedMapping[S, O], S, O](protected override val backer :M, rename :String => String)
 	extends DeepProxy[S, O](backer) with DelegateMapping[M, S, O]
 {
-	override protected def adapt[T](component :backer.Component[T]) :Component[T] = component.renamed(rename)
-	override protected def adapt[T](column :backer.Column[T]) :Column[T] = column.renamed(rename)
+	protected override def adapt[T](component :backer.Component[T]) :Component[T] = component.renamed(rename)
+	protected override def adapt[T](column :backer.Column[T]) :Column[T] = column.renamed(rename)
 
 	override def qualified(prefix :String) :Component[S] =
 		if (prefix.length == 0) this else prefixed(prefix + ".")

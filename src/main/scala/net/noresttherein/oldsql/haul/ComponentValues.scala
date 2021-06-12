@@ -8,9 +8,9 @@ import net.noresttherein.oldsql.haul.ComponentValues.{AliasedComponentValues, De
 import net.noresttherein.oldsql.morsels.generic.{=#>, GenericFun, Self}
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnMappingExtract, MappingExtract}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
 import net.noresttherein.oldsql.schema.Relation.Table
+import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -918,10 +918,10 @@ object ComponentValues {
 				override def addOpt[T](component :RefinedMapping[T, O], result :Opt[T]) :this.type =
 					super.addOpt(mapping.export(component), result)
 
-				override protected def result(map :Map[RefinedMapping[_, O], Any]) =
+				protected override def result(map :Map[RefinedMapping[_, O], Any]) =
 					ComponentValues(mapping)(map.withDefaultValue(null))
 
-				override protected def result(map :Map[ColumnMapping[_, O], Any]) =
+				protected override def result(map :Map[ColumnMapping[_, O], Any]) =
 					ColumnValues(mapping)(map.withDefaultValue(null))
 			}
 
@@ -1187,7 +1187,7 @@ object ComponentValues {
 
 		override def aliased(export :MappingAt[O]#Component =#> MappingAt[O]#Component) :ComponentValuesAliasing[S, O] =
 			new ComponentValuesAliasing[S, O] {
-				override protected def alias[T](component :Component[T]) = outer.alias(export(component))
+				protected override def alias[T](component :Component[T]) = outer.alias(export(component))
 				override def preset(root :RefinedMapping[S, O]) = outer.preset(root)
 				override def aliased(again :MappingAt[O]#Component =#> MappingAt[O]#Component) :ComponentValuesAliasing[S, O] =
 					outer.aliased(again andThen export)
@@ -1705,7 +1705,7 @@ object ComponentValues {
 		override def preset(component :RefinedMapping[S, O]) :Opt[S] = {
 			val i = index(component)
 			if (i < 0) Lack
-			else Opt(values(i)).crosstyped[S]
+			else Opt(values(i)).withTypeParam[S]
 		}
 
 		override def toString :String =

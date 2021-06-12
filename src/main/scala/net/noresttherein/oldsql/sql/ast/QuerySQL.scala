@@ -1,25 +1,32 @@
 package net.noresttherein.oldsql.sql.ast
 
+import scala.collection.{EvidenceIterableFactory, IterableFactory}
+
+import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
+import net.noresttherein.oldsql.exceptions.{IllegalSQLException, InseparableExpressionException}
+import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.{SelectRelation, Table}
-import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLCommand, SQLDialect, SQLExpression, StandardSQL}
-import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLDialect, SQLExpression, StandardSQL}
+import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnVisitor, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.DMLStatement.StatementResult
+import net.noresttherein.oldsql.sql.Incantation.Cantrip
+import net.noresttherein.oldsql.sql.Query.QueryTemplate
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, ParamlessFrom, PartOf}
-import net.noresttherein.oldsql.sql.SelectAPI.{Intersect, Minus, QueryTemplate, SetOperator, Union, UnionAll}
+import net.noresttherein.oldsql.sql.Select.{Intersect, Minus, SetOperator, Union, UnionAll}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.SQLStatement.StatementResult
+import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionVisitor, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.ExistsSQL
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{ColumnQuery, Rows}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumnMapping.CompoundSelectColumnMappingMatcher
-import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectMapping.{CaseCompoundSelectMapping, CompoundSelectMappingMatcher}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumn.{CaseCompoundSelectColumn, CompoundSelectColumnMatcher}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumnMapping.CompoundSelectColumnMappingVisitor
+import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectMappingSQL.{CaseCompoundSelectMapping, CompoundSelectMappingVisitor}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumn.{CaseCompoundSelectColumn, CompoundSelectColumnVisitor}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL.CaseCompoundSelect
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{CaseSelect, CaseSelectColumn, CaseSelectMapping, SelectColumn, SelectColumnMappingMatcher, SelectColumnMatcher, SelectMappingMatcher, SelectMatcher}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{CaseSelect, CaseSelectColumn, CaseSelectMapping, SelectColumn, SelectColumnMappingVisitor, SelectColumnVisitor, SelectMappingVisitor, SelectVisitor}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
@@ -33,24 +40,35 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
   * compound selects on them (such as `UNION`): [[net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL CompoundSelectSQL]].
   * It also forms its own hierarchy parallel to that of `SelectSQL` and `CompoundSelectSQL`, with subtypes
   * for queries returning a single [[net.noresttherein.oldsql.sql.ast.QuerySQL.ColumnQuery column]]
-  * and a [[net.noresttherein.oldsql.sql.ast.QuerySQL.MappingQuery mapping]].
+  * and a [[net.noresttherein.oldsql.sql.ast.QuerySQL.MappingQuerySQL mapping]].
   */
 trait QuerySQL[-F <: RowProduct, V]
 	extends SQLExpression[F, GlobalScope, Rows[V]] with QueryTemplate[V, ({ type Q[X] = QuerySQL[F, X] })#Q]
 {
-	//overriden to grant access to subclasses in the companion object
-	protected override def component[O] :ResultMapping[O]
-	protected override def export[O] :RefinedMapping[ResultMapping[O]#Subject, O] //= component[O]
+	def rowForm :SQLReadForm[V]
+
+	override def isGlobal = true
+	override def asGlobal :Option[QuerySQL[F, V]] = Some(this)
+	override def groundValue :Opt[Rows[V]] = Lack
 
 	override def isAnchored = true
 	override def anchor(from :F) :QuerySQL[F, V] = this
 
+	/** Wraps this ''select'' in an SQL `EXISTS(...)` function. */
 	def exists :ColumnSQL[F, GlobalScope, Boolean] = ExistsSQL(this)
 
+	/** Wraps this ''select'' in SQL `NOT EXISTS(...)`. */
 	def notExists :ColumnSQL[F, GlobalScope, Boolean] = !ExistsSQL(this)
 
+	/** Converts this ''select'' to an expression for its returned value, representing its usage in SQL assuming
+	  * that exactly one row is returned.
+	  */
 	def one :SQLExpression[F, GlobalScope, V] = to[V]
 
+	/** Converts this ''select'' to an expression for a result set which can be used in conjunction with
+	  * [[net.noresttherein.oldsql.sql.ast.ConditionSQL.ExistsSQL ExistsSQL]] or
+	  * [[net.noresttherein.oldsql.sql.ast.ConditionSQL.InSQL InSQL]] and the like.
+	  */
 	def rows :SQLExpression[F, GlobalScope, Seq[V]] = to[Seq[V]]
 
 	//semantics of unions and rest:
@@ -70,8 +88,36 @@ trait QuerySQL[-F <: RowProduct, V]
 	                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope) :QuerySQL[E, V]
 
 //	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-//	                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
+//	                    (matcher :ExpressionVisitor[F, Y]) :Y[GlobalScope, Rows[V]] =
 //		matcher.query(this)
+
+	@throws[InseparableExpressionException]("If this query is a not a ColumnQuerySQL.")
+	override def split(implicit scope :OperationType) :Seq[ColumnSQL[F, GlobalScope, _]] =
+		throw new InseparableExpressionException("Cannot split a non-column query " + this + " into columns.")
+
+	/** Target of [[net.noresttherein.oldsql.sql.ast.QuerySQL.TopQuerySQLExtension.spell spell]] extension method.
+	  * Forwards to
+	  * [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.spell[V](query:QuerySQL[RowProduct,V])* SQLSpelling.spell]]
+	  * and caches the result. All future calls using the same `spelling` argument will return the cached SQL.
+	  * This method should not be generally overriden, unless to additionally enrich the result without changing
+	  * the actual SQL.
+	  */
+	protected def spellParamless(implicit spelling :SQLSpelling, top :QuerySQL[F, V] <:< QuerySQL[RowProduct, V])
+			:SpelledSQL[@~, RowProduct] =
+		cachedSpelling match {
+			case null =>
+				val sql = spelling.spell(top(this))
+				cachedSQL = sql
+				cachedSpelling = spelling
+				sql
+			case s if s == spelling => cachedSQL
+			case _ => spelling.spell(top(this))
+		}
+	//		if (spelling == StandardSQL.spelling) standardSQL else spelling.spell(this)
+
+	@volatile private var cachedSQL :SpelledSQL[@~, RowProduct] = _
+	@volatile private var cachedSpelling :SQLSpelling = _
+	//	private lazy val standardSQL = StandardSQL.spelling.spell(this)
 
 
 	/** Formats this query as an SQL `String` expression for use inside a tuple with other expressions,
@@ -81,15 +127,14 @@ trait QuerySQL[-F <: RowProduct, V]
 	  * delegate to [[net.noresttherein.oldsql.sql.SQLExpression.defaultSpelling defaultSpelling]].
 	  */
 	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		if (readForm.readColumns == 1)
-			defaultSpelling(context, params)
-		else if (readForm.readColumns == 0)
-			SpelledSQL(context, params)
-		else
-			throw new IllegalStateException(
-				s"Cannot inline a compound select of multiple (${readForm.readColumns} :$readForm) columns: $this."
-			)
+	                                                (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
+		readForm.readColumns match {
+			case 1 => defaultSpelling(context, params)::Nil
+			case n =>
+				throw new InseparableExpressionException(
+					s"Cannot inline a compound select of multiple ($n :$readForm) columns: $this."
+				)
+		}
 
 	/** Generates the SQL `String` for this query as a parameterless expression. The rationale for not combining this
 	  * together with `defaultSpelling` is that it once was impossible to create an instance of `Parameterization`,
@@ -107,14 +152,15 @@ trait QuerySQL[-F <: RowProduct, V]
 			:SpelledSQL[@~, RowProduct] =
 		paramlessSpelling(context)(spelling, top)
 
-	/** Converts this query SQL expression into an executable [[net.noresttherein.oldsql.sql.SQLStatement SQLStatement]]
-	  * proper to the DBMS using the implicit [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]].
-	  * The implementation is delegated to the dialect object.
+
+	/** Target of [[net.noresttherein.oldsql.sql.ast.QuerySQL.TopQuerySQLExtension.spell spell]] extension method.
+	  * Simply forwards to [[net.noresttherein.oldsql.sql.SQLDialect.apply[R,Y](query:QuerySQL[RowProduct,V])* apply]]
+	  * method of the implicit [[net.noresttherein.oldsql.sql.SQLDialect dialect]].
 	  */
-	def returnAs[R](implicit self :QuerySQL[F, V] <:< QuerySQL[RowProduct, V], composition :StatementResult[V, R],
-	                         dialect :SQLDialect = StandardSQL)
-			:SQLCommand[R] =
-		dialect(this)
+	protected def chantParamless[R](implicit composition :StatementResult[V, R], dialect :SQLDialect,
+	                                         top :QuerySQL[F, V] <:< QuerySQL[RowProduct, V]) :Cantrip[R] =
+		dialect(top(this))
+
 
 	override def canEqual(that :Any) :Boolean = that.getClass == getClass
 }
@@ -127,7 +173,7 @@ trait QuerySQL[-F <: RowProduct, V]
 sealed abstract class ImplicitDerivedTables {
 	//we can't have a single implicit into Table[query.ResultMapping] and we need these casts as, above all,
 	//  we need to preserve the value type of the query as the subject type, and bound MappingAt does not specify it.
-	//todo: replace typedprojection with projection once we get rid of references to BaseMapping in API
+	//todo: replace typed projection with projection once we get rid of references to BaseMapping in API
 	implicit def arbitraryQueryRelation[V](query :QuerySQL[RowProduct, V]) :Table[MappingOf[V]#TypedProjection] =
 		SelectRelation[query.ResultMapping, V](query).asInstanceOf[Table[MappingOf[V]#TypedProjection]]
 
@@ -172,12 +218,12 @@ object QuerySQL extends ImplicitDerivedTables {
 
 
 		private case class MultipleRows[+E](seq :Seq[E]) extends Rows[E] {
-			def one :E = seq match {
+			override def one :E = seq match {
 				case Seq(res) => res
 				case _ => throw new IllegalStateException("Expected a single result from a Rows instance, got " + seq.size)
 			}
-			def head :E = seq.head
-			def headOption :Option[E] = seq.headOption
+			override def head :E = seq.head
+			override def headOption :Option[E] = seq.headOption
 		}
 
 		private class SingleRow[E](override val one :E) extends Rows[E] {
@@ -197,20 +243,48 @@ object QuerySQL extends ImplicitDerivedTables {
 		def toRelation :Table[M] = SelectRelation[M, V](self)
 		def toTable :Table[M] = SelectRelation[M, V](self)
 
+//		def as[A <: Label](alias :A) :With[M] As A = With(alias, this) //todo: With for MappingQuerySQL
+		//extracted because of conflicts in TopSelect with Query
 		/** Translates the abstract syntax tree of this SQL expression into textual SQL.
 		  * The result is adapted to the DBMS at hand using implicitly available
 		  * [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]] strategy. Aside from the `String`
 		  * representation, returned [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL SpelledSQL]] contains
 		  * write form setting all bound parameters of the query.
-		  */
+		  */ //an extension method as TopSelect would inherit conflicting signatures from Select and SelectSQL
+		@throws[IllegalSQLException]("if the expression cannot be rendered as SQL for the DMBS particular to the given dialect.")
 		def spell(implicit spelling :SQLSpelling = StandardSQL.spelling) :SpelledSQL[@~, RowProduct] =
-			spelling.spell(self)
-//		def as[A <: Label](alias :A) :With[M] As A = With(alias, this) //todo: With for MappingQuery
+			self.spellParamless
+
+
+		/** Converts this query SQL expression into an executable [[net.noresttherein.oldsql.sql.Incantation Incantation]]
+		  * proper to the DBMS using the implicit [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]].
+		  * The implementation is delegated to the dialect object.
+		  */
+		@throws[IllegalSQLException]("if the expression cannot be rendered as SQL for the DMBS particular to the given dialect.")
+		def chant[R](implicit composition :StatementResult[V, R], dialect :SQLDialect = StandardSQL) :Cantrip[R] =
+			self.chantParamless
+
+		/** Converts this query SQL expression into an executable
+		  * [[net.noresttherein.oldsql.sql.Incantation Incantation]]`[(), C[V]]` proper to the implicit
+		  * [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]. The results of the query will be returned as
+		  * a collection `C[V]` with the given factory.
+		  */
+		def returnAs[C[_]](collection :IterableFactory[C])(implicit dialect :Maybe[SQLDialect]) :Cantrip[C[V]] =
+			chant[C[V]](StatementResult(collection)(self.rowForm), dialect getOrElse StandardSQL)
+
+		/** Converts this query SQL expression into an executable
+		  * [[net.noresttherein.oldsql.sql.Incantation Incantation]]`[(), C[V]]` proper to the implicit
+		  * [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]. The results of the query will be returned as
+		  * a collection `C[V]` with the given factory.
+		  */
+		def returnAs[C[_], E[_]](collection :EvidenceIterableFactory[C, E])
+		                        (implicit ev :E[V], dialect :Maybe[SQLDialect]) :Cantrip[C[V]] =
+			chant[C[V]](StatementResult(collection)(ev, self.rowForm), dialect getOrElse StandardSQL)
 	}
 
 
-	implicit def derivedTable[M[O] <: MappingAt[O]](query :MappingQuery[RowProduct, M]) :Table[M] =
-		SelectRelation[M, M[()]#Subject](query)
+	implicit def derivedTable[M[O] <: MappingAt[O]](query :MappingQuerySQL[RowProduct, M]) :Table[M] =
+		SelectRelation[M, M[Unit]#Subject](query)
 
 
 
@@ -219,7 +293,7 @@ object QuerySQL extends ImplicitDerivedTables {
 
 	type GroundQuery[V] = QuerySQL[RowProduct, V]
 	type GroundColumnQuery[V] = ColumnQuery[RowProduct, V]
-	type GroundMappingQuery[H[A] <: MappingAt[A]] = MappingQuery[RowProduct, H]
+	type GroundMappingQuery[H[A] <: MappingAt[A]] = MappingQuerySQL[RowProduct, H]
 	type GroundColumnMappingQuery[H[A] <: ColumnMapping[V, A], V] = ColumnMappingQuery[RowProduct, H, V]
 
 
@@ -234,6 +308,7 @@ object QuerySQL extends ImplicitDerivedTables {
 	{
 		override type ResultMapping[O] <: ColumnMapping[V, O]
 
+		override def asGlobal :Option[ColumnQuery[F, V]] = Some(this)
 		override def anchor(from :F) :ColumnQuery[F, V] = this
 
 		def union[E <: F](other :ColumnQuery[E, V]) :ColumnQuery[E, V] = Union(this, other)
@@ -247,30 +322,30 @@ object QuerySQL extends ImplicitDerivedTables {
 		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope) :ColumnQuery[E, V]
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-//		                    (matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
+//		                    (matcher :ColumnVisitor[F, Y]) :Y[GlobalScope, Rows[V]] =
 //			matcher.query(this)
 	}
 
 
 	/** An SQL query, that is an SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectAs select]] or
-	  * a [[net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectMapping compound select]] on them,
+	  * a [[net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectMappingSQL compound select]] on them,
 	  * which provides [[net.noresttherein.oldsql.schema.Mapping mapping]] `M` for the returned rows.
 	  */
-	trait MappingQuery[-F <: RowProduct, M[O] <: MappingAt[O]] extends QuerySQL[F, M[()]#Subject] {
+	trait MappingQuerySQL[-F <: RowProduct, M[O] <: MappingAt[O]] extends QuerySQL[F, M[Unit]#Subject] {
 		override type ResultMapping[O] = M[O]
 
-		def union[E <: F](other :MappingQuery[E, M]) :MappingQuery[E, M] = Union(this, other)
-		def unionAll[E <: F](other :MappingQuery[E, M]) :MappingQuery[E, M] = UnionAll(this, other)
-		def minus[E <: F](other :MappingQuery[E, M]) :MappingQuery[E, M] = Minus(this, other)
-		def intersect[E <: F](other :MappingQuery[E, M]) :MappingQuery[E, M] = Intersect(this, other)
+		def union[E <: F](other :MappingQuerySQL[E, M]) :MappingQuerySQL[E, M] = Union(this, other)
+		def unionAll[E <: F](other :MappingQuerySQL[E, M]) :MappingQuerySQL[E, M] = UnionAll(this, other)
+		def minus[E <: F](other :MappingQuerySQL[E, M]) :MappingQuerySQL[E, M] = Minus(this, other)
+		def intersect[E <: F](other :MappingQuerySQL[E, M]) :MappingQuerySQL[E, M] = Intersect(this, other)
 
-		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :MappingQuery[E, M]
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :MappingQuerySQL[E, M]
 
 		override def expand[U <: F, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope) :MappingQuery[E, M]
+		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope) :MappingQuerySQL[E, M]
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-//		                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[M[()]#Subject]] =
+//		                    (matcher :ExpressionVisitor[F, Y]) :Y[GlobalScope, Rows[M[()]#Subject]] =
 //			matcher.mappingQuery(this)
 	}
 
@@ -280,7 +355,7 @@ object QuerySQL extends ImplicitDerivedTables {
 	  * @see [[net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumnMapping]]
 	  */
 	trait ColumnMappingQuery[-F <: RowProduct, M[O] <: ColumnMapping[V, O], V]
-		extends ColumnQuery[F, V] with MappingQuery[F, M]
+		extends ColumnQuery[F, V] with MappingQuerySQL[F, M]
 	{
 		def union[E <: F](other :ColumnMappingQuery[E, M, V]) :ColumnMappingQuery[E, M, V] = Union(this, other)
 		def unionAll[E <: F](other :ColumnMappingQuery[E, M, V]) :ColumnMappingQuery[E, M, V] = UnionAll(this, other)
@@ -294,7 +369,7 @@ object QuerySQL extends ImplicitDerivedTables {
 				:ColumnMappingQuery[E, M, V]
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-//		                    (matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
+//		                    (matcher :ColumnVisitor[F, Y]) :Y[GlobalScope, Rows[V]] =
 //			matcher.mappingQuery(this)
 	}
 
@@ -302,7 +377,7 @@ object QuerySQL extends ImplicitDerivedTables {
 
 	/** Implements a compound select combining the result sets of two SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL selects]]
 	  * (or other [[net.noresttherein.oldsql.sql.ast.QuerySQL queries]]). The kind of operation is defined by
-	  * the [[net.noresttherein.oldsql.sql.SelectAPI.SetOperator SetOperator]]
+	  * the [[net.noresttherein.oldsql.sql.Select.SetOperator SetOperator]]
 	  * of the [[net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL.operator operator]] member property.
 	  * The row schemas of both arguments must match or an exception will be thrown when this expression
 	  * is converted into an executable SQL statement. If the schema of any of the member ''selects'' is flexible
@@ -318,6 +393,7 @@ object QuerySQL extends ImplicitDerivedTables {
 
 		override def parts :Seq[QuerySQL[F, V]] = left::right::Nil
 		override def readForm :SQLReadForm[Rows[V]] = left.readForm
+		override def rowForm :SQLReadForm[V] = left.rowForm
 
 		override def map[X](f :V => X) :QuerySQL[F, X] = CompoundSelectSQL(left.map(f), operator, right.map(f))
 
@@ -344,10 +420,19 @@ object QuerySQL extends ImplicitDerivedTables {
 				case (l, r) => operator(l, r)
 			}
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-		                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
-			matcher.compoundSelect(this)
+		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+		                              (visitor :ExpressionVisitor[F, Y]) :Y[GlobalScope, Rows[V]] =
+			visitor.compoundSelect(this)
 
+
+		override def columnCount(implicit spelling :SQLSpelling) :Int = {
+			val l = left.columnCount
+			if (l != right.columnCount)
+				throw new IllegalStateException(
+					s"Differing column counts of member selects of $this: $l vs ${right.columnCount}."
+				)
+			l
+		}
 
 		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
 		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
@@ -359,23 +444,13 @@ object QuerySQL extends ImplicitDerivedTables {
 					spelling(left :QuerySQL[E, V])(context, params)
 			}
 			val r = right match {
-				case CompoundSelectSQL(_, op, _) if op != operator =>
+				case CompoundSelectSQL(_, op, _) if op != operator || operator == Minus =>
 					"(" +: (spelling(right :QuerySQL[E, V])(context, params.reset()) + ")")
 				case _ =>
 					spelling(right :QuerySQL[E, V])(context, l.params)
 			}
 			SpelledSQL(l.sql + (" " + spelling(operator) +" ") + r.sql, context, l.params :++ r.params)
 		}
-
-//		protected override def paramlessSpelling(context :SQLContext)(implicit spelling :SQLSpelling,
-//		                                                              top :QuerySQL[F, V] <:< QuerySQL[RowProduct, V])
-//				:SpelledSQL[@~, RowProduct] =
-//		{
-//			val left = spelling.paramless(top(this.left))(context)
-//			val right = spelling.paramless(top(this.right))(context)
-//			val sql = left.sql + (" " + spelling(operator) + " ") + right.sql
-//			SpelledSQL(sql, context, left.params :++ right.params)
-//		}
 
 
 		/** Validates the compatibility of `left` and `right` queries, throwing an `IllegalArgumentException`
@@ -384,7 +459,7 @@ object QuerySQL extends ImplicitDerivedTables {
 		  * as constructor fields. Default implementation verifies only if column counts of the forms are equal
 		  * and not zero, but it can be overriden by subclasses.
 		  */
-		protected def validateCompatibility() :Unit = {
+		protected def validateCompatibility() :Unit = { //todo: allow different column sets for the same table
 			if (left.readForm.readColumns != right.readForm.readColumns)
 				throw new IllegalArgumentException(
 					s"Cannot combine two selects of varying column counts ${left.readForm.readColumns}(${left.readForm})" +
@@ -436,20 +511,20 @@ object QuerySQL extends ImplicitDerivedTables {
 			extends CompoundSelectSQL[F, V]
 		{
 			override type ResultMapping[O] = left.ResultMapping[O]
-			protected override def component[O] = left.component[O]
-			protected override def export[O] = left.export[O] //todo: this should involve some reconciliation
+			override def mapping[O] = left.mapping[O]
+			override def export[O] = left.export[O] //todo: this should involve some reconciliation
 		}
 
 
 
-		trait CompoundSelectMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends CompoundSelectMappingMatcher[F, Y] with CompoundSelectColumnMatcher[F, Y]
+		trait CompoundSelectVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+			extends CompoundSelectMappingVisitor[F, Y] with CompoundSelectColumnVisitor[F, Y]
 		{
 			def compoundSelect[V](e :CompoundSelectSQL[F, V]) :Y[GlobalScope, Rows[V]]
 		}
 
 		trait MatchCompoundSelect[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends CompoundSelectMatcher[F, Y] with CaseCompoundSelectMapping[F, Y]
+			extends CompoundSelectVisitor[F, Y] with CaseCompoundSelectMapping[F, Y]
 		{
 			override def compoundSelect[V](e :CompoundSelectColumn[F, V]) :Y[GlobalScope, Rows[V]] =
 				compoundSelect(e :CompoundSelectSQL[F, V])
@@ -459,7 +534,7 @@ object QuerySQL extends ImplicitDerivedTables {
 			extends MatchCompoundSelect[F, Y]
 		{
 			override def compoundSelectMapping[M[O] <: MappingAt[O]]
-			                                (e :CompoundSelectMapping[F, M]) :Y[GlobalScope, Rows[M[()]#Subject]] =
+			                                (e :CompoundSelectMappingSQL[F, M]) :Y[GlobalScope, Rows[M[Unit]#Subject]] =
 				compoundSelect(e)
 		}
 
@@ -473,7 +548,7 @@ object QuerySQL extends ImplicitDerivedTables {
 	/** Implements a compound select combining the result sets of two single-column
 	  * SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumn selects]]
 	  * (or other [[net.noresttherein.oldsql.sql.ast.QuerySQL.ColumnQuery queries]]). The kind of operation is defined by
-	  * the [[net.noresttherein.oldsql.sql.SelectAPI.SetOperator SetOperator]]
+	  * the [[net.noresttherein.oldsql.sql.Select.SetOperator SetOperator]]
 	  * of the [[net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL.operator operator]] member property.
 	  */
 	trait CompoundSelectColumn[-F <: RowProduct, V]
@@ -510,9 +585,9 @@ object QuerySQL extends ImplicitDerivedTables {
 			}
 
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-		                    (matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Rows[V]] =
-			matcher.compoundSelect(this)
+		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+		                              (visitor :ColumnVisitor[F, Y]) :Y[GlobalScope, Rows[V]] =
+			visitor.compoundSelect(this)
 	}
 
 
@@ -530,25 +605,25 @@ object QuerySQL extends ImplicitDerivedTables {
 			}
 
 		private[QuerySQL] class BaseCompoundSelectColumn[-F <: RowProduct, V]
-		                                                 (override val left :ColumnQuery[F, V],
-		                                                  override val operator :SetOperator,
-		                                                  override val right :ColumnQuery[F, V])
+		                                                (override val left :ColumnQuery[F, V],
+		                                                 override val operator :SetOperator,
+		                                                 override val right :ColumnQuery[F, V])
 			extends CompoundSelectColumn[F, V]
 		{
 			override type ResultMapping[O] = ColumnMapping[V, O]
-			protected override def component[O] = left.component
-			protected override def export[O] = left.export //todo: this should involve some reconciliation
+			override def mapping[O] = left.mapping
+			override def export[O] = left.export //todo: this should involve some reconciliation
 		}
 
 
-		trait CompoundSelectColumnMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends CompoundSelectColumnMappingMatcher[F, Y]
+		trait CompoundSelectColumnVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+			extends CompoundSelectColumnMappingVisitor[F, Y]
 		{
 			def compoundSelect[V](e :CompoundSelectColumn[F, V]) :Y[GlobalScope, Rows[V]]
 		}
 
 		type MatchCompoundSelectColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
-			CompoundSelectColumnMatcher[F, Y]
+			CompoundSelectColumnVisitor[F, Y]
 
 		trait CaseCompoundSelectColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends MatchCompoundSelectColumn[F, Y]
@@ -566,84 +641,84 @@ object QuerySQL extends ImplicitDerivedTables {
 
 	/** Implements a compound select combining the result sets of two
 	  * SQL [[net.noresttherein.oldsql.sql.ast.SelectSQL.SelectAs selects]]
-	  * (or other [[net.noresttherein.oldsql.sql.ast.QuerySQL.MappingQuery queries]]), sharing the same row schema,
+	  * (or other [[net.noresttherein.oldsql.sql.ast.QuerySQL.MappingQuerySQL queries]]), sharing the same row schema,
 	  * as defined by the mapping `M`. The kind of operation is defined by
-	  * the [[net.noresttherein.oldsql.sql.SelectAPI.SetOperator SetOperator]]
+	  * the [[net.noresttherein.oldsql.sql.Select.SetOperator SetOperator]]
 	  * of the [[net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectSQL.operator operator]] member property.
 	  */
-	trait CompoundSelectMapping[-F <: RowProduct, M[O] <: MappingAt[O]]
-		extends CompoundSelectSQL[F, M[()]#Subject] with MappingQuery[F, M]
+	trait CompoundSelectMappingSQL[-F <: RowProduct, M[O] <: MappingAt[O]]
+		extends CompoundSelectSQL[F, M[Unit]#Subject] with MappingQuerySQL[F, M]
 	{
-		override val left :MappingQuery[F, M]
-		override val right :MappingQuery[F, M]
+		override val left :MappingQuerySQL[F, M]
+		override val right :MappingQuerySQL[F, M]
 
-		protected override def component[O] = left.component
-		protected override def export[O] = left.export //todo: this should involve some reconciliation
+		override def mapping[O] = left.mapping
+		override def export[O] = left.export //todo: this should involve some reconciliation
 
-		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :CompoundSelectMapping[E, M] =
+		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :CompoundSelectMappingSQL[E, M] =
 			(mapper(left), mapper(right)) match {
-				case (l :MappingQuery[E @unchecked, M @unchecked], r :MappingQuery[E @unchecked, M @unchecked]) =>
-					CompoundSelectMapping(l, operator, r)
+				case (l :MappingQuerySQL[E @unchecked, M @unchecked], r :MappingQuerySQL[E @unchecked, M @unchecked]) =>
+					CompoundSelectMappingSQL(l, operator, r)
 				case (l, r) =>
 					throw new IllegalArgumentException(
 						s"Failed $mapper transformation of $this: ($l, $r) is not a valid ColumnQuery pair."
 					)
 			}
 
-		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :MappingQuery[E, M] =
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :MappingQuerySQL[E, M] =
 			(left.basedOn(base), right.basedOn(base)) match {
-				case (l, r) if (l eq left) && (r eq right) => this.asInstanceOf[MappingQuery[E, M]]
+				case (l, r) if (l eq left) && (r eq right) => this.asInstanceOf[MappingQuerySQL[E, M]]
 				case (l, r) => operator(l, r)
 			}
 
 		override def expand[U <: F, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope) :MappingQuery[E, M] =
+		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope) :MappingQuerySQL[E, M] =
 			(left.expand(base), right.expand(base)) match {
-				case (l, r) if (l eq left) && (r eq right) => this.asInstanceOf[MappingQuery[E, M]]
+				case (l, r) if (l eq left) && (r eq right) => this.asInstanceOf[MappingQuerySQL[E, M]]
 				case (l, r) => operator(l, r)
 			}
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-		                    (matcher :ExpressionMatcher[F, Y]) :Y[GlobalScope, Rows[M[()]#Subject]] =
-			matcher.compoundSelectMapping(this)
+		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+		                              (visitor :ExpressionVisitor[F, Y]) :Y[GlobalScope, Rows[M[Unit]#Subject]] =
+			visitor.compoundSelectMapping(this)
 	}
 
 
 
-	object CompoundSelectMapping {
+	object CompoundSelectMappingSQL {
 		def apply[F <: RowProduct, M[O] <: MappingAt[O]]
-		         (left :MappingQuery[F, M], operator :SetOperator, right :MappingQuery[F, M])
-				:CompoundSelectMapping[F, M] =
-			new BaseCompoundSelectMapping(left, operator, right)
+		         (left :MappingQuerySQL[F, M], operator :SetOperator, right :MappingQuerySQL[F, M])
+				:CompoundSelectMappingSQL[F, M] =
+			new BaseCompoundSelectMappingSQL(left, operator, right)
 
 		def unapply[F <: RowProduct, V](e :SQLExpression[F, LocalScope, Rows[V]])
-				:Opt[(MappingQuery[F, M], SetOperator, MappingQuery[F, M]) forSome { type M[O] <: MappingAt[O] }] =
+				:Opt[(MappingQuerySQL[F, M], SetOperator, MappingQuerySQL[F, M]) forSome { type M[O] <: MappingAt[O] }] =
 			e match {
-				case op :CompoundSelectMapping[F @unchecked, MappingAt @unchecked] =>
+				case op :CompoundSelectMappingSQL[F @unchecked, MappingAt @unchecked] =>
 					Got((op.left, op.operator, op.right))
 				case _ => Lack
 			}
 
-		private[QuerySQL] class BaseCompoundSelectMapping[-F <: RowProduct, M[O] <: MappingAt[O]]
-		                        (override val left :MappingQuery[F, M], override val operator :SetOperator,
-		                         override val right :MappingQuery[F, M])
-			extends CompoundSelectMapping[F, M]
+		private[QuerySQL] class BaseCompoundSelectMappingSQL[-F <: RowProduct, M[O] <: MappingAt[O]]
+		                        (override val left :MappingQuerySQL[F, M], override val operator :SetOperator,
+		                         override val right :MappingQuerySQL[F, M])
+			extends CompoundSelectMappingSQL[F, M]
 
 
 
-		trait CompoundSelectMappingMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends CompoundSelectColumnMappingMatcher[F, Y]
+		trait CompoundSelectMappingVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+			extends CompoundSelectColumnMappingVisitor[F, Y]
 		{
 			def compoundSelectMapping[M[O] <: MappingAt[O]]
-			                         (e :CompoundSelectMapping[F, M]) :Y[GlobalScope, Rows[M[()]#Subject]]
+			                         (e :CompoundSelectMappingSQL[F, M]) :Y[GlobalScope, Rows[M[Unit]#Subject]]
 		}
 
 		trait MatchCompoundSelectMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends CompoundSelectMappingMatcher[F, Y]
+			extends CompoundSelectMappingVisitor[F, Y]
 		{
 			override def compoundSelectMapping[M[O] <: ColumnMapping[V, O], V]
 			                                  (e :CompoundSelectColumnMapping[F, M, V]) :Y[GlobalScope, Rows[V]] =
-				{ val res = compoundSelectMapping(e :CompoundSelectMapping[F, M]); res  }
+				{ val res = compoundSelectMapping(e :CompoundSelectMappingSQL[F, M]); res  }
 		}
 
 		type CaseCompoundSelectMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
@@ -657,7 +732,7 @@ object QuerySQL extends ImplicitDerivedTables {
 
 
 	trait CompoundSelectColumnMapping[-F <: RowProduct, M[O] <: ColumnMapping[V, O], V]
-		extends CompoundSelectColumn[F, V] with ColumnMappingQuery[F, M, V] with CompoundSelectMapping[F, M]
+		extends CompoundSelectColumn[F, V] with ColumnMappingQuery[F, M, V] with CompoundSelectMappingSQL[F, M]
 	{
 		override val left :ColumnMappingQuery[F, M, V]
 		override val right :ColumnMappingQuery[F, M, V]
@@ -687,9 +762,9 @@ object QuerySQL extends ImplicitDerivedTables {
 					)
 			}
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-		                    (matcher :ColumnMatcher[F, Y]) :Y[GlobalScope, Rows[M[()]#Subject]] =
-			matcher.compoundSelectMapping(this)
+		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+		                              (visitor :ColumnVisitor[F, Y]) :Y[GlobalScope, Rows[M[Unit]#Subject]] =
+			visitor.compoundSelectMapping(this)
 	}
 
 
@@ -715,16 +790,16 @@ object QuerySQL extends ImplicitDerivedTables {
 
 
 
-		trait CompoundSelectColumnMappingMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+		trait CompoundSelectColumnMappingVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
 			def compoundSelectMapping[M[O] <: ColumnMapping[V, O], V]
 			                       (e :CompoundSelectColumnMapping[F, M, V]) :Y[GlobalScope, Rows[V]]
 		}
 
 		type MatchCompoundSelectColumnMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
-			CompoundSelectColumnMappingMatcher[F, Y]
+			CompoundSelectColumnMappingVisitor[F, Y]
 
 		type CaseCompoundSelectColumnMapping[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
-			CompoundSelectColumnMappingMatcher[F, Y]
+			CompoundSelectColumnMappingVisitor[F, Y]
 	}
 
 
@@ -732,14 +807,14 @@ object QuerySQL extends ImplicitDerivedTables {
 
 
 
-	trait ColumnMappingQueryMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends CompoundSelectColumnMappingMatcher[F, Y] with SelectColumnMappingMatcher[F, Y]
+	trait ColumnMappingQueryVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends CompoundSelectColumnMappingVisitor[F, Y] with SelectColumnMappingVisitor[F, Y]
 	{
 		def mappingQuery[M[O] <: ColumnMapping[V, O], V](e :ColumnMappingQuery[F, M, V]) :Y[GlobalScope, Rows[V]]
 	}
 
 	type MatchColumnMappingQuery[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
-		ColumnMappingQueryMatcher[F, Y]
+		ColumnMappingQueryVisitor[F, Y]
 
 	trait CaseColumnMappingQuery[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends MatchColumnMappingQuery[F, Y]
@@ -755,41 +830,41 @@ object QuerySQL extends ImplicitDerivedTables {
 
 
 
-	trait MappingQueryMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends ColumnMappingQueryMatcher[F, Y] with CompoundSelectMappingMatcher[F, Y] with SelectMappingMatcher[F, Y]
+	trait MappingQueryVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends ColumnMappingQueryVisitor[F, Y] with CompoundSelectMappingVisitor[F, Y] with SelectMappingVisitor[F, Y]
 	{
-		def mappingQuery[M[O] <: MappingAt[O]](e :MappingQuery[F, M]) :Y[GlobalScope, Rows[M[()]#Subject]]
+		def mappingQuery[M[O] <: MappingAt[O]](e :MappingQuerySQL[F, M]) :Y[GlobalScope, Rows[M[Unit]#Subject]]
 	}
 
 	trait MatchMappingQuery[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends MappingQueryMatcher[F, Y] with CaseSelectMapping[F, Y] with CaseCompoundSelectMapping[F, Y]
+		extends MappingQueryVisitor[F, Y] with CaseSelectMapping[F, Y] with CaseCompoundSelectMapping[F, Y]
 	{
 		override def mappingQuery[M[O] <: ColumnMapping[V, O], V](e :ColumnMappingQuery[F, M, V]) :Y[GlobalScope, Rows[V]] =
-			{ val res = mappingQuery(e :MappingQuery[F, M]); res }
+			{ val res = mappingQuery(e :MappingQuerySQL[F, M]); res }
 	}
 
 	trait CaseMappingQuery[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends MatchMappingQuery[F, Y]
 	{
 		override def selectMapping[H[O] <: MappingAt[O]]
-		                          (e :SelectSQL.SelectAs[F, H]) :Y[GlobalScope, Rows[H[()]#Subject]] =
+		                          (e :SelectSQL.SelectAs[F, H]) :Y[GlobalScope, Rows[H[Unit]#Subject]] =
 			mappingQuery(e)
 
 		override def compoundSelectMapping[M[O] <: MappingAt[O]]
-		                                  (operation :CompoundSelectMapping[F, M]) :Y[GlobalScope, Rows[M[()]#Subject]] =
+		                                  (operation :CompoundSelectMappingSQL[F, M]) :Y[GlobalScope, Rows[M[Unit]#Subject]] =
 			mappingQuery(operation)
 	}
 
 
 
-	trait ColumnQueryMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends ColumnMappingQueryMatcher[F, Y] with SelectColumnMatcher[F, Y] with CompoundSelectColumnMatcher[F, Y]
+	trait ColumnQueryVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends ColumnMappingQueryVisitor[F, Y] with SelectColumnVisitor[F, Y] with CompoundSelectColumnVisitor[F, Y]
 	{
 		def query[V](e :ColumnQuery[F, V]) :Y[GlobalScope, Rows[V]]
 	}
 
 	trait MatchColumnQuery[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends ColumnQueryMatcher[F, Y] with CaseColumnMappingQuery[F, Y]
+		extends ColumnQueryVisitor[F, Y] with CaseColumnMappingQuery[F, Y]
 		   with CaseSelectColumn[F, Y] with CaseCompoundSelectColumn[F, Y]
 	{
 		override def mappingQuery[M[O] <: ColumnMapping[V, O], V]
@@ -807,18 +882,18 @@ object QuerySQL extends ImplicitDerivedTables {
 
 
 
-	trait QueryMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends ColumnQueryMatcher[F, Y] with MappingQueryMatcher[F, Y] with SelectMatcher[F, Y]
+	trait QueryVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends ColumnQueryVisitor[F, Y] with MappingQueryVisitor[F, Y] with SelectVisitor[F, Y]
 	{
 		def query[V](e :QuerySQL[F, V]) :Y[GlobalScope, Rows[V]]
 	}
 
 	trait MatchQuery[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends QueryMatcher[F, Y] with MatchMappingQuery[F, Y] with CaseSelect[F, Y] with CaseCompoundSelect[F, Y]
+		extends QueryVisitor[F, Y] with MatchMappingQuery[F, Y] with CaseSelect[F, Y] with CaseCompoundSelect[F, Y]
 	{
 		override def query[V](e :ColumnQuery[F, V]) :Y[GlobalScope, Rows[V]] = query(e :QuerySQL[F, V])
 
-		override def mappingQuery[M[O] <: MappingAt[O]](e :MappingQuery[F, M]) :Y[GlobalScope, Rows[M[()]#Subject]] =
+		override def mappingQuery[M[O] <: MappingAt[O]](e :MappingQuerySQL[F, M]) :Y[GlobalScope, Rows[M[Unit]#Subject]] =
 			query(e)
 	}
 

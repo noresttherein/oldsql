@@ -19,13 +19,13 @@ import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, E
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingBound, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ArbitraryProjection, ExactProjection, IsomorphicProjection}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiterals
+import net.noresttherein.oldsql.schema.SQLWriteForm.WriteFormLiteralsBackFeed
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
 import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
-import net.noresttherein.oldsql.sql.{RowProduct, SQLExpression}
+import net.noresttherein.oldsql.sql.{AndFrom, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseComponent
 import net.noresttherein.oldsql.sql.mechanics.TableCount
@@ -146,7 +146,13 @@ import slang._
   * @see [[net.noresttherein.oldsql.schema.ColumnMapping]]
   * @see [[net.noresttherein.oldsql.schema.bases.BaseMapping]]
   * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame]]
-  */
+  * @define ExportSubcomponentsInfo [[net.noresttherein.oldsql.schema.Mapping.export Export]] columns and subcomponents
+  *                                 of a mapping's component are ''not'' necessarily ''export'' columns and components
+  *                                 of the parent mapping. Hence, calling
+  *                                 [[net.noresttherein.oldsql.schema.Mapping.columns component.columns]]
+  *                                 may return columns with invalid - from the point of view of this mapping -
+  *                                 [[net.noresttherein.oldsql.schema.Mapping.buffs buffs]] or even names.
+  */ //todo: consider serialization. The problem are all the functions, which are not serializable...
 trait Mapping {
 
 	/** The mapped entity type. */
@@ -194,7 +200,7 @@ trait Mapping {
 	  * constructor for mappings with definitions of both the `Subject` and the `Origin` types.
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.Component]]
-	  */
+	  */ //todo: rename Project
 	type Projection[O] = RefinedMapping[Subject, O]
 
 	/** A type alias for the [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping]] with the provided
@@ -267,7 +273,8 @@ trait Mapping {
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.Column]]
 	  * @see [[net.noresttherein.oldsql.schema.Mapping.Projection]]
 	  */ //consider: renaming it to Brick
-	type Component[T] = RefinedMapping[T, Origin]
+	type Component[T] = RefinedMapping[T, Origin] 
+	//todo: SpecificComponent/SpecificColumn subtypes returned by SQLMapping and similar, so that we don't need all the overrides
 
 	/** Any [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]] with the same origin marker type
 	  * as this instance and thus a valid subcomponent type of this mapping. It is also occasionally used as a part
@@ -827,6 +834,163 @@ trait Mapping {
 	  */
 	def updatedByDefault :Unique[Column[_]] = columnsWithout(NoUpdateByDefault)
 
+	/** All columns of `component` which are considered selectable by this mapping. $ExportSubcomponentsInfo
+	  * All subcomponents need exporting before use; this method exports all columns of `component`
+	  * and returns those with [[net.noresttherein.oldsql.schema.Buff.NoSelect NoSelect]] inactive.
+	  * @return the same column set as `component.columns.map(export(_)).filter(NoSelect.inactive)`,
+	  *         in an undefined order.
+	  */
+	def selectable(component :Component[_]) :Unique[Column[_]] = columnsWithout(component, NoSelect)
+
+	/** All columns of `component` which are considered filterable (usable in SQL ''where'' clauses) by this mapping.
+	  * $ExportSubcomponentsInfo
+	  * All subcomponents need exporting before use; this method exports all columns of `component`
+	  * and returns those with [[net.noresttherein.oldsql.schema.Buff.NoFilter NoFilter]] inactive.
+	  * @return the same column set as `component.columns.map(export(_)).filter(NoFilter.inactive)`,
+	  *         in an undefined order.
+	  */
+	def filterable(component :Component[_]) :Unique[Column[_]] = columnsWithout(component, NoFilter)
+
+	/** All columns of `component` which are considered insertable by this mapping. $ExportSubcomponentsInfo
+	  * All subcomponents need exporting before use; this method exports all columns of `component`
+	  * and returns those with [[net.noresttherein.oldsql.schema.Buff.NoInsert NoInsert]] inactive.
+	  * @return the same column set as `component.columns.map(export(_)).filter(NoInsert.inactive)`,
+	  *         in an undefined order.
+	  */
+	def insertable(component :Component[_]) :Unique[Column[_]] = columnsWithout(component, NoInsert)
+
+	/** All columns of `component` which are considered updatable by this mapping. $ExportSubcomponentsInfo
+	  * All subcomponents need exporting before use; this method exports all columns of `component`
+	  * and returns those with [[net.noresttherein.oldsql.schema.Buff.NoUpdate NoUpdate]] inactive.
+	  * @return the same column set as `component.columns.map(export(_)).filter(NoUpdate.inactive)`,
+	  *         in an undefined order.
+	  */
+	def updatable(component :Component[_]) :Unique[Column[_]] = columnsWithout(component, NoUpdate)
+
+	/** All columns of `component` which are considered auto inserted (generated by the database on insert)
+	  * by this mapping. $ExportSubcomponentsInfo
+	  * All subcomponents need exporting before use; this method exports all columns of `component`
+	  * and returns those with [[net.noresttherein.oldsql.schema.Buff.AutoInsert AutoInsert]] active.
+	  * @return the same column set as `component.columns.map(export(_)).filter(AutoInsert.active)`,
+	  *         in an undefined order.
+	  */
+	def autoInserted(component :Component[_]) :Unique[Column[_]] = columnsWith(component, AutoInsert)
+
+	/** All columns of `component` which are considered auto updated (generated by the database on update)
+	  * by this mapping. $ExportSubcomponentsInfo
+	  * All subcomponents need exporting before use; this method exports all columns of `component`
+	  * and returns those with [[net.noresttherein.oldsql.schema.Buff.AutoUpdate AutoUpdate]] active.
+	  * @return the same column set as `component.columns.map(export(_)).filter(AutoUpdate.active)`,
+	  *         in an undefined order.
+	  */
+	def autoUpdated(component :Component[_]) :Unique[Column[_]] = columnsWith(component, AutoUpdate)
+
+	/** All columns of `component` which are specified as selected by default this mapping. $ExportSubcomponentsInfo
+	  * All subcomponents need exporting before use; this method exports all columns of `component`
+	  * and returns those with [[net.noresttherein.oldsql.schema.Buff.NoSelect NoSelect]] inactive.
+	  * @return the same column set as `component.columns.map(export(_)).filter(NoSelectByDefault.inactive)`,
+	  *         in an undefined order.
+	  */
+	def selectedByDefault(component :Component[_]) :Unique[Column[_]] = columnsWithout(component, NoSelectByDefault)
+
+	/** All columns of `component` which are specified as filtered by default (included in component vs component
+	  * comparisons in ''where'' clauses) by this mapping. $ExportSubcomponentsInfo
+	  * All subcomponents need exporting before use; this method exports all columns of `component`
+	  * and returns those with [[net.noresttherein.oldsql.schema.Buff.NoFilterByDefault NoFilterByDefault]] inactive.
+	  * @return the same column set as `component.columns.map(export(_)).filter(NoFilterByDefault.inactive)`,
+	  *         in an undefined order.
+	  */
+	def filteredByDefault(component :Component[_]) :Unique[Column[_]] = columnsWithout(component, NoFilterByDefault)
+
+	/** All columns of `component` which are specified as inserted by default this mapping. $ExportSubcomponentsInfo
+	  * All subcomponents need exporting before use; this method exports all columns of `component`
+	  * and returns those with [[net.noresttherein.oldsql.schema.Buff.NoInsertByDefault NoInsertByDefault]] inactive.
+	  * @return the same column set as `component.columns.map(export(_)).filter(NoInsertByDefault.inactive)`,
+	  *         in an undefined order.
+	  */
+	def insertedByDefault(component :Component[_]) :Unique[Column[_]] = columnsWithout(component, NoInsertByDefault)
+
+	/** All columns of `component` which are specified as updated by default this mapping. $ExportSubcomponentsInfo
+	  * All subcomponents need exporting before use; this method exports all columns of `component`
+	  * and returns those with [[net.noresttherein.oldsql.schema.Buff.NoUpdateByDefault NoUpdateByDefault]] inactive.
+	  * @return the same column set as `component.columns.map(export(_)).filter(NoSelectByDefault.inactive)`,
+	  *         in an undefined order.
+	  */
+	def updatedByDefault(component :Component[_]) :Unique[Column[_]] = columnsWithout(component, NoUpdateByDefault)
+
+	/** All selectable columns of this mapping from the point of view of a supercomponent of this mapping.
+	  * It is a shortcut for (which should always stay consistent with) 
+	  * `parent.`[[net.noresttherein.oldsql.schema.Mapping.selectable(component:Component[_]) selectable]]`(this)`.
+	  * May be more convenient when chaining methods.
+	  * @param parent a mapping of which this mapping is a component.
+	  */
+	def selectableIn(parent :Component[_]) :Unique[Column[_]] = parent.selectable(refine)
+
+	/** All filterable columns of this mapping from the point of view of a supercomponent of this mapping.
+	  * It is a shortcut for (which should always stay consistent with) 
+	  * `parent.`[[net.noresttherein.oldsql.schema.Mapping.filterable(component:Component[_]) selectable]]`(this)`.
+	  * May be more convenient when chaining methods.
+	  * @param parent a mapping of which this mapping is a component.
+	  */
+	def filterableIn(parent :Component[_]) :Unique[Column[_]] = parent.filterable(refine)
+
+	/** All insertable columns of this mapping from the point of view of a supercomponent of this mapping.
+	  * It is a shortcut for (which should always stay consistent with) 
+	  * `parent.`[[net.noresttherein.oldsql.schema.Mapping.insertable(component:Component[_]) insertable]]`(this)`.
+	  * May be more convenient when chaining methods.
+	  * @param parent a mapping of which this mapping is a component.
+	  */
+	def insertableIn(parent :Component[_]) :Unique[Column[_]] = parent.insertable(refine)
+
+	/** All updatable columns of this mapping from the point of view of a supercomponent of this mapping.
+	  * It is a shortcut for (which should always stay consistent with) 
+	  * `parent.`[[net.noresttherein.oldsql.schema.Mapping.updatable(component:Component[_]) updatable]]`(this)`
+	  * @param parent a mapping of which this mapping is a component.
+	  */
+	def updatableIn(parent :Component[_]) :Unique[Column[_]] = parent.updatable(refine)
+
+	/** All columns of this mapping which are generated by the database on insert from the point of view 
+	  * of a supercomponent of this mapping. It is a shortcut for (which should always stay consistent with) 
+	  * `parent.`[[net.noresttherein.oldsql.schema.Mapping.autoInserted(component:Component[_]) autoInserted]]`(this)`
+	  * @param parent a mapping of which this mapping is a component.
+	  */
+	def autoInsertedIn(parent :Component[_]) :Unique[Column[_]] = parent.autoInserted(refine)
+
+	/** All columns of this mapping which are generated by the database on update from the point of view 
+	  * of a supercomponent of this mapping. It is a shortcut for (which should always stay consistent with) 
+	  * `parent.`[[net.noresttherein.oldsql.schema.Mapping.autoUpdated(component:Component[_]) autoUpdated]]`(this)`
+	  * @param parent a mapping of which this mapping is a component.
+	  */
+	def autoUpdatedIn(parent :Component[_]) :Unique[Column[_]] = parent.autoUpdated(refine)
+
+	/** All columns of this mapping selectable by default from the point of view of a supercomponent of this mapping.
+	  * It is a shortcut for (which should always stay consistent with) 
+	  * `parent.`[[net.noresttherein.oldsql.schema.Mapping.selectedByDefault(component:Component[_]) selectedByDefault]]`(this)`
+	  * @param parent a mapping of which this mapping is a component.
+	  */
+	def selectedByDefaultIn(parent :Component[_]) :Unique[Column[_]] = parent.selectedByDefault(refine)
+
+	/** All columns of this mapping filterable by default from the point of view of a supercomponent of this mapping.
+	  * It is a shortcut for (which should always stay consistent with) 
+	  * `parent.`[[net.noresttherein.oldsql.schema.Mapping.filteredByDefault(component:Component[_]) filteredByDefault]]`(this)`
+	  * @param parent a mapping of which this mapping is a component.
+	  */
+	def filteredByDefaultIn(parent :Component[_]) :Unique[Column[_]] = parent.filteredByDefault(refine)
+
+	/** All columns of this mapping insertable by default from the point of view of a supercomponent of this mapping.
+	  * It is a shortcut for (which should always stay consistent with) 
+	  * `parent.`[[net.noresttherein.oldsql.schema.Mapping.insertedByDefault(component:Component[_]) insertedByDefault]]`(this)`
+	  * @param parent a mapping of which this mapping is a component.
+	  */
+	def insertedByDefaultIn(parent :Component[_]) :Unique[Column[_]] = parent.insertedByDefault(refine)
+
+	/** All columns of this mapping updatable by default from the point of view of a supercomponent of this mapping.
+	  * It is a shortcut for (which should always stay consistent with) 
+	  * `parent.`[[net.noresttherein.oldsql.schema.Mapping.updatedByDefault(component:Component[_]) updatedByDefault]]`(this)`
+	  * @param parent a mapping of which this mapping is a component.
+	  */
+	def updatedByDefaultIn(parent :Component[_]) :Unique[Column[_]] = parent.updatedByDefault(refine)
+
 	/** All columns from the `columns` list with a given buff active. */
 	def columnsWith(buff :BuffType) :Unique[Column[_]] =
 		columns.filter(buff.active)
@@ -834,6 +998,22 @@ trait Mapping {
 	/** All columns without the given buff. */
 	def columnsWithout(buff :BuffType) :Unique[Column[_]] =
 		columns.filter(buff.inactive)
+
+	/** All columns of `component` [[net.noresttherein.oldsql.schema.Mapping.export exported]] by this mapping
+	  * which have the given buff. $ExportSubcomponentsInfo
+	  * @return the same column set as `component.columns.view.map(export(_)).filter(buff.active)`,
+	  *         in an undefined order.
+	  */
+	def columnsWith(component :Component[_], buff :BuffType) :Unique[Column[_]] =
+		component.columns.view.map(export(_)).filter(buff.active).to(Unique)
+
+	/** All columns of `component` [[net.noresttherein.oldsql.schema.Mapping.export exported]] by this mapping
+	  * which do not have the given buff. $ExportSubcomponentsInfo
+	  * @return the same column set as `component.columns.view.map(export(_)).filter(buff.active)`,
+	  *         in an undefined order.
+	  */
+	def columnsWithout(component :Component[_], buff :BuffType) :Unique[Column[_]] =
+		component.columns.view.map(export(_)).filter(buff.inactive).to(Unique)
 
 
 	/** All columns (in their operative versions) of this mapping which can be used as part of the given SQL statement type.
@@ -885,6 +1065,10 @@ trait Mapping {
 	  * The easiest way to obtain arguments for this method is to call one of
 	  * [[net.noresttherein.oldsql.schema.Mapping.+ +]] and [[net.noresttherein.oldsql.schema.Mapping.- -]] methods
 	  * on a component of this mapping.
+	  *
+	  * Applications probably will find the analogical methods of
+	  * [[net.noresttherein.oldsql.schema.Relation.apply(components* Relation]] or
+	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.alter ComponentSQL]] more useful.
 	  * @param adjustments a sequence of components of this mapping wrapped in either
 	  *                    [[net.noresttherein.oldsql.schema.Mapping.IncludedComponent IncludedComponent]],
 	  *                    if the component is to be included, or in
@@ -904,12 +1088,13 @@ trait Mapping {
 	  * be included/excluded for some - or even all - operations types, these changes will not affect said operations
 	  * with regard to that component. This differs from individual methods in that they throw
 	  * an `IllegalArgumentException` if the change cannot be made for some of the listed components.
-	  * The easiest way to obtain arguments for this method is to call one of
-	  * [[net.noresttherein.oldsql.schema.Mapping.+ +]] and [[net.noresttherein.oldsql.schema.Mapping.- -]] methods
-	  * on a component of this mapping.
+ 	  *
+	  * Applications probably will find the analogical methods of
+	  * [[net.noresttherein.oldsql.schema.Relation.apply(components* Relation]] or
+	  * [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL.alter ComponentSQL]] more useful.
 	  * @param include a collection of components of this mapping which should be included in every operation, if possible.
 	  * @param exclude a collection of components of this mapping which should be excluded from every operation, if possible.
-	  */
+	  */ //consider: maybe this should be named alterBuffs?
 	def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :RefinedMapping[Subject, Origin]
 
 	/** A modified version of this mapping with the given components included/excluded ''by default''
@@ -1007,6 +1192,8 @@ trait Mapping {
 	/** Default read form (included columns) of a select statement for this mapping. */
 	def selectForm :SQLReadForm[Subject]
 
+	def selectForm[T](component :Component[T]) :SQLReadForm[T]
+
 
 	/** A write form (included columns) used in ''WHERE'' clauses of select statements when this mapping's subject
 	  * is used directly in the SQL DSL or other filter conditions. It is a way to modify the default list
@@ -1033,6 +1220,8 @@ trait Mapping {
 	/** Default write form (included parameters) of a filter for a particular subject value. */ //todo: PK? all?
 	def filterForm :SQLWriteForm[Subject]
 
+	def filterForm[T](component :Component[T]) :SQLWriteForm[T]
+
 	/** A write form (included columns) used in insert statements of this mapping's subjects.
 	  * It is a way to modify the default list of used columns by including those which normally aren't
 	  * (have the `ExplicitInsert` buff), or excluding those which normally are used, but are not mandatory
@@ -1053,9 +1242,11 @@ trait Mapping {
 	  *        exists which does not belong to this set and does not have the `NoInsertByDefault` buff.
 	  */ //fixme: proper inclusion semantics, using only default, not all insertable columns of the component
 	def insertForm(components :Unique[Component[_]]) :SQLWriteForm[Subject]
-
+	//fixme: subcomponent.insertForm is not the export form if its columns are not export columns!!!
 	/** Default write form (included columns) used for insert statements of this mapping. */
 	def insertForm :SQLWriteForm[Subject]
+
+	def insertForm[T](component :Component[T]) :SQLWriteForm[T]
 
 	/** A write form (included columns) used in update statements of this mapping's subjects.
 	  * It is a way to modify the default list of used columns by including those which normally aren't
@@ -1080,6 +1271,8 @@ trait Mapping {
 
 	/** Default write form (included columns) used for update statements of this mapping. */
 	def updateForm :SQLWriteForm[Subject]
+
+	def updateForm[T](component :Component[T]) :SQLWriteForm[T]
 
 	/** Default write form (included columns) of this mapping used for the given SQL statement type.
 	  * It should return a form equal to the one of the property specific to the operation type, but
@@ -1155,9 +1348,32 @@ trait Mapping {
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[Mapping]
 
 
+	/** A minimal string reference name of this mapping describing its 'type' (in natural sense).
+	  * It is used in `toString` implementations of SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]]
+	  * for the mapped type and thus should be kept as short as possible so that they remain usable.
+	  * It serves as the root of other formatting log strings implementations (as well as the standard `toString`),
+	  * especially those of adapter classes, so should not include information about the mapped type, contents
+	  * or anything that might be duplicated when formatting a debug string of an adapter class for this mapping
+	  * (such as a [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping foreign key]] mapping).
+	  * Defaults to the local class name of this instance or the column name in case of columns, and should not deviate
+	  * significantly from this spirit, with only generic adapter classes being required
+	  * to introduce additional distinction.
+	  */
 	def mappingName :String  = this.localClassName
 
-	def columnString :String = columns.mkString(toString + "{", ", ", "}")
+	/** Appends the list of [[net.noresttherein.oldsql.schema.Mapping.buffs buffs]] to
+	  * [[net.noresttherein.oldsql.schema.Mapping.toString toString]] and shouldn't deviate from this information
+	  * unless necessary, with only adapter classes having a legitimate reason for doing so if it would result
+	  * in duplication of information.
+	  */
+	def buffString :String =
+		if (buffs.nonEmpty) buffs.mkString(toString + "(", ", ", ")") else toString
+
+	/** Lists this mapping's [[net.noresttherein.oldsql.schema.Mapping.buffs buffs]] and
+	  * [[net.noresttherein.oldsql.schema.Mapping.columns columns]] together with the basic information
+	  * about this mapping.
+	  */
+	def columnString :String = columns.view.map(_.buffString).mkString(buffString + "{", ", ", "}")
 
 	def debugString :String = {
 		/** Use recursion to print the ''export'' (by this mapping) version of every subcomponent.
@@ -1199,14 +1415,20 @@ trait Mapping {
 		res.toString
 	}
 
-
+	/** Brief, most important information about this mapping such as the name of the mapped type or its some other
+	  * indicator, where available, but not list the full column list. Defaults to
+	  * [[net.noresttherein.oldsql.schema.Mapping.mappingName mappingName]] (local class name) or column name
+	  * and [[net.noresttherein.oldsql.schema.SQLForm form]] in case of columns. As a rule of the thumb,
+	  * it should include enough information to identify it and its value type (if reasonable and possible)
+	  * within the enclosing scope, without any debugging details about its internals such as its buffs.
+	  */ //todo: the whole toString collection requires serious rethinking
 	override def toString :String = mappingName
 
 
 	/** A seal method implemented only by [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]] to enforce
 	  * that every concrete implementation extends `BaseMapping`, required by the `sql` package.
 	  */
-	protected[oldsql] def everyConcreteMappingMustExtendBaseMapping :Nothing
+	protected[oldsql] def every_concrete_Mapping_must_extend_BaseMapping :Nothing
 
 	@transient private val notSerialized = true //after deserialization becomes false
 
@@ -1651,6 +1873,7 @@ object Mapping extends LowPriorityMappingImplicits {
 	  */
 	type Of[S] = { type P[O] = RefinedMapping[S, O] }
 
+	type Last[M[O] <: MappingAt[O]] = RowProduct AndFrom M
 
 
 	/** A thin wrapper over a component of some mapping `MappingAt[O]` which selects it to be included or
@@ -1757,7 +1980,6 @@ object Mapping extends LowPriorityMappingImplicits {
 		extends SQLReadForm[S] //could extend CompositeReadForm, but doesn't for extra speed
 	{
 		private[this] val forms = columns.view.map(read).to(Array)
-
 		override val readColumns: Int = (0 /: forms)(_ + _.readColumns)
 
 		override def opt(res: ResultSet, position: Int): Opt[S] = {
@@ -1773,7 +1995,6 @@ object Mapping extends LowPriorityMappingImplicits {
 
 		override def nullValue: S = mapping.nullValue.value
 		override def nulls :NullValue[S] = mapping.nullValue
-
 
 		override def register(call :CallableStatement, position :Int) :Unit = {
 			var i = 0; var c = 0; val end = forms.length
@@ -1859,15 +2080,21 @@ object Mapping extends LowPriorityMappingImplicits {
 	private[schema] class MappingWriteForm[S, O] private[schema]
 	                      (private val op :WriteOperationType,
 	                       private val mapping :RefinedMapping[S, O], private val columns :Unique[ColumnMapping[_, O]])
-		extends SQLWriteForm[S] with WriteFormLiterals[S]
+		extends SQLWriteForm[S] with WriteFormLiteralsBackFeed[S]
 	{ //todo: non-nullable columns should throw an early exception and not leave it to the database.
 //		def this(op :WriteOperationType, mapping :RefinedMapping[S, O], columns :Unique[ColumnMapping[_, O]]) =
 //			this(mapping, columns, op.Extra, op.form(_))
 
 		private[this] val fasterColumns = columns.toArray //speeds up the iteration
 		private[this] val extracts = fasterColumns.map(mapping(_)) //extracts for the columns for fast access
-		private[this] val forms = fasterColumns.map(op.form(_))
+		private[this] val forms = fasterColumns.map(_.form) //fasterColumns.map(op.form(_))
 		private[this] val extras = fasterColumns.map(op.Extra.get(_).orNull)
+
+		override lazy val split = ArraySeq.unsafeWrapArray(extracts.map { ex =>
+			def compose[T](extract :ColumnMappingExtract[S, T, O]) :ColumnWriteForm[S] =
+				extract.export.form compose extract
+			compose(ex)
+		})
 
 		override def set(statement :PreparedStatement, position :Int, subject :S) :Unit =
 			if (subject == null)

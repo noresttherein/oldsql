@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, ExpandingClause, Non
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.mechanics.RowProductMatcher
+import net.noresttherein.oldsql.sql.mechanics.RowProductVisitor
 
 
 
@@ -57,7 +57,7 @@ trait DecoratedFrom[+F <: RowProduct] extends RowProduct { thisClause =>
 
 
 
-	protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y = matcher.decorator(this)
+	protected override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.decorator(this)
 
 }
 
@@ -86,7 +86,7 @@ object DecoratedFrom {
 		override type OuterRow = clause.OuterRow
 
 
-		protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y =
+		protected override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y =
 			matcher.expandingDecorator(this)
 
 		private[sql] override def concrete_ExpandingClause_subclass_must_extend_Expanded_or_ExpandedDecorator :Nothing =
@@ -153,6 +153,8 @@ object DecoratedFrom {
 
 
 		//todo: AppliedParam
+		//fixme: DecoratedParamless with two type params to handle GeneralizedParamless
+		override type GeneralizedParamless = clause.DecoratedParamless[WithClause[clause.Paramless]]
 		override type Paramless = clause.DecoratedParamless[WithClause[clause.Paramless]]
 		override type DecoratedParamless[D <: BoundParamless] = clause.DecoratedParamless[D]
 
@@ -228,7 +230,7 @@ object DecoratedFrom {
 			withClause(clause.asSubselectOf(newOuter))
 
 
-		protected override def matchWith[Y](matcher :RowProductMatcher[Y]) :Y =
+		protected override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y =
 			matcher.fromSomeDecorator(this)
 
 	}

@@ -193,7 +193,7 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 	  */
 	def ++:(buffs :Iterable[Buff[T]]) :Buffs[T] = reset(buffs ++: front.toSeq :_*)
 
-	/** Appends this collection to the given one. Created `buffs` will have all the declarations of `buffs`
+	/** Appends this collection to the given one. Created buffs will have all the declarations of `buffs`
 	  * (with the same tags) followed by the declarations of this collection.
 	  */
 	def +/:(buffs :Buffs[T]) :Buffs[T] =
@@ -257,7 +257,7 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 	  * a structure homomorphic with this one: individual buffs which do not
 	  * [[net.noresttherein.oldsql.schema.Buff.cascades cascade]] may be missing - in particular all
 	  * [[net.noresttherein.oldsql.schema.Buff.AuditBuff audit buffs]] - and declarations which become empty
-	  * in the result will be elided, but all mapped buffs remain in the same order and
+	  * as the result will be elided, but all mapped buffs remain in the same order and
 	  * the [[net.noresttherein.oldsql.schema.Buffs.tag tags]] those declarations which remain are preserved.
 	  * @return `flatMap(_.cascade(f))`.
 	  */
@@ -267,7 +267,7 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 	  * the extractor. Created `Buffs` will have a structure homomorphic with this one: individual buffs which do not
 	  * [[net.noresttherein.oldsql.schema.Buff.cascades cascade]] may be missing - in particular all
 	  * [[net.noresttherein.oldsql.schema.Buff.AuditBuff audit buffs]] - and declarations which become empty
-	  * in the result will be elided, but all mapped buffs remain in the same order and
+	  * as the result will be elided, but all mapped buffs remain in the same order and
 	  * the [[net.noresttherein.oldsql.schema.Buffs.tag tags]] those declarations which remain are preserved.
 	  *
 	  * This variant may fail with

@@ -60,12 +60,16 @@ object OptionMapping {
 //		override def nullValue :NullValue[Option[Nothing]] = NullValue.None
 
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[Option[S]] =
-			get.selectForm(
+			if (selectedByDefault == components)
+				selectForm
+			else get.selectForm(
 				if (components.contains(get)) get.selectedByDefault ++ components - get else components
 			).toOpt
 
 		override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[Option[S]] =
-			get.writeForm(op,
+			if (op.defaultColumns(get) == components)
+				op.form(this)
+			else get.writeForm(op,
 				if (components.contains(get)) op.defaultColumns(get) ++ components - get else components
 			).toOpt
 

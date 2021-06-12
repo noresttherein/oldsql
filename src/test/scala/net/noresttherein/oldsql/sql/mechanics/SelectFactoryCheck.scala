@@ -8,12 +8,12 @@ import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, ColumnSQL, From, IndexedMapping, InnerJoin, Join, JoinParam, LeftJoin, NonParam, OuterJoin, ParamSelect, RightJoin, RowProduct, SQLBoolean, Subselect, WithParam}
-import net.noresttherein.oldsql.sql.ParamSelect.ParamSelectAs
+import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, ColumnSQL, From, IndexedMapping, InnerJoin, Join, JoinParam, LeftJoin, NonParam, OuterJoin, RightJoin, RowProduct, Select, SQLBoolean, Subselect, WithParam}
+import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
-import net.noresttherein.oldsql.sql.ast.{ConversionSQL, SelectSQL}
+import net.noresttherein.oldsql.sql.ast.{ChainSQL, ConversionSQL, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ColumnComponentSQL, ComponentSQL}
-import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SelectColumnMapping, SelectMapping, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectSQL}
+import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs, SubselectAs, SubselectColumn, SubselectColumnAs, SubselectColumnMapping, SubselectMapping, SubselectSQL, TopSelectAs, TopSelectColumn, TopSelectColumnAs, TopSelectColumnMapping, TopSelectMapping, TopSelectSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, ListingSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
 
@@ -103,6 +103,11 @@ class SelectFactoryCheck {{
 	expectSelect[S, ConversionSQL[T, LocalScope, Int, Long], SubselectSQL[V, Long]]
 	expectSelect[s.Self, ConversionSQL[U, GlobalScope, Int, Long], SubselectSQL[V, Long]]
 
+	expectSelect[F, ChainSQL[H, LocalScope, @~ ~ Int, String], TopSelectSQL[@~ ~ Int ~ String]]
+	expectSelect[f.Self, ChainSQL[H, GlobalScope, @~ ~ Int, String], TopSelectSQL[@~ ~ Int ~ String]]
+	expectSelect[S, ChainSQL[U, LocalScope, @~ ~ Int, String], SubselectSQL[V, @~ ~ Int ~ String]]
+	expectSelect[s.Self, ChainSQL[U, GlobalScope, @~ ~ Int, String], SubselectSQL[V, @~ ~ Int ~ String]]
+
 	expectSelect[F, ChainTuple[H, LocalScope, @~ ~ Int ~ String], TopSelectSQL[@~ ~ Int ~ String]]
 	expectSelect[f.Self, ChainTuple[H, GlobalScope, @~ ~ Int ~ String], TopSelectSQL[@~ ~ Int ~ String]]
 	expectSelect[S, ChainTuple[U, LocalScope, @~ ~ Int ~ String], SubselectSQL[V, @~ ~ Int ~ String]]
@@ -142,6 +147,9 @@ class SelectFactoryCheck {{
 	expectSelect[v.Self, ConversionSQL[Y, LocalScope, Int, Long], SelectSQL[v.Base, Long]]
 	expectSelect[v.Self, ConversionSQL[Z, GlobalScope, Int, Long], SelectSQL[v.Base, Long]]
 
+	expectSelect[v.Self, ChainSQL[Y, LocalScope, @~ ~ Int, String], SelectSQL[v.Base, @~ ~ Int ~ String]]
+	expectSelect[v.Self, ChainSQL[Z, GlobalScope, @~ ~ Int, String], SelectSQL[v.Base, @~ ~ Int ~ String]]
+
 	expectSelect[v.Self, ChainTuple[Y, LocalScope, @~ ~ Int ~ String], SelectSQL[v.Base, @~ ~ Int ~ String]]
 	expectSelect[v.Self, ChainTuple[Z, GlobalScope, @~ ~ Int ~ String], SelectSQL[v.Base, @~ ~ Int ~ String]]
 
@@ -152,35 +160,38 @@ class SelectFactoryCheck {{
 
 
 	
-	expectSelect[P, ColumnMapping[Int, Q], ParamSelectAs[Params, ColumnProjection]]
-	expectSelect[p.Self, ColumnMapping[Int, R], ParamSelectAs[Params, ColumnProjection]]
+	expectSelect[P, ColumnMapping[Int, Q], SelectMapping[Params, ColumnProjection]]
+	expectSelect[p.Self, ColumnMapping[Int, R], SelectMapping[Params, ColumnProjection]]
 
-	expectSelect[P, ColumnComponentSQL[Q, ColumnProjection, Int], ParamSelectAs[Params, ColumnProjection]]
-	expectSelect[p.Self, ColumnComponentSQL[R, ColumnProjection, Int], ParamSelectAs[Params, ColumnProjection]]
+	expectSelect[P, ColumnComponentSQL[Q, ColumnProjection, Int], SelectMapping[Params, ColumnProjection]]
+	expectSelect[p.Self, ColumnComponentSQL[R, ColumnProjection, Int], SelectMapping[Params, ColumnProjection]]
 
-	expectSelect[P, ListingColumn[Q, LocalScope, "boo", Int], ParamSelectAs[Params, IndexedMapping.Of[Int]#Column]]
-	expectSelect[p.Self, ListingColumn[R, GlobalScope, "boo", Int], ParamSelectAs[Params, IndexedMapping.Of[Int]#Column]]
+	expectSelect[P, ListingColumn[Q, LocalScope, "boo", Int], SelectMapping[Params, IndexedMapping.Of[Int]#Column]]
+	expectSelect[p.Self, ListingColumn[R, GlobalScope, "boo", Int], SelectMapping[Params, IndexedMapping.Of[Int]#Column]]
 
-	expectSelect[P, ListingSQL[Q, LocalScope, IT], ParamSelectAs[Params, IndexedMapping.Of[IT]#Projection]]
-	expectSelect[p.Self, ListingSQL.EmptyListing.type, ParamSelectAs[Params, IndexedMapping.Of[@~]#Projection]]
+	expectSelect[P, ListingSQL[Q, LocalScope, IT], SelectMapping[Params, IndexedMapping.Of[IT]#Projection]]
+	expectSelect[p.Self, ListingSQL.EmptyListing.type, SelectMapping[Params, IndexedMapping.Of[@~]#Projection]]
 
-	expectSelect[P, SQLBoolean[Q, LocalScope], ParamSelect[Params, Boolean]]
-	expectSelect[p.Self, SQLBoolean[R, GlobalScope], ParamSelect[Params, Boolean]]
+	expectSelect[P, SQLBoolean[Q, LocalScope], Select[Params, Boolean]]
+	expectSelect[p.Self, SQLBoolean[R, GlobalScope], Select[Params, Boolean]]
 
-	expectSelect[P, BaseMapping[Int, Q], ParamSelectAs[Params, BaseProjection]]
-	expectSelect[p.Self, BaseMapping[Int, R], ParamSelectAs[Params, BaseProjection]]
+	expectSelect[P, BaseMapping[Int, Q], SelectMapping[Params, BaseProjection]]
+	expectSelect[p.Self, BaseMapping[Int, R], SelectMapping[Params, BaseProjection]]
 
-	expectSelect[P, ComponentSQL[Q, BaseProjection], ParamSelectAs[Params, BaseProjection]]
-	expectSelect[p.Self, ComponentSQL[R, BaseProjection], ParamSelectAs[Params, BaseProjection]]
+	expectSelect[P, ComponentSQL[Q, BaseProjection], SelectMapping[Params, BaseProjection]]
+	expectSelect[p.Self, ComponentSQL[R, BaseProjection], SelectMapping[Params, BaseProjection]]
 
-	expectSelect[P, ConversionSQL[Q, LocalScope, Int, Long], ParamSelect[Params, Long]]
-	expectSelect[p.Self, ConversionSQL[R, GlobalScope, Int, Long], ParamSelect[Params, Long]]
+	expectSelect[P, ConversionSQL[Q, LocalScope, Int, Long], Select[Params, Long]]
+	expectSelect[p.Self, ConversionSQL[R, GlobalScope, Int, Long], Select[Params, Long]]
 
-	expectSelect[P, ChainTuple[Q, LocalScope, @~ ~ Int ~ String], ParamSelect[Params, @~ ~ Int ~ String]]
-	expectSelect[p.Self, ChainTuple[R, GlobalScope, @~ ~ Int ~ String], ParamSelect[Params, @~ ~ Int ~ String]]
+	expectSelect[P, ChainSQL[Q, LocalScope, @~ ~ Int, String], Select[Params, @~ ~ Int ~ String]]
+	expectSelect[p.Self, ChainSQL[R, GlobalScope, @~ ~ Int, String], Select[Params, @~ ~ Int ~ String]]
 
-	expectSelect[P, sql.*, ParamSelect[Params, @~ ~ Int ~ Long]]
-	expectSelect[p.Self, sql.*, ParamSelect[Params, @~ ~ Int ~ Long]]
+	expectSelect[P, ChainTuple[Q, LocalScope, @~ ~ Int ~ String], Select[Params, @~ ~ Int ~ String]]
+	expectSelect[p.Self, ChainTuple[R, GlobalScope, @~ ~ Int ~ String], Select[Params, @~ ~ Int ~ String]]
+
+	expectSelect[P, sql.*, Select[Params, @~ ~ Int ~ Long]]
+	expectSelect[p.Self, sql.*, Select[Params, @~ ~ Int ~ Long]]
 
 
 }}

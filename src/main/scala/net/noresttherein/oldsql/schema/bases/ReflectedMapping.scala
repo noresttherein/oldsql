@@ -16,7 +16,7 @@ trait ReflectedMapping[S, O] extends MappingFrame[S, O] { composite =>
 	protected implicit val subjectType :TypeTag[S]
 
 
-	override protected def extractFor[T](component :FrameComponent[T]) :ComponentProperty[S, T, O] =
+	protected override def extractFor[T](component :FrameComponent[T]) :ComponentProperty[S, T, O] =
 		ComponentProperty(component)(component.componentSelector)
 
 	protected override def extractFor[T](column :FrameColumn[T]) :ColumnProperty[S, T, O] =

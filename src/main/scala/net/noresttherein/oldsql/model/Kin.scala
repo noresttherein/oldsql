@@ -11,9 +11,8 @@ import net.noresttherein.oldsql.exceptions.{AbsentKinException, IncompatibleElem
 import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, ComposableFrom, ConstructFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.Kin.{Derived, Property, Recomposed, Unknown}
 import net.noresttherein.oldsql.model.Kin.Derived.{AbsentBase, PresentBase}
-import net.noresttherein.oldsql.model.Kin.Restrained.RestrainedKinFactory
+import net.noresttherein.oldsql.model.KinFactory.{BaseDerivedKinFactory, BaseKinFactory, DerivedKinFactory}
 import net.noresttherein.oldsql.model.Restraint.{Restrainer, True}
-import net.noresttherein.oldsql.model.KinFactory.{BaseDerivedKinFactory, BaseKinFactory, DerivedKinFactory, HigherKindKinFactory, RequiredKinFactory}
 import net.noresttherein.oldsql.morsels.generic.Self
 
 
@@ -21,7 +20,8 @@ import net.noresttherein.oldsql.morsels.generic.Self
 
 
 
-/** A value of type `T` or an identification of such a value. A kin can be either
+/** A value of type `T` or an identification of such a value. It is used as a reference to a database resource
+  * or resources (typically entity/entities, but also individual components of an entity).  A kin can be either
   * [[net.noresttherein.oldsql.model.Kin.Present$ Present]] - contain a value or be able to compute it
   * without a significant cost and outside resources - or [[net.noresttherein.oldsql.model.Kin.Absent$ Absent]],
   * in which case it should contain information required to locate and compute the given value. Absent kin can be either
@@ -747,7 +747,7 @@ object Kin {
 	  * @define Val `T`
 	  */
 	object One extends SpecificKinType[Self] {
-		override protected implicit def composition[T] :T ComposedOf T = ComposedOf.self
+		protected override implicit def composition[T] :T ComposedOf T = ComposedOf.self
 		override type Ref[T] = One[T]
 	}
 
@@ -1643,7 +1643,8 @@ object Kin {
 		                                (implicit decomposition :DecomposableTo[T, E]) :Kin[C] =
 			toOption match {
 				case Some(t) => Present(as(decomposition(t).view.map(property.fun)))
-				case _ if isMissing => Unknown
+//				case _ if isMissing => Missing
+				case _ => Unknown
 			}
 
 		private def writeObject(oos :ObjectOutputStream) :Unit = {

@@ -245,9 +245,7 @@ object SubselectTableCount {
   */
 @implicitNotFound("Relation mapping ${M} is not the first known mapping of the FROM clause ${F}: "+
                   "no implicit TableOffset[${F}, ${M}].")
-class TableOffset[F <: RowProduct, M[O] <: MappingAt[O]] private[sql](private val n :Int)
-	extends AnyVal
-{
+class TableOffset[F <: RowProduct, M[O] <: MappingAt[O]] private[sql] (private val n :Int) extends AnyVal {
 	type N <: Numeral
 
 	@inline def tables :N = n.asInstanceOf[N] //val tables :N crashes scalac

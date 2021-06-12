@@ -7,14 +7,14 @@ import scala.collection.immutable.Seq
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.morsels.ColumnBasedFactory
+import net.noresttherein.oldsql.morsels.SpecializingFactory
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.pixies.CallableStatementOutParams
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull
 import net.noresttherein.oldsql.schema.SQLReadForm.{FallbackSQLReadForm, NotNullSQLReadForm}
 import net.noresttherein.oldsql.schema.forms.{SQLForms, SuperSQLForm}
-import net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull
 
 
 
@@ -53,6 +53,18 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 	  * and creates an instance of `T`. The default implementation delegates to `opt` and fallbacks to `nullValue`
 	  * if no value is available, but the exact handling is completely up to the implementation. Note that `null` column
 	  * values may happen even on not-null database columns in outer joins.
+	  *
+	  * Composite forms (implementations delegating to more than one component forms) are encouraged to override
+	  * this method, in addition to [[net.noresttherein.oldsql.schema.SQLReadForm.opt(res:ResultSet,position:Int)* opt]],
+	  * by delegating to `apply` method of the component forms. This results in different handling of `null` values
+	  * (and, in general, column values for which a component form returns
+	  * [[net.noresttherein.oldsql.collection.Opt.Lack Lack]]): `opt` method has the 'all or nothing' semantics,
+	  * which fails to produce a result unless all partial results can be assembled by the component forms,
+	  * while `apply` will substitute missing values with the corresponding form's
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue nullValue]] (and propagate any exception thrown
+	  * in particular by `nullValue` method). It is impossible to emulate this behaviour with `opt` and `nullValue`
+	  * alone on the composite form. This behaviour is not mandated however and, as in most cases, for the form
+	  * implementation to decide.
 	  * @throws NoSuchElementException if the value cannot be assembled, typically because the indicated columns are null;
 	  *                                this is different in intent from the `NullPointerException` case
 	  *                                as it is used primarily for multi-column forms, when the missing values are
@@ -85,22 +97,20 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 	  * and to the application. As such, it is discouraged, with the exception of `ColumnForm`s, as the validity of
 	  * `null` values can be explicitly switched on for columns using the `Nullable` buff (and otherwise affected
 	  * by other buffs). The `ColumnMapping` trait explicitly checks for `null` values throwing a `NullPointerException`
-	  * if they are not permitted. While not strictly required, the form should
-	  * throw an exception if the values do not conform to expected constraints or the assembly process fails
-	  * for any other reason. Similarly, all thrown `SQLException`s are propagated.
+	  * if they are not permitted. A form is allowed to throw an exception if the values do not conform
+	  * to expected constraints or the assembly process fails for any other reason.
+	  * Similarly, all thrown `SQLException`s are propagated.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm!.apply apply]]
 	  */
 	def opt(res :ResultSet, position :Int) :Opt[T]
 
-
-	/** Attempts to read the values of ''out'' parameters of the given `CallableStatement` and create an instance of `T`.
-	  * The index of the first parameter to read is `position`; all succeeding parameters until (not including)
-	  * `position + this.readColumns` should also be ''out'' parameters reserved for this form.
+	/** Attempts to read the values of ''out'' parameters of the given `CallableStatement` and create an instance
+	  * of `Opt[T]`. The index of the first parameter to read is `position`; all succeeding parameters until
+	  * (not including) `position + this.readColumns` should also be ''out'' parameters reserved for this form.
 	  * Default implementation wraps the statement in a `ResultSet` adapter and delegates
-	  * to [[net.noresttherein.oldsql.schema.SQLReadForm.opt opt]]`(res, position)`.
-	  * Default implementation delegates to `opt` and fallbacks to `nullValue`
-	  * if no value is available, but the exact handling is completely up to the implementation. Note that `null` column
-	  * values may happen even on not-null database columns in outer joins.
+	  * to [[net.noresttherein.oldsql.schema.SQLReadForm.opt(res :ResultSet, position :Int) opt]]`(res, position)`.
+	  * @param call a statement invoking a stored procedure with ''out'' parameters.
+	  * @param position the index of the first parameter to read, which must be a previously registered ''out'' parameter.
 	  * @throws NoSuchElementException if the value cannot be assembled, typically because the indicated columns are null;
 	  *                                this is different in intent from the `NullPointerException` case
 	  *                                as it is used primarily for multi-column forms, when the missing values are
@@ -111,32 +121,43 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 	  * @throws SQLException if any of the columns cannot be read, either due to connection error or it being closed.
 	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm!.opt opt]]
 	  */
-	def apply(call :CallableStatement, position :Int) :T = {
-		val res = new CallableStatementOutParams(call)
-		opt(res, position) match {
-			case Got(x) => x
-			case _ => guardedNullValue(position, res)
-		}
-	}
+	def opt(call :CallableStatement, position :Int) :Opt[T] = opt(new CallableStatementOutParams(call), position)
 
 	/** Attempts to read the values of ''out'' parameters of the given `CallableStatement` and create an instance of `T`.
 	  * The index of the first parameter to read is `position`; all succeeding parameters until (not including)
 	  * `position + this.readColumns` should also be ''out'' parameters reserved for this form.
 	  * Default implementation wraps the statement in a `ResultSet` adapter and delegates
-	  * to [[net.noresttherein.oldsql.schema.SQLReadForm.opt opt]]`(res, position)`.
-	  * If the values are unavailable (required columns carry `null` values),
-	  * `None` is returned. It is the recommended practice to have the returned option reflect only the availability
-	  * of the input values and not their validity. It is allowed for the form to return `Got(null)`
-	  * (as long as `T >: Null`), but this results in propagation of `null` values to any forms derived from it
-	  * and to the application. As such, it is discouraged, with the exception of `ColumnForm`s, as the validity of
-	  * `null` values can be explicitly switched on for columns using the `Nullable` buff (and otherwise affected
-	  * by other buffs). The `ColumnMapping` trait explicitly checks for `null` values throwing a `NullPointerException`
-	  * if they are not permitted. While not strictly required, the form should
-	  * throw an exception if the values do not conform to expected constraints or the assembly process fails
-	  * for any other reason. Similarly, all thrown `SQLException`s are propagated.
-	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm!.apply apply]]
+	  * to [[net.noresttherein.oldsql.schema.SQLReadForm.apply(res :ResultSet, position :Int) apply]]`(res, position)`.
+	  * @param call a statement invoking a stored procedure with ''out'' parameters.
+	  * @param position the index of the first parameter to read, which must be a previously registered ''out'' parameter.
+	  * @throws NoSuchElementException if the value cannot be assembled, typically because the indicated columns are null;
+	  *                                this is different in intent from the `NullPointerException` case
+	  *                                as it is used primarily for multi-column forms, when the missing values are
+	  *                                likely the result of an outer join or subclass columns in a
+	  *                                table per class hierarchy mapping. For example, A table entity form
+	  *                                might throw this exception if the primary key is null.
+	  * @throws NullPointerException if the read column is `null` and type `T` does not define a representation of `null`.
+	  * @throws SQLException if any of the columns cannot be read, either due to connection error or it being closed.
+	  * @see [[net.noresttherein.oldsql.schema.SQLReadForm!.opt opt]]
 	  */
-	def opt(call :CallableStatement, position :Int) :Opt[T] = opt(new CallableStatementOutParams(call), position)
+	def apply(call :CallableStatement, position :Int) :T = apply(new CallableStatementOutParams(call), position)
+
+
+	def register(call :CallableStatement, position :Int) :Unit = {
+		var i = position + readColumns - 1
+		while (i >= position) {
+			call.registerOutParameter(position, Types.OTHER); i -= 1
+		}
+	}
+
+
+	/** Number of columns read by this form. This must be a constant as it is typically is used to calculate offsets
+	  * for various forms once per `ResultSet` rather than per row. Naturally, there is no requirement for actual
+	  * reading of all columns if the form can determine based on some indicator (such as a `null` primary key) that
+	  * the value cannot be assembled from the given column set for the row.
+	  */
+	def readColumns :Int
+
 
 	/** The value a `null` column (or all `null` columns) should be mapped to. It is used in particular by `apply`
 	  * when the value is unavailable, for example as a result of an outer join. Extending classes are allowed
@@ -191,25 +212,6 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 		}
 		columns.mkString(this.toString + " does not allow null values. Read ", ", ", ".")
 	}
-
-
-
-	def register(call :CallableStatement, position :Int) :Unit = {
-		var i = position + readColumns - 1
-		while (i >= position) {
-			call.registerOutParameter(position, Types.OTHER); i -= 1
-		}
-	}
-
-
-
-
-	/** Number of columns read by this form. This must be a constant as it is typically is used to calculate offsets
-	  * for various forms once per `ResultSet` rather than per row. Naturally, there is no requirement for actual
-	  * reading of all columns if the form can determine based on some indicator (such as a `null` primary key) that
-	  * the value cannot be assembled from the given column set for the row.
-	  */
-	def readColumns :Int
 
 
 
@@ -343,7 +345,7 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 			new FallbackSQLReadForm(this, fallback)
 
 	/** Combines this form with a `SQLWriteForm` to create a read/write `SQLForm[O]`. */
-	def <>[O >: T](write :SQLWriteForm[O]) :SQLForm[O] = SQLForm.join[O](write, this)
+	def <>[O >: T](write :SQLWriteForm[O]) :SQLForm[O] = SQLForm.combine[O](write, this)
 
 
 
@@ -359,7 +361,7 @@ trait SQLReadForm[+T] extends SuperSQLForm {
 object SQLReadForm {
 
 	/** Summons an implicit `SQLReadForm[T].` */
-	def apply[T :SQLReadForm] :SQLReadForm[T] = implicitly[SQLReadForm[T]]
+	@inline def apply[T :SQLReadForm] :SQLReadForm[T] = implicitly[SQLReadForm[T]]
 
 
 
@@ -430,7 +432,7 @@ object SQLReadForm {
 	/** A form always throwing the given exception instead of producing a value. Note that this applies also to
 	  * [[net.noresttherein.oldsql.schema.SQLReadForm!.opt opt]] method.
 	  * See [[net.noresttherein.oldsql.schema.SQLReadForm.none none]] and
-	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nulls nulls]] if you wish the form to simply return `None`.
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.defaults defaults]] if you wish the form to simply return `None`.
 	  * This functions the same way as `eval`, but can more clearly define intent.
 	  */
 	def error(raise: => Nothing) :SQLReadForm[Nothing] = error(0, "ERROR>")(raise)
@@ -438,7 +440,7 @@ object SQLReadForm {
 	/** A form always throwing the given exception instead of producing a value. Note that this applies also to
 	  * [[net.noresttherein.oldsql.schema.SQLReadForm!.opt opt]] method.
 	  * See [[net.noresttherein.oldsql.schema.SQLReadForm.none none]] and
-	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nulls nulls]] if you wish the form to simply return `None`.
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.defaults defaults]] if you wish the form to simply return `None`.
 	  * This functions the same way as `eval`, but can more clearly define intent.
 	  */
 	def error(readColumns :Int, name :String)(raise: => Nothing) :SQLReadForm[Nothing] =
@@ -468,9 +470,9 @@ object SQLReadForm {
 	  * The `opt` method will always return `None`, while `apply` will return the value from type class
 	  * [[net.noresttherein.oldsql.schema.SQLForm.NullValue NullValue]]. If no implicit `NullValue[T]` is available,
 	  * it will default to [[net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull NotNull]],
-	  * which throws `NullPointerException`.
+	  * which throws a `NullPointerException`.
 	  */
-	def nulls[T :NullValue] :SQLReadForm[T] = nulls(0)
+	def defaults[T :NullValue] :SQLReadForm[T] = defaults(0)
 
 	/** Creates a dummy form of the given column size which produces no value on every read.
 	  * The `opt` method will always return `None`, while `apply` will return the value from type class
@@ -481,30 +483,41 @@ object SQLReadForm {
 	  *                    The values of the columns are never actually read.
 	  * @param name the name for the form, which will be used in its `toString` method.
 	  */
-	def nulls[T :NullValue](readColumns :Int, name :String = "NULL>") :SQLReadForm[T] =
-		new NullSQLReadForm[T](readColumns, name)
+	def defaults[T :NullValue](readColumns :Int, name :String = null) :SQLReadForm[T] =
+		new NullValueSQLReadForm[T](readColumns, name)
 
 	/** Creates a dummy form of the given column size which produces no value on every read.
       * The `opt` method will always return `None`, while `apply` will always throw `NullPointerException`.
-	  * This is equivalent of [[net.noresttherein.oldsql.schema.SQLWriteForm.nulls SQLWriteForm.nulls]]`(readColumns, name)(NullValue.NotNull)`
+	  * This is equivalent of [[net.noresttherein.oldsql.schema.SQLWriteForm.defaults SQLWriteForm.defaults]]`(readColumns, name)(NullValue.NotNull)`
 	  * @param readColumns the span of this form in columns required for proper positioning among other forms.
 	  *                    The values of the columns are never actually read.
 	  * @param name the name for the form, which will be used in its `toString` method.
 	  */
-	def none[T](readColumns :Int, name :String = "NULL>") :SQLReadForm[T] = nulls(readColumns, name)(NullValue.NotNull)
+	def none[T](readColumns :Int, name :String = null) :SQLReadForm[T] =
+		defaults(readColumns, name)(NullValue.NotNull)
+
+	/** Creates a dummy form of the given column size which produces no value by its
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.opt opt]] method and `null`
+	  * from its [[net.noresttherein.oldsql.schema.SQLReadForm.apply apply]] method.
+	  * @param readColumns the span of this form in columns required for proper positioning among other forms.
+	  *                    The values of the columns are never actually read.
+	  * @param name the name for the form, which will be used in its `toString` method.
+	  */
+	def nulls(readColumns :Int, name :String = null) :SQLReadForm[Null] =
+		new NullValueSQLReadForm[Null](readColumns)(NullValue.Null)
 
 	/** A read form of zero columns which produces no value on every read. The `opt` method will always return `None`,
 	  * while `apply` (and `nullValue`) will throw a `NullPointerException`. This is the same as
-	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nulls SQLReadForm.nulls]]`(`[[net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull NotNull]]`)`.
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.defaults SQLReadForm.defaults]]`(`[[net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull NotNull]]`)`.
 	  */
 	val empty :SQLReadForm[Nothing] = empty("EMPTY>")
 
 	/** A read form of zero columns which produces no value on every read. The `opt` method will always return `None`,
 	  * while `apply` (and `nullValue`) will throw a `NullPointerException`. This is the same as
-	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nulls SQLReadForm.nulls]]`(0, name)(`[[net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull NotNull]]`)`.
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.defaults SQLReadForm.defaults]]`(0, name)(`[[net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull NotNull]]`)`.
 	  * @param name the name for the form, which will be used in its `toString` method.
 	  */
-	def empty(name :String) :SQLReadForm[Nothing] = new NullSQLReadForm[Nothing](0, name)(NullValue.NotNull)
+	def empty(name :String) :SQLReadForm[Nothing] = new NullValueSQLReadForm[Nothing](0, name)(NullValue.NotNull)
 
 
 
@@ -512,7 +525,7 @@ object SQLReadForm {
 	def apply[S, T](extract :S =?> T)(implicit source :SQLReadForm[S], nulls :Maybe[NullValue[T]]) :SQLReadForm[T] =
 		extract match {
 			case _ :EmptyExtractor[_, _] =>
-				SQLReadForm.nulls(source.readColumns)(nulls.opt getOrElse NullValue.NotNull)
+				SQLReadForm.defaults(source.readColumns)(nulls.opt getOrElse NullValue.NotNull)
 			case _ :OptionalExtractor[_, _] => flatMap(extract.optional)
 			case _ :IdentityExtractor[_] => source.asInstanceOf[SQLReadForm[T]]
 			case const :ConstantExtractor[_, T @unchecked] => SQLReadForm.const(const.constant, source.readColumns)
@@ -525,7 +538,7 @@ object SQLReadForm {
 	               (implicit source :SQLReadForm[S], nulls :Maybe[NullValue[T]]) :SQLReadForm[T] =
 		extract match {
 			case _ :EmptyExtractor[_, _] =>
-				SQLReadForm.nulls(source.readColumns, name)(nulls.opt getOrElse NullValue.NotNull)
+				SQLReadForm.defaults(source.readColumns, name)(nulls.opt getOrElse NullValue.NotNull)
 			case _ :OptionalExtractor[_, _] => flatMap(name)(extract.optional)
 //			case _ :IdentityExtractor[_] => source.asInstanceOf[SQLReadForm[T]]
 			case const :ConstantExtractor[_, T @unchecked] => SQLReadForm.const(const.constant, source.readColumns, name)
@@ -540,48 +553,48 @@ object SQLReadForm {
 
 
 	/** Maps the result of reading `S` with an implicit form to `T`. */
-	def map[S, T](map :S => T)(implicit source :SQLReadForm[S], nulls :Maybe[NullValue[T]]) :SQLReadForm[T] =  {
-		val nullValue = nulls.opt getOrElse source.nulls.map(map)
-		new MappedSQLReadForm(map)(source, nullValue)
+	def map[S, T](f :S => T)(implicit source :SQLReadForm[S], nulls :Maybe[NullValue[T]]) :SQLReadForm[T] =  {
+		val nullValue = nulls.opt getOrElse source.nulls.map(f)
+		new MappedSQLReadForm(f)(source, nullValue)
 	}
 
 	/** Maps the result of reading `S` with an implicit form to `T`. */
-	def map[S, T](name :String)(map :S => T)(implicit source :SQLReadForm[S], nulls :Maybe[NullValue[T]]) :SQLReadForm[T] =  {
-		val nullValue = nulls.opt getOrElse source.nulls.map(map)
-		new MappedSQLReadForm(map, name)(source, nullValue)
+	def map[S, T](name :String)(f :S => T)(implicit source :SQLReadForm[S], nulls :Maybe[NullValue[T]]) :SQLReadForm[T] =  {
+		val nullValue = nulls.opt getOrElse source.nulls.map(f)
+		new MappedSQLReadForm(f, name)(source, nullValue)
 	}
 
 	/** Maps the result of reading `S` with an implicit form to `T`. */
-	def map[S :SQLReadForm, T](map :S => T, nullValue: => T) :SQLReadForm[T] =
-		SQLReadForm.map(map)(SQLReadForm[S], NullValue.eval(nullValue))
+	def map[S :SQLReadForm, T](f :S => T, nullValue: => T) :SQLReadForm[T] =
+		SQLReadForm.map(f)(SQLReadForm[S], NullValue.eval(nullValue))
 
 	/** Maps the result of reading `S` with an implicit form to `T`. */
-	def map[S :SQLReadForm, T](name :String, map :S => T, nullValue: => T) :SQLReadForm[T] =
-		SQLReadForm.map(name)(map)(SQLReadForm[S], NullValue.eval(nullValue))
+	def map[S :SQLReadForm, T](name :String, f :S => T, nullValue: => T) :SQLReadForm[T] =
+		SQLReadForm.map(name)(f)(SQLReadForm[S], NullValue.eval(nullValue))
 
 
 
 	/** Maps the result of reading `S` with an implicit form to `T`. */
-	def flatMap[S, T](map :S => Option[T])(implicit source :SQLReadForm[S], nulls :Maybe[NullValue[T]]) :SQLReadForm[T] = {
-		val nullValue = nulls.opt getOrElse source.nulls.flatMap(map)
-		new FlatMappedSQLReadForm(map)(source, nullValue)
+	def flatMap[S, T](f :S => Option[T])(implicit source :SQLReadForm[S], nulls :Maybe[NullValue[T]]) :SQLReadForm[T] = {
+		val nullValue = nulls.opt getOrElse source.nulls.flatMap(f)
+		new FlatMappedSQLReadForm(f)(source, nullValue)
 	}
 
 	/** Maps the result of reading `S` with an implicit form to `T`. */
-	def flatMap[S, T](name :String)(map :S => Option[T])
+	def flatMap[S, T](name :String)(f :S => Option[T])
 	                 (implicit source :SQLReadForm[S], nulls :Maybe[NullValue[T]]) :SQLReadForm[T] =
 	{
-		val nullValue = nulls.opt getOrElse source.nulls.flatMap(map)
-		new FlatMappedSQLReadForm(map, name)(source, nullValue)
+		val nullValue = nulls.opt getOrElse source.nulls.flatMap(f)
+		new FlatMappedSQLReadForm(f, name)(source, nullValue)
 	}
 
 	/** Maps the result of reading `S` with an implicit form to `T`. */
-	def flatMap[S :SQLReadForm, T](map :S => Option[T], nullValue: => T) :SQLReadForm[T] =
-		flatMap(map)(SQLReadForm[S], NullValue.eval(nullValue))
+	def flatMap[S :SQLReadForm, T](f :S => Option[T], nullValue: => T) :SQLReadForm[T] =
+		flatMap(f)(SQLReadForm[S], NullValue.eval(nullValue))
 
 	/** Maps the result of reading `S` with an implicit form to `T`. */
-	def flatMap[S :SQLReadForm, T](name :String, map :S => Option[T], nullValue: => T) :SQLReadForm[T] =
-		flatMap(name)(map)(SQLReadForm[S], NullValue.eval(nullValue))
+	def flatMap[S :SQLReadForm, T](name :String, f :S => Option[T], nullValue: => T) :SQLReadForm[T] =
+		flatMap(name)(f)(SQLReadForm[S], NullValue.eval(nullValue))
 
 
 
@@ -626,7 +639,7 @@ object SQLReadForm {
 
 
 	/** A minimal mix-in trait for `SQLWriteForm` implementations which use their
-	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nulls nulls]] type class for
+	  * [[net.noresttherein.oldsql.schema.SQLReadForm.defaults defaults]] type class for
 	  * [[net.noresttherein.oldsql.schema.SQLReadForm.nullValue nullValue]]. Note that this reverses the standard
 	  * order of delegation: `nulls` is not abstract and its default implementation directs to `nullValue`,
 	  * leading to infinite recursion unless overriden.
@@ -724,8 +737,6 @@ object SQLReadForm {
 
 		override def notNull :SQLReadForm[T] = form.notNull
 
-		override def canEqual(that :Any) :Boolean = that.getClass == getClass
-
 		override def equals(that :Any) :Boolean = that match {
 			case ref :AnyRef if ref eq this => true
 			case proxy :ProxyReadForm[_] if proxy.canEqual(this) && canEqual(proxy) => form == proxy.form
@@ -741,17 +752,17 @@ object SQLReadForm {
 
 	/** Base type for factories of some types `M[X]` and `S[X] <: M[X]`, which take as arguments
 	  * `SQLReadForm` and `ColumnReadForm` instances (or some higher type parameterized with these form types),
-	  * respectively. See [[net.noresttherein.oldsql.morsels.ColumnBasedFactory ColumnBasedFactory]]
+	  * respectively. See [[net.noresttherein.oldsql.morsels.SpecializingFactory SpecializingFactory]]
 	  * for more information about this framework type.
 	  */
-	type ReadFormFunction[A[_], M[_], S[X] <: M[X]] = ColumnBasedFactory[A, A, SQLReadForm, ColumnReadForm, M, S]
+	type ReadFormBasedFactory[A[_], M[_], S[X] <: M[X]] = SpecializingFactory[A, A, SQLReadForm, ColumnReadForm, M, S]
 
 
 
 
 
 
-	private[schema] class NullSQLReadForm[+T :NullValue](columns :Int = 0, override val toString :String = "NULL>")
+	private[schema] class NullValueSQLReadForm[+T :NullValue](columns :Int = 0, name :String = null)
 		extends AbstractSQLReadForm[T] with EmptyReadForm[T]
 	{
 		override def readColumns :Int = columns
@@ -764,12 +775,17 @@ object SQLReadForm {
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
-			case nulls :NullSQLReadForm[_] if nulls.canEqual(this) =>
+			case nulls :NullValueSQLReadForm[_] if nulls.canEqual(this) =>
 				nulls.readColumns == readColumns && nulls.nulls == this.nulls
 			case _ => false
 		}
 
 		override def hashCode :Int = nulls.hashCode
+
+		override val toString =
+			if (name != null) name
+			else if (columns == 1) "NULL>"
+			else columns.toString + "*NULL>"
 	}
 
 

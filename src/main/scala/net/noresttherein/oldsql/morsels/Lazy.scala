@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.morsels
 
-import java.io.ObjectOutputStream
+import net.noresttherein.oldsql
 
 
 
@@ -42,6 +42,7 @@ object Lazy {
 						cache = init()
 						value = cache
 						f = null
+						oldsql.publishMutable()
 					}
 				}
 			}

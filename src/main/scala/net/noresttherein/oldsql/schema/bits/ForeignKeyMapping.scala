@@ -12,6 +12,7 @@ import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, Requisite}
 import net.noresttherein.oldsql.schema.{composeColumnExtracts, composeExtracts, Buff, Buffs, ColumnForm, ColumnMapping, Mapping, MappingExtract}
 import net.noresttherein.oldsql.schema.ColumnMapping.{OptimizedColumn, SimpleColumn, StableColumn}
+import net.noresttherein.oldsql.schema.ColumnWriteForm.SingletonColumnWriteForm
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.RelVar
 import net.noresttherein.oldsql.schema.SQLForm.{AbstractMappedForm, NullValue}
@@ -753,7 +754,7 @@ object ForeignKeyMapping {
 			this(name, factory, Buffs(buffs :_*))(table, pk)
 
 		private[this] val lazyForm = Lazy(new ForeignKeyColumnForm[K, E, T, R](pk(table[MO]).form, factory))
-		override def form = lazyForm
+		override def form :ColumnForm[R] = lazyForm
 
 		private[this] val lazyKey = Lazy {
 			val keyBuffs = buffs.cascade(factory.forceKeyOutOf).declare()
@@ -850,7 +851,7 @@ object ForeignKeyMapping {
 
 
 		override def mappingName :String = s"InverseFK($table):${key.mappingName}"
-		override def toString :String = s"InverseFK[$factory]($table.$target):${key.mappingName}"
+		override def toString :String = s"InverseFK[$factory]($table.${target.mappingName}):${key.mappingName}"
 	}
 
 
@@ -936,13 +937,13 @@ object ForeignKeyMapping {
 	  * by the backing form `referenced`. All references ''will be absent'' (empty) and thus this form is useful
 	  * mostly as a fallback or a stop gap.
 	  */
-	class ForeignKeyColumnForm[K, E, Y, R](referenced :ColumnForm[K], factory :RelatedEntityFactory[K, E, Y, R])
-		extends AbstractMappedForm[K, R]()(referenced,
-		                                   if (factory.isRequired) NullValue.eval(factory.nonexistent)
-		                                   else NullValue(factory.nonexistent))
-		   with ColumnForm[R]
+	private class ForeignKeyColumnForm[K, E, Y, R](referenced :ColumnForm[K], factory :RelatedEntityFactory[K, E, Y, R])
+		extends AbstractMappedForm[K, R]()(referenced) with SingletonColumnWriteForm[R] with ColumnForm[R]
 	{
-		private def form = referenced
+		override val nulls :NullValue[R] = //this may initialize the factory if its lazy
+			if (factory.isRequired) NullValue.eval(factory.nonexistent)
+			else NullValue(factory.nonexistent)
+
 		private def entities = factory
 //		private[this] val nullable = !factory.isRequired //factory may be lazy, don't init it too early
 		protected override def map(s :K) :R = factory.missing(s)

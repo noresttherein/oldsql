@@ -3,15 +3,16 @@ package net.noresttherein.oldsql
 import net.noresttherein.oldsql.schema.SQLForm
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.sql.GroupBy.AndBy
 import net.noresttherein.oldsql.sql.GroupByClause.{Group, GroupingRelation}
 import net.noresttherein.oldsql.sql.RowProduct.GroupingOfGeneralized
-import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, NamedParamRelation, ParamRelation}
 
 
 
 package object sql {
-
+	//todo: case/decode
 	/** Represents the multipurpose 'everything' wildcard `*` in SQL. Can be used as the argument to
 	  * [[net.noresttherein.oldsql.sql.AggregateFunction.Count Count]] and
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductExtension.select select]].
@@ -25,6 +26,19 @@ package object sql {
 	final val * = new *
 
 
+	/** The 'NVL' SQL function. Accepts 2 arguments of the same type, returning the first ''iff'' it is not null,
+	  * otherwise the second.
+	  */
+	final val NVL = GenericFunction.of2("NVL")
+
+	/** The 'NVL' SQL function. Accepts 3 arguments of the same type, returning the first ''iff'' it is not null,
+	  * otherwise the second if it is not null, defaulting to the third if the first two are null.
+	  */
+	final val NVL2 = GenericFunction.of3("NVL2")
+
+
+//	type SQL[-F <: RowProduct, V] = SQLExpression[F, Aggregate] { type Value = V }
+//	type DiscreteSQL[-F <: RowProduct, V] = SQLExpression[F, Discrete] { type Value = V }
 	/** An SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] of Boolean value and
 	  * with [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope scope]] `S`.
 	  */
@@ -39,11 +53,11 @@ package object sql {
 	type LocalBoolean[-F <: RowProduct] = ColumnSQL[F, LocalScope, Boolean]
 
 	/** An SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] of Boolean value which can occur in any place
-	  * of the SQL select represented by the ''from'' clause `F` or its enclosing selects (for subselect clauses).
-	  * Such expressions can also be expanded to subselects of the clause `F` using the
-	  * [[net.noresttherein.oldsql.sql.SQLExpression.basedOn basedOn]] method. This is in particular the expression type
-	  * used in all ''where'' clauses.
-	  * Note that `GlobalBoolean[F] <: `[[net.noresttherein.oldsql.sql.LocalBoolean LocalBoolean]]`F`.
+	  * of the SQL select represented by the ''from'' clause `F` or its dependent selects (for subselect clauses,
+	  * after expanding with [[net.noresttherein.oldsql.sql.SQLExpression.expand expand]] method).
+	  * Such expressions cannot use [[net.noresttherein.oldsql.sql.ast.AggregateSQL aggregate]] subexpressions
+	  * from an enclosing ''select''. This is in particular the expression type used in all ''where'' clauses.
+	  * Note that `GlobalBoolean[F] <: `[[net.noresttherein.oldsql.sql.LocalBoolean LocalBoolean]]`[F]`.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope]]
 	  */
 	type GlobalBoolean[-F <: RowProduct] = ColumnSQL[F, GlobalScope, Boolean]
@@ -67,7 +81,7 @@ package object sql {
 	  * Such expressions can also be expanded to subselects of the clause `F` using the
 	  * [[net.noresttherein.oldsql.sql.SQLExpression.basedOn basedOn]] method. This is in particular the expression type
 	  * used in all ''where'' clauses.
-	  * Note that `GlobalString[F] <: `[[net.noresttherein.oldsql.sql.LocalString LocalString]]`F`.
+	  * Note that `GlobalString[F] <: `[[net.noresttherein.oldsql.sql.LocalString LocalString]]`[F]`.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope]]
 	  */
 	type GlobalString[-F <: RowProduct] = ColumnSQL[F, GlobalScope, String]
@@ -95,6 +109,19 @@ package object sql {
 	type JoinedTable[F <: RowProduct, M[O] <: MappingAt[O]] = ast.MappingSQL.JoinedTable[F, M]
 
 	val JoinedTable = ast.MappingSQL.JoinedTable
+
+	type JoinedParam[F <: RowProduct, X] = ast.MappingSQL.JoinedRelation[F, FromParam.Of[X]#P]
+
+	object JoinedParam {
+		type Last[X] = JoinedParam[RowProduct AndFrom ParamRelation[X]#Param, X]
+	}
+
+	type JoinedGroup[F <: RowProduct, X] = ast.MappingSQL.JoinedRelation[F, Group[X]#T]
+
+	object JoinedGroup {
+		type First[X] = JoinedGroup[FromSome GroupBy Group[X]#T, X]
+		type Last[X] = JoinedGroup[GroupByClause AndBy Group[X]#T, X]
+	}
 
 
 
@@ -150,18 +177,28 @@ package object sql {
 	/** A type alias for `JoinParam` accepting parameter type `X`. As a `RowProduct` containing a `JoinParam` join
 	  * in its type is a preliminary from clause which will be translated to a parameterized statement, it uses
 	  * an a 'inverse function symbol' as a mnemonic: `From[Users] <=? String`. This is equivalent to `WithParam[F, X]`.
-	  */
-	type <=?[+F <: FromSome, X] = WithParam[F, X]
+	  */ //todo: some less confusing shorthand
+//	type <=?[+F <: FromSome, X] = WithParam[F, X]
 
 	/** An alias for `JoinParam` accepting the parameter type as the second (right) argument, hiding the
 	  * `FromParam[X, _]` from the type signature.
 	  */ //not F <: TopFromSome so it can be used in Generalized types
-	type WithParam[+F <: FromSome, X] = JoinParam[F, FromParam.Of[X]#P] //todo: rename, conflicts with param for WithClause
+	type WithParam[+F <: FromSome, X] = JoinParam[F, ParamRelation[X]#Param] //todo: rename, conflicts with param for WithClause
+
+	object WithParam {
+		//todo: make this FromSome WithParam X
+		type Last[X] = FromSome WithParam X
+		type FromLast[X] = RowProduct AndFrom ParamRelation[X]#Param
+	}
 
 	/** An alias for `GroupParam` accepting the parameter type as the second (right) argument, hiding the
 	  * `FromParam[X, _]` from the type signature.
 	  */
 	type ByParam[+F <: GroupByClause, X] = GroupParam[F, ParamRelation[X]#Param]
+
+	object ByParam {
+		type FromLast[X] = GroupByClause AndBy ParamRelation[X]#Param
+	}
 
 
 
@@ -246,6 +283,43 @@ package object sql {
 
 		type WithRight[X] = { type F[L <: GroupByClause] = L By MappingOf[X]#ColumnProjection }
 	}
+
+
+
+	implicit class nulleq[F <: RowProduct, S >: LocalScope <: GlobalScope, L](private val left :SQLExpression[F, S, L])
+		extends AnyVal
+	{
+		def nulleq[R, U](right :SQLExpression[F, S, R])(implicit sameish :SQLTypeUnification[L, R, U]) :SQLBoolean[F, S] =
+			??? //todo: requires DECODE/CASE
+	}
+
+
+
+	/** Escapes some problematic characters such as `'` and `\`. This is intended as a convenience for fixed strings
+	  * created by the application and is ''not'' a sufficient defence against SQL injection. It should not be relied
+	  * upon for user-submitted values.
+	  */
+	def sanitize(string :String) :String =
+		if (string == null)
+			null
+		else {
+			val s = new java.lang.StringBuilder(string.length * 11 / 10)
+			var i = 0; val len = string.length
+			while (i < len) {
+				string.charAt(i) match {
+					case 0 => s append '\\' append '0'
+					case '\n' => s append '\\' append 'n'
+					case '\r' => s append '\\' append 'r'
+					case '\\' => s append '\\' append '\\'
+					case '\'' => s append '\\' append '\''
+					case '\u001a' => s append '\\' append 'Z' //ctrl-Z / Windows EoF
+					case '\u00a5' | '\u20a9' => // escape characters interpreted as backslash by mysql
+					case c => s append c
+				}
+				i += 1
+			}
+			s.toString
+		}
 
 }
 

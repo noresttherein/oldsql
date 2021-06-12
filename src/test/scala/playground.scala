@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
 import net.noresttherein.oldsql.schema.forms.SQLForms
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.sql.{AndFrom, From, InnerJoin, Join, JoinParam, LeftJoin, RightJoin, RowProduct, Subselect}
+import net.noresttherein.oldsql.sql.{AndFrom, ColumnFunction, From, InnerJoin, Join, JoinParam, LeftJoin, RightJoin, RowProduct, StoredFunction, StoredProcedure, Subselect}
 import net.noresttherein.oldsql.sql.RowProduct.As
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
 import net.noresttherein.oldsql.slang
@@ -24,6 +24,13 @@ import slang._
   * @author Marcin Mościcki
   */
 object playground extends App {
+	import net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals._
+
+	val proc = ColumnFunction.of5[Byte, Short, Int, Long, String, Double]("proc")
+	val call = proc[Int][Long][String](params => 1.toByte.?.chain ~ 2.toShort.? ~ params.of[Int] ~ params.of[Long] ~ params.of[String])
+//	call :Nothing
+//	call call (params => 1.toByte.? ~ 2.toShort.? ~ params[Int] ~ params[Long] ~ params[String])
+//	call :Nothing
 
 //	class A[O] extends FormMapping[Int, O]
 //	class B[O] extends FormMapping[Int, O]

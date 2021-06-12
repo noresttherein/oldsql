@@ -2,11 +2,7 @@ package net.noresttherein.oldsql.sql.mechanics
 
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.Relation.Table
-import net.noresttherein.oldsql.sql.{Adjoin, ColumnSQL, FromSome, GlobalBoolean, InnerJoin, Join, RowProduct, SQLExpression}
-import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.InferSubject
-import net.noresttherein.oldsql.sql.ast.MappingSQL.TableSQL.LastTable
-import net.noresttherein.oldsql.sql.ast.SQLTerm.True
+import net.noresttherein.oldsql.sql.{Adjoin, ColumnSQL, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 
 
@@ -16,7 +12,7 @@ import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 
 /**
   * @author Marcin Mościcki
-  */
+  */ //todo: migrate to this class from JoinedRelationSubject
 sealed abstract class MappingReveal[X[O] <: MappingAt[O], Y[O] <: U[O], +U[O] <: MappingAt[O]] {
 	def back :MappingReveal[Y, X, MappingAt]
 
@@ -103,10 +99,5 @@ object MappingReveal {
 
 	type BaseMappingSubject[X[O] <: MappingAt[O], Y[O] <: BaseMapping[S, O], S] =
 		MappingReveal[X, Y, MappingOf[S]#TypedProjection]
-
-	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
-	         (implicit cast :BaseMappingSubject[R, T, S]) :L InnerJoin R =
-		InnerJoin(left, LastTable[T, S](cast(right)), None)(filter)
 
 }

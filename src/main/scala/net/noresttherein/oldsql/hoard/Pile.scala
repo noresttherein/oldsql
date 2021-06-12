@@ -2,8 +2,8 @@ package net.noresttherein.oldsql.hoard
 
 import net.noresttherein.oldsql.hoard.Hoard.EntityNotFoundException
 import net.noresttherein.oldsql.model
-import net.noresttherein.oldsql.model.{ComposedOf, Kin, EntityIdentity, Restraint, Restrictive}
-import net.noresttherein.oldsql.model.ComposedOf.{DecomposableTo, ExtractAs}
+import net.noresttherein.oldsql.model.{ComposedOf, Kin, Restraint, Restrictive}
+import net.noresttherein.oldsql.model.ComposedOf.ExtractAs
 import net.noresttherein.oldsql.model.Restraint.True
 import net.noresttherein.oldsql.model.PropertyPath
 

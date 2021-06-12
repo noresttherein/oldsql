@@ -112,7 +112,6 @@ trait SimpleMapping[S, O]
 	}
 
 
-
 	/** Base class for all user defined components of the outer `SimpleMapping`. Provides column factory methods
 	  * mirroring those from the outer mapping; each new column becomes both a column of `SimpleMapping`
 	  * and of this component. This mapping cannot have true, independent subcomponents; it can however
@@ -279,8 +278,8 @@ trait SimpleMapping[S, O]
 			val selector = Extractor.req(property)
 			val allBuffs = this.buffs.cascade(property).declare(buffs :_*)
 			borrow(
-				new FKColumn[M, K, E, X, R, ()](extract andThenReq selector, columnPrefix + name, allBuffs)(
-					factory, table, key.asInstanceOf[M[()] => ColumnMapping[K, ()]]
+				new FKColumn[M, K, E, X, R, Unit](extract andThenReq selector, columnPrefix + name, allBuffs)(
+					factory, table, key.asInstanceOf[M[Unit] => ColumnMapping[K, Unit]]
 				), selector
 			)
 		}
@@ -294,8 +293,8 @@ trait SimpleMapping[S, O]
 			val fullExtract = extract andThenReq selector
 			val allBuffs = this.buffs.cascade(property).declare(buffs :_*)
 			borrow(
-				new FKComponent[M, C, K, E, X, R, ()](fullExtract, (s :String) => columnPrefix + rename(s), allBuffs)(
-					factory, table, key.asInstanceOf[M[()] => C[()]]
+				new FKComponent[M, C, K, E, X, R, Unit](fullExtract, (s :String) => columnPrefix + rename(s), allBuffs)(
+					factory, table, key.asInstanceOf[M[Unit] => C[Unit]]
 				), selector
 			)
 		}
@@ -308,8 +307,8 @@ trait SimpleMapping[S, O]
 			val selector = Extractor.req(property)
 			val allBuffs = this.buffs.cascade(property).declare(buffs :_*)
 			borrow(
-				new InverseFKComponent[M, C, K, E, X, R, ()](extract andThenReq selector, allBuffs)(key, reference)(
-					table, fk.asInstanceOf[M[()] => ForeignKeyMapping[MappingAt, C, K, _, ()]]
+				new InverseFKComponent[M, C, K, E, X, R, Unit](extract andThenReq selector, allBuffs)(key, reference)(
+					table, fk.asInstanceOf[M[Unit] => ForeignKeyMapping[MappingAt, C, K, _, Unit]]
 				), selector
 			)
 		}
@@ -848,7 +847,7 @@ trait SimpleMapping[S, O]
 	}
 
 
-	private[this] val lazySelectForm = Lazy(new ReadForm(selectedByDefault))
+	protected[schema] override val lazySelectForm :Lazy[SQLReadForm[S]] = Lazy(new ReadForm(selectedByDefault))
 
 	override def selectForm :SQLReadForm[S] = lazySelectForm
 
@@ -944,24 +943,24 @@ trait SimpleMapping[S, O]
 	                             (name :String, property :S => R, buffs :Buff[R]*)
 	                             (table :RelVar[M], key :M[_] => ColumnMapping[K, _],
 	                              factory :RelatedEntityFactory[K, E, T, R]) :ForeignKeyColumnMapping[M, K, R, O] =
-		new FKColumn[M, K, E, T, R, ()](property, verifiedPrefix + name, buffs)(
-			factory, table, key.asInstanceOf[M[()] => ColumnMapping[K, ()]]
+		new FKColumn[M, K, E, T, R, Unit](property, verifiedPrefix + name, buffs)(
+			factory, table, key.asInstanceOf[M[Unit] => ColumnMapping[K, Unit]]
 		)
 	//consider: should we be using columnPrefix for fk components with a rename function?
 	protected override def fkimpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R]
 	                             (property :S => R, buffs :Buff[R]*)
 	                             (table :RelVar[M], key :M[_] => C[_], factory :RelatedEntityFactory[K, E, T, R])
 	                             (rename :String => String) :ForeignKeyMapping[M, C, K, R, O] =
-		new FKComponent[M, C, K, E, T, R, ()](property, rename, buffs)(
-			factory, table, key.asInstanceOf[M[()] => C[()]]
+		new FKComponent[M, C, K, E, T, R, Unit](property, rename, buffs)(
+			factory, table, key.asInstanceOf[M[Unit] => C[Unit]]
 		)
 
 	protected override def inverseFKImpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R]
 	                       (property :S => R, key :C[O], reference :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
 	                       (table :RelVar[M], fk :M[_] => ForeignKeyMapping[MappingAt, C, K, _, _])
 			:JoinedEntityComponent[M, C, K, R, O] =
-		new InverseFKComponent[M, C, K, E, T, R, ()](property, buffs)(key, reference)(
-			table, fk.asInstanceOf[M[()] => ForeignKeyMapping[MappingAt, C, K, _, ()]]
+		new InverseFKComponent[M, C, K, E, T, R, Unit](property, buffs)(key, reference)(
+			table, fk.asInstanceOf[M[Unit] => ForeignKeyMapping[MappingAt, C, K, _, Unit]]
 		)
 
 	protected override def kinimpl[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],

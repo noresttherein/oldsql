@@ -886,7 +886,7 @@ object GetTable {
 	@implicitNotFound("No relation with type constructor ${C} in the FROM clause ${F}:\n" +
 	                  "no implicit value for GetTable.ByType[${F}, ${G}, ${C}].")
 	sealed trait ByType[-F <: RowProduct, G <: RowProduct, C[O] <: MappingAt[O]]
-		extends RelationEvidence[F, G, C[()]]
+		extends RelationEvidence[F, G, C[Unit]]
 	{
 		override type M[O] = C[O]
 	}
@@ -906,12 +906,12 @@ object GetTable {
 	object ByType extends GetTableByPredicate {
 
 		implicit def byTypeConstructor[F <: RowProduct, G <: RowProduct, C[O] <: MappingAt[O]]
-		                              (implicit found :Return[F, G, C[()]] { type M[O] = C[O] })
+		                              (implicit found :Return[F, G, C[Unit]] { type M[O] = C[O] })
 				:ByType[F, G, C]
 					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
-			new Delegate[F, G, C[()], found.O, found.I, found.M, found.T](found) with ByType[F, G, C]
+			new Delegate[F, G, C[Unit], found.O, found.I, found.M, found.T](found) with ByType[F, G, C]
 
-		implicit def satisfies[M[O] <: MappingAt[O]] :Predicate[RowProduct Adjoin M, M[()]] = report
+		implicit def satisfies[M[O] <: MappingAt[O]] :Predicate[RowProduct Adjoin M, M[Unit]] = report
 
 	}
 

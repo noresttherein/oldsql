@@ -2,16 +2,18 @@ package net.noresttherein.oldsql.sql
 
 import java.sql.JDBCType
 
+import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.Opt.Lack
 import net.noresttherein.oldsql.schema.ColumnReadForm
 import net.noresttherein.oldsql.sql
-import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
+import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.SQLNumber.SQLFraction
 import net.noresttherein.oldsql.sql.ast.AggregateSQL
-import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLNumber, SQLOrdering}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
+import net.noresttherein.oldsql.sql.mechanics.SQLNumber.SQLFraction
 
 
 
@@ -28,20 +30,20 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
 trait AggregateFunction extends Serializable {
 	val name :String
 
-	protected def spell[P, F <: RowProduct](arg :ColumnSQL[F, LocalScope, _], distinct :Boolean = false)
-	                                       (context :SQLContext, params :Parameterization[P, F])
-	                                       (implicit spelling :SQLSpelling)
+	protected def defaultSpelling[P, F <: RowProduct](arg :ColumnSQL[F, LocalScope, _], distinct :Boolean = false)
+	                                                 (context :SQLContext, params :Parameterization[P, F])
+	                                                 (implicit spelling :SQLSpelling)
 			:SpelledSQL[P, F] =
 	{
 		val prefix = SpelledSQL(spelling.function(name) + (if (distinct) "(DISTINCT" else "("), context, params)
 		prefix + (spelling(arg)(_, _)) + ")"
 	}
 
-	private[sql] final def spell[P, F <: RowProduct](spelling :SQLSpelling)
-	                                                (arg :ColumnSQL[F, LocalScope, _], distinct :Boolean)
-	                                                (implicit context :SQLContext, params :Parameterization[P, F])
+	private[sql] final def defaultSpelling[P, F <: RowProduct](spelling :SQLSpelling)
+	                                                          (arg :ColumnSQL[F, LocalScope, _], distinct :Boolean)
+	                                                          (implicit context :SQLContext, params :Parameterization[P, F])
 			:SpelledSQL[P, F] =
-		spell(arg, distinct)(context, params)(spelling)
+		defaultSpelling(arg, distinct)(context, params)(spelling)
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[AggregateFunction]
 
@@ -129,7 +131,7 @@ object AggregateFunction {
 				ColumnReadForm.unsupported(JDBCType.INTEGER, "count(*)")(
 					"count(*).expr.readForm"
 				)
-
+			override def groundValue :Opt[Nothing] = Lack
 
 			override def basedOn[U <: RowProduct, E <: RowProduct]
 			                    (base :E)(implicit ext :U PartOf E) :ColumnSQL[E, LocalScope, Nothing] = this
@@ -142,9 +144,9 @@ object AggregateFunction {
 			override def isAnchored = true
 			override def anchor(from :RowProduct) = this
 
-			override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
-			                    (matcher :ColumnMatcher[RowProduct, Y]) :Y[LocalScope, Nothing] =
-				matcher.*(this)
+			protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
+			                    (visitor :ColumnVisitor[RowProduct, Y]) :Y[LocalScope, Nothing] =
+				visitor.*(this)
 
 			protected override def defaultSpelling[P, E <: RowProduct]
 			                       (context :SQLContext, params :Parameterization[P, E])
@@ -162,7 +164,7 @@ object AggregateFunction {
 
 
 	/** An SQL aggregate function returning one of the elements from the row set.
-	  * It is applicable only to [[net.noresttherein.oldsql.sql.SQLOrdering ordered]] SQL types.
+	  * It is applicable only to [[net.noresttherein.oldsql.sql.mechanics.SQLOrdering ordered]] SQL types.
 	  * Note that the preferred way for including an aggregate function in the ''select'' clause of an SQL ''select''
 	  * ''without'' a ''group by'' clause is to use one of the factory methods included in
 	  * [[net.noresttherein.oldsql.sql.FromSome FromSome]], which create the appropriate
@@ -207,7 +209,7 @@ object AggregateFunction {
 
 
 	/** An SQL aggregate function whose result type is the same as the type of its argument.
-	  * It is applicable only to [[net.noresttherein.oldsql.sql.SQLNumber numeric]] SQL types.
+	  * It is applicable only to [[net.noresttherein.oldsql.sql.mechanics.SQLNumber numeric]] SQL types.
 	  * The only standard instance is [[net.noresttherein.oldsql.sql.AggregateFunction.Sum Sum]].
 	  * Note that the preferred way for including an aggregate function in the ''select'' clause of an SQL ''select''
 	  * ''without'' a ''group by'' clause is to use one of the factory methods included in
@@ -245,15 +247,15 @@ object AggregateFunction {
 	}
 
 
-	/** An SQL aggregate function applicable to any [[net.noresttherein.oldsql.sql.SQLNumber numeric]] type and
-	  * which always returns a [[net.noresttherein.oldsql.sql.SQLNumber.SQLFraction fractional]] value.
+	/** An SQL aggregate function applicable to any [[net.noresttherein.oldsql.sql.mechanics.SQLNumber numeric]] type and
+	  * which always returns a [[net.noresttherein.oldsql.sql.mechanics.SQLNumber.SQLFraction fractional]] value.
 	  * Note that the preferred way for including an aggregate function in the ''select'' clause of an SQL ''select''
 	  * ''without'' a ''group by'' clause is to use one of the factory methods included in
 	  * [[net.noresttherein.oldsql.sql.FromSome FromSome]], which create the appropriate
 	  * '`select `''fun''`(`''arg''`) from `''F'' ' directly.
 	  * @param name the name of the function.
 	  * @tparam V return type of the function. Must have implicit
-	  *           [[net.noresttherein.oldsql.sql.SQLNumber.SQLFraction fractional]] type class and a
+	  *           [[net.noresttherein.oldsql.sql.mechanics.SQLNumber.SQLFraction fractional]] type class and a
 	  *           [[net.noresttherein.oldsql.schema.ColumnReadForm]].
 	  * @see [[net.noresttherein.oldsql.sql.AggregateFunction.Avg]]
 	  * @see [[net.noresttherein.oldsql.sql.AggregateFunction.Var]]

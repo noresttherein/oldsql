@@ -2509,10 +2509,10 @@ object MappingSchema {
 
 
 
-		override protected[schema] def componentsReversed :List[Component[_]] =
+		protected[schema] override def componentsReversed :List[Component[_]] =
 			component :: init.componentsReversed
 
-		override protected[schema] def subcomponentsReversed :List[Component[_]] =
+		protected[schema] override def subcomponentsReversed :List[Component[_]] =
 			component :: component.subcomponents.toList reverse_::: init :: init.subcomponentsReversed
 
 		protected[schema] override def columnsReversed :List[Column[_]] =

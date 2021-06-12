@@ -441,7 +441,6 @@ class AdjustedMapping[+M <: RefinedMapping[S, O], S, O] private[schema]
 			(excludes.view.filterNot(newIncludes.contains) ++ newExcludes).to(Unique)
 		)
 	}
-
 }
 
 

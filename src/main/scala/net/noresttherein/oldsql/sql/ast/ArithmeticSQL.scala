@@ -3,16 +3,17 @@ package net.noresttherein.oldsql.sql.ast
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.ColumnReadForm
-import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression, SQLNumber}
-import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnMatcher, CompositeColumnSQL}
+import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
+import net.noresttherein.oldsql.sql.ColumnSQL.{ColumnVisitor, CompositeColumnSQL}
 import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{BinaryColumnOperator, UnaryColumnOperator}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.BinaryOperationSQL.{BinaryOperation, BinaryOperationMatcher}
-import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.UnaryOperationSQL.{UnaryOperation, UnaryOperationMatcher}
-import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.UnaryPostfixOperationSQL.{UnaryPostfixOperation, UnaryPostfixOperationMatcher}
-import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
+import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.BinaryOperationSQL.{BinaryOperation, BinaryOperationVisitor}
+import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.UnaryOperationSQL.{UnaryOperation, UnaryOperationVisitor}
+import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.UnaryPostfixOperationSQL.{UnaryPostfixOperation, UnaryPostfixOperationVisitor}
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLNumber}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
+import net.noresttherein.oldsql.sql.mechanics.SQLNumber.{SQLFraction, SQLInteger}
 
 
 
@@ -20,8 +21,8 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
   * @author Marcin Mościcki
   */
 trait ArithmeticSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends CompositeColumnSQL[F, S, V] {
-	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V] =
-		matcher.arithmetic(this)
+	protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, Y]) :Y[S, V] =
+		visitor.arithmetic(this)
 }
 
 
@@ -36,12 +37,14 @@ object ArithmeticSQL {
 	{
 		override def readForm :ColumnReadForm[V] = value.readForm
 
+		override def groundValue :Opt[V] = value.groundValue.flatMap(operation(_))
+
 		protected override def reapply[E <: RowProduct, C >: LocalScope <: GlobalScope]
 		                              (e :ColumnSQL[E, C, V]) :ColumnSQL[E, C, V] =
 			new UnaryOperationSQL[E, C, V](operation, e)
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V] =
-			matcher.unaryArithmetic(this)
+		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, Y]) :Y[S, V] =
+			visitor.unaryArithmetic(this)
 
 		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
 		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
@@ -75,7 +78,8 @@ object ArithmeticSQL {
 			}
 
 
-		class UnaryOperation(val symbol :String) extends AnyVal with Serializable {
+		class UnaryOperation(val symbol :String) extends Serializable {
+			def apply[V :SQLNumber](value :V) :Opt[V] = Lack
 
 			def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, V :SQLNumber]
 			         (value :ColumnSQL[F, S, V]) :UnaryOperationSQL[F, S, V] =
@@ -91,11 +95,11 @@ object ArithmeticSQL {
 		}
 
 
-		trait UnaryOperationMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+		trait UnaryOperationVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
 			def unaryArithmetic[S >: LocalScope <: GlobalScope, V](e :UnaryOperationSQL[F, S, V]) :Y[S, V]
 		}
-		type MatchUnaryOperation[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = UnaryOperationMatcher[F, Y]
-		type CaseUnaryOperation[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = UnaryOperationMatcher[F, Y]
+		type MatchUnaryOperation[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = UnaryOperationVisitor[F, Y]
+		type CaseUnaryOperation[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = UnaryOperationVisitor[F, Y]
 	}
 
 
@@ -107,13 +111,14 @@ object ArithmeticSQL {
 		extends UnaryColumnOperator[F, S, V, V] with ArithmeticSQL[F, S, V]
 	{
 		override def readForm :ColumnReadForm[V] = value.readForm
+		override def groundValue :Opt[V] = value.groundValue.flatMap(operation(_))
 
 		protected override def reapply[E <: RowProduct, C >: LocalScope <: GlobalScope]
 		                              (e :ColumnSQL[E, C, V]) :ColumnSQL[E, C, V] =
 			new UnaryPostfixOperationSQL[E, C, V](e, operation)
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V] =
-			matcher.unaryPostfix(this)
+		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, Y]) :Y[S, V] =
+			visitor.unaryPostfix(this)
 
 
 		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
@@ -148,7 +153,8 @@ object ArithmeticSQL {
 			}
 
 
-		class UnaryPostfixOperation(val symbol :String) extends AnyVal with Serializable {
+		class UnaryPostfixOperation(val symbol :String) extends Serializable {
+			def apply[V :SQLNumber](value :V) :Opt[V] = Lack
 
 			def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, V :SQLNumber]
 			         (value :ColumnSQL[F, S, V]) :UnaryPostfixOperationSQL[F, S, V] =
@@ -165,14 +171,14 @@ object ArithmeticSQL {
 		}
 
 
-		trait UnaryPostfixOperationMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+		trait UnaryPostfixOperationVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
 			def unaryPostfix[S >: LocalScope <: GlobalScope, V](e :UnaryPostfixOperationSQL[F, S, V]) :Y[S, V]
 		}
 		type MatchUnaryPostfixOperation[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
-			UnaryPostfixOperationMatcher[F, Y]
+			UnaryPostfixOperationVisitor[F, Y]
 
 		type CaseUnaryPostfixOperation[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] =
-			UnaryPostfixOperationMatcher[F, Y]
+			UnaryPostfixOperationVisitor[F, Y]
 	}
 
 
@@ -187,13 +193,16 @@ object ArithmeticSQL {
 	{
 		override def readForm :ColumnReadForm[V] = left.readForm
 
+		override def groundValue :Opt[V] =
+			for (l <- left.groundValue; r <- right.groundValue; res <- operation(l, r)) yield res
+
 		protected override def reapply[E <: RowProduct, C >: LocalScope <: GlobalScope]
 		                              (left :ColumnSQL[E, C, V], right :ColumnSQL[E, C, V]) :BinaryOperationSQL[E, C, V] =
 			new BinaryOperationSQL(left, operation, right)
 
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V] =
-			matcher.binaryArithmetic(this)
+		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, Y]) :Y[S, V] =
+			visitor.binaryArithmetic(this)
 
 
 		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
@@ -245,7 +254,8 @@ object ArithmeticSQL {
 			}
 
 
-		class BinaryOperation(val symbol :String) extends AnyVal with Serializable {
+		class BinaryOperation(val symbol :String) extends Serializable {
+			def apply[V :SQLNumber](left :V, right :V) :Opt[V] = Lack
 
 			def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, V :SQLNumber]
 			         (left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :BinaryOperationSQL[F, S, V] =
@@ -262,11 +272,11 @@ object ArithmeticSQL {
 
 
 
-		trait BinaryOperationMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+		trait BinaryOperationVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
 			def binaryArithmetic[S >: LocalScope <: GlobalScope, V](e :BinaryOperationSQL[F, S, V]) :Y[S, V]
 		}
 
-		type MatchBinaryOperation[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = BinaryOperationMatcher[F, Y]
+		type MatchBinaryOperation[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = BinaryOperationVisitor[F, Y]
 
 //		trait MatchBinaryOperation[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchBinaryOperation[F, Y] {
 //			override def binaryArithmetic[S <: LocalScope, V](e :BinaryOperationSQL[F, S, V]) :Y[S, V] = e.operation match {
@@ -285,30 +295,50 @@ object ArithmeticSQL {
 //			def remainder[S <: LocalScope, V :SQLNumber](left :ColumnSQL[F, S, V], right :ColumnSQL[F, S, V]) :Y[S, V]
 //		}
 
-		type CaseBinaryOperation[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = BinaryOperationMatcher[F, Y]
+		type CaseBinaryOperation[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = BinaryOperationVisitor[F, Y]
 
 	}
 
 
-	final val Neg = new UnaryOperation("-")
-	final val Plus = new BinaryOperation("+")
-	final val Minus = new BinaryOperation("-")
-	final val Times = new BinaryOperation("*")
-	final val Divide = new BinaryOperation("/")
-	final val Remainder = new BinaryOperation("%")
+	final val Neg = new UnaryOperation("-") {
+		override def apply[V](value :V)(implicit number :SQLNumber[V]) :Opt[V] = Got(number.negate(value))
+	}
+	final val Plus = new BinaryOperation("+") {
+		override def apply[V:SQLNumber](left :V, right :V) = Got(SQLNumber[V].plus(left, right))
+	}
+	final val Minus = new BinaryOperation("-") {
+		override def apply[V:SQLNumber](left :V, right :V) :Opt[V] = Got(SQLNumber[V].minus(left, right))
+	}
+	final val Times = new BinaryOperation("*") {
+		override def apply[V:SQLNumber](left :V, right :V) :Opt[V] = Got(SQLNumber[V].times(left, right))
+	}
+	final val Divide = new BinaryOperation("/") {
+		override def apply[V:SQLNumber](left :V, right :V) :Opt[V] = SQLNumber[V] match {
+			case int :SQLInteger[V] => Got(int.quot(left, right))
+			case frac :SQLFraction[V] => Got(frac.div(left, right))
+			case _ => Lack
+		}
+	}
+	final val Remainder = new BinaryOperation("%") {
+		override def apply[V:SQLNumber](left :V, right :V) :Opt[V] = SQLNumber[V] match {
+			case int :SQLInteger[V] => Got(int.rem(left, right))
+			case frac :SQLFraction[V] => Got(frac.zero)
+			case _ => Lack
+		}
+	}
 
 
 
 
 
 
-	trait ArithmeticMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends BinaryOperationMatcher[F, Y] with UnaryOperationMatcher[F, Y] with UnaryPostfixOperationMatcher[F, Y]
+	trait ArithmeticVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends BinaryOperationVisitor[F, Y] with UnaryOperationVisitor[F, Y] with UnaryPostfixOperationVisitor[F, Y]
 	{
 		def arithmetic[S >: LocalScope <: GlobalScope, V](e :ArithmeticSQL[F, S, V]) :Y[S, V]
 	}
 
-	type MatchArithmetic[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = ArithmeticMatcher[F, Y]
+	type MatchArithmetic[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = ArithmeticVisitor[F, Y]
 
 	trait CaseArithmetic[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchArithmetic[F, Y] {
 		override def unaryArithmetic[S >: LocalScope <: GlobalScope, V](e :UnaryOperationSQL[F, S, V]) :Y[S, V] =

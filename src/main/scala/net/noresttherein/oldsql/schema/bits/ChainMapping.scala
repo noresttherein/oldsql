@@ -195,9 +195,9 @@ object ChainMapping {
 			backer compose (extractor andThen Chain.init[V] _)
 
 
-		override protected[schema] def componentsReversed :List[Component[_]] = backer.componentsReversed
-		override protected[schema] def subcomponentsReversed :List[Component[_]] = backer.subcomponentsReversed
-		override protected[schema] def columnsReversed :List[Column[_]] = backer.columnsReversed
+		protected[schema] override def componentsReversed :List[Component[_]] = backer.componentsReversed
+		protected[schema] override def subcomponentsReversed :List[Component[_]] = backer.subcomponentsReversed
+		protected[schema] override def columnsReversed :List[Column[_]] = backer.columnsReversed
 	}
 
 

@@ -126,7 +126,7 @@ object RecordMapping {
 	                                   extract :MappingExtract[S, T, O])
 		extends BaseNonEmptySchema[Record, Item, |#, S, V, C, T, K #> T, M, O](first, next, extract, _.last._2)
 	{
-		override protected def link(init :V, last :T) :V |# (K #> T) = init |# key #> last
+		protected override def link(init :V, last :T) :V |# (K #> T) = init |# key #> last
 
 		override def compose[X](extractor :X =?> S) :MappingSchema[X, V |# (K #> T), C ~ M, O] =
 			new NonEmptyRecordSchema(init compose extractor, key, last, this.extractor compose extractor)

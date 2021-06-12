@@ -22,14 +22,14 @@ import net.noresttherein.oldsql.schema.bits.LabelPath
 import net.noresttherein.oldsql.schema.bits.LabelPath./
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, CaseColumn}
 import net.noresttherein.oldsql.sql.ListingSQLMapping.GetListingComponent
-import net.noresttherein.oldsql.sql.SQLExpression.{BaseExpressionMatcher, CaseExpression, ExpressionMatcher, GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{BaseExpressionVisitor, CaseExpression, ExpressionVisitor, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
-import net.noresttherein.oldsql.sql.ast.ConversionSQL
+import net.noresttherein.oldsql.sql.ast.{ChainSQL, ConversionSQL}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, ListingSQL, SeqTuple}
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.MatchChain
+import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.MatchChainTuple
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingValueSQL, MatchListing}
 
 
@@ -46,7 +46,7 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, List
   * This class is dedicated to non-component expressions; subclasses of
   * [[net.noresttherein.oldsql.sql.ast.MappingSQL MappingSQL]] should be used directly for component expressions.
   * Not all possible expressions are supported; the expression may consist of
-  *   - any single [[net.noresttherein.oldsql.sql.ColumnSQL column expressions]] (atomic SQL values),
+  *   - any single [[net.noresttherein.oldsql.sql.ColumnSQL column expressions]] (distinct SQL types),
   *     in particular [[net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm terms]],
   *   - [[net.noresttherein.oldsql.sql.ast.MappingSQL.ComponentSQL components]] (ranging from whole entities
   *     to single columns),
@@ -76,8 +76,6 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, List
 trait SQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V, O] extends BaseMapping[V, O] {
 
 	val expr :SQLExpression[F, S, V] //consider: renaming to expression for consistency with SelectedColumn
-	def format :String = ??? //todo:
-
 	override val buffs :Buffs[V] = Buffs(this, SQLMapping.buffList.asInstanceOf[Seq[Buff[V]]]:_*)
 
 	override def writtenValues[T](op :WriteOperationType, subject :V) :ComponentValues[V, O] = ColumnValues.empty
@@ -191,11 +189,11 @@ object SQLMapping {
 			Seq[Assoc[ExpressionColumn, ExpressionExtract[V]#E, _]]
 
 
-		/** Traverses the `expr` AST in the steps, stopping recursion when a `ColumnSQL` is encountered.
+		/** Traverses the `expr` AST, stopping recursion when a `ColumnSQL` is encountered.
 		  * Returns a flat list of all found column expressions with their `Extract`s.
 		  */
-		private class ExtractsCollector extends ExpressionMatcher[F, Extractors]
-			with CaseExpression[F, Extractors] with CaseColumn[F, Extractors] with MatchChain[F, Extractors]
+		private class ExtractsCollector extends ExpressionVisitor[F, Extractors]
+			with CaseExpression[F, Extractors] with CaseColumn[F, Extractors] with MatchChainTuple[F, Extractors]
 			with MatchListing[F, Extractors]
 		{
 			private[this] var names :Set[String] = Set("") //used column names, disallowing ""
@@ -243,6 +241,12 @@ object SQLMapping {
 					apply(entry._1).map(composeColumnExtractAssoc((seq :Seq[V]) => seq(entry._2))(_))}.toList
 			}
 
+			override def chain[C >: LocalScope <: GlobalScope, I <: Chain, L](e :ChainSQL[F, C, I, L]) = {
+				val tailExs = apply(e.init).map(composeColumnExtractAssoc(Chain.init[I] _)(_))
+				val headExs = apply(e.last).map(composeColumnExtractAssoc(Chain.last[L] _)(_))
+				headExs ++: tailExs
+			}
+
 			override def chainHead[C >: LocalScope <: GlobalScope, T <: Chain, H]
 			                      (tail :ChainTuple[F, C, T], head :SQLExpression[F, C, H]) =
 			{
@@ -270,6 +274,7 @@ object SQLMapping {
 
 			private def nameFor(f :ColumnSQL[F, LocalScope, _]) :String = {
 				val name :String = f match {
+					case AliasedColumn(_, alias) => alias
 					case UnboundParamSQL(param, extract, _) => //first as it would match the following pattern, too
 						if (extract.isIdentity && !names(param.name)) param.name
 						else param.name + "_" + columns.size //nameFor is called when adding a new column, so this is the index.
@@ -299,8 +304,8 @@ object SQLMapping {
 		/** Visitor traversing the represented expression and composing a function used for implementation
 		  * of the `assemble` method.
 		  */
-		private class AssemblerComposer extends ExpressionMatcher[F, Assembler]
-			with CaseExpression[F, Assembler] with CaseColumn[F, Assembler] with MatchChain[F, Assembler]
+		private class AssemblerComposer extends ExpressionVisitor[F, Assembler]
+			with CaseExpression[F, Assembler] with CaseColumn[F, Assembler] with MatchChainTuple[F, Assembler]
 			with MatchListing[F, Assembler]
 		{
 			/** The stack is in the exact order of individual column appearance, as returned by `ExtractsCollector`. */
@@ -349,11 +354,17 @@ object SQLMapping {
 			}
 
 			override def conversion[C >: LocalScope <: GlobalScope, T, U](e :ConversionSQL[F, C, T, U]) = {
-				val base = e.value.applyTo(this) //important to have this as a constant
+				val base = this(e.value) //important to have this as a constant
 				pieces => base(pieces).map(e.convert)
 			}
 
 			override def emptyChain = { val res = Some(@~); _ => res }
+
+			override def chain[C >: LocalScope <: GlobalScope, I <: Chain, L](e :ChainSQL[F, C, I, L]) = {
+				val tl = apply(e.init)
+				val hd = apply(e.last)
+				pieces => for (t <- tl(pieces); h <- hd(pieces)) yield t ~ h
+			}
 
 			override def chainHead[C >: LocalScope <: GlobalScope, T <: Chain, H]
 			                      (tail :ChainTuple[F, C, T], head :SQLExpression[F, C, H]) =
@@ -442,6 +453,15 @@ object SQLMapping {
   * can be homomorphic with [[net.noresttherein.oldsql.sql.Join Join]]s and to allow
   * [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]] expressions to be used as
   * [[net.noresttherein.oldsql.schema.Relation Relation]]s in the ''from'' clauses of other SQL selects.
+  *
+  * The name of such a column is an identifier by which it can be referenced in SQL - needed currently
+  * only for columns returned by a subselect. It corresponds to the alias given in SQL ''as'' clause,
+  * and for selected table columns, it might be different than their original name. For mappings of columns
+  * which are never referenced as values - any expressions appearing in the ''group by'' clause need to be
+  * repeated verbatim in the ''select'' and ''having'' clauses if needed - it might be an empty `String` or some
+  * other placeholder value, although this is the last resort if no 'natural' name for the expression exists.
+  * Note that the Scala object of this mapping ''can'' be freely reused: any references to it in the final SQL
+  * will be rendered either as by-name, or by-value, as listed above.
   */
 trait ColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 	extends ColumnMapping[X, O] with SQLMapping[F, S, X, O]
@@ -462,10 +482,9 @@ trait ColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 
 		case SQLParameter(_, Some(name)) => name //unlikely to appear in this position
 
-		case _ => "result" //todo: should it be an alias, or sql?
+		case _ => ""
 	}
 
-	override def format :String = name
 
 	override def components :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
 	override def subcomponents :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
@@ -701,7 +720,7 @@ object ListingSQLMapping {
 
 		private type Extracts[-C >: LocalScope <: GlobalScope, V] = List[ListingSQLExtract[F, C, V, _, O]]
 
-		private class ComponentsCollector extends BaseExpressionMatcher[F, Extracts] with MatchListing[F, Extracts] {
+		private class ComponentsCollector extends BaseExpressionVisitor[F, Extracts] with MatchListing[F, Extracts] {
 
 			override def listingEntry[C >: LocalScope <: GlobalScope, I <: Listing, K <: Label :ValueOf, L]
 			                         (init :ListingSQL[F, C, I], last :ListingValueSQL[F, C, L]) =
@@ -750,7 +769,7 @@ object ListingSQLMapping {
 
 		private type Assembler[-_ >: LocalScope <: GlobalScope, T] = Pieces => Opt[T]
 
-		private class AssemblerComposer extends BaseExpressionMatcher[F, Assembler] with MatchListing[F, Assembler] {
+		private class AssemblerComposer extends BaseExpressionVisitor[F, Assembler] with MatchListing[F, Assembler] {
 			override def emptyChain = { val res = Got(@~); _ => res }
 
 			override def listingEntry[C >: LocalScope <: GlobalScope, I <: Listing, K <: Label :ValueOf, L]

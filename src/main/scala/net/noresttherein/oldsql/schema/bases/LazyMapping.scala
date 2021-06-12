@@ -154,6 +154,20 @@ trait LazyMapping[S, O] extends BaseMapping[S, O] with OptimizedMappingAssembly 
 	override def updateForm: SQLWriteForm[S] = lazyUpdateForm
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
+	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
+		if (components == selectedByDefault) selectForm else super.selectForm(components)
+
+	override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+		if (components == filteredByDefault) filterForm else super.filterForm(components)
+
+	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+		if (components == insertedByDefault) insertForm else super.insertForm(components)
+
+	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
+		if (components == updatedByDefault) updateForm else super.updateForm(components)
+
+	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
+		op.form(this)
 }
 
 
@@ -267,6 +281,22 @@ trait StableMapping extends Mapping {
 	abstract override val insertForm :SQLWriteForm[Subject] = super.insertForm
 	abstract override val updateForm :SQLWriteForm[Subject] = super.updateForm
 	override def writeForm(op :WriteOperationType) :SQLWriteForm[Subject] = op.form(refine)
+
+
+	abstract override def selectForm(components :Unique[Component[_]]) :SQLReadForm[Subject] =
+		if (components == selectedByDefault) selectForm else super.selectForm(components)
+
+	abstract override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[Subject] =
+		if (components == filteredByDefault) filterForm else super.filterForm(components)
+
+	abstract override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[Subject] =
+		if (components == insertedByDefault) insertForm else super.insertForm(components)
+
+	abstract override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[Subject] =
+		if (components == updatedByDefault) updateForm else super.updateForm(components)
+
+	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[Subject] =
+		op.form(refine)
 
 }
 

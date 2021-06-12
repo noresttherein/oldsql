@@ -37,7 +37,7 @@ private[oldsql] class CallableStatementOutParams private (val call :CallableStat
 
 	private[this] var hasNext = true
 
-	//not thread safe bug c'mon, it won't be used by forms
+	//not thread safe but c'mon, it won't be used by forms
 	override def next() :Boolean = { val res = hasNext; hasNext = false; res }
 	override def previous() :Boolean = { hasNext = true; true }
 	override def beforeFirst() :Unit = hasNext = true
@@ -49,7 +49,7 @@ private[oldsql] class CallableStatementOutParams private (val call :CallableStat
 	override def isFirst = hasNext
 	override def isLast = hasNext
 	override def isAfterLast = !hasNext
-	override def getRow :Int = {if (hasNext) 1 else 0 }
+	override def getRow :Int = { if (hasNext) 1 else 0 }
 
 	override def absolute(row :Int) = row match {
 		case _ if row > 1 => hasNext = false; false
@@ -307,7 +307,7 @@ object CallableStatementOutParams {
 		new CallableStatementOutParams(call, indexMapping)
 
 	/** A mock `ResultSet` where `n-th` column is the `n-th` parameter of the result set.
-	  * It is the caller's responsibility to ensure only columns maing to ''out'' parameters are accessed.
+	  * It is the caller's responsibility to ensure only columns mapping to ''out'' parameters are accessed.
 	  */
 	def apply(call :CallableStatement) :CallableStatementOutParams =
 		call.getParameterMetaData.getParameterCount match {

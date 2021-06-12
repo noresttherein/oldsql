@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.ColumnReadForm
 import net.noresttherein.oldsql.sql.{AggregateClause, AggregateFunction, ColumnSQL, FromSome, RowProduct, SQLExpression}
-import net.noresttherein.oldsql.sql.ColumnSQL.ColumnMatcher
+import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
@@ -32,7 +32,7 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
   *           as well as contravariance in `G`.
   * @tparam X the type of the expression which is the argument to the aggregate function.
   * @tparam Y the return type of the aggregate function used and the value type of this expression.
-  */
+  */ //consider: renaming to AggregateFunctionSQL
 trait AggregateSQL[-F <: RowProduct, -G <: RowProduct, X, Y] extends ColumnSQL[G, LocalScope, Y] {
 	/** The aggregate function which is applied to the aggregated expression
 	  * [[net.noresttherein.oldsql.sql.ast.AggregateSQL.arg arg]].
@@ -55,6 +55,7 @@ trait AggregateSQL[-F <: RowProduct, -G <: RowProduct, X, Y] extends ColumnSQL[G
 //		if (isDistinct) this
 //		else new DefaultAggregateSQL(function, arg, true)(readForm)
 
+	override def groundValue :Opt[Y] = Lack
 	override def isGlobal = false
 	override def asGlobal :Option[Nothing] = None
 	override def isAnchored :Boolean = arg.isAnchored
@@ -83,8 +84,8 @@ trait AggregateSQL[-F <: RowProduct, -G <: RowProduct, X, Y] extends ColumnSQL[G
 		)
 
 
-	override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[G, R]) :R[LocalScope, Y] =
-		matcher.aggregate(this)
+	protected override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[G, R]) :R[LocalScope, Y] =
+		visitor.aggregate(this)
 
 
 	override def isomorphic(that: SQLExpression.*) :Boolean = that match {
@@ -100,7 +101,7 @@ trait AggregateSQL[-F <: RowProduct, -G <: RowProduct, X, Y] extends ColumnSQL[G
 	override def equals(that :Any) :Boolean = that match {
 		case self :AnyRef if self eq this => true
 		case aggr :AggregateSQL.* if aggr canEqual this =>
-			function == aggr.function && distinct == aggr.distinct && arg == aggr.arg
+			function == aggr.function && isDistinct == aggr.isDistinct && arg == aggr.arg
 		case _ => false
 	}
 
@@ -175,16 +176,16 @@ object AggregateSQL {
 
 
 	//the problem with the visitor pattern is that it prevents us from narrowing F to GroupByClause
-	trait AggregateMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+	trait AggregateVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
 		/** A special pseudo expression of `*` used inside `count(*)`. The actual type is not exposed. */
 		def *(e :ColumnSQL[RowProduct, LocalScope, Nothing]) :Y[LocalScope, Nothing]
 
 		def aggregate[D <: FromSome, X, V](e :AggregateSQL[D, F, X, V]) :Y[LocalScope, V]
 	}
 
-	type MatchAggregate[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = AggregateMatcher[F, Y]
+	type MatchAggregate[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = AggregateVisitor[F, Y]
 
-	type CaseAggregate[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = AggregateMatcher[F, Y]
+	type CaseAggregate[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = AggregateVisitor[F, Y]
 
 }
 

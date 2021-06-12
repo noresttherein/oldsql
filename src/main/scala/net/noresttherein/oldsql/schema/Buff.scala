@@ -1649,7 +1649,7 @@ object Buff {
 	trait ManagedBuffType extends ValueBuffType with AuditBuffType with DedicatedBuffType[ManagedBuff] {
 		protected[this] override def classTag :ClassTag[_] = implicitly[ClassTag[ManagedBuff[Any]]]
 
-		override protected def apply[T](map :T => T) :AuditBuff[T] =
+		protected override def apply[T](map :T => T) :AuditBuff[T] =
 			throw new UnsupportedOperationException(
 				toString + ".apply(" + map + "): ManagedBuffType requires an initial value; use the two-argument constructor."
 			)

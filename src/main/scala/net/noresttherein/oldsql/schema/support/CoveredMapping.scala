@@ -50,7 +50,6 @@ class CoveredMapping[M <: RefinedMapping[S, X], S, X, O]
 	def uncover[T](column :Column[T]) :body.Column[T] = unexport(column)
 
 	override def mappingName :String = "|" + body.mappingName + "|"
-
 	override def toString :String = "|" + body + "|"
 }
 

@@ -5,6 +5,8 @@ import net.noresttherein.oldsql.collection.{Opt, Unique}
 import net.noresttherein.oldsql.schema.support.EmptyMapping
 import net.noresttherein.oldsql.schema.SQLReadForm
 
+//implicits
+import net.noresttherein.oldsql.slang._
 
 
 
@@ -28,6 +30,7 @@ class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] {
 
 	override val selectForm :SQLReadForm[S] = SQLReadForm.const(subject)
 
+	override def mappingName :String = "Const[" + subject.localClassName + "]"
 	override def toString :String = "Const(" + subject + ")"
 }
 
@@ -52,6 +55,6 @@ class GeneratorMapping[S, O](generator: => S) extends EmptyMapping[S, O] {
 
 	override val selectForm :SQLReadForm[S] = SQLReadForm.eval(generator)
 
-	override def toString :String = "Generator#" + System.identityHashCode(this)
+	override def mappingName :String = "Generator#" + System.identityHashCode(this)
 }
 

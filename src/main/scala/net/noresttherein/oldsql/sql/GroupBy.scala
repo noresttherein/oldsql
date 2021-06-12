@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.{ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.EmptyChain
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
-import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.{RowProductVisitor, SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext
 
 
@@ -112,7 +112,7 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 	  */
 	def withCondition(filter :LocalBoolean[Generalized]) :Copy
 
-	override def columnCount :Int = right.export[()].selectedByDefault.size
+	override def columnCount :Int = right.export[Unit].selectedByDefault.size
 
 
 	override def filtered[S >: LocalScope <: GlobalScope](filter :SQLBoolean[Generalized, S]) :Copy =
@@ -127,6 +127,7 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 	override type LastParam = left.LastParam
 	override type Params = left.Params
 	override type AppliedParam = WithLeft[left.AppliedParam]
+	override type GeneralizedParamless = left.GeneralizedParamless GroupBy M
 	override type Paramless = WithLeft[left.Paramless]
 	override type DecoratedParamless[D <: BoundParamless] = D
 
@@ -226,7 +227,7 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 			val groupedParams = fromSQL.params.group[Generalized, left.Generalized, M](generalized)
 			SpelledSQL(fromSQL.sql, fromSQL.context.grouped, groupedParams)
 		} else {
-			val exprSQL = spelling.inline(expr)(fromSQL.context, fromSQL.params)
+			val exprSQL = spelling(expr)(fromSQL.context, fromSQL.params)
 			val groupedParams = exprSQL.params.group[Generalized, left.Generalized, M](generalized)
 			val sql = fromSQL.sql + (" " + spelling.GROUP_BY + " ") + exprSQL.sql
 			SpelledSQL(sql, exprSQL.context.grouped, groupedParams)
@@ -326,12 +327,11 @@ object GroupBy {
 				last.expand(target) #:: outer.fullTableStack(target)(explicitSpan.expand(expansion))
 
 
-			override def tableStack[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
-					:LazyList[RelationSQL.AnyIn[E]] =
+			override def tableStack[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E) =
 				last.expand(target) #:: LazyList.empty[RelationSQL.AnyIn[E]]
 
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.groupBy[F, M, S](this)
+			override def applyTo[Y](matcher :RowProductVisitor[Y]) = matcher.groupBy[F, M, S](this)
 
 		}.asInstanceOf[F GroupBy M As A]
 
@@ -537,11 +537,12 @@ trait By[+G <: GroupByClause, M[A] <: MappingAt[A]]
 	override type DealiasedLeft[+L <: GroupByClause] = L By M
 	override type WithLeft[+L <: GroupByClause] <: L By M
 
-	override def columnCount :Int = left.columnCount + right.export[()].selectedByDefault.size
+	override def columnCount :Int = left.columnCount + right.export[Unit].selectedByDefault.size
 
 	override type LastParam = left.LastParam
 	override type Params = left.Params
 	override type AppliedParam = WithLeft[left.AppliedParam]
+	override type GeneralizedParamless = left.GeneralizedParamless By M
 	override type Paramless = WithLeft[left.Paramless]
 	override type DecoratedParamless[D <: BoundParamless] = D
 
@@ -623,13 +624,13 @@ trait By[+G <: GroupByClause, M[A] <: MappingAt[A]]
 	{
 		val preceding = spelling(left)(context)
 		val groupedParams = preceding.params.group[Generalized, left.Generalized, M]
-		if (expr == True || right.export[()].filteredByDefault.isEmpty) //zero columns in expr
+		if (expr == True || right.export[Unit].filteredByDefault.isEmpty) //zero columns in expr
 			SpelledSQL(preceding.sql, preceding.context.grouped, groupedParams)
 		else {
 			val ungroupedParams = preceding.params.ungroup[GeneralizedDiscrete]
 //			val ungroupedParams = fromClause.parameterization
 			//we take here advantage of the fact that indexing of aliases in SQLContext is *not* changed by grouping it
-			val group = spelling.inline(expr)(preceding.context.grouped, ungroupedParams.params)
+			val group = spelling(expr)(preceding.context.grouped, ungroupedParams.params)
 			val shiftParams = group.params.settersReversed.map(_.unmap(ungroupedParams.ungroupParams))
 			val regroupedParams = groupedParams.reset(shiftParams:::groupedParams.settersReversed)
 			if (left.columnCount == 0) //no group by clause added
@@ -756,7 +757,7 @@ object By {
 //				By[left.type, T, S, N](left, table, Some(alias))(swapped)
 //			}
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.by[G, T, S](this)
+			override def applyTo[Y](matcher :RowProductVisitor[Y]) = matcher.by[G, T, S](this)
 
 		}.asInstanceOf[G By T As A]
 

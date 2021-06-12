@@ -531,7 +531,7 @@ object ColumnValues {
 
 		override def aliased(aliases :MappingAt[O]#Component =#> MappingAt[O]#Component) :ColumnValuesAliasing[S, O] =
 			new ColumnValuesAliasing[S, O] {
-				override protected def alias[T](component :Component[T]) = outer.alias(aliases(component))
+				protected override def alias[T](component :Component[T]) = outer.alias(aliases(component))
 				override def preset(root :RefinedMapping[S, O]) = outer.preset(root)
 				override def aliased(again :MappingAt[O]#Component =#> MappingAt[O]#Component) :ColumnValuesAliasing[S, O] =
 					outer.aliased(again andThen aliases)

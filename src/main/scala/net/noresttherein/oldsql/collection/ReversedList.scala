@@ -12,6 +12,8 @@ import net.noresttherein.oldsql.collection.ReversedList.{NonEmpty, ReversedFacto
 
 /** A linked list with a reverse iteration order, granting an O(1) append operation.
   * At the same time, prepending converts it to list and returns a new `List[E]` in anticipation of future prepends.
+  * Note that the [[net.noresttherein.oldsql.collection.ReversedList$ companion]] object is ''not''
+  * the [[scala.collection.IterableFactory IterableFactory]] of this class, which uses the [[Seq]] default instead.
   */
 private[oldsql] sealed abstract class ReversedList[+E] extends AbstractSeq[E] {
 
@@ -59,6 +61,24 @@ private[oldsql] sealed abstract class ReversedList[+E] extends AbstractSeq[E] {
 		}
 
 
+	override def copyToArray[B >: E](xs :Array[B], start :Int, len :Int) :Int = {
+		val realStart = if (start < 0) 0 else start
+		if (len <= realStart | realStart >= xs.length || isEmpty) 0
+		else {
+			var count = len; val thisSize = length
+			if (xs.length - len > realStart) count = xs.length - realStart
+			if (thisSize < count) count = thisSize
+
+			@tailrec def rec(seq :Seq[E] = this, end :Int = realStart + count - 1) :Unit = seq match {
+				case _ if end < realStart =>
+				case nonEmpty :NonEmpty[E] => xs(end) = nonEmpty.last; rec(nonEmpty.init, end - 1)
+				case other => other.copyToArray(xs, realStart, end + 1 - realStart)
+			}
+			rec()
+			count
+		}
+	}
+
 	override def to[C](factory :Factory[E, C]) :C = factory match {
 		case _ :ReversedFactory[_] => this.asInstanceOf[C]
 		case _ => factory.fromSpecific(reversed)
@@ -105,6 +125,10 @@ private[oldsql] sealed abstract class ReversedList[+E] extends AbstractSeq[E] {
 
 
 
+/** [[scala.collection.IterableFactory IterableFactory]] of
+  * [[net.noresttherein.oldsql.collection.ReversedList ReversedList]] - linked lists with O(1) append,
+  * rather than prepend.
+  */
 private[oldsql] object ReversedList extends SeqFactory[ReversedList] {
 	def :+[A](elem :A) :ReversedList[A] = new NonEmpty(Empty, elem, 1)
 

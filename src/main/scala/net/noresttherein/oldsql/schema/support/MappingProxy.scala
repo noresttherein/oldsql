@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.schema.support
 
+import scala.annotation.nowarn
 import scala.collection.mutable
 
 import net.noresttherein.oldsql.OperationType.WriteOperationType
@@ -15,6 +16,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMap
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bases.{ExportMapping, StableMapping}
 import net.noresttherein.oldsql.schema.support.DelegateMapping.{ShallowDelegate, WrapperDelegate}
+import net.noresttherein.oldsql.{DeprecatedAlways, SharedImplDeprecation}
 
 
 
@@ -55,7 +57,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * (assuming there is none preset for this mapping). Select/assembly related buffs on the adapted mapping
 	  * are ignored by bypassing its [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] method.
 	  * However, unless overriden, the buffs on this instance are exactly the buffs of the adapted mapping.
-	  * In the result, the buffs are processed exactly once for the assembled value.
+	  * As the result, the buffs are processed exactly once for the assembled value.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy]]
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.WrapperProxy]]
 	  */
@@ -191,6 +193,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		override def insertForm :SQLWriteForm[S] = backer.insertForm
 		override def updateForm :SQLWriteForm[S] = backer.updateForm
 		override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = backer.writeForm(op)
+
 	}
 
 
@@ -202,7 +205,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * it delegates its [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]] method to `backer`,
 	  * ignoring its [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] method.
 	  * However, unless overriden, the buffs on this instance are exactly the buffs of the adapted mapping.
-	  * In the result, the buffs are processed exactly once for the assembled value.
+	  * As the result, the buffs are processed exactly once for the assembled value.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy]]
 	  */
 	trait ExportProxy[S, O]
@@ -277,7 +280,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 
 
 
-	@deprecated("This class is not a part of the public API. It can disappear without notice.", "always")
+	@deprecated(SharedImplDeprecation, DeprecatedAlways)
 	abstract class AbstractDeepProxy[S, O] private[MappingProxy]
 	                                (protected override val backer :MappingOf[S],
 		                            /** Temporary (non-field) constructor parameter which becomes `extracts` property
@@ -381,7 +384,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		/** The 'export' version of the adapted `backer` itself. Defaults to `this`. */
 		protected def adaptBacker :Component[S] = this
 
-		override def toString :String = "->>" + backer
+		override def mappingName :String = "->>" + backer.mappingName
 	}
 
 
@@ -395,6 +398,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * together with the adapted components. The buffs of this proxy are exactly the same as those on the adapted
 	  * mapping, but the latter are ignored during assembly. This property can be safely overriden.
 	  */
+	@nowarn("cat=deprecation")
 	abstract class DeepProxy[S, O] private (protected override val backer :MappingOf[S],
 	                                        exports :mutable.Map[Mapping, MappingExtract[S, _, O]])
 		extends AbstractDeepProxy[S, O](backer, exports) with StableMapping
@@ -430,6 +434,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * This is to protect against `backer` instance being used as another component of of the same root mapping,
 	  * in particular in foreign key scenarios.
 	  */
+	@nowarn("cat=deprecation")
 	abstract class OpaqueProxy[S, O] private (protected override val backer :MappingOf[S],
 	                                          substitutes :mutable.Map[Mapping, MappingExtract[S, _, O]])
 		extends AbstractDeepProxy[S, O](backer, substitutes) with StableMapping with ExportMapping
@@ -621,10 +626,10 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		//this can fail with ClassCastException for custom NaturalMap implementations
 		override val extracts = columnExtracts.asInstanceOf[NaturalMap[Component, ColumnExtract]]
 
-		override protected def unexport[X](component :Component[X]) :Component[X] =
+		protected override def unexport[X](component :Component[X]) :Component[X] =
 			if (component eq this) backer.asInstanceOf[Component[X]] else component
 
-		override protected def unexport[X](column :Column[X]) :Column[X] =
+		protected override def unexport[X](column :Column[X]) :Column[X] =
 			if (column eq this) backer.asInstanceOf[Column[X]] else column
 
 
@@ -638,7 +643,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 			else if (components.contains(this)) form
 			else backer.writeForm(op, components)
 
-		override def toString :String = "->" + backer
+		override def toString :String = "^" + backer + "^"
 	}
 	
 	

@@ -1,36 +1,39 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.collection.{Chain, Opt}
+import net.noresttherein.oldsql.OperationType
+import net.noresttherein.oldsql.collection.{Chain, Opt, ReversedList}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
-import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnMatcher, CaseAliasedColumn}
-import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnMatcher}
-import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnMatcher}
+import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnVisitor, CaseAliasedColumn}
+import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnVisitor, GlobalColumn}
+import net.noresttherein.oldsql.sql.ColumnSQL.CompositeColumnSQL.{CaseCompositeColumn, CompositeColumnVisitor}
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
+import net.noresttherein.oldsql.sql.SQLDialect.SpellingScope.SelectScope
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionMatcher, GlobalScope, Lift, LocalScope, SQLTypeUnification}
-import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, LogicalSQL, QuerySQL, SelectSQL}
-import net.noresttherein.oldsql.sql.ast.AggregateSQL.{AggregateMatcher, CaseAggregate}
-import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.{ArithmeticMatcher, CaseArithmetic}
-import net.noresttherein.oldsql.sql.ast.ConcatSQL.{CaseConcat, ConcatMatcher}
-import net.noresttherein.oldsql.sql.ast.ConditionSQL.{CaseCondition, ConditionMatcher, InSQL, LikeSQL}
-import net.noresttherein.oldsql.sql.ast.ConversionSQL.{CaseColumnConversion, ColumnConversionMatcher, ColumnConversionSQL, ColumnPromotionConversion, MappedColumnSQL, OrNull}
-import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumn.{CaseFunctionColumn, FunctionColumnMatcher}
-import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumn
-import net.noresttherein.oldsql.sql.ast.LogicalSQL.{AndSQL, CaseLogical, LogicalMatcher, NotSQL, OrSQL}
-import net.noresttherein.oldsql.sql.ast.MappingSQL.{LooseColumn, MappingColumnMatcher, TypedColumnComponentSQL}
+import net.noresttherein.oldsql.sql.SQLExpression.{CompositeSQL, ExpressionVisitor, GlobalScope, Lift, LocalScope, SQLTypeUnification}
+import net.noresttherein.oldsql.sql.StoredProcedure.Out
+import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ArithmeticSQL, ConcatSQL, ConditionSQL, LogicalSQL, QuerySQL, SelectSQL}
+import net.noresttherein.oldsql.sql.ast.AggregateSQL.{AggregateVisitor, CaseAggregate}
+import net.noresttherein.oldsql.sql.ast.ArithmeticSQL.{ArithmeticVisitor, CaseArithmetic}
+import net.noresttherein.oldsql.sql.ast.ConcatSQL.{CaseConcat, ConcatVisitor}
+import net.noresttherein.oldsql.sql.ast.ConditionSQL.{BetweenSQL, CaseCondition, ConditionVisitor, InSQL, LikeSQL}
+import net.noresttherein.oldsql.sql.ast.ConversionSQL.{CaseColumnConversion, ColumnConversionVisitor, ColumnConversionSQL, ColumnPromotionConversion, MappedColumnSQL, OrNull}
+import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumnSQL.{CaseFunctionColumn, FunctionColumnVisitor}
+import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumnSQL
+import net.noresttherein.oldsql.sql.ast.LogicalSQL.{AndSQL, CaseLogical, LogicalVisitor, NotSQL, OrSQL}
+import net.noresttherein.oldsql.sql.ast.MappingSQL.{LooseColumn, MappingColumnVisitor, TypedColumnComponentSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.LooseColumn.CaseLooseColumn
 import net.noresttherein.oldsql.sql.ast.MappingSQL.TypedColumnComponentSQL.CaseColumnComponent
-import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, ColumnQuery, ColumnQueryMatcher, CompoundSelectColumn, Rows}
-import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumn.{CaseCompoundSelectColumn, CompoundSelectColumnMatcher}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, ColumnQuery, ColumnQueryVisitor, CompoundSelectColumn, Rows}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.CompoundSelectColumn.{CaseCompoundSelectColumn, CompoundSelectColumnVisitor}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectColumn, SubselectColumn, TopSelectColumn}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.{ColumnTerm, False, SQLNull, True}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermMatcher}
+import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermVisitor}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.SeqTuple
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
-import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLNumber, SQLOrdering, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
@@ -42,9 +45,9 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
   * remain the same.
   *
   * There is an implicit conversion from `ColumnSQL[F, _, V]` for any value type `V` having
-  * the [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]] type class and
+  * the [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]] type class and
   * `F <: `[[net.noresttherein.oldsql.sql.FromSome FromSome]] into
-  * [[net.noresttherein.oldsql.sql.ColumnSQL.ColumnSQLAggregateMethods ColumnQLAggregateMethods]] providing
+  * [[net.noresttherein.oldsql.sql.ColumnSQL.ColumnSQLExtension ColumnSQLExtension]] providing
   * extension methods for applying SQL aggregate functions such as
   * [[net.noresttherein.oldsql.sql.AggregateFunction.Count COUNT]]
   * or [[net.noresttherein.oldsql.sql.AggregateFunction.Avg AVG]]
@@ -52,12 +55,10 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
   * @see [[net.noresttherein.oldsql.sql.ColumnSQL.LocalColumn]]
   * @see [[net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn]]
   * @see [[net.noresttherein.oldsql.sql.SQLBoolean]]
-  */
+  */ //consider: renaming to DistinctSQL
 trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQLExpression[F, S, V] {
 	override def readForm :ColumnReadForm[V]
-
-	override def asGlobal :Option[ColumnSQL[F, GlobalScope, V]]
-
+//todo: priority (binding strength to avoid unnecessary usage of '(', ')'
 
 	/** Provides a name to use in the 'as' clause appended to this expression, if it is used in a ''select'' clause. */
 	def as(alias :String) :ColumnSQL[F, S, V] = new AliasedColumn(this, alias) //todo: precise semantics of name conflicts
@@ -71,9 +72,11 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	def @:[N <: Label](alias :N) :ListingColumn[F, S, N, V] =
 		new ListingColumn(this, alias)
 
-
+	//todo: remove these two
 	/** Joins this expression and another expression in a logical conjunction represented by the `AND` operator in SQL.
 	  * This method is available only if the value type of this expression is `Boolean`.
+	  * '''Note that alphanumeric method name leads to the lowest binding priority; consider using'''
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.&& &&]]''' as it is less bug prone'''.
 	  * @param other any other SQL expression with `Boolean` value type, to use as the right (second) operand.
 	  * @return A `ColumnSQL` based on a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being
 	  *         the greatest lower bound of the bases of `this` and `that`,
@@ -84,10 +87,12 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	  */
 	def and[E <: F, O >: LocalScope <: S]
 	       (other :ColumnSQL[E, O, Boolean])(implicit ev :V =:= Boolean) :ColumnSQL[E, O, Boolean] =
-		AndSQL(cast[Boolean]) and other
+		AndSQL(cast[Boolean]) and denullify(other)
 
 	/** Joins this expression and another expression in a logical disjunction represented by the `OR` operator in SQL.
 	  * This method is available only if the value type of this expression is `Boolean`.
+	  * '''Note that alphanumeric method name leads to the lowest binding priority; consider using'''
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.|| ||]]''' as it is less bug prone'''.
 	  * @param other any other SQL expression with `Boolean` value type, to use as the right (second) operand.
 	  * @return A `ColumnSQL` based on a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being
 	  *         the greatest lower bound of the bases of `this` and `that`,
@@ -98,7 +103,7 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	  */
 	def or [E <: F, O >: LocalScope <: S]
 	       (other :ColumnSQL[E, O, Boolean])(implicit ev :V =:= Boolean) :ColumnSQL[E, O, Boolean] =
-		OrSQL(cast[Boolean]) or other
+		OrSQL(cast[Boolean]) or denullify(other)
 
 	/** Joins this expression and another expression in a logical conjunction represented by the `AND` operator in SQL.
 	  * This method is available only if the value type of this expression is `Boolean`. Unlike
@@ -115,9 +120,10 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	def && [E <: F, O >: LocalScope <: S]
 	       (other :ColumnSQL[E, O, Boolean])(implicit ev :V =:= Boolean) :ColumnSQL[E, O, Boolean] =
 		other match {
-			case True() => cast[Boolean]
-			case False() => other
+			case null => SQLNull[Boolean]
 			case SQLNull() => other
+			case True => cast[Boolean]
+			case False => other
 			case _ => this and other
 		}
 
@@ -137,12 +143,13 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	       (other :ColumnSQL[E, O, Boolean])(implicit ev :V =:= Boolean)
 			:ColumnSQL[E, O, Boolean] =
 		other match {
-			case True() => other
-			case False() => cast[Boolean]
+			case null => SQLNull[Boolean]
 			case SQLNull() => other
+			case True => other
+			case False => cast[Boolean]
 			case _ => this or other
 		}
-
+	//todo: xor
 	/** An SQL expression for `NOT this`. This method is available only if the value type of this expression is `Boolean`.
 	  * If this expression is a [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literal]] or
 	  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]], the result will be also a literal reduced according to
@@ -152,31 +159,47 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 		NotSQL(cast[Boolean])
 
 
+	//todo: methods which accept ColumnMapping and literals, as well as those creating bound parameters.
+	/** Checks if the value of this expression falls between the given bounds using SQL ''between'' opertor. */
+	def between[E <: F, O >: LocalScope <: S]
+	           (bounds :(ColumnSQL[E, O, V], ColumnSQL[E, O, V]))(implicit ordering :SQLOrdering[V])
+			:ColumnSQL[E, O, Boolean] =
+		BetweenSQL(this, denullify(bounds._1), denullify(bounds._2))
 
 	/** An SQL expression comparing this `String` expression with a pattern, given in the SQL format,
 	  * using the `LIKE` operator.
 	  */
-	def like(pattern :String)(implicit isString :V =:= String) :ColumnSQL[F, S, Boolean] =
-		LikeSQL(cast[String], pattern) //todo: why the pattern is a literal? Can't it be an arbitrary string?
+	def like[E <: F, O >: LocalScope <: S]
+	        (pattern :ColumnSQL[E, O, String])(implicit isString :V =:= String) :ColumnSQL[E, O, Boolean] =
+		LikeSQL(cast[String], denullify(pattern))
 
 	/** Concatenates this string expression with another string.
 	  * This method is available only for subtypes of `ColumnSQL[_, _, String]`.
 	  */
 	def ++[E <: F, O >: LocalScope <: S]
 	      (that :ColumnSQL[E, O, String])(implicit ev :V =:= String) :ColumnSQL[E, O, String] =
-		ConcatSQL(cast[String]) ++ that
+		ConcatSQL(cast[String]) ++ denullify(that)
 
-	/** Concatenates this string expression with another string.
-	  * This method is available only for subtypes of `ColumnSQL[_, _, String]`.
+	/** Prepends the given `String` expression to this string.
+	  * This method is available only for subtypes of `ColumnSQL[_, _, String]` and is particularly useful
+	  * when prepending a `String` value, rather than another expression, as it will force its implicit conversion
+	  * (which [[net.noresttherein.oldsql.sql.ColumnSQL.++ ++]] would not).
 	  */
-	def |[E <: F, O >: LocalScope <: S]
-	     (that :ColumnSQL[E, O, String])(implicit ev :V =:= String) :ColumnSQL[E, O, String] =
-		ConcatSQL(cast[String]) ++ that
+	def ++:[E <: F, O >: LocalScope <: S]
+	      (that :ColumnSQL[E, O, String])(implicit ev :V =:= String) :ColumnSQL[E, O, String] =
+		denullify(that) ++: ConcatSQL(cast[String])
+
+//	/** Concatenates this string expression with another string.
+//	  * This method is available only for subtypes of `ColumnSQL[_, _, String]`.
+//	  */
+//	def |[E <: F, O >: LocalScope <: S]
+//	     (that :ColumnSQL[E, O, String])(implicit ev :V =:= String) :ColumnSQL[E, O, String] =
+//		ConcatSQL(cast[String]) ++ denullify(that)
 
 
 
 	/** An SQL expression for minus this number. This method is available only for expressions of value type `V`
-	  * with type class [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]].
+	  * with type class [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]].
 	  */
 	def unary_-(implicit number :SQLNumber[V]) :ColumnSQL[F, S, V] = ArithmeticSQL.Neg(this)
 
@@ -188,12 +211,12 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	  *             this type weakly conforms. Additionally, `Option[T]` is interoperable with `T`
 	  *             and [[net.noresttherein.oldsql.sql.ast.QuerySQL.Rows Rows]]`[T]` (the result type of ''select''
 	  *             expressions) is interoperable with both `T` and `Seq[T]`. The unification type to which both
-	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]].
+	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]].
 	  */
 	def +[E <: F, O >: LocalScope <: S, X, Y]
 	     (that :ColumnSQL[E, O, X])(implicit types :SQLTypeUnification[V, X, Y], number :SQLNumber[Y])
 			:ColumnSQL[E, O, Y] =
-		ArithmeticSQL.Plus(types.left(this), types.right(that))
+		ArithmeticSQL.Plus(types.left(this), types.right(denullify(that)))
 
 	/** An arithmetic subtraction of two numbers.
 	  * @param that a compatible numeric expression. 'Compatible' here means that both can be represented by the same
@@ -203,12 +226,12 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	  *             this type weakly conforms. Additionally, `Option[T]` is interoperable with `T`
 	  *             and [[net.noresttherein.oldsql.sql.ast.QuerySQL.Rows Rows]]`[T]` (the result type of ''select''
 	  *             expressions) is interoperable with both `T` and `Seq[T]`. The unification type to which both
-	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]].
+	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]].
 	  */
 	def -[E <: F, O >: LocalScope <: S, X, Y]
 	     (that :ColumnSQL[E, O, X])(implicit types :SQLTypeUnification[V, X, Y], number :SQLNumber[Y])
 			:ColumnSQL[E, O, Y] =
-		ArithmeticSQL.Minus(types.left(this), types.right(that))
+		ArithmeticSQL.Minus(types.left(this), types.right(denullify(that)))
 
 	/** An arithmetic multiplication of two numbers.
 	  * @param that a compatible numeric expression. 'Compatible' here means that both can be represented by the same
@@ -218,12 +241,12 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	  *             this type weakly conforms. Additionally, `Option[T]` is interoperable with `T`
 	  *             and [[net.noresttherein.oldsql.sql.ast.QuerySQL.Rows Rows]]`[T]` (the result type of ''select''
 	  *             expressions) is interoperable with both `T` and `Seq[T]`. The unification type to which both
-	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]].
+	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]].
 	  */
 	def *[E <: F, O >: LocalScope <: S, X, Y]
 	     (that :ColumnSQL[E, O, X])(implicit types :SQLTypeUnification[V, X, Y], number :SQLNumber[Y])
 			:ColumnSQL[E, O, Y] =
-		ArithmeticSQL.Times(types.left(this), types.right(that))
+		ArithmeticSQL.Times(types.left(this), types.right(denullify(that)))
 
 	/** An arithmetic division of two numbers.
 	  * @param that a compatible numeric expression. 'Compatible' here means that both can be represented by the same
@@ -233,12 +256,12 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	  *             this type weakly conforms. Additionally, `Option[T]` is interoperable with `T`
 	  *             and [[net.noresttherein.oldsql.sql.ast.QuerySQL.Rows Rows]]`[T]` (the result type of ''select''
 	  *             expressions) is interoperable with both `T` and `Seq[T]`. The unification type to which both
-	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]].
+	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]].
 	  */
 	def /[E <: F, O >: LocalScope <: S, X, Y]
 	     (that :ColumnSQL[E, O, X])(implicit types :SQLTypeUnification[V, X, Y], number :SQLNumber[Y])
 			:ColumnSQL[E, O, Y] =
-		ArithmeticSQL.Divide(types.left(this), types.right(that))
+		ArithmeticSQL.Divide(types.left(this), types.right(denullify(that)))
 
 	/** An arithmetic division remainder of two numbers.
 	  * @param that a compatible numeric expression. 'Compatible' here means that both can be represented by the same
@@ -248,12 +271,12 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	  *             this type weakly conforms. Additionally, `Option[T]` is interoperable with `T`
 	  *             and [[net.noresttherein.oldsql.sql.ast.QuerySQL.Rows Rows]]`[T]` (the result type of ''select''
 	  *             expressions) is interoperable with both `T` and `Seq[T]`. The unification type to which both
-	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.SQLNumber SQLNumber]].
+	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]].
 	  */
 	def %[E <: F, O >: LocalScope <: S, X, Y]
 	     (that :ColumnSQL[E, O, X])(implicit types :SQLTypeUnification[V, X, Y], number :SQLNumber[Y])
 			:ColumnSQL[E, O, Y] =
-		ArithmeticSQL.Remainder(types.left(this), types.right(that))
+		ArithmeticSQL.Remainder(types.left(this), types.right(denullify(that)))
 
 
 
@@ -283,6 +306,8 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 
 	override def opt :ColumnSQL[F, S, Option[V]] = OrNull(this)
 
+	override def out :ColumnSQL[F, S, Out[V]] = to[Out[V]]
+
 	override def map[X](f :V => X) :ColumnSQL[F, S, X] = new MappedColumnSQL(this)(f)
 
 
@@ -295,14 +320,26 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :ColumnSQL[E, S, V]
 
 
+	override def asGlobal :Option[ColumnSQL[F, GlobalScope, V]]
+
 	override def anchor(from :F) :ColumnSQL[F, S, V]
 
+	override def bind[E <: F { type Params = Args }, Args](base :E, args :Args)
+			:ColumnSQL[base.GeneralizedParamless, S, V] =
+		SQLScribe.applyParams(base, base.bind(args) :base.GeneralizedParamless)(args)(this)
 
-	override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionMatcher[F, Y]) :Y[S, V] =
-		applyTo(matcher :ColumnMatcher[F, Y])
+	protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ExpressionVisitor[F, Y]) :Y[S, V] =
+		applyTo(visitor :ColumnVisitor[F, Y])
 
-	def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V]
+	protected def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, Y]) :Y[S, V]
 
+	protected[sql] override def applyToForwarder[Y[-_ >: LocalScope <: GlobalScope, _]]
+	                                            (visitor :ExpressionVisitor[F, Y]) :Y[S, V] =
+		applyTo(visitor)
+
+	protected[sql] final def applyToForwarder[Y[-_ >: LocalScope <: GlobalScope, _]]
+	                                         (visitor :ColumnVisitor[F, Y]) :Y[S, V] =
+		applyTo(visitor)
 
 	override def selectFrom(from :F) :SelectColumn[from.Base, V] =
 		if (from.isParameterized)
@@ -322,13 +359,17 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 		SelectSQL.subselect[B, from.type, V](from, this)
 
 	override def paramSelectFrom[P <: Chain, G <: F](from :TopFrom { type Generalized <: G; type Params = P })
-			:ParamSelect[P, V] =
-		ParamSelect(from)(this)
+			:Select[P, V] =
+		Select(from)(this)
 
+
+	override def split(implicit op :OperationType) :Seq[ColumnSQL[F, S, _]] = ReversedList :+ this
+
+	override def columnCount(implicit spelling :SQLSpelling) :Int = 1
 
 	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		defaultSpelling(context, params)
+	                                                (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
+		defaultSpelling(context, params)::Nil
 
 	/** Translates this expression into an SQL string according to the given format/dialect, adding parenthesis
 	  * around the expression if necessary (the expression is not atomic and could be potentially split by operators
@@ -354,15 +395,14 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 object ColumnSQL {
 	//todo: variant in uppercase
 	/** Extension methods for [[net.noresttherein.oldsql.sql.ColumnSQL]] which apply standard SQL
-	  * [[net.noresttherein.oldsql.sql.ast.AggregateSQL.AggregateFunction aggregate]] functions to the enriched expression.
+	  * [[net.noresttherein.oldsql.sql.AggregateFunction aggregate]] functions to the enriched expression.
 	  * Extracted out as it is restricted to expressions based on
 	  * [[net.noresttherein.oldsql.sql.FromClause non-empty, not grouping]] `RowProduct` subtypes and uses
 	  * its [[net.noresttherein.oldsql.sql.FromSome.GeneralizedAggregate GeneralizedAggregate]] member type
 	  * as the base of the created expressions.
 	  */
-	implicit class ColumnSQLAggregateMethods[F <: FromSome, V](private val self :ColumnSQL[F, LocalScope, V])
-		extends AnyVal
-	{//fixme: remove abstract type projections
+	implicit class ColumnSQLExtension[F <: FromSome, V](private val self :ColumnSQL[F, LocalScope, V]) extends AnyVal {
+		//fixme: remove abstract type projections
 		/** Represents the SQL `COUNT(this)`.
 		  * @return a [[net.noresttherein.oldsql.sql.ColumnSQL.LocalColumn LocalColumn]]`[G, Int]` based on clause
 		  *         `G <: RowProduct`, being the least upper bound of all aggregate expressions (`RowProduct` subtypes
@@ -465,7 +505,7 @@ object ColumnSQL {
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope]]
 	  * @see [[net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn]]
 	  * @see [[net.noresttherein.oldsql.sql.ast.AggregateSQL]]
-	  */
+	  */ //todo: rename to GroupColumn/DistinctGroupSQL; move to sql
 	type LocalColumn[-F <: RowProduct, V] = ColumnSQL[F, LocalScope, V]
 
 	/** An upper bound of all [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]] subtypes
@@ -477,14 +517,14 @@ object ColumnSQL {
 	  * [[net.noresttherein.oldsql.sql.ast.AggregateSQL aggregate]] expressions.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope]]
 	  * @see [[net.noresttherein.oldsql.sql.ColumnSQL.LocalColumn]]
-	  */
+	  */ //todo: rename to RowColumn/DistinctRowSQL
 	type GlobalColumn[-F <: RowProduct, V] = ColumnSQL[F, GlobalScope, V]
 
 	/** A type alias for SQL column [[net.noresttherein.oldsql.sql.ColumnSQL expressions]] independent of any relations
 	  * in the FROM clause, that is applicable to any [[net.noresttherein.oldsql.sql.RowProduct RowProduct]].
-	  * It is a subtype of [[net.noresttherein.oldsql.sql.SQLExpression.GroundExpression GroundExpression]]`[V]`.
+	  * It is a subtype of [[net.noresttherein.oldsql.sql.SQLExpression.GroundSQL GroundSQL]]`[V]`.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope]]
-	  */
+	  */ //todo: rename to GroundColumn/GroundDistinctSQL
 	type TopColumn[V] = ColumnSQL[RowProduct, GlobalScope, V]
 
 	/** An upper type bound of all `ColumnSQL[_, _, _]` instances. */
@@ -503,6 +543,7 @@ object ColumnSQL {
 		protected override val parts :Seq[ColumnSQL[F, S, _]] = column::Nil
 
 		override def readForm :ColumnReadForm[V] = column.readForm
+		override def groundValue :Opt[V] = column.groundValue
 
 		override def as(alias :String) :ColumnSQL[F, S, V] = new AliasedColumn(column, alias)
 
@@ -525,14 +566,17 @@ object ColumnSQL {
 		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, V] =
 			new AliasedColumn(mapper(column), alias)
 
-		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, V] =
-			matcher.alias(this)
+		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, Y]) :Y[S, V] =
+			visitor.alias(this)
 
 
+		//this could conceivably be wrong if select returns it as a part of a composite column, but we are not there yet
 		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
 		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-			spelling(column :ColumnSQL[E, S, V])(context, params)
-//			column.inParens(context, params) + (" " + spelling.AS + " ") + alias
+		{
+			val columnSQL = spelling(column :ColumnSQL[E, S, V])(context, params)
+			if (spelling.scope == SelectScope) columnSQL else columnSQL + (" as " + alias)
+		}
 
 	}
 
@@ -553,13 +597,13 @@ object ColumnSQL {
 			}
 
 
-		trait AliasedColumnMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
+		trait AliasedColumnVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
 			def alias[S >: LocalScope <: GlobalScope, V](e :AliasedColumn[F, S, V]) :Y[S, V]
 		}
 
-		type MatchAliasedColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = AliasedColumnMatcher[F, Y]
+		type MatchAliasedColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = AliasedColumnVisitor[F, Y]
 
-		type CaseAliasedColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = AliasedColumnMatcher[F, Y]
+		type CaseAliasedColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = AliasedColumnVisitor[F, Y]
 	}
 
 
@@ -568,13 +612,15 @@ object ColumnSQL {
 	  * expressions. It is fully analogous to its supertype
 	  * [[net.noresttherein.oldsql.sql.SQLExpression.CompositeSQL CompositeSQL]], redefining the implementations
 	  * of methods which needed narrowing of their result type to `ColumnSQL`.
-	  */
+	  */ //todo: move it together with CompositeSQL to sql.ast
 	trait CompositeColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X]
 		extends CompositeSQL[F, S, X] with ColumnSQL[F, S, X]
 	{
 		override def asGlobal :Option[ColumnSQL[F, GlobalScope, X]] =
 			if (isGlobal) Some(this.asInstanceOf[ColumnSQL[F, GlobalScope, X]])
 			else None
+
+		override def anchor(from :F) :ColumnSQL[F, S, X] = rephrase(SQLScribe.anchor(from))
 
 		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, X]
 
@@ -585,8 +631,12 @@ object ColumnSQL {
 		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :ColumnSQL[E, S, X] =
 			rephrase(SQLScribe.expand(base))
 
-//		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnMatcher[F, Y]) :Y[S, X] =
+//		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnVisitor[F, Y]) :Y[S, X] =
 //			matcher.composite(this)
+
+		override def inParens[P, E <: F](context :SQLContext, params :Parameterization[P, E])
+		                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+			("(" +: defaultSpelling(context, params)) + ")"
 	}
 
 
@@ -604,6 +654,7 @@ object ColumnSQL {
 			val value :ColumnSQL[F, S, X]
 			protected override def parts :Seq[ColumnSQL[F, S, X]] = value::Nil
 
+			override def isGlobal :Boolean = value.isGlobal
 			override def isAnchored :Boolean = value.isAnchored
 
 			override def anchor(form :F) :ColumnSQL[F, S, V] = value.anchor(form) match {
@@ -649,6 +700,7 @@ object ColumnSQL {
 
 			protected override def parts :Seq[ColumnSQL[F, S, X]] = left::right::Nil
 
+			override def isGlobal :Boolean = left.isGlobal && right.isGlobal
 			override def isAnchored :Boolean = left.isAnchored && right.isAnchored
 
 			override def anchor(from :F) :ColumnSQL[F, S, V] = (left.anchor(from), right.anchor(from)) match {
@@ -678,23 +730,23 @@ object ColumnSQL {
 			override def hashCode :Int = left.hashCode * 31 + right.hashCode
 		}
 
-		trait CompositeColumnMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends AliasedColumnMatcher[F, Y] with ArithmeticMatcher[F, Y] with ConcatMatcher[F, Y]
-			   with ConditionMatcher[F, Y] with ColumnConversionMatcher[F, Y] with FunctionColumnMatcher[F, Y]
-			   with LogicalMatcher[F, Y] with CompoundSelectColumnMatcher[F, Y]
+		trait CompositeColumnVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+			extends AliasedColumnVisitor[F, Y] with ArithmeticVisitor[F, Y] with ColumnConversionVisitor[F, Y]
+			   with ConcatVisitor[F, Y] with ConditionVisitor[F, Y] with CompoundSelectColumnVisitor[F, Y]
+			   with FunctionColumnVisitor[F, Y] with LogicalVisitor[F, Y]
 		{
 			def composite[S >: LocalScope <: GlobalScope, X](e :CompositeColumnSQL[F, S, X]) :Y[S, X]
 		}
 
 		trait MatchOnlyCompositeColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends CompositeColumnMatcher[F, Y]
+			extends CompositeColumnVisitor[F, Y]
 			   with CaseAliasedColumn[F, Y] with CaseArithmetic[F, Y] with CaseConcat[F, Y] with CaseCondition[F, Y]
 			   with CaseLogical[F, Y]
 
 
 		trait MatchCompositeColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-			extends MatchOnlyCompositeColumn[F, Y] with CaseColumnConversion[F, Y] with CaseFunctionColumn[F, Y]
-			   with CaseCompoundSelectColumn[F, Y]
+			extends MatchOnlyCompositeColumn[F, Y] with CaseColumnConversion[F, Y] with CaseCompoundSelectColumn[F, Y]
+			   with CaseFunctionColumn[F, Y]
 
 		trait CaseCompositeColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 			extends MatchCompositeColumn[F, Y]
@@ -711,7 +763,7 @@ object ColumnSQL {
 			override def conversion[S >: LocalScope <: GlobalScope, Z, X](e :ColumnConversionSQL[F, S, Z, X]) :Y[S, X] =
 				composite(e)
 
-			override def function[S >: LocalScope <: GlobalScope, X <: Chain, Z](e :FunctionColumn[F, S, X, Z]) :Y[S, Z] =
+			override def function[S >: LocalScope <: GlobalScope, X <: Chain, Z](e :FunctionColumnSQL[F, S, X, Z]) :Y[S, Z] =
 				composite(e)
 
 			override def logical[S >: LocalScope <: GlobalScope](e :LogicalSQL[F, S]) :Y[S, Boolean] = composite(e)
@@ -726,16 +778,16 @@ object ColumnSQL {
 
 
 
-	trait ColumnMatcher[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
-		extends AggregateMatcher[F, Y] with ColumnTermMatcher[F, Y] with CompositeColumnMatcher[F, Y]
-		   with MappingColumnMatcher[F, Y] with ColumnQueryMatcher[F, Y]
+	trait ColumnVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
+		extends AggregateVisitor[F, Y] with ColumnQueryVisitor[F, Y] with ColumnTermVisitor[F, Y]
+		   with CompositeColumnVisitor[F, Y] with MappingColumnVisitor[F, Y]
 	{
 		def column[S >: LocalScope <: GlobalScope, X](e :ColumnSQL[F, S, X]) :Y[S, X]
 	}
 
-	trait MatchColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ColumnMatcher[F, Y]
-		with CaseAggregate[F, Y] with CaseColumnTerm[F, Y] with CaseCompositeColumn[F, Y]
-		with CaseColumnComponent[F, Y] with CaseLooseColumn[F, Y] with CaseColumnQuery[F, Y]
+	trait MatchColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ColumnVisitor[F, Y]
+		with CaseAggregate[F, Y] with CaseColumnQuery[F, Y] with CaseColumnTerm[F, Y] with CaseCompositeColumn[F, Y]
+		with CaseColumnComponent[F, Y] with CaseLooseColumn[F, Y]
 
 	trait CaseColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchColumn[F, Y] {
 

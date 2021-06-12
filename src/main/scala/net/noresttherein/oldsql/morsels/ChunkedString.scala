@@ -1,12 +1,9 @@
 package net.noresttherein.oldsql.morsels
 
-import java.lang
-
-import scala.annotation.tailrec
-import scala.collection.immutable.{IndexedSeqOps, SeqOps, StringOps, WrappedString}
+import scala.collection.immutable.{IndexedSeqOps, SeqOps, StringOps}
 import scala.collection.mutable.Builder
 
-import net.noresttherein.oldsql.morsels.ChunkedString.{ChunkList, ReverseChunkList, Chunk}
+import net.noresttherein.oldsql.morsels.ChunkedString.{AppendedString, Chunk, ConcatChunks, PrependedString}
 
 
 
@@ -14,9 +11,17 @@ import net.noresttherein.oldsql.morsels.ChunkedString.{ChunkList, ReverseChunkLi
 
 
 /** A recursive sequence of strings with O(1) concatenation on both sides without a preference,
-  * used as a temporary structure when building longer strings.
+  * used as a temporary structure when building longer strings. Standard `toString` method recursively concatenates
+  * all chunks, producing the full string represented by this instance. It is a `Seq[Char]`, and thus will equal any
+  * other `Seq[Char]`, but not a `String`, even though equality is defined by its combined string representation
+  * (ignoring the underlying structure, i.e. what chunks it concatenates). It is used when larger strings are
+  * built recursively from many parts in a complex pattern, and when the efficiency of 'writing' is much more important
+  * than 'reading' - ''chunked'' strings are not expected to be accessed often before their final conversion
+  * to a `String`. It is most notably used by [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL SpelledSQL]]
+  * in the process of SQL/DML formatting.
   */
 sealed trait ChunkedString extends CharSequence with Seq[Char] with SeqOps[Char, Seq, ChunkedString] with Serializable {
+	override def knownSize :Int= length
 	override def charAt(index :Int) :Char = apply(index)
 	override def subSequence(start :Int, end :Int) :CharSequence = slice(start, end)
 
@@ -31,11 +36,46 @@ sealed trait ChunkedString extends CharSequence with Seq[Char] with SeqOps[Char,
 		(new StringBuilder).mapResult(new Chunk(_))
 
 	def +(char :Char) :ChunkedString = this + String.valueOf(char)
-	def +(string :String) :ChunkedString = if (string.length == 0) this else this + ChunkedString(string)
-	def +(string :ChunkedString) :ChunkedString = if (string.isEmpty) this else new ReverseChunkList(string::this::Nil)
+
+	def +(string :String) :ChunkedString =
+		if (string.length == 0) this
+		else if (isEmpty) ChunkedString(string)
+		else new AppendedString(this, string)
+
+	def +(string :ChunkedString) :ChunkedString =
+		if (string.isEmpty) this
+		else if (isEmpty) string
+		else new ConcatChunks(this, string)
+
 	def +:(char :Char) :ChunkedString = String.valueOf(char) +: this
-	def +:(string :String) :ChunkedString = if (string.isEmpty) this else ChunkedString(string) +: this
-	def +:(string :ChunkedString) :ChunkedString = if (string.isEmpty) this else new ChunkList(string::this::Nil)
+
+	def +:(string :String) :ChunkedString =
+		if (string.isEmpty) this
+		else if (isEmpty) ChunkedString(string)
+		else new PrependedString(string, this)
+
+	def +:(string :ChunkedString) :ChunkedString =
+		if (string.isEmpty) this
+		else if (isEmpty) string
+		else new ConcatChunks(string, this)
+
+	def *(n :Int) :ChunkedString =
+		if (n < 0)
+			throw new IllegalArgumentException("Negative repeat count " + n + " for " + this + ".")
+		else {
+			var mask = Integer.highestOneBit(n)
+			var res = ChunkedString.empty
+			while (mask != 0) {
+				if ((n & mask) != 0)
+					res += this
+				res += res
+				mask >>= 1
+			}
+			res
+		}
+
+
+	override def className :String = "ChunkedString"
 
 	protected def appendTo(builder :java.lang.StringBuilder) :java.lang.StringBuilder
 
@@ -46,7 +86,8 @@ sealed trait ChunkedString extends CharSequence with Seq[Char] with SeqOps[Char,
 
 
 object ChunkedString {
-	val empty :ChunkedString = new ReversedStringList(Nil)
+	private final val ver = 1L
+	val empty :ChunkedString = Empty
 
 	private val emptyChunk = new Chunk("")
 
@@ -57,16 +98,28 @@ object ChunkedString {
 
 
 
+	@SerialVersionUID(ver)
+	object Empty extends ChunkedString {
+		override def apply(idx :Int) = throw new IndexOutOfBoundsException("Empty ChunkedString access.")
+		override def length = 0
+		override def iterator :Iterator[Char] = Iterator.empty[Char]
+
+		protected override def appendTo(builder :java.lang.StringBuilder) :java.lang.StringBuilder = builder
+		override def toString = ""
+	}
+
+
+
+	@SerialVersionUID(ver)
 	private class Chunk(s :String)
 		extends ChunkedString with IndexedSeq[Char] with IndexedSeqOps[Char, IndexedSeq, Chunk]
 	{
 		override def head :Char = s.charAt(0)
 		override def last :Char = s.charAt(s.length - 1)
 		override def apply(i :Int) = s.charAt(i)
+
 		override def length = s.length
 		override def isEmpty = s.length == 0
-		override def iterator = new StringOps(s).iterator
-		override def reverseIterator = new StringOps(s).reverseIterator
 
 		override def empty = emptyChunk
 
@@ -78,159 +131,61 @@ object ChunkedString {
 			case _ => new Chunk((new StringBuilder ++= coll).result())
 		}
 
-		override def +(string :String) = new ReversedStringList(string::s::Nil)
-
-		override def +(string :ChunkedString) = string match {
-			case simple :Chunk => new ReversedStringList(simple.toString::s::Nil)
-			case _ => new ReverseChunkList(string::this::Nil)
-		}
-
-		override def +:(string :String) = new StringList(s::string::Nil)
-
-		override def +:(string :ChunkedString) = string match {
-			case simple :Chunk => new StringList(simple.toString::s::Nil)
-			case _ => new ChunkList(string::this::Nil)
-		}
-
-		override protected def appendTo(builder :java.lang.StringBuilder) = builder.append(s)
+		protected override def appendTo(builder :java.lang.StringBuilder) = builder.append(s)
 
 		override def toString = s
 	}
 
 
 
-	private class ReversedStringList(reversed :List[String]) extends ChunkedString {
-		override def head = reversed.last.charAt(0)
-		override def last = { val h = reversed.head; h.charAt(h.length - 1) }
-		override def apply(i :Int) :Char = {
-			var offset = i
-			val chunk = reversed.reverseIterator
-			while (chunk.hasNext) {
-				val s = chunk.next()
-				if (offset < s.length)
-					return s.charAt(i)
-				else offset -= s.length
-			}
-			throw new StringIndexOutOfBoundsException(s"""$i-th char of "$this"""")
-		}
+	@SerialVersionUID(ver)
+	private class AppendedString(prefix :ChunkedString, suffix :String) extends ChunkedString {
+		override def head = if (prefix.isEmpty) suffix.charAt(0) else prefix.head
+		override def last = suffix.charAt(suffix.length - 1)
+		override def apply(i :Int) :Char = if (i < prefix.length) prefix(i) else suffix.charAt(i - prefix.length)
 
-		override def isEmpty = reversed.isEmpty
-		override lazy val length = (0 /: reversed)(_ + _.length)
+		override val length = prefix.length + suffix.length
+		override def iterator = prefix.iterator ++ new StringOps(suffix).iterator
 
-		override def iterator = reversed.reverseIterator.flatten(new WrappedString(_))
+		protected override def appendTo(builder :java.lang.StringBuilder) =
+			prefix appendTo builder append suffix
 
-		override def +(string :String) =
-			if (string.length == 0) this else new ReversedStringList(string::reversed)
-
-		override def +(string :ChunkedString) = string match {
-			case _ if string.isEmpty => this
-			case _ :Chunk => new ReversedStringList(string.toString::reversed)
-			case _ => new ReverseChunkList(string::this::Nil)
-		}
-
-		override protected def appendTo(builder :java.lang.StringBuilder) = {
-			reversed.reverseIterator.foreach(builder.append); builder
-		}
-
-		override def toString = {
-			val res = new java.lang.StringBuilder
-			reversed.reverseIterator.foreach(res.append)
-			res.toString
-		}
+		override lazy val toString :String = super.toString
 	}
 
 
 
-	private class StringList(parts :List[String]) extends ChunkedString {
-		override def apply(idx :Int) :Char = {
-			@tailrec def rec(i :Int = idx, chunks :List[String] = parts) :Char = chunks match {
-				case h::t => if (h.length > i) h.charAt(i) else rec(i - h.length, t)
-				case _ => throw new StringIndexOutOfBoundsException(s"""$idx-th char of "$this"""")
-			}
-			rec()
-		}
+	@SerialVersionUID(ver)
+	private class PrependedString(prefix :String, suffix :ChunkedString) extends ChunkedString {
+		override def head = prefix.charAt(0)
+		override def last = if (suffix.isEmpty) prefix.charAt(prefix.length - 1) else suffix.last
+		override def apply(idx :Int) :Char = if (idx < prefix.length) prefix.charAt(idx) else suffix(idx - prefix.length)
 
-		override lazy val length = (0 /: parts)(_ + _.length)
+		override val length = prefix.length + suffix.length
+		override def iterator = new StringOps(prefix).iterator ++ suffix.iterator
 
-		override def iterator = parts.iterator.flatten(new WrappedString(_))
+		protected override def appendTo(builder :java.lang.StringBuilder) =
+			prefix appendTo (builder append prefix)
 
-		override def +:(string :String) =
-			if (string.length == 0) this else new StringList(string::parts)
-
-		override def +:(string :ChunkedString) = string match {
-			case _ if string.isEmpty => this
-			case _ :Chunk => new StringList(string.toString::parts)
-			case _ => super.+:(string)
-		}
-
-		override protected def appendTo(builder :java.lang.StringBuilder) = {
-			parts.foreach(builder.append); builder
-		}
-
-		override def toString = {
-			val res = new java.lang.StringBuilder
-			parts.foreach(res.append)
-			res.toString
-		}
+		override lazy val toString :String = super.toString
 	}
 
 
 
-	private class ReverseChunkList(reversed :List[ChunkedString]) extends ChunkedString {
-		override def head = reversed.last.head
-		override def last = reversed.head.last
+	@SerialVersionUID(ver)
+	private class ConcatChunks(prefix :ChunkedString, suffix :ChunkedString) extends ChunkedString {
+		override def head = if (prefix.isEmpty) suffix.head else prefix.head
+		override def last = if (suffix.isEmpty) prefix.last else suffix.last
+		override def apply(idx :Int) = if (idx < prefix.length) prefix(idx) else suffix(idx - prefix.length)
 
-		override def apply(i :Int) :Char = {
-			var offset = i
-			val chunk = reversed.reverseIterator
-			while (chunk.hasNext) {
-				val s = chunk.next()
-				if (offset < s.length)
-					return s.charAt(i)
-				else offset -= s.length
-			}
-			throw new StringIndexOutOfBoundsException(s"""$i-th char of "$this"""")
-		}
+		override val length = prefix.length + suffix.length
+		override def iterator = prefix.iterator ++ suffix
 
-		override def isEmpty = reversed.isEmpty
-		override lazy val length = (0 /: reversed)(_ + _.length)
+		override def appendTo(builder :java.lang.StringBuilder) =
+			suffix.appendTo(prefix.appendTo(builder))
 
-		override def iterator = reversed.reverseIterator.flatten
-
-		override def +(string :ChunkedString) =
-			if (string.isEmpty) this else new ReverseChunkList(string::reversed)
-
-		protected override def appendTo(builder :lang.StringBuilder) = {
-			reversed.reverseIterator.foreach(_.appendTo(builder)); builder
-		}
+		override lazy val toString :String = super.toString
 	}
-
-
-
-	private class ChunkList(parts :List[ChunkedString]) extends ChunkedString {
-		override def head = parts.head.head
-		override def last = parts.last.last
-		override def apply(idx :Int) :Char = {
-			@tailrec def rec(i :Int = idx, chunks :List[ChunkedString] = parts) :Char = chunks match {
-				case h::t => if (h.length > i) h.charAt(i) else rec(h.length - i, t)
-				case _ => throw new StringIndexOutOfBoundsException(s"""$idx-th char of "$this"""")
-			}
-			rec()
-		}
-
-		override def isEmpty = parts.isEmpty
-		override lazy val length = (0 /: parts)(_ + _.length)
-
-		override def iterator = parts.iterator.flatten
-
-		override def +:(string :ChunkedString) =
-			if (string.isEmpty) this else new ChunkList(string::parts)
-
-		protected override def appendTo(builder :lang.StringBuilder) = {
-			parts.foreach(_.appendTo(builder)); builder
-		}
-	}
-
 
 }
 

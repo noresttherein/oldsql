@@ -3,21 +3,25 @@ package net.noresttherein.oldsql.schema.forms
 import java.sql.{CallableStatement, JDBCType, PreparedStatement, ResultSet}
 import java.util.Optional
 
+import scala.collection.immutable.ArraySeq
+
 import net.noresttherein.oldsql.collection.{Chain, ChainMap, LabeledChain, Listing, Opt, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.ChainMap.&~
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.LabeledChain.>~
-import net.noresttherein.oldsql.collection.Opt.Got
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.collection.Record.|#
-import net.noresttherein.oldsql.morsels.{Lazy, Stateless}
+import net.noresttherein.oldsql.model.->
+import net.noresttherein.oldsql.morsels.Lazy
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.forms.SQLForms.{AbstractListingReadForm, ChainMapEntryReadForm, ChainMapEntryWriteForm, ChainMapForm, ChainReadForm, ChainSQLForm, ChainSQLWriteForm, ChainWriteForm, EmptyChainForm, ListingForm, ListingItemReadForm, ListingItemWriteForm, SuperAdapterColumnForm, SuperChainForm}
 import net.noresttherein.oldsql.schema.ColumnForm.{JDBCForm, NullSafeColumnForm}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.{ReadFormAdapter, ReadFormNullValue}
-import net.noresttherein.oldsql.schema.SQLWriteForm.{WriteFormAdapter, WriteFormLiterals}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{WriteFormAdapter, WriteFormLiteralsBackFeed}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.forms.SQLForms.{AbstractListingReadForm, ChainMapEntryReadForm, ChainMapEntryWriteForm, ChainMapForm, ChainReadFormImpl, ChainSQLForm, ChainSQLWriteForm, ChainWriteFormImpl, EmptyChainForm, ListingForm, ListingItemReadForm, ListingItemWriteForm, SuperAdapterColumnForm, SuperChainForm}
+import net.noresttherein.oldsql.schema.ColumnWriteForm.SingletonColumnWriteForm
 import net.noresttherein.oldsql.slang
 
 //implicits
@@ -33,10 +37,6 @@ import slang._
 trait SQLForms
 
 
-
-
-
-
 /** Base trait combining companion traits to objects containing implicit form definitions.
   * Extended by both read and write forms, it brings those implicits into the search scope for all form types.
   */
@@ -46,7 +46,6 @@ trait SuperSQLForm extends SQLForms with Serializable {
 
 	override def toString :String = this.innerClassName
 }
-
 
 
 /** Base trait extended by both read and write column forms. It brings generic implicit definitions for all forms
@@ -67,27 +66,25 @@ sealed trait SQLRWFormsLevel2Implicits {
 	/** Provides an implicit form for the heterogeneous list (`Chain`) `I ~ L` as long as implicit forms for both
 	  * `I` and `L` are available. */
 	implicit def ChainReadForm[I <: Chain, L](implicit i :SQLReadForm[I], l :SQLReadForm[L]) :SQLReadForm[I ~ L] =
-		new SuperChainForm[SQLReadForm[I], SQLReadForm[L]](i, l) with ChainReadForm[I, L]
+		new SuperChainForm[SQLReadForm[I], SQLReadForm[L]](i, l) with ChainReadFormImpl[I, L]
 
 	implicit def ChainWriteForm[I <: Chain, L](implicit t :SQLWriteForm[I], h :SQLWriteForm[L]) :SQLWriteForm[I ~ L] =
-		new SuperChainForm[SQLWriteForm[I], SQLWriteForm[L]](t, h) with ChainWriteForm[~, I, L] {
-			override protected def symbol = "~"
-		}
+		new SuperChainForm[SQLWriteForm[I], SQLWriteForm[L]](t, h) with ChainWriteFormImpl[~, I, L]
 
-	
+
 	implicit def readFormChainToChainReadForm[P <: Chain, I <: Chain, L]
 	             (forms :P ~ SQLReadForm[L])(implicit prefix :P => SQLReadForm[I]) :SQLReadForm[I ~ L] =
 		ChainReadForm(prefix(forms.init), forms.last)
 
 	implicit def writeFormChainToChainWriteForm[P <: Chain, I <: Chain, L]
-	            (chain :P ~ SQLWriteForm[L])(implicit prefix :P => SQLWriteForm[I]) :SQLWriteForm[I ~ L] =
+	             (chain :P ~ SQLWriteForm[L])(implicit prefix :P => SQLWriteForm[I]) :SQLWriteForm[I ~ L] =
 		ChainWriteForm(prefix(chain.init), chain.last)
 
-	
+
 	implicit class ChainReadFormExtension[C <: Chain](private val self :SQLReadForm[C]) { //todo: AnyVal
 		def ~[L](item :SQLReadForm[L]) :SQLReadForm[C ~ L] = ChainReadForm(self, item)
 	}
-	
+
 	implicit class ChainWriteFormExtension[C <: Chain](private val self :SQLWriteForm[C]) {
 		def ~[L](item :SQLWriteForm[L]) :SQLWriteForm[C ~ L] = ChainWriteForm(self, item)
 	}
@@ -121,17 +118,17 @@ sealed trait SQLRWFormsLevel1Implicits extends SQLRWFormsLevel2Implicits {
 		ChainMapWriteForm(prefix(chain.init), chain.last._2)
 
 	implicit class ChainMapReadFormExtension[I <: ChainMap](private val self :SQLReadForm[I]) {
-		def &~[K <: ChainMap.Key, V](item :(K, SQLReadForm[V])) :SQLReadForm[I &~ (K, V)] = 
+		def &~[K <: ChainMap.Key, V](item :(K, SQLReadForm[V])) :SQLReadForm[I &~ (K, V)] =
 			ChainMapReadForm(self, new ValueOf[K](item._1), item._2)
-		
+
 		def &~[K <: ChainMap.Key :ValueOf, V](value :SQLReadForm[V]) :SQLReadForm[I &~ (K, V)] =
 			ChainMapReadForm(self, implicitly[ValueOf[K]], value)
 	}
 
 	implicit class ChainMapWriteFormExtension[I <: ChainMap](private val self :SQLWriteForm[I]) {
-		def &~[K <: ChainMap.Key, V](item :(K, SQLWriteForm[V])) :SQLWriteForm[I &~ (K, V)] = 
+		def &~[K <: ChainMap.Key, V](item :(K, SQLWriteForm[V])) :SQLWriteForm[I &~ (K, V)] =
 			ChainMapWriteForm(self, item._2)
-		
+
 		def &~[K <: ChainMap.Key, V](value :SQLWriteForm[V]) :SQLWriteForm[I &~ (K, V)] =
 			ChainMapWriteForm(self, value)
 	}
@@ -239,8 +236,6 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 	}
 
 
-
-
 	private[forms] trait OptionWriteForm[-T] extends SQLWriteForm[Option[T]] {
 		protected def form :SQLWriteForm[T]
 
@@ -265,6 +260,8 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 		}
 		override def inlineNullLiteral :String = form.inlineNullLiteral
 
+		override def split = form.split.map(_.toOpt)
+
 		override def equals(that :Any) :Boolean = that match {
 			case opt :OptionWriteForm[_] => (this eq opt) || opt.canEqual(this) && opt.form == form
 			case _ => false
@@ -272,14 +269,14 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 
 		override def hashCode :Int = form.hashCode
 
-		override val toString :String = "<Option[" + form + "]"
+		override def toString :String = string
+		private val string = "<Option[" + form + "]"
 	}
-
 
 
 	//apply and nullValue methods not implemented here, as their erased forms clashes with their erased bridges
 	private[forms] trait OptReadForm[T] extends SQLReadForm[Opt[T]] with ReadFormNullValue[Opt[T]] {
-		override val nulls = NullValue.Miss
+		override val nulls = NullValue.Lack
 		protected def form :SQLReadForm[T]
 		override def readColumns :Int = form.readColumns
 
@@ -297,10 +294,11 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 	}
 
 
-
 	//set and literal methods not implemented here, as their erased forms clashes with their erased bridges
-	private[forms] trait OptWriteForm[-T] extends WriteFormLiterals[Opt[T]] with WriteFormAdapter[Opt[T]] {
+	private[forms] trait OptWriteForm[-T] extends WriteFormLiteralsBackFeed[Opt[T]] with WriteFormAdapter[Opt[T]] {
 		protected override def form :SQLWriteForm[T]
+
+		override def split = form.split.map(SQLForms.OptColumnWriteForm(_))
 
 		override def equals(that :Any) :Boolean = that match {
 			case opt :OptWriteForm[_] => (this eq opt) || opt.canEqual(this) && opt.form == form
@@ -314,6 +312,82 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 
 
 
+
+	implicit def pairReadForm[A :SQLReadForm, B :SQLReadForm] :SQLReadForm[A -> B] =
+		new PairBaseForm(SQLReadForm[A], SQLReadForm[B]) with PairReadForm[A, B]
+
+	implicit def pairWriteForm[A :SQLWriteForm, B :SQLWriteForm] :SQLWriteForm[A -> B] =
+		new PairBaseForm(SQLWriteForm[A], SQLWriteForm[B]) with PairWriteForm[A, B]
+
+
+	private[forms] sealed class PairBaseForm[+A <: SuperSQLForm, +B <: SuperSQLForm]
+	                                        (protected val first :A, protected val second :B)
+		extends SuperSQLForm
+	{
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :PairBaseForm[_, _] if other.getClass == getClass =>
+				other.first == first && other.second == second
+			case _ => false
+		}
+		override def hashCode :Int = first.hashCode * 31 + second.hashCode
+
+		override lazy val toString :String = first.toString + "->" + second
+	}
+
+
+	private[forms] sealed trait PairReadForm[A, B]
+		extends PairBaseForm[SQLReadForm[A], SQLReadForm[B]] with SQLReadForm[A -> B]
+	{
+		override def apply(res :ResultSet, position :Int) :A -> B =
+			->(first(res, position), second(res, position + first.readColumns))
+
+		override def opt(res :ResultSet, position :Int) :Opt[A -> B] =
+			first.opt(res, position) match {
+				case Lack => Lack
+				case got1 => second.opt(res, position + first.readColumns) match {
+					case Lack => Lack
+					case got2 => Got(->(got1.get, got2.get))
+				}
+			}
+
+		private val nullPair =
+			try { ->(first.nullValue, second.nullValue) }
+			catch { case _ :Exception => null }
+
+		override def nullValue :A -> B =
+			if (nullPair == null) ->(first.nullValue, second.nullValue) else nullPair
+
+		override val readColumns = first.readColumns + second.readColumns
+	}
+
+
+	private[forms] sealed trait PairWriteForm[A, B]
+		extends PairBaseForm[SQLWriteForm[A], SQLWriteForm[B]] with SQLWriteForm[A -> B]
+	{
+		override def set(statement :PreparedStatement, position :Int, value :A -> B) :Unit =
+			if (value == null) setNull(statement, position)
+			else {
+				first.set(statement, position, value._1)
+				second.set(statement, position + first.writtenColumns, value._2)
+			}
+
+		override def setNull(statement :PreparedStatement, position :Int) :Unit = {
+			first.setNull(statement, position)
+			second.setNull(statement, position + first.writtenColumns)
+		}
+
+		override def literal(value :A -> B) = "(" + first.literal(value._1) + ", " + second.literal(value._2) + ")"
+		override def inlineLiteral(value :A -> B) = first.inlineLiteral(value._1) + ", " + second.inlineLiteral(value._2)
+		override lazy val nullLiteral = "(" + first.nullLiteral + ", " + second.nullLiteral + ")"
+		override lazy val inlineNullLiteral = first.inlineNullLiteral + ", " + second.inlineNullLiteral
+
+		override val writtenColumns = first.writtenColumns + second.writtenColumns
+
+		override def split :Seq[ColumnWriteForm[A -> B]] =
+			(first.split.view.map(_.compose ((_:(A -> B))._1)) ++
+				second.split.view.map(_.compose ((_:(A -> B))._2))).to(List)
+	}
 
 
 
@@ -409,7 +483,7 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 
 
 	private[forms] abstract class SuperChainForm[+I <: SuperSQLForm, +L <: SuperSQLForm](val init :I, val last :L)
-		extends SuperSQLForm
+		extends SuperSQLForm //init and last must be constructor params because they are accessed by constructors
 	{
 		override def equals(that :Any) :Boolean = that match {
 			case chain :SuperChainForm[_, _] =>
@@ -418,7 +492,6 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 		}
 
 		override def hashCode :Int = init.hashCode * 31 + last.hashCode
-
 
 		protected def symbol :String
 
@@ -443,10 +516,13 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 
 
 
-	private[forms] trait ChainReadForm[+I <: Chain, +L]
+	private[forms] trait ChainReadFormImpl[+I <: Chain, +L]
 		extends SuperChainForm[SQLReadForm[I], SQLReadForm[L]] with SQLReadForm[I ~ L]
 	{   //this is fine because init and last are guaranteed to be initialized as constructor parameters
 		override val readColumns :Int = init.readColumns + last.readColumns
+
+		override def apply(res :ResultSet, position :Int) :I ~ L =
+			init(res, position) ~ last(res, position + init.readColumns)
 
 		override def opt(res :ResultSet, position :Int) :Opt[I ~ L] =
 			for (t <- init.opt(res, position); h <- last.opt(res, position + init.readColumns)) yield t ~ h
@@ -463,14 +539,13 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 			last.register(call, position + init.readColumns)
 		}
 
-
-		override protected def symbol = "~"
+		protected override def symbol = "~"
 	}
 
 
 
-	private[forms] trait ChainIndexReadForm[C[+A <: I, +B <: E[K, V]] <: A ~ B,
-	                                        E[+A <: U, +B], U, I <: Chain, K <: U, V]
+	private[forms] trait ChainIndexReadFormImpl[C[+A <: I, +B <: E[K, V]] <: A ~ B,
+	                                            E[+A <: U, +B], U, I <: Chain, K <: U, V]
 		extends SuperChainForm[SQLReadForm[I], SQLReadForm[E[K, V]]] with SQLReadForm[I C E[K, V]]
 	{
 		protected val value :SQLReadForm[V]
@@ -498,7 +573,7 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 		}
 
 		override def canEqual(that :Any) :Boolean = that match {
-			case index :ChainIndexReadForm[_, _, _, _, _, _] => index.key == key
+			case index :ChainIndexReadFormImpl[_, _, _, _, _, _] => index.key == key
 			case _ => false
 		}
 
@@ -515,7 +590,7 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 	                              (implicit override val init :SQLReadForm[I],
 	                               implicit override val value :SQLReadForm[V], keyValue :ValueOf[K])
 		extends SuperChainForm[SQLReadForm[I], SQLReadForm[E[K, V]]](init, last)
-		   with ChainIndexReadForm[C, E, U, I, K, V]
+		   with ChainIndexReadFormImpl[C, E, U, I, K, V]
 	{
 		final override def key :K = keyValue.value
 	}
@@ -525,7 +600,7 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 
 
 
-	private[forms] trait ChainWriteForm[C[+A <: I, +B <: L] <: A ~ B, -I <: Chain, -L]
+	private[forms] trait ChainWriteFormImpl[C[+A <: I, +B <: L] <: A ~ B, -I <: Chain, -L]
 		extends SuperChainForm[SQLWriteForm[I], SQLWriteForm[L]] with SQLWriteForm[C[I, L]]
 	{   //this is fine because init and last are initialized as constructor parameters
 		override val writtenColumns :Int = init.writtenColumns + last.writtenColumns
@@ -543,12 +618,11 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 			last.setNull(statement, position + init.writtenColumns)
 		}
 
-
 		override def literal(value :I C L, inline :Boolean) :String = {
 			def rec(chain :Chain, form :SQLWriteForm[_], res :StringBuilder = new StringBuilder)
 					:StringBuilder =
 				if (chain == null) form match {
-					case f :ChainWriteForm[_, _, _] =>
+					case f :ChainWriteFormImpl[_, _, _] =>
 						if (f.init.writtenColumns > 0)
 							if (f.last.writtenColumns > 0)
 								rec(null, f.init, res) ++= ", " ++= f.last.inlineNullLiteral
@@ -560,7 +634,7 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 					case other => res ++= other.inlineNullLiteral
 
 				} else (form, chain) match {
-					case (f :ChainWriteForm[_, _, _], i ~ l) =>
+					case (f :ChainWriteFormImpl[_, _, _], i ~ l) =>
 						if (f.init.writtenColumns > 0)
 							if (f.last.writtenColumns > 0)
 								rec(i, f.init, res) ++= ", " ++= f.last.asInstanceOf[SQLWriteForm[Any]].inlineLiteral(l)
@@ -582,6 +656,13 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 		override def nullLiteral :String = nullLiteral(false)
 		override def inlineNullLiteral :String = nullLiteral(true)
 		override def nullLiteral(inline :Boolean) :String = literal(null.asInstanceOf[I C L], false)
+
+		override def split =
+			(init.split.view.map(_.unmap(Chain.init[I])) ++
+				last.split.view.map(_.unmap(Chain.last[L]))
+			).to(ArraySeq)
+
+		protected override def symbol :String = "~"
 	}
 
 
@@ -589,7 +670,7 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 	private[forms] class ChainSQLWriteForm[C[+A <: I, +B <: L] >: Null <: A ~ B, -I <: Chain, -L, -V]
 	                     (override val init :SQLWriteForm[I], override val last :SQLWriteForm[L],
 	                      protected override val symbol :String)
-		extends SuperChainForm[SQLWriteForm[I], SQLWriteForm[L]](init, last) with ChainWriteForm[C, I, L]
+		extends SuperChainForm[SQLWriteForm[I], SQLWriteForm[L]](init, last) with ChainWriteFormImpl[C, I, L]
 
 }
 
@@ -599,16 +680,21 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 
 
 sealed trait SQLFormLevel2Implicits extends SQLRWFormsImplicits {
-	implicit def ChainForm[I <: Chain, L](implicit i :SQLForm[I], l :SQLForm[L]) :SQLForm[I ~ L] =
+	implicit def chainForm[I <: Chain, L](implicit i :SQLForm[I], l :SQLForm[L]) :SQLForm[I ~ L] =
 		new ChainSQLForm(i, l)
 
-	implicit def formChainToChainForm[I <: Chain, L](chain :I ~ SQLForm[L])(implicit prefix :I => SQLForm[I])
-			:SQLWriteForm[I ~ L] =
+	implicit def formChainToChainForm[I <: Chain, L](chain :I ~ SQLForm[L])(implicit prefix :I => ChainForm[I])
+			:ChainForm[I ~ L] =
 		ChainForm(prefix(chain.init), chain.last)
 
 	implicit class ChainFormExtension[C <: Chain](private val self :SQLForm[C]) { //todo: AnyVal
-		def ~[L](item :SQLForm[L]) :SQLForm[C ~ L] = ChainForm(self, item)
+		def ~[L](item :SQLForm[L]) :SQLForm[C ~ L] = chainForm(self, item)
 	}
+	implicit class ListingFormExtension[I <: Listing](private val self :SQLForm[I]) { //todo: AnyVal
+		def |~[K :ValueOf, V](entry :K :~ SQLForm[V]) :SQLForm[I |~ (K :~ V)] =
+			SQLForms.ListingForm(self, implicitly[ValueOf[K]], entry.value)
+	}
+
 }
 
 
@@ -639,11 +725,6 @@ sealed trait SQLFormLevel1Implicits extends SQLFormLevel2Implicits {
 	             (chain :I |~ (K:~SQLForm[V]))(implicit prefix :I => SQLForm[I], key :ValueOf[K]) :SQLForm[I|~(K:~V)] =
 		ListingForm(prefix(chain.init), key, chain.last.value)
 
-	implicit class ListingFormExtension[I <: Listing](private val self :SQLForm[I]) {
-		def |~[K <: Listing.Key :ValueOf, V](item :K :~ SQLForm[V]) :SQLForm[I |~ (K :~ V)] =
-			new ListingForm(self, valueOf[K], item.value)
-	}
-
 }
 
 
@@ -653,11 +734,9 @@ sealed trait SQLFormImplicits extends SQLFormLevel1Implicits {
 
 	implicit def OptionForm[T :SQLForm] :SQLForm[Option[T]] = new OptionForm[T]
 
-
 	private[forms] class OptionForm[T](implicit protected override val form :SQLForm[T])
-		extends OptionWriteForm[T] with OptionReadForm[T] with SQLForm[Option[T]]
-	{
-		override val toString = "Option[" + form + "]"
+		extends OptionWriteForm[T] with OptionReadForm[T] with SQLForm[Option[T]] {
+		override val toString :String = "Option[" + form + "]"
 	}
 
 
@@ -681,12 +760,19 @@ sealed trait SQLFormImplicits extends SQLFormLevel1Implicits {
 		}
 
 	implicit def OptionalForm[T :SQLForm] :SQLForm[Optional[T]] =
-		SQLForm.flatMap("Optional[" + SQLForm[T] + "]")(flatMapToOptional[T])(optionalToOption)
+		SQLForm.flatMap("Optional[" + SQLForm[T] + "]")(SQLForms.flatMapToOptional[T])(SQLForms.optionalToOption)
+
+
+
+	implicit def pairForm[A :SQLForm, B :SQLForm] :SQLForm[A -> B] =
+		new PairBaseForm[SQLForm[A], SQLForm[B]](SQLForm[A], SQLForm[B])
+			with PairReadForm[A, B] with PairWriteForm[A, B] with SQLForm[A -> B]
 
 
 
 	/** An empty chain form for the `Chain` terminator `@~`, which doesn't write or read any columns. */
-	implicit val EmptyChainForm :SQLForm[@~] = SQLForm.empty(@~, "@~")
+	implicit val EmptyChainForm :SQLForm[@~] = ChainForm //SQLForm.empty(@~, "@~")
+//	implicit object EmptyChainForm
 
 
 	implicit def LabeledChainForm[I <: LabeledChain :SQLForm, K <: Label :ValueOf, V :SQLForm] :SQLForm[I >~ (K :~ V)] =
@@ -701,7 +787,7 @@ sealed trait SQLFormImplicits extends SQLFormLevel1Implicits {
 			new LabeledChainForm(self, valueOf[K], item.value)
 	}
 
-	
+
 	implicit def RecordForm[I <: Record :SQLForm, K <: Label :ValueOf, V :SQLForm] :SQLForm[I |# (K, V)] =
 		new RecordForm(SQLForm[I], valueOf[K], SQLForm[V])
 
@@ -727,17 +813,13 @@ sealed trait SQLFormImplicits extends SQLFormLevel1Implicits {
 
 
 	private[forms] class ChainSQLForm[I <: Chain, L](override val init :SQLForm[I], override val last :SQLForm[L])
-		extends SuperChainForm[SQLForm[I], SQLForm[L]](init, last) with ChainWriteForm[~, I, L] with ChainReadForm[I, L]
+		extends SuperChainForm[SQLForm[I], SQLForm[L]](init, last) with ChainWriteFormImpl[~, I, L] with ChainReadFormImpl[I, L]
 		   with SQLForm[I ~ L]
-	{
-		protected override def symbol = "~"
-	}
-
 
 	private[forms] class ListingForm[I <: Listing, K <: Listing.Key, V]
 	                     (override val init :SQLForm[I], override val key :K, val value :SQLForm[V])
 		extends SuperChainForm[SQLForm[I], SQLForm[K:~V]](init, ListingItemForm(new ValueOf[K](key), value))
-		   with ChainWriteForm[|~, I, K:~V] with ChainIndexReadForm[|~, :~, Listing.Key, I, K, V]
+		   with ChainWriteFormImpl[|~, I, K:~V] with ChainIndexReadFormImpl[|~, :~, Listing.Key, I, K, V]
 		   with SQLForm[I |~ (K :~ V)]
 	{
 		override def symbol = "|~"
@@ -747,7 +829,7 @@ sealed trait SQLFormImplicits extends SQLFormLevel1Implicits {
 	private[forms] class LabeledChainForm[I <: LabeledChain, K <: LabeledChain.Key, V]
 	                      (override val init :SQLForm[I], override val key :K, val value :SQLForm[V])
 		extends SuperChainForm[SQLForm[I], SQLForm[K:~V]](init, ListingItemForm(new ValueOf[K](key), value))
-		   with ChainWriteForm[>~, I, K :~ V] with ChainIndexReadForm[>~, :~, LabeledChain.Key, I, K, V]
+		   with ChainWriteFormImpl[>~, I, K :~ V] with ChainIndexReadFormImpl[>~, :~, LabeledChain.Key, I, K, V]
 		   with SQLForm[I >~ (K :~ V)]
 	{
 		protected override def symbol = ">~"
@@ -758,22 +840,22 @@ sealed trait SQLFormImplicits extends SQLFormLevel1Implicits {
 	private[forms] class ChainMapForm[I <: ChainMap, K <: ChainMap.Key, V]
 	                      (override val init :SQLForm[I], override val key :K, val value :SQLForm[V])
 		extends SuperChainForm[SQLForm[I], SQLForm[(K, V)]](init, ChainMapEntryForm(new ValueOf[K](key), value))
-		   with ChainWriteForm[&~, I, (K, V)] with ChainIndexReadForm[&~, Tuple2, ChainMap.Key, I, K, V]
+		   with ChainWriteFormImpl[&~, I, (K, V)] with ChainIndexReadFormImpl[&~, Tuple2, ChainMap.Key, I, K, V]
 		   with SQLForm[I &~ (K, V)]
 	{
 		protected override def symbol = "&~"
-		override protected[this] def cons(init :I, value :V) :I &~ (K, V) = init &~ (key -> value)
+		protected[this] override def cons(init :I, value :V) :I &~ (K, V) = init &~ (key -> value)
 	}
 
 
 	private[forms] class RecordForm[I <: Record, K <: Record.Key, V]
 	                      (override val init :SQLForm[I], override val key :K, val value :SQLForm[V])
 		extends SuperChainForm[SQLForm[I], SQLForm[(K, V)]](init, ChainMapEntryForm(new ValueOf[K](key), value))
-		   with ChainWriteForm[|#, I, (K, V)] with ChainIndexReadForm[|#, Tuple2, Record.Key, I, K, V]
+		   with ChainWriteFormImpl[|#, I, (K, V)] with ChainIndexReadFormImpl[|#, Tuple2, Record.Key, I, K, V]
 		   with SQLForm[I |# (K, V)]
 	{
 		protected override def symbol = "|#"
-		override protected[this] def cons(init :I, value :V) :I |# (K, V) = init |# key -> value
+		protected[this] override def cons(init :I, value :V) :I |# (K, V) = init |# key -> value
 	}
 
 }
@@ -791,7 +873,7 @@ sealed trait ColumnRWFormsImplicits extends SQLFormImplicits {
 		}
 
 	implicit def OptionColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Option[T]] =
-		new OptionWriteForm[T] with ColumnWriteForm[Option[T]] with SuperAdapterColumnForm {
+		new OptionWriteForm[T] with SingletonColumnWriteForm[Option[T]] with SuperAdapterColumnForm {
 			override val form :ColumnWriteForm[T] = ColumnWriteForm[T]
 		}
 
@@ -804,7 +886,7 @@ sealed trait ColumnRWFormsImplicits extends SQLFormImplicits {
 		}
 
 	implicit def OptColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Opt[T]] =
-		new OptWriteForm[T] with ColumnWriteForm[Opt[T]] with SuperAdapterColumnForm {
+		new OptWriteForm[T] with SingletonColumnWriteForm[Opt[T]] with SuperAdapterColumnForm {
 			override val form = ColumnWriteForm[T]
 
 			override def set(statement :PreparedStatement, position :Int, value :Opt[T]) :Unit = value match {
@@ -816,7 +898,7 @@ sealed trait ColumnRWFormsImplicits extends SQLFormImplicits {
 				case Got(x) => form.literal(x, inline)
 				case _ => form.nullLiteral(inline)
 			}
-			override val toString = super.toString
+			override val toString :String = super.toString
 		}
 
 
@@ -836,13 +918,17 @@ sealed trait ColumnFormImplicits extends ColumnRWFormsImplicits {
 
 	/** Lifts the implicit `ColumnForm[T]` implementation to `ColumnForm[Option[T]]`. */
 	implicit def OptionColumnForm[T :ColumnForm] :ColumnForm[Option[T]] =
-		new OptionForm[T] with OptionReadForm[T] with ColumnForm[Option[T]] with SuperAdapterColumnForm {
+		new OptionForm[T] with OptionReadForm[T] with ColumnForm[Option[T]]
+			with SingletonColumnWriteForm[Option[T]] with SuperAdapterColumnForm
+		{
 			override val form = ColumnForm[T]
 			override val toString :String = "Option[" + form + "]"
 		}
 
 	implicit def OptColumnForm[T :ColumnForm] :ColumnForm[Opt[T]] =
-		new OptWriteForm[T] with OptReadForm[T] with ColumnForm[Opt[T]] with SuperAdapterColumnForm {
+		new OptWriteForm[T] with OptReadForm[T] with ColumnForm[Opt[T]]
+			with SuperAdapterColumnForm with SingletonColumnWriteForm[Opt[T]]
+		{
 			override val form = ColumnForm[T]
 
 			override def apply(res :ResultSet, position :Int) :Opt[T] = form.opt(res, position)
@@ -857,7 +943,7 @@ sealed trait ColumnFormImplicits extends ColumnRWFormsImplicits {
 				case _ => form.nullLiteral(inline)
 			}
 
-			override val toString = "Option[" + form + "]"
+			override val toString :String = "Option[" + form + "]"
 		}
 
 	implicit def OptionalColumnForm[T :ColumnForm] :ColumnForm[Optional[T]] =
@@ -879,15 +965,12 @@ object SQLForms extends ColumnFormImplicits with BasicForms with ScalaForms {
 	}
 
 
-
 	/** Base type for anonymous forms for natively supported JDBC types. Implements equality as class equality
 	  * (ignoring the associated `NotNull` and `toString` as `sqlType.toString`.
 	  */
 	private[forms] abstract class BasicJDBCForm[T :NullValue](jdbcType :JDBCType)
-		extends JDBCForm[T](jdbcType) with NullSafeColumnForm[T]
+		extends JDBCForm[T](jdbcType) with SingletonColumnWriteForm[T] with NullSafeColumnForm[T]
 	{
-		override def canEqual(that :Any) :Boolean = that.getClass == getClass
-
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
 			case other :BasicJDBCForm[_] => other.getClass == getClass && other.nulls == nulls
@@ -898,7 +981,7 @@ object SQLForms extends ColumnFormImplicits with BasicForms with ScalaForms {
 	}
 
 	private[forms] abstract class AlternateJDBCForm[T :NullValue](jdbcType :JDBCType, override val toString :String)
-		extends JDBCForm[T](jdbcType) with NullSafeColumnForm[T]
+		extends JDBCForm[T](jdbcType) with SingletonColumnWriteForm[T] with NullSafeColumnForm[T]
 	{
 		def this(jdbcType :JDBCType) = this(jdbcType, "J" + jdbcType)
 	}

@@ -3,8 +3,10 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.collection.{Opt, Unique}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
+import net.noresttherein.oldsql.collection.Unique.EmptyUnique
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.morsels.generic.FunctionOf
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, GenericExtract, Mapping, MappingExtract, Relation, SQLForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.{NamedRelation, PseudoRelation, StaticRelation, Table}
@@ -12,13 +14,14 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.SQLForm.FormBasedFactory
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
 import net.noresttherein.oldsql.sql.Expanded.{AbstractExpanded, ExpandedComposition, NonSubselect}
 import net.noresttherein.oldsql.sql.FromSome.TopFromSome
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
-import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseTemplate
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, NonEmptyFrom, PartOf, PrefixOf, TopFrom}
+import net.noresttherein.oldsql.sql.GroupByClause.{GroupByClauseTemplate, TopGroupByClause}
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, NonEmptyFrom, PartOf, PrefixOf}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, NamedParamRelation, ParamAt, ParamRelation}
@@ -26,7 +29,7 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.{RelationSQL, TypedColumnComp
 import net.noresttherein.oldsql.sql.ast.MappingSQL.RelationSQL.LastRelation
 import net.noresttherein.oldsql.sql.ast.SQLTerm.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.mechanics.{RowProductMatcher, SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.{RowProductVisitor, SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
@@ -34,6 +37,7 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
 
 
 
+//todo: a type alias being a bound of all RowProduct subtypes consisting solely of JoinParams
 /** Base trait for ''unbound'' query parameters, that is parameters without a known value, in contrast 
   * to the ''bound'' [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]] expression.
   * It is represented as a special kind of join between an existing `RowProduct` on the left, and a synthetic
@@ -43,9 +47,11 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
   * for clauses with a [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] join to the left.
   */ //consider: make the right side simply X and fix the mapping type to ParamRelation[X]#Param
 sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSubselect[F, P] { thisClause =>
+	//todo: make left bound only by RowProduct
+	//todo: try to make it accept any table mapping, if the parameter is a mapped entity.
 	//consider: make it a WithParam, i.e. require all params to be in the WithClause
-	/** A synthetic relation for this parameter. It is never shared with over instances,
-	  * with every unbound parameter having its own copy. Using it directly */
+	/** A synthetic relation for this parameter. It is never shared with other instances,
+	  * with every unbound parameter having its own copy. */
 	override def right :Relation[P] = last.relation //overriden for docs
 
 	override def lastAsIn[E <: RowProduct](implicit expansion :FromLast PrefixOf E) :Last[E] =
@@ -92,15 +98,16 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 	override def isSubselectParameterized :Boolean = true
 
 	/** The type of this parameter, that is the subject type of the joined mapping. */
-	type Param = last.Subject //P[FromLast]#Subject
+	type Param = last.Subject
 
 	override type LastParam = Param
 	override type Params = left.Params ~ Param
 	override type AppliedParam = left.Copy
+	override type GeneralizedParamless = left.GeneralizedParamless
 	override type Paramless = left.Paramless
 	override type DecoratedParamless[D <: BoundParamless] = Paramless
 
-	override protected def decoratedBind[D <: BoundParamless]
+	protected override def decoratedBind[D <: BoundParamless]
 	                                    (params :Params)(decorate :Paramless => D) :left.Paramless =
 		bind(params)
 
@@ -116,7 +123,7 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 
 	override def joinedWithSubselect[S <: RowProduct](prefix :S) :Nothing =
 		throw new UnsupportedOperationException(
-			"JoinParam.joinedWithSubselect: join parameters cannot appear as a part of a subselect clause. " +
+			"UnboundParam.joinedWithSubselect: join parameters cannot appear as a part of a subselect clause. " +
 				s"$this joinedWithSubselect $prefix"
 		)
 
@@ -126,7 +133,7 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 
 	override type Base = Nothing
 	override type DefineBase[+I <: RowProduct] = Nothing
-	override def base = throw new UnsupportedOperationException(s"JoinParam.base on $this")
+	override def base = throw new UnsupportedOperationException(s"UnboundParam.base on $this")
 
 
 	override type Row = left.Row
@@ -140,7 +147,7 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 
 	override def asSubselectOf[O <: RowProduct](outer :O)(implicit expansion :Implicit ExpandedBy O) :Nothing =
 		throw new UnsupportedOperationException(
-			"JoinParam.asSubselectOf: join parameters can't appear as a part of a subselect from clause. " +
+			"UnboundParam.asSubselectOf: join parameters can't appear as a part of a subselect from clause. " +
 				s"$this asSubselectOf $outer"
 		)
 
@@ -176,7 +183,7 @@ object UnboundParam {
 			case _ => Lack
 		}
 
-	/** Matches all `JoinParam` instances, splitting them into their clause (left side) and the artificial relation
+	/** Matches all `UnboundParam` instances, splitting them into their clause (left side) and the artificial relation
 	  * for their parameter (right side).
 	  */
 	def unapply(from :RowProduct) :Opt[(RowProduct, Relation[ParamRelation[_]#Param])] =
@@ -213,12 +220,19 @@ object UnboundParam {
 
 	/** A special, artificial relation implementation dedicated to
 	  * the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] mapping class,
-	  * representing a query parameter.
+	  * representing am unbound query parameter. Can be joined with any
+	  * [[net.noresttherein.oldsql.sql.FromClause FromClause]] with a [[net.noresttherein.oldsql.sql.JoinParam JoinParam]],
+	  * and with a [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]]
+	  * with a [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]. The simplest way of creating a new relation
+	  * for a query is with [[net.noresttherein.oldsql.sql.?: ?:]] function from the `sql` package and an extension
+	  * method of the same name for `String` literals.
+	  * @see [[net.noresttherein.oldsql.sql.UnboundParam.NamedParamRelation]]
 	  */
-	sealed class ParamRelation[X](val name :String)(implicit val form :SQLForm[X])
+	sealed class ParamRelation[X](override val name :String)(implicit val form :SQLForm[X])
 		extends PseudoRelation[({ type P[O] = FromParam[X, O] })#P] with NamedRelation[({ type P[O] = FromParam[X, O] })#P]
 	{
 		type Param[O] = FromParam[X, O]
+//		type Last = RowProduct AndFrom ParamRelation[X]#Param
 
 		private[this] val param = new FromParam[X, Any](name)
 		private[this] val Form = this.param.ParamForm
@@ -230,39 +244,39 @@ object UnboundParam {
 				:ParamRelation[X] =
 			this
 
-		override def spell[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A]]
-		                  (origin :JoinedRelation[O, T], component :MappingAt[O], inline :Boolean = false)
-		                  (context :SQLContext, params :Parameterization[P, F])
-		                  (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
-		component match {
-			case _ if origin.relation != this =>
-				throw new IllegalArgumentException(
-					s"Cannot spell the expression for component $component of $origin as it is for a different relation than $this."
-				)
-			case Form(paramForm) =>
-				val paramRelation = origin.asInstanceOf[JoinedRelation[O, ParamRelation[X]#Param]]
-				val param = params[ParamRelation[X]#Param, X, O](paramRelation)
-				val writeForm = paramForm.unmap(param)
-				form.writtenColumns match {
-					case 0 => SpelledSQL(context, params)
-					case 1 => SpelledSQL("?", context, params :+ writeForm)
-					case n if inline => SpelledSQL(Iterator.fill(n)("?").mkString(", "), context, params :+ writeForm)
-					case n => SpelledSQL(Iterator.fill(n)("?").mkString("(", ", ", ")"), context, params :+ writeForm)
-				}
-			case _ =>
-				throw new IllegalArgumentException(
-					s"Mapping $component passed as a component of unbound param $origin is not a ParamMapping for param $param."
-				)
-		}
-
 		protected override def spell[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A], V]
 		                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
 		                            (context :SQLContext, params :Parameterization[P, F])
 		                            (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
 			spell(origin, column :MappingAt[O], true)(context, params)
 
+		override def inline[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A]]
+		                   (origin :JoinedRelation[O, T], component :MappingAt[O])
+		                   (context :SQLContext, params :Parameterization[P, F])
+		                   (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, F]] =
+			component match {
+				case _ if origin.relation != this =>
+					throw new IllegalArgumentException(
+						s"Cannot spell the expression for component $component of $origin as it is for a different relation than $this."
+					)
+					case Form(paramForm) =>
+						val paramRelation = origin.asInstanceOf[JoinedRelation[O, ParamRelation[X]#Param]]
+						val param = params[ParamRelation[X]#Param, X, O](paramRelation)
+						val writeForm = paramForm.unmap(param)
+						form.writtenColumns match {
+							case 0 => Seq.empty
+							case 1 => SpelledSQL("?", context, params :+ writeForm)::Nil
+							case n => //this is a slight break in contract as all items have the 'complete' setter list
+								val resultParams = params :+ writeForm
+								Seq.fill(n)(SpelledSQL("?", context, resultParams))
+						}
+				case _ =>
+					throw new IllegalArgumentException(
+						s"Mapping $component passed as a component of unbound param $origin is not a ParamMapping for param $param."
+					)
 
-		override def sql :String = name + "?:" + form
+			}
+
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamRelation.*]
 
@@ -271,8 +285,10 @@ object UnboundParam {
 				(other eq this) || other.canEqual(this) && other.name == name && other.form == form
 			case _ => false
 		}
-
 		override def hashCode :Int = name.hashCode * 31 + form.hashCode
+
+		override def refString :String = name
+		override def toString :String = name + "?:" + form
 	}
 
 
@@ -335,7 +351,7 @@ object UnboundParam {
 	type ParamExtract[P, S, O] = GenericExtract[ParamMapping[P, S, O], P, S, O]
 	type ParamColumnExtract[P, S, O] = GenericExtract[FromParam[P, O]#ParamColumn[S], P, S, O]
 
-	sealed abstract class ParamMapping[P, S, O] protected (implicit sqlForm :SQLForm[S]) extends FormMapping[S, O] {
+	sealed abstract class ParamMapping[P, S :SQLForm, O] protected extends FormMapping[S, O] {
 		def root :FromParam[P, O]
 		def extract :ParamExtract[P, S, O]
 		def derivedForm :SQLWriteForm[P] = form compose extract
@@ -352,8 +368,8 @@ object UnboundParam {
 	sealed trait ParamAt[O] extends Mapping {
 		override type Origin = O
 		val form :SQLForm[Subject]
-		
-		def root :FromParam[Subject, O] 
+
+		def root :FromParam[Subject, O]
 	}
 
 
@@ -380,6 +396,7 @@ object UnboundParam {
 	  *///consider: think of another name, this can be confusing
 	class FromParam[P, O](val name :String)(implicit sqlForm :SQLForm[P])
 		extends ParamMapping[P, P, O] with ParamAt[O]
+//		   with FormBasedFactory[FunctionOf[P]#F, MappingAt[O]#TypedComponent, MappingAt[O]#Column]
 	{ This =>
 		def this()(implicit form :SQLForm[P]) = this("?")
 
@@ -388,10 +405,11 @@ object UnboundParam {
 		override def derivedForm :SQLWriteForm[P] = form
 
 		override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[P] =
-			SQLWriteForm.combine(
+			SQLWriteForm.join(
 				components.toSeq.map {
 					case This(param) => param.derivedForm
-					case comp => throw new IllegalArgumentException(s"Mapping $comp is not a component of parameter mapping $this")
+					case comp => 
+						throw new IllegalArgumentException(s"Mapping $comp is not a component of parameter mapping $this.")
 				} :_*
 			)
 
@@ -402,30 +420,52 @@ object UnboundParam {
 			case mapping :FromParam[_, _]#ParamComponent[_] if mapping.root eq this =>
 				mapping.asInstanceOf[ParamComponent[T]].extract
 			case _ =>
-				throw new IllegalArgumentException(s"Mapping $component is not a part of parameter mapping $this")
+				throw new IllegalArgumentException(s"Mapping $component is not a part of parameter mapping $this.")
 		}
 
 		override def apply[T](column :Column[T]) :ColumnExtract[T] = column match {
 			case mapping :FromParam[_, _]#ParamComponent[_] if mapping.root eq this =>
 				mapping.extract.asInstanceOf[ColumnExtract[T]]
 			case _ =>
-				throw new IllegalArgumentException(s"Column $column is not a part of parameter mapping $this")
+				throw new IllegalArgumentException(s"Column $column is not a part of parameter mapping $this.")
 		}
 
 
+		override object components
+			extends EmptyUnique with FormBasedFactory[FunctionOf[P]#F, MappingAt[O]#TypedComponent, MappingAt[O]#Column]
+		{
+			override def generalResult[T :SQLForm](arg :P => T) = new ParamComponent(arg)
+			override def specificResult[T :ColumnForm](arg :P => T) = new ParamColumn(arg)
+		}
 
-		//todo: this almost certainly will fool type inferer as Extractor is a SAM type
+		//todo: a parameter component compared to or assigned to a mapping component should not require a form
+		/** Create an artificial component with subject type `T`, extractable from the parameter type.
+		  * The component is ''not'' listed on any of the component lists, but can be used in SQL expressions
+		  * in the same way as components of mappings for real relations.
+		  */ //todo: rename/ in Scala 3 move to macros anc combine with the following
+		def comp[T :SQLForm](pick :P =?> T) :TypedComponent[T] = new ParamComponent[T](pick)
+
 		/** Create an artificial component with subject type `T`, extractable from the parameter type.
 		  * The component is ''not'' listed on any of the component lists, but can be used in SQL expressions
 		  * in the same way as components of mappings for real relations.
 		  */
-		def apply[T :SQLForm](pick :P =?> T) :TypedComponent[T] = new ParamComponent[T](pick)
+//		def apply[T :SQLForm](pick :P => T) :TypedComponent[T] = new ParamComponent[T](Extractor.req(pick))
 
-		/** Create an artificial component with subject type `T`, extractable from the parameter type.
-		  * The component is ''not'' listed on any of the component lists, but can be used in SQL expressions
-		  * in the same way as components of mappings for real relations.
+		/** Create an artificial component with subject type `T`, extractable from the parameter type. This component
+		  * can be used in SQL expressions the same way as components of table mappings, and is implicitly convertible
+		  * to [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[O, GlobalScope, T]`.
+		  * This method requires (indirectly) [[net.noresttherein.oldsql.schema.SQLForm]] type class for `T`.
+		  * If an implicit [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]`[T]` is present,
+		  * the component will be a [[net.noresttherein.oldsql.schema.ColumnMapping column]]; otherwise
+		  * it will be of type [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[T, O]`.
+		  * The component is ''not'' listed on any of the component lists, but has otherwise the same functionality
+		  * as components of mappings for real relations.
+		  * @param pick    a function selecting the value of a property of `P` to use in an SQL expression.
+		  * @param factory implicit evidence derived from an implicit `SQLForm` which defines
+		  *                if the return type will be a `ColumnMapping[O, T]`, or simply `BaseMapping[O, T]`.
 		  */
-		def apply[T :SQLForm](pick :P => T) :TypedComponent[T] = new ParamComponent[T](Extractor.req(pick))
+		def apply[T](pick :P => T)(implicit factory :components.DedicatedFactory[P => T, T]) :factory.Res =
+			components[P => T, T](pick)
 
 		/** Create an artificial component with subject type `T`, extractable from the parameter type.
 		  * The component is ''not'' listed on any of the component lists, but can be used in SQL expressions
@@ -443,14 +483,15 @@ object UnboundParam {
 		/** Create an artificial column with subject type `T`, extractable from the parameter type.
 		  * The column is ''not'' listed on any of the column lists, but can be used in SQL expressions
 		  * in the same way as components of mappings for real relations.
-		  */
-		def col[T :ColumnForm](pick :P => T) :Column[T] = new ParamColumn[T](Extractor.req(pick))
+		  */ //fixme: overloading causes type inferer to fail
+//		def col[T :ColumnForm](pick :P => T) :Column[T] = new ParamColumn[T](Extractor.req(pick))
 
 		/** Create an artificial column with subject type `T`, extractable from the parameter type.
 		  * The column is ''not'' listed on any of the column lists, but can be used in SQL expressions
 		  * in the same way as components of mappings for real relations.
 		  */
 		def optcol[T :ColumnForm](pick :P => Option[T]) :Column[T] = new ParamColumn[T](Extractor(pick))
+
 
 
 		/** Represents this parameter mapping as its own column, providing an implicit `ColumnForm[P]` is present.
@@ -534,7 +575,21 @@ object UnboundParam {
 		def apply[P :SQLForm, O](name :String) :FromParam[P, O] =
 			new FromParam(name)
 
-		type Of[S] = { type P[O] = FromParam[S, O] }
+		/** A curried type constructor for [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]`[X, O]`
+		  * so it can be used as a type argument for [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]].
+		  */
+		type Of[X] = {
+			type P[O] = FromParam[X, O]
+			type Last = FromParam[X, RowProduct AndFrom ParamRelation[X]#Param]
+		}
+
+		/** A type alias for [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] synthetic mapping
+		  * for parameter type `X` with its [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type
+		  * characteristic for the last mapping in a sequence of joins. Mappings of this type,
+		  * as well as any their components, are implicitly converted
+		  * to [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]s representing the parameter.
+		  */
+		type Last[X] = FromParam[X, RowProduct AndFrom ParamRelation[X]#Param]
 	}
 
 
@@ -582,6 +637,7 @@ object UnboundParam {
 			}
 
 	}
+
 }
 
 
@@ -590,7 +646,8 @@ object UnboundParam {
 
 
 /** A special, artificial 'join' type which joins the clause on its left side with a synthetic mapping
-  * `P[O] <: FromParam[X, O]`, representing a query parameter `X`, unspecified at this point. To distinguish
+  * `P[O] <: FromParam[X, O]`, representing a query parameter `X`, unspecified at this point and will become a parameter
+  * of any [[net.noresttherein.oldsql.sql.Incantation Incantation]] based on this join. To distinguish
   * it from the ''bound'' [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]] SQL expression, which
   * translates to a statement parameter, but requires a value on creation, it is often referred to as an ''unbound'' 
   * parameter. It allows to filter a given ''from'' clause using values to be provided only at the execution time, 
@@ -612,26 +669,28 @@ object UnboundParam {
   * This type represents an ungrouped ''from'' clause (i.e., without a ''group by'' clause), and hence it can only
   * be used following another [[net.noresttherein.oldsql.sql.FromSome ungrouped]] clause; a mirror type
   * exists in the form of [[net.noresttherein.oldsql.sql.GroupParam GroupParam]], which offers the same functionality,
-  * but for parameters used in the ''group by''/''having'' clauses. The mapping of the synthetic relation in this clause,
-  * aside from representing the parameter value itself, can also be used to create additional subcomponents with values
-  * derived from the parameter value, which can be used in an `SQLExpression` as any other component. The mappings
-  * themselves are however only shills, replaced when creating the select statement, and only their associated
-  * `SQLForm`s are being used in the mapping process. The type constructor for a parameter mapping with type `X` is
+  * but for parameters used in the ''group by''/''having'' clauses. The type of the left side must be
+  * a [[net.noresttherein.oldsql.sql.FromSome.TopFromSome TopFromSome]], representing a valid ''from'' clause
+  * of a top level SQL ''select'' (contain no [[net.noresttherein.oldsql.sql.Subselect Subselect]] pseudo joins),
+  * or this `RowProduct` will be impossible to use as a ''from'' clause of any ''select''. It is so because
+  * otherwise such a subselect expression used under its outer select would hide the existence of an unbound parameter
+  * from the outside, preventing providing a value for it and making the outer clause appear parameterless
+  * (and hence a valid ''free'' select or subselect clause. This is enforced
+  * by [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]]`[F]` type, used to define valid
+  * subselect clauses of a clause `F`. Before selecting any expressions, it will need to be replaced
+  * with wither ''bound'' parameters, or a normal join with a [[net.noresttherein.oldsql.schema.Relation.Table table]]
+  * using a mapping with the same [[net.noresttherein.oldsql.schema.Mapping.Subject subject]] type
+  * as this unbound parameter.
+  *
+  * The mapping of the synthetic relation in this clause, aside from representing the parameter value itself,
+  * can also be used to create additional subcomponents with values derived from the parameter value, which can be used
+  * in an `SQLExpression` as any other component. The mappings themselves are however only shills,
+  * replaced when creating the ''select'' statement, and only their associated `SQLForm`s are being used
+  * in the mapping process. The type constructor for a parameter mapping with type `X` is
   * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.Of FromParam.Of[X]#P]].
   *
   * This join is typically written in an abbreviated form `FromSome WithParam X` (or `FromSome <=? X`)
   * and `FromSome JoinParam ("name" ?: X)#P` for a parameter of type `X` named with a string literal.
-  * A ''from'' clause can have unbound parameters only in its most outer section, before any 
-  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] joins (and, in case of this type, before the
-  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] clause if present) in order to be valid.
-  * While it is possible to create instances which violate this property, both due to technical limitations and
-  * in order to allow 'placeholder' parameters on temporary, component instances, they will be impossible to
-  * use in a [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectSQL SubselectSQL]] expression. It is so because
-  * otherwise such a subselect expression used under its outer select would hide the existence of an unbound parameter
-  * from the outside, preventing providing a value for it and making the outer clause appear parameterless
-  * (and hence a valid ''free'' select or subselect clause. This is enforced
-  * by the [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]]`[F]` type, used to define valid
-  * subselect clauses of a clause `F`.
   *
   * @tparam F the actual ''from'' clause of the parameterized select statement, used as the left side of the 'join'.
   * @tparam P a synthetic `FromParam` mapping, the subject of which is the parameter type.
@@ -689,6 +748,12 @@ sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]]
 	override type Inner = left.Inner JoinParam P
 
 
+	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext =
+		//even if alias is not unique, it does not matter because no one will try to associate it with param expressions
+		left.spellingContext.param(aliasOpt getOrElse paramCount.toString)
+
+
+
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[JoinParam.* @unchecked]
 
 }
@@ -734,14 +799,46 @@ object JoinParam {
 	  * it is generally recommended to use
 	  * `from` [[net.noresttherein.oldsql.sql.FromSome.TopFromSomeExtension.param param[X] ]] DSL instead.
 	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
-	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
+	  *              If it is not an [[net.noresttherein.oldsql.sql.FromSome.TopFromSome independent]], 'outer' clause,
+	  *              that is it contains a `Subselect` join (or does not conform
+	  *              to its [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form, created join
+	  *              will be invalid - it will not be possible to create
+	  *              a [[net.noresttherein.oldsql.sql.Select select]] with it as its ''from'' clause.
+	  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
+	  *              time, removing the join an replacing its usages with
+	  *              [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]], or substituting
+	  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
+	  * @param param the last relation of the created ''from'' clause,
+	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
+	  * @return `F` [[net.noresttherein.oldsql.sql.WithParam WithParam]] `X`.
+	  */
+	def apply[F <: FromSome, X](from :F, param :ParamRelation[X]) :F WithParam X =
+		JoinParam[F, X](from, param, True)
+
+	/** Create an artificial join between the ''from'' clause/list of relations (possibly empty) as the left side,
+	  * and the the `param` special relation representing a query parameter of type `X` as the right side.
+	  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+	  * [[net.noresttherein.oldsql.sql.RowProduct.where where]] or
+	  * [[net.noresttherein.oldsql.sql.RowProduct.where where]] method. It is a lower level method;
+	  * it is generally recommended to use
+	  * `from` [[net.noresttherein.oldsql.sql.FromSome.TopFromSomeExtension.param param[X] ]] DSL instead.
+	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
+	  *              If it is not an [[net.noresttherein.oldsql.sql.FromSome.TopFromSome independent]], 'outer' clause,
+	  *              that is it contains a `Subselect` join (or does not conform
+	  *              to its [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form, created join
+	  *              will be invalid - it will not be possible to create
+	  *              a [[net.noresttherein.oldsql.sql.Select select]] with it as its ''from'' clause.
+	  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
+	  *              time, removing the join an replacing its usages with
+	  *              [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]], or substituting
+	  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 	  * @return `F` [[net.noresttherein.oldsql.sql.WithParam WithParam]] `X`.
 	  */
-	def apply[F <: TopFromSome, X](from :F, param :ParamRelation[X],
-	                               filter :GlobalBoolean[F#Generalized JoinParam ParamRelation[X]#Param] = True)
+	def apply[F <: FromSome, X](from :F, param :ParamRelation[X],
+	                            filter :GlobalBoolean[F#Generalized JoinParam ParamRelation[X]#Param])
 			:F WithParam X =
 		JoinParam[from.type, ParamRelation[X]#Param, X, Nothing](from, LastRelation(param), None)(filter)
 
@@ -753,12 +850,20 @@ object JoinParam {
 	  * it is generally recommended to use
 	  * `from` [[net.noresttherein.oldsql.sql.FromSome.TopFromSomeExtension.param param[N, X] ]] DSL instead.
 	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
-	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
+	  *              If it is not an [[net.noresttherein.oldsql.sql.FromSome.TopFromSome independent]], 'outer' clause,
+	  *              that is it contains a `Subselect` join (or does not conform
+	  *              to its [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form, created join
+	  *              will be invalid - it will not be possible to create
+	  *              a [[net.noresttherein.oldsql.sql.Select select]] with it as its ''from'' clause.
+	  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
+	  *              time, removing the join an replacing its usages with
+	  *              [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]], or substituting
+	  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @return `F JoinParam `[[net.noresttherein.oldsql.sql.UnboundParam.FromParam.Of FromParam.Of[X]#P]]` `[[net.noresttherein.oldsql.sql.RowProduct.As As]]` N`.
 	  */
-	def apply[F <: TopFromSome, N <: Label, X](from :F, param :NamedParamRelation[N, X]) :F WithParam X As N =
+	def apply[F <: FromSome, N <: Label, X](from :F, param :NamedParamRelation[N, X]) :F WithParam X As N =
 		JoinParam[F, FromParam.Of[X]#P, X, N](from, LastRelation(param), Some(param.name))(True)
 
 	/** Create an artificial join between the ''from'' clause/list of relations (possibly empty) as the left side,
@@ -769,13 +874,21 @@ object JoinParam {
 	  * it is generally recommended to use
 	  * `from` [[net.noresttherein.oldsql.sql.FromSome.TopFromSomeExtension.param param[N, X] ]] DSL instead.
 	  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
-	  *              It must be an independent, 'outer' clause, that is contain no `Subselect` joins.
+	  *              If it is not an [[net.noresttherein.oldsql.sql.FromSome.TopFromSome independent]], 'outer' clause,
+	  *              that is it contains a `Subselect` join (or does not conform
+	  *              to its [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form, created join
+	  *              will be invalid - it will not be possible to create
+	  *              a [[net.noresttherein.oldsql.sql.Select select]] with it as its ''from'' clause.
+	  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
+	  *              time, removing the join an replacing its usages with
+	  *              [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]], or substituting
+	  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 	  * @return `F JoinParam `[[net.noresttherein.oldsql.sql.UnboundParam.FromParam.Of FromParam.Of[X]#P]]` `[[net.noresttherein.oldsql.sql.RowProduct.As As]]` N`.
 	  */
-	def apply[F <: TopFromSome, N <: Label, X]
+	def apply[F <: FromSome, N <: Label, X]
 	         (from :F, param :NamedParamRelation[N, X],
 	          filter :GlobalBoolean[F#Generalized JoinParam ParamRelation[X]#Param]) :F WithParam X As N =
 		JoinParam[F, FromParam.Of[X]#P, X, N](from, LastRelation(param), Some(param.name))(filter)
@@ -787,14 +900,60 @@ object JoinParam {
 	  */
 	def apply[X] :ParamFactory[X] = new ParamFactory[X] {}
 
+	/** Factory of [[net.noresttherein.oldsql.sql.JoinParam parameter pseudo joins]] for parameter type `X`.
+	  * @tparam X the type of the unbound parameter introduced by this factory.
+	  */
 	trait ParamFactory[X] extends Any {
-		final def apply[F <: TopFromSome](from :F)(implicit form :SQLForm[X]) :F WithParam X =
-			JoinParam[F, ParamRelation[X]#Param, X, Nothing](
-				from, LastRelation(ParamRelation[X]()), None)(True)
+		/** Create an artificial join between the ''from'' clause/list of relations (possibly empty) as the left side,
+		  * and the the `param` special relation representing a query parameter of type `X` as the right side.
+		  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+		  * [[net.noresttherein.oldsql.sql.RowProduct.where where]] or
+		  * [[net.noresttherein.oldsql.sql.RowProduct.where where]] method. It is a lower level method;
+		  * it is generally recommended to use
+		  * `from` [[net.noresttherein.oldsql.sql.FromSome.TopFromSomeExtension.param param[X] ]] DSL instead.
+		  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
+		  *              If it is not an [[net.noresttherein.oldsql.sql.FromSome.TopFromSome independent]], 'outer' clause,
+		  *              that is it contains a `Subselect` join (or does not conform
+		  *              to its [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form, created join
+		  *              will be invalid - it will not be possible to create
+		  *              a [[net.noresttherein.oldsql.sql.Select select]] with it as its ''from'' clause.
+		  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
+		  *              time, removing the join an replacing its usages with
+		  *              [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]], or substituting
+		  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
+		  * @param form  the form for the last [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation parameter]]
+		  *              relation of the created ''from'' clause,
+		  *              using [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
+		  * @return `F` [[net.noresttherein.oldsql.sql.WithParam WithParam]] `X`.
+		  */
+		final def apply[F <: FromSome](from :F)(implicit form :SQLForm[X]) :F WithParam X =
+			JoinParam[F, ParamRelation[X]#Param, X, Nothing](from, LastRelation(ParamRelation[X]()), None)(True)
 
-		final def apply[F <: TopFromSome](from :F, name :String)(implicit form :SQLForm[X]) :F WithParam X =
-			JoinParam[F, ParamRelation[X]#Param, X, Nothing](
-				from, LastRelation(ParamRelation[X](name)), None)(True)
+		/** Create an artificial join between the ''from'' clause/list of relations (possibly empty) as the left side,
+		  * and the the `param` special relation representing a query parameter of type `X` as the right side.
+		  * The ''where'' clause can be subsequently specified using the [[net.noresttherein.oldsql.sql.AndFrom.on on]],
+		  * [[net.noresttherein.oldsql.sql.RowProduct.where where]] or
+		  * [[net.noresttherein.oldsql.sql.RowProduct.where where]] method. It is a lower level method;
+		  * it is generally recommended to use
+		  * `from` [[net.noresttherein.oldsql.sql.FromSome.TopFromSomeExtension.param param[X] ]] DSL instead.
+		  * @param from  a ''from'' clause containing the non-empty list of relations preceding `param`.
+		  *              If it is not an [[net.noresttherein.oldsql.sql.FromSome.TopFromSome independent]], 'outer' clause,
+		  *              that is it contains a `Subselect` join (or does not conform
+		  *              to its [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form, created join
+		  *              will be invalid - it will not be possible to create
+		  *              a [[net.noresttherein.oldsql.sql.Select select]] with it as its ''from'' clause.
+		  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
+		  *              time, removing the join an replacing its usages with
+		  *              [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]], or substituting
+		  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
+		  * @param name
+		  * @param form  the form for the last [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation parameter]]
+		  *              relation of the created ''from'' clause,
+		  *              using [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
+		  * @return `F` [[net.noresttherein.oldsql.sql.WithParam WithParam]] `X`.
+		  */
+		final def apply[F <: FromSome](from :F, name :String)(implicit form :SQLForm[X]) :F WithParam X =
+			JoinParam[F, ParamRelation[X]#Param, X, Nothing](from, LastRelation(ParamRelation[X](name)), None)(True)
 	}
 
 
@@ -825,6 +984,7 @@ object JoinParam {
 			override def withLeft[F <: FromSome](left :F)(filter :GlobalBoolean[left.Generalized JoinParam P]) =
 				JoinParam[F, P, X, A](left, last, aliasOpt)(filter)
 
+			//consider: replacing the last relation with NamedParamRelation, but then JoinParam must always use FromParam
 			override def aliased[N <: Label](alias :N) =
 				JoinParam[left.type, P, X, N](left, last, Some(alias))(condition)
 
@@ -840,17 +1000,17 @@ object JoinParam {
 			protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
 					:SpelledSQL[Params, Generalized] =
 			{
-				val sql = spelling(left)(context)
+				val leftSQL = spelling(left)(context)
 				//the alias *should* never be used, it is here because we need a placeholder value to keep indexing consistent
-				val expanded = context.param(aliasOpt getOrElse paramCount.toString)
-				val shiftParams = sql.params.param[Generalized, left.Generalized, P, left.Params, X]
-				val res = SpelledSQL(sql.sql, expanded, shiftParams)
+				val expanded = leftSQL.context.param(aliasOpt getOrElse paramCount.toString)
+				val shiftParams = leftSQL.params.param[Generalized, left.Generalized, P, left.Params, X]
+				val res = SpelledSQL(leftSQL.sql, expanded, shiftParams)
 				if (condition == True) res
 				else res && (spelling.inWhere(condition)(_, _))
 			}
 
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.joinParam[L, P, X](this)
+			override def applyTo[Y](matcher :RowProductVisitor[Y]) = matcher.joinParam[L, P, X](this)
 
 		}.asInstanceOf[L JoinParam P As A]
 
@@ -905,6 +1065,12 @@ object JoinParam {
 	  */
 	type * = JoinParam[_ <: FromSome, ParamRelation[_]#Param]
 
+	/** A type alias for [[net.noresttherein.oldsql.sql.JoinParam.FromLast FromLast]] member type of
+	  * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]
+	  * using mapping [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]`[X, _]`.
+	  */
+	type Last[X] = RowProduct AndFrom ParamRelation[X]#Param
+
 	/** A curried type constructor for `JoinParam` instances, accepting the left `RowProduct` type parameter
 	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
 	  * A convenience alias for use wherever a single-argument type constructor for a `RowProduct` is required.
@@ -929,7 +1095,7 @@ object JoinParam {
 
 /** A special, artificial 'join' type which adds a statement parameter of type `X` by expanding a ''group by''
   * clause on its left side with a special mapping `P[O] <: FromParam[X, O]`. The parameter value is unspecified
-  * at this point and will need to be given to any `SQLStatement` produced from this clause. This type mirrors
+  * at this point and will need to be given to any `Incantation` produced from this clause. This type mirrors
   * the functionality of [[net.noresttherein.oldsql.sql.JoinParam JoinParam]], which adds a parameter to the same effect
   * by expanding an [[net.noresttherein.oldsql.sql.FromSome ungrouped]] ''from'' clause. This duplication is required
   * for static type checking to be able to separate the artificial relations for the grouping expressions
@@ -1044,7 +1210,7 @@ object GroupParam {
 	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 	  * @return `F` [[net.noresttherein.oldsql.sql.ByParam ByParam]] `X`.
 	  */
-	def apply[F <: GroupByClause with TopFrom, X]
+	def apply[F <: TopGroupByClause, X]
 	         (from :F, param :ParamRelation[X], filter :LocalBoolean[F#Generalized GroupParam ParamRelation[X]#Param] = True)
 			:F ByParam X =
 		GroupParam[from.type, ParamRelation[X]#Param, X, Nothing](from, RelationSQL(param, 0), None)(filter)
@@ -1062,7 +1228,7 @@ object GroupParam {
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]`[X, _]` `Mapping` type.
 	  * @return `F GroupParam (N `[[net.noresttherein.oldsql.sql.?: ?:]]` X)#P`.
 	  */
-	def apply[F <: GroupByClause with TopFrom, N <: Label, X]
+	def apply[F <: TopGroupByClause, N <: Label, X]
 	         (from :F, param :NamedParamRelation[N, X]) :F ByParam X As N =
 		GroupParam[F, FromParam.Of[X]#P, X, N](from, RelationSQL(param, 0), Some(param.name))(True)
 
@@ -1080,7 +1246,7 @@ object GroupParam {
 	  * @param filter an optional join condition filtering the clause based on the value of `X`.
 	  * @return `F GroupParam (N `[[net.noresttherein.oldsql.sql.?: ?:]]` X)#P`.
 	  */
-	def apply[F <: GroupByClause with TopFrom, N <: Label, X]
+	def apply[F <: TopGroupByClause, N <: Label, X]
 	         (from :F, param :NamedParamRelation[N, X],
 	          filter :LocalBoolean[F#Generalized GroupParam ParamRelation[X]#Param]) :F ByParam X As N =
 		GroupParam[F, FromParam.Of[X]#P, X, N](from, RelationSQL(param, 0), Some(param.name))(filter)
@@ -1093,12 +1259,12 @@ object GroupParam {
 	def apply[X] :ParamFactory[X] = new ParamFactory[X] {}
 
 	trait ParamFactory[X] extends Any {
-		final def apply[F <: GroupByClause with TopFrom](from :F)(implicit form :SQLForm[X]) :F ByParam X =
+		final def apply[F <: TopGroupByClause](from :F)(implicit form :SQLForm[X]) :F ByParam X =
 			GroupParam[F, ParamRelation[X]#Param, X, Nothing](
 				from, RelationSQL(ParamRelation[X](), 0), None
 			)(True)
 
-		final def apply[F <: GroupByClause with TopFrom](from :F, name :String)(implicit form :SQLForm[X]) :F ByParam X =
+		final def apply[F <: TopGroupByClause](from :F, name :String)(implicit form :SQLForm[X]) :F ByParam X =
 			GroupParam[F, ParamRelation[X]#Param, X, Nothing](
 				from, RelationSQL(ParamRelation[X](name), 0), None
 			)(True)
@@ -1145,13 +1311,13 @@ object GroupParam {
 			protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
 					:SpelledSQL[Params, Generalized] =
 			{
-				val sql = spelling(left)(context)
-				val shiftParams = sql.params.param[Generalized, left.Generalized, P, left.Params, X]
-				SpelledSQL(sql.sql, context.grouped, shiftParams) //condition separately in having
+				val leftSQL = spelling(left)(context)
+				val shiftParams = leftSQL.params.param[Generalized, left.Generalized, P, left.Params, X]
+				SpelledSQL(leftSQL.sql, leftSQL.context.grouped, shiftParams) //condition separately in having
 			}
 
 
-			override def matchWith[Y](matcher :RowProductMatcher[Y]) = matcher.groupParam[L, P, X](this)
+			override def applyTo[Y](matcher :RowProductVisitor[Y]) = matcher.groupParam[L, P, X](this)
 
 		}.asInstanceOf[L GroupParam P As A]
 
@@ -1207,11 +1373,17 @@ object GroupParam {
 	  */
 	type * = GroupParam[_ <: GroupByClause, ParamRelation[_]#Param]
 
+	/** A type alias for [[net.noresttherein.oldsql.sql.JoinParam.FromLast FromLast]] member type of
+	  * [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]
+	  * using mapping [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]`[X, _]`.
+	  */
+	type Last[X] = GroupByClause GroupParam ParamRelation[X]#Param
+
 	/** A curried type constructor for `GroupParam` instances, accepting the left `RowProduct` type parameter
 	  * and returning a type with a member type `F` accepting the type constructor for the right relation.
 	  * A convenience alias for use wherever a single-argument type constructor for a `RowProduct` is required.
 	  */
-	type WithLeft[L <: GroupByClause with TopFrom] = {
+	type WithLeft[L <: TopGroupByClause] = {
 		type F[R[O] <: ParamAt[O]] = L GroupParam R
 		type P[X] = L ByParam X
 	}
@@ -1220,7 +1392,7 @@ object GroupParam {
 	  * and returning a type with a member type `F` accepting the left `RowProduct` type.
 	  * A convenience alias for use wherever a single-argument type constructor for a `RowProduct` is required.
 	  */
-	type WithRight[R[O] <: ParamAt[O]] = { type F[L <: GroupByClause with TopFrom] = L GroupParam R }
+	type WithRight[R[O] <: ParamAt[O]] = { type F[L <: TopGroupByClause] = L GroupParam R }
 	
 }
 

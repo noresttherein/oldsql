@@ -75,11 +75,11 @@ trait Hoard { outer =>
 		override def insert(entity :T)(implicit session :Session) :T = ???
 		override def update(entity :T)(implicit session :Session) :T = ???
 		
-		override protected def deleteBy(pk :K)(implicit session :Session) :Unit = ???
-		override protected def delete(entity :T)(implicit session :Session) :Unit = ???
-		override protected def delete(entities :Iterable[T])(implicit session :Session) :Unit = ???
-		override protected def delete(filter :Restraint[T])(implicit session :Session) :Unit = ???
-		override protected def delete[C](kin :Kin[C])(implicit composite :C ComposedOf T, session :Session) :Unit = ???
+		protected override def deleteBy(pk :K)(implicit session :Session) :Unit = ???
+		protected override def delete(entity :T)(implicit session :Session) :Unit = ???
+		protected override def delete(entities :Iterable[T])(implicit session :Session) :Unit = ???
+		protected override def delete(filter :Restraint[T])(implicit session :Session) :Unit = ???
+		protected override def delete[C](kin :Kin[C])(implicit composite :C ComposedOf T, session :Session) :Unit = ???
 	}
 */
 
