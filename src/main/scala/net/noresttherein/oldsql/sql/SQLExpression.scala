@@ -18,14 +18,14 @@ import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.SQLExpression.Lift.ComposedLift
 import net.noresttherein.oldsql.sql.StoredProcedure.Out
-import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ChainSQL, CompositeSQL, LooseComponent, MappingSQL, QuerySQL, SelectSQL, SQLTerm}
+import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ChainSQL, CompositeSQL, LooseComponent, MappingSQL, QuerySQL, SelectSQL, SQLNull, SQLParameter, SQLTerm}
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.{CaseComposite, CompositeVisitor}
 import net.noresttherein.oldsql.sql.ast.ConditionSQL.{ComparisonSQL, EqualitySQL, InequalitySQL, IsNull}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.{MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{CaseMapping, MappingVisitor}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseQuery, QueryVisitor, Rows}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectSQL, TopSelectSQL}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.{CaseTerm, SQLNull, SQLParameter, TermVisitor}
+import net.noresttherein.oldsql.sql.ast.SQLTerm.{CaseTerm, TermVisitor}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.EmptyChain
 import net.noresttherein.oldsql.sql.mechanics.{implicitSQLLiterals, SpelledSQL, SQLOrdering, SQLScribe, TableCount}
@@ -163,7 +163,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
 	  * @param form an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] used to set the value of the parameter
 	  *             in the `PreparedStatement` using this expression.
-	  * @see [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter]] the expression for ''bound'' SQL parameters.
+	  * @see [[net.noresttherein.oldsql.sql.ast.SQLParameter]] the expression for ''bound'' SQL parameters.
 	  * @see [[net.noresttherein.oldsql.sql.UnboundParam]] an ''unbound'' parameter introduced to the underlying `RowProduct`.
 	  */ //we need SQLForm, not SQLReadForm because SQLParameter requires it, in case it's used in the select clause.
 	def ==?[X, U](value :X)(implicit lift :SQLTypeUnification[V, X, U], form :SQLForm[X]) :ColumnSQL[F, S, Boolean] =
@@ -181,7 +181,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  *             to some unspecified type `U` for the purpose of the comparison by the database.
 	  *             Implicit values provided in its companion object depend on the existence of
 	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
-	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]]
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]]
 	  *         literal, than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being the greatest lower bound of the bases
 	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
@@ -202,14 +202,14 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  * The argument value will be rendered as a ''literal'' constant in the created
 	  * [[java.sql.PreparedStatement PreparedStatement]], so this method should be used only if the built statement
 	  * do not vary in this subexpression. Use [[net.noresttherein.oldsql.sql.SQLExpression.==? ==?]] if `that` should
-	  * become a [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameter instead.
+	  * become a [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter instead.
 	  * @param that a scala value of a type which can be promoted to the same type `U` as the value type
 	  *             of this expression. It will translate to an SQL literal.
 	  * @param lift a witness to the fact that the values of the two expressions can be automatically promoted
 	  *             to some unspecified type `U` for the purpose of the comparison by the database.
 	  *             Implicit values provided in its companion object depend on the existence of
 	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
-	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal
+	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal
 	  *         oor `that == null`, than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.==? ==?]]
@@ -267,7 +267,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  *             to some unspecified type `U` for the purpose of the comparison by the database.
 	  *             Implicit values provided in its companion object depend on the existence of
 	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
-	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal,
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal,
 	  *         than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being the greatest lower bound of the bases
 	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
@@ -291,7 +291,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  *             to some unspecified type `U` for the purpose of the comparison by the database.
 	  *             Implicit values provided in its companion object depend on the existence of
 	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
-	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal
+	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal
 	  *         oor `that == null`, than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
 	  */
@@ -313,7 +313,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
 	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
 	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
-	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal,
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal,
 	  *         than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being the greatest lower bound of the bases
 	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
@@ -338,7 +338,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  *             to some unspecified type `U` for the purpose of the comparison by the database.
 	  *             Implicit values provided in its companion object depend on the existence of
 	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
-	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal
+	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal
 	  *         oor `that == null`, than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
 	  */
@@ -361,7 +361,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
 	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
 	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
-	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal,
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal,
 	  *         than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being the greatest lower bound of the bases
 	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
@@ -386,7 +386,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  *             to some unspecified type `U` for the purpose of the comparison by the database.
 	  *             Implicit values provided in its companion object depend on the existence of
 	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
-	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal
+	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal
 	  *         oor `that == null`, than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
 	  */
@@ -409,7 +409,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
 	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
 	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
-	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal,
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal,
 	  *         than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being the greatest lower bound of the bases
 	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
@@ -435,7 +435,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  *             to some unspecified type `U` for the purpose of the comparison by the database.
 	  *             Implicit values provided in its companion object depend on the existence of
 	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
-	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal
+	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal
 	  *         oor `that == null`, than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
 	  */
@@ -458,7 +458,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
 	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
 	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
-	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal,
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal,
 	  *         than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being the greatest lower bound of the bases
 	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
@@ -484,7 +484,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  *             to some unspecified type `U` for the purpose of the comparison by the database.
 	  *             Implicit values provided in its companion object depend on the existence of
 	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
-	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal
+	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal
 	  *         oor `that == null`, than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
 	  */
@@ -584,7 +584,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	def anchor(from :F) :SQLExpression[F, S, V]
 
 	/** Binds all occurrences of [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters to the apprpriate
-	  * value extracted from `args`, replacing them with [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]]
+	  * value extracted from `args`, replacing them with [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]]
 	  * parameters. The resulting expression is based on a `RowProduct` resulting from this expression's base by
 	  * removing all occurrences of `UnboundParam` pseudo joins.
 	  */ //todo: make this a virtual method
@@ -634,7 +634,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 
 	/** Creates a `SelectSQL` with this expression as the ''select'' clause and the given `from` clause.
 	  * This method is supported only by a few expression types, mainly [[net.noresttherein.oldsql.sql.ast.TupleSQL TupleSQL]]
-	  * and [[net.noresttherein.oldsql.sql.ast.ast.TypedComponentSQL TypedComponentSQL]] subclasses. It is considered
+	  * and [[net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL TypedComponentSQL]] subclasses. It is considered
 	  * low level API exposed only to support potential extension by custom expression types and should not be used
 	  * by the client code directly; prefer using
 	  * [[net.noresttherein.oldsql.sql.RowProduct.RowProductExtension.select select]] and its relatives instead.
@@ -695,7 +695,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 		applyTo(visitor)
 
 
-	/** List of [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter ''bound'']] parameters used by this expression,
+	/** List of [[net.noresttherein.oldsql.sql.ast.SQLParameter ''bound'']] parameters used by this expression,
 	  * in the order in which they would appear in the rendered SQL.
 	  */
 	def parameters :Seq[SQLParameter[_]] = collect { case x :SQLParameter[_] => x }
@@ -795,7 +795,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 
 object SQLExpression {
 
-	/** An SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literal]] expression of the given value.
+	/** An SQL [[net.noresttherein.oldsql.sql.ast.SQLLiteral literal]] expression of the given value.
 	  * This methods requires [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] type class to be present for `T`.
 	  * If, additionally, the type class is also [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]],
 	  * then the expression will be a [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]].
@@ -825,8 +825,8 @@ object SQLExpression {
 	  * pseudo joins for all declared parameters. The parameters are available through this argument facade the same
 	  * way as in [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] method of
 	  * [[net.noresttherein.oldsql.sql.RowProduct RowProduct]]. Note that expressions created in this way cannot depend
-	  * on any tables: the only bottom terms possible are [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]]
-	  * and unbound parameters as well as [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literals]].
+	  * on any tables: the only bottom terms possible are [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]]
+	  * and unbound parameters as well as [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]].
 	  * This is useful particularly for tuple expressions representing sequences of parameters.
 	  * {{{
 	  *     SQLExpression.using[String][Int] { params => params.of[String].chained ~ params.of[Int] }
@@ -851,8 +851,8 @@ object SQLExpression {
 	  * pseudo joins for all declared parameters.The parameters are available through this argument facade the same
 	  * way as in [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] method of
 	  * [[net.noresttherein.oldsql.sql.RowProduct RowProduct]]. Note that expressions created in this way cannot depend
-	  * on any tables: the only bottom terms possible are [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]]
-	  * and unbound parameters as well as [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literals]].
+	  * on any tables: the only bottom terms possible are [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]]
+	  * and unbound parameters as well as [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]].
 	  * This is useful particularly for tuple expressions representing sequences of parameters.
 	  * {{{
 	  *     SQLExpression.using["damage", Int]["damageType", String] {

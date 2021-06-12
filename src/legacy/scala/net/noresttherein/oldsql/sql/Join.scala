@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.sql.RowProduct.{SubselectFrom, TableFormula, Wit
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
-import net.noresttherein.oldsql.sql.SQLTerm.True
+import net.noresttherein.oldsql.sql.SQLLiteral.True
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 
 

@@ -39,7 +39,7 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization
   *      on a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] with
   *      [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters, while in a `Call[(), Y]` the values would be
   *      built in into the argument expressions themselves as
-  *      [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters.
+  *      [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters.
   */
 trait CallDML[-Args, +Res] extends DML[Args, Res] with DMLAPI[Args, Res, CallDML] {
 	/** Types of the formal parameters of the called procedure in a [[net.noresttherein.oldsql.collection.Chain Chain]].
@@ -638,7 +638,7 @@ object Call {
 	/** A mix-in trait for `Call` implementations passing arbitrary SQL expressions not requiring statement parameters.
 	  * This refers only to [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters of the
 	  * [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] the argument tuple expression is based on; the argument
-	  * can still include [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameter expressions
+	  * can still include [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions
 	  * translating to JDBC statement parameters, meaning that created [[java.sql.CallableStatement CallableStatement]]
 	  * can be cached by the driver, but the values for the parameters are included in this instance.
 	  * It stores the tuple expression [[net.noresttherein.oldsql.sql.Call.GroundCall.args args]], matching
@@ -734,7 +734,7 @@ object Call {
 	object CallProcedure {
 		/** Factory method for statements invoking `procedure` and returning no result.
 		  * This method variant requires the values for all the arguments to be known (to be literals,
-		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters or expressions built on them)
+		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters or expressions built on them)
 		  * and creates a parameterless `Call` instance.
 		  * @tparam Params   types of the formal parameters of the called procedure.
 		  * @param procedure the invoked stored procedure or function.
@@ -750,7 +750,7 @@ object Call {
 		/** A parameterless statement invoking a [[net.noresttherein.oldsql.sql.StoredProcedure stored procedure]].
 		  * Note that ''parameterless'' here means that no arguments need be provided to execute this statement;
 		  * the actual JDBC [[java.sql.CallableStatement CallableStatement]] may still be parameterized using
-		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameter expressions.
+		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions.
 		  */
 		trait GroundCallProcedure extends CallProcedure[Unit] with GroundCall[Any] {
 			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Unit, Any] =
@@ -1043,7 +1043,7 @@ object Call {
 	object CallFunction {
 		/** Factory method for statements invoking `function` and returning its result.
 		  * This method variant requires the values for all the arguments to be known (to be literals,
-		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters or expressions built on them)
+		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters or expressions built on them)
 		  * and creates a parameterless `Call` instance.
 		  * @tparam Params   types of the formal parameters of the called function.
 		  * @tparam Y        return type of the called function.
@@ -1061,7 +1061,7 @@ object Call {
 		  * (or a standard SQL function), returning its result.
 		  * Note that ''parameterless'' here means that no arguments need be provided to execute this statement;
 		  * the actual JDBC [[java.sql.CallableStatement CallableStatement]] may still be parameterized using
-		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameter expressions.
+		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions.
 		  */
 		trait GroundCallFunction[Res] extends CallFunction[Unit, Res] with GroundCall[Res] {
 			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Unit, Res] =
@@ -1377,7 +1377,7 @@ object Call {
 		  * is a [[net.noresttherein.oldsql.collection.Chain Chain]] listing all parameters `X` declared as `Out[X]`
 		  * in `In`, in the order of their appearance.
 		  * This method variant requires the values for all the arguments to be known (to be literals,
-		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters or expressions built on them)
+		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters or expressions built on them)
 		  * and creates a parameterless `Call` instance.
 		  * @tparam Params   types of the formal parameters of the called procedure.
 		  * @tparam In       types of the arguments given as a tuple.
@@ -1401,7 +1401,7 @@ object Call {
 		  * returning the values of (some of) its ''OUT'' parameters.
 		  * Note that ''parameterless'' here means that no arguments need be provided to execute this statement;
 		  * the actual JDBC [[java.sql.CallableStatement CallableStatement]] may still be parameterized using
-		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameter expressions.
+		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions.
 		  */
 		trait GroundInOutCallProcedure[+Res]
 			extends InOutCallProcedure[Unit, Res] with GroundCallProcedure with GroundCall[Res]
@@ -1556,7 +1556,7 @@ object Call {
 		  * is a [[net.noresttherein.oldsql.collection.Chain Chain]] listing all parameters `X` declared as `Out[X]`
 		  * in `In`, in the order of their appearance, followed by the value returned by the whole function.
 		  * This method variant requires the values for all the arguments to be known (to be literals,
-		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters or expressions built on them)
+		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters or expressions built on them)
 		  * and creates a parameterless `Call` instance.
 		  * @tparam Params   types of the formal parameters of the called function.
 		  * @param function  the invoked stored function.
@@ -1580,7 +1580,7 @@ object Call {
 		  * returning its result together with the ''OUT'' parameters declared by the function.
 		  * Note that ''parameterless'' here means that no arguments need be provided to execute this statement;
 		  * the actual JDBC [[java.sql.CallableStatement CallableStatement]] may still be parameterized using
-		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameter expressions.
+		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions.
 		  */
 		trait GroundInOutCallFunction[+Out <: Chain, Y] extends InOutCallFunction[Unit, Out, Y] with GroundCall[Out ~ Y] {
 			protected override def applyTo[R[-_, +_]](visitor :StatementVisitor[R]) :R[Unit, Out ~ Y] =

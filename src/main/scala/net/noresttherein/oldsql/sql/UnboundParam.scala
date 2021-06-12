@@ -29,7 +29,7 @@ import net.noresttherein.oldsql.sql.ast.ColumnComponentSQL.TypedColumnComponentS
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.RelationSQL
 import net.noresttherein.oldsql.sql.ast.RelationSQL.LastRelation
-import net.noresttherein.oldsql.sql.ast.SQLTerm.True
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{RowProductVisitor, SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
@@ -41,7 +41,7 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
 
 //todo: a type alias being a bound of all RowProduct subtypes consisting solely of JoinParams
 /** Base trait for ''unbound'' query parameters, that is parameters without a known value, in contrast 
-  * to the ''bound'' [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]] expression.
+  * to the ''bound'' [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]] expression.
   * It is represented as a special kind of join between an existing `RowProduct` on the left, and a synthetic
   * `Mapping` subtype [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]].
   * Two concrete subclasses exist: [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] for ''discrete'' clauses
@@ -377,7 +377,7 @@ object UnboundParam {
 
 
 	/** A `Mapping` type representing a query parameter, the value of which is not known.
-	  * While the [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]] expression can be used
+	  * While the [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]] expression can be used
 	  * to represent a statement parameter, its value must be known when the expression is created. By representing
 	  * it instead as a mapping that can be used in the same way as table mappings in `RowProduct` relation lists,
 	  * we can represent any value obtainable from `P` by a function `P => T` as a component
@@ -650,7 +650,7 @@ object UnboundParam {
 /** A special, artificial 'join' type which joins the clause on its left side with a synthetic mapping
   * `P[O] <: FromParam[X, O]`, representing a query parameter `X`, unspecified at this point and will become a parameter
   * of any [[net.noresttherein.oldsql.sql.Incantation Incantation]] based on this join. To distinguish
-  * it from the ''bound'' [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]] SQL expression, which
+  * it from the ''bound'' [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]] SQL expression, which
   * translates to a statement parameter, but requires a value on creation, it is often referred to as an ''unbound'' 
   * parameter. It allows to filter a given ''from'' clause using values to be provided only at the execution time, 
   * which can be obtained by applying an arbitrary scala function to `X`.
@@ -808,7 +808,7 @@ object JoinParam {
 	  *              a [[net.noresttherein.oldsql.sql.Select select]] with it as its ''from'' clause.
 	  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
 	  *              time, removing the join an replacing its usages with
-	  *              [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]], or substituting
+	  *              [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]], or substituting
 	  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
@@ -832,7 +832,7 @@ object JoinParam {
 	  *              a [[net.noresttherein.oldsql.sql.Select select]] with it as its ''from'' clause.
 	  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
 	  *              time, removing the join an replacing its usages with
-	  *              [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]], or substituting
+	  *              [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]], or substituting
 	  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
@@ -859,7 +859,7 @@ object JoinParam {
 	  *              a [[net.noresttherein.oldsql.sql.Select select]] with it as its ''from'' clause.
 	  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
 	  *              time, removing the join an replacing its usages with
-	  *              [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]], or substituting
+	  *              [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]], or substituting
 	  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
@@ -883,7 +883,7 @@ object JoinParam {
 	  *              a [[net.noresttherein.oldsql.sql.Select select]] with it as its ''from'' clause.
 	  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
 	  *              time, removing the join an replacing its usages with
-	  *              [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]], or substituting
+	  *              [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]], or substituting
 	  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
@@ -921,7 +921,7 @@ object JoinParam {
 		  *              a [[net.noresttherein.oldsql.sql.Select select]] with it as its ''from'' clause.
 		  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
 		  *              time, removing the join an replacing its usages with
-		  *              [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]], or substituting
+		  *              [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]], or substituting
 		  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
 		  * @param form  the form for the last [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation parameter]]
 		  *              relation of the created ''from'' clause,
@@ -946,7 +946,7 @@ object JoinParam {
 		  *              a [[net.noresttherein.oldsql.sql.Select select]] with it as its ''from'' clause.
 		  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
 		  *              time, removing the join an replacing its usages with
-		  *              [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]], or substituting
+		  *              [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]], or substituting
 		  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
 		  * @param name
 		  * @param form  the form for the last [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation parameter]]
@@ -1109,7 +1109,7 @@ object JoinParam {
   * in the generated SQL.
   *
   * To distinguish it from ''bound''
-  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]] expressions,
+  * [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]] expressions,
   * which translates to statement parameters, but require a value on creation, it is often referred to as an ''unbound''
   * parameter (collectively with `JoinParam`). It allows to filter a given ''from'' clause using values to be provided
   * only at the execution time, which can be obtained by applying an arbitrary scala function to `X`. The mapping,

@@ -22,7 +22,7 @@ import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope, LocalSQL}
 import net.noresttherein.oldsql.sql.ast.{ColumnComponentSQL, ComponentSQL, RelationSQL, SelectSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumn, SelectColumnAs}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.True
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{GroupedUnder, LastTableOf, OuterClauseOf, RowProductVisitor, SelectFactory, SpelledSQL, TableCount}
 import net.noresttherein.oldsql.sql.mechanics.GetTable.{ByAlias, ByIndex, ByLabel, ByParamIndex, ByParamName, ByParamType, BySubject, ByType}
@@ -393,7 +393,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	/** The type of this clause with all [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] expansions
 	  * removed. It is the result type of method
 	  * [[net.noresttherein.oldsql.sql.RowProduct.bind(params:Params) bind]]`(`[[net.noresttherein.oldsql.sql.RowProduct.Params Params]]`)`,
-	  * which replaces all references to unbound parameters with [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]]
+	  * which replaces all references to unbound parameters with [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]]
 	  * parameter expressions.
 	  */
 	type Paramless <: ParamlessFrom
@@ -418,7 +418,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	//consider: both bind methods should probably only bind parameters from the most nested subselect
 	/** Applies this clause to its last parameter, removing the last
 	  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] and substituting all references to its parameter
-	  * components with [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameter expressions
+	  * components with [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions
 	  * with values derived from `param`. Parameters in aggregated sections (for example, under
 	  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] are treated the same way as all others
 	  * @param param the value for the last parameter pseudo relation joined with `UnboundParam`
@@ -429,7 +429,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 
 	/** Applies this clause to its parameters: removes all [[net.noresttherein.oldsql.sql.UnboundParam unbound]]
 	  * parameters from this clause and substitutes all references to parameter components with
-	  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameter expressions with values derived
+	  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions with values derived
 	  * from the corresponding chain elements. This method will include ''all'' parameters in their order of appearance
 	  * in `F`, including those in the grouped, 'discrete' section, which aren't available for use in SQL expressions.
 	  * @param params a chain consisting of subject types of all parameter mappings of all `UnboundParam` joins

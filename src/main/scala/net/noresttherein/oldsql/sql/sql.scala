@@ -8,6 +8,7 @@ import net.noresttherein.oldsql.sql.GroupByClause.{Group, GroupingRelation}
 import net.noresttherein.oldsql.sql.RowProduct.GroupingOfGeneralized
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, NamedParamRelation, ParamRelation}
+import net.noresttherein.oldsql.sql.ast.SQLLiteral
 
 
 
@@ -62,6 +63,10 @@ package object sql {
 	  */
 	type GlobalBoolean[-F <: RowProduct] = ColumnSQL[F, GlobalScope, Boolean]
 
+	object SQLBoolean {
+		val True = SQLLiteral.True
+		val False = SQLLiteral.False
+	}
 
 	/** An SQL [[net.noresttherein.oldsql.sql.ColumnSQL expression]] of `String` type and
 	  * with [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope scope]] `S`.

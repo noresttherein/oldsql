@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL, Local
 import net.noresttherein.oldsql.sql.UnboundParam.{NamedParamRelation, ParamRelation}
 import net.noresttherein.oldsql.sql.ast.{ComponentSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
-import net.noresttherein.oldsql.sql.ast.SQLTerm.True
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.EmptyChain
 import net.noresttherein.oldsql.sql.mechanics.{GroupingExpression, RowProductVisitor, SpelledSQL, TableCount}
@@ -213,7 +213,7 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 	override def withClause[C <: FromSome](from :C) :Aggregated[C] = Aggregated(from)
 
 
-	/** Always returns [[net.noresttherein.oldsql.sql.ast.SQLTerm.True True]]. For the actual, ungrouped ''where'' clause
+	/** Always returns [[net.noresttherein.oldsql.sql.ast.SQLLiteral.True True]]. For the actual, ungrouped ''where'' clause
 	  * use `this.clause.filter`.
 	  */
 	override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :LocalBoolean[E] = True
@@ -667,8 +667,8 @@ object GroupByClause {
 		  *               [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] (which exists
 		  *               for all subtypes of `BaseMapping` taking the `Origin` type as its last type parameter),
 		  *             - components of relations:
-		  *               [[net.noresttherein.oldsql.sql.ast.ast.TypedComponentSQL TypedComponentSQL]]`[F, _, _, _, _, O]`
-		  *               and [[net.noresttherein.oldsql.sql.ast.ast.TypedColumnComponentSQL TypedColumnComponentSQL]]`[F, _, _, _, _, O]`,
+		  *               [[net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL TypedComponentSQL]]`[F, _, _, _, _, O]`
+		  *               and [[net.noresttherein.oldsql.sql.ast.ColumnComponentSQL.TypedColumnComponentSQL TypedColumnComponentSQL]]`[F, _, _, _, _, O]`,
 		  *             - any single column expressions [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`[F, _]`,
 		  *             - base [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, _]`,
 		  *           where type `F =:= this.GeneralizedDiscrete` is the 'true', ''from'' clause grouped by this

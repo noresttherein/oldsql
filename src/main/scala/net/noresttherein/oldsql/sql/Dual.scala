@@ -13,7 +13,7 @@ import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, Join
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.RelationSQL
-import net.noresttherein.oldsql.sql.ast.SQLTerm.True
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.ast.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{RowProductVisitor, SpelledSQL}

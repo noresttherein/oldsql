@@ -3,8 +3,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL
 import net.noresttherein.oldsql.sql.RowProduct.NonEmptyFrom
-import net.noresttherein.oldsql.sql.ast.{ConditionSQL, LogicalSQL, SQLTerm}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.{ColumnLiteral, SQLParameter}
+import net.noresttherein.oldsql.sql.ast.{ColumnLiteral, ConditionSQL, LogicalSQL, SQLLiteral, SQLNull, SQLParameter, SQLTerm}
 import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits
 
 
@@ -17,11 +16,11 @@ import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits
   */
 package object uppercase extends SQLLiteralImplicits {
 
-	type NULL[V] = SQLTerm.SQLNull[V]
+	type NULL[V] = SQLNull[V]
 
-	val NULL = SQLTerm.SQLNull
-	val TRUE :ColumnLiteral[Boolean] = SQLTerm.True
-	val FALSE :ColumnLiteral[Boolean] = SQLTerm.False
+	val NULL = SQLNull
+	val TRUE :ColumnLiteral[Boolean] = SQLLiteral.True
+	val FALSE :ColumnLiteral[Boolean] = SQLLiteral.False
 
 	def PARAM[T](value :T)(implicit factory :SQLParameter.Factory[T]) :factory.Res =
 		factory(value)

@@ -4,9 +4,10 @@ import scala.annotation.implicitAmbiguous
 
 import net.noresttherein.oldsql.schema.{ColumnForm, SQLForm}
 import net.noresttherein.oldsql.sql.{GlobalBoolean, RowProduct}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.{ColumnTerm, False, SQLNull, SQLParameter, True}
-import net.noresttherein.oldsql.sql.ast.SQLTerm
-import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter.ParameterFactory
+import net.noresttherein.oldsql.sql.ast.{SQLNull, SQLParameter, SQLTerm}
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
+import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm
+import net.noresttherein.oldsql.sql.ast.SQLParameter.ParameterFactory
 import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.nullSQL
 
 
@@ -15,7 +16,7 @@ import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.nullSQL
 
 
 /** A mix in trait extended by [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] in order to bring
-  * into scope implicit conversions from Scala values to [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral SQLLiteral]]
+  * into scope implicit conversions from Scala values to [[net.noresttherein.oldsql.sql.ast.SQLLiteral SQLLiteral]]
   * instances declared by the [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals$ companion object]].
   * @see [[net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits SQLLiteralImplicits]]
   */
@@ -34,10 +35,10 @@ sealed trait LowPrioritySQLLiteralImplicits {
 
 
 /** A trait grouping definitions of implicit conversions from Scala literals to
-  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral SQLLiteral]] expressions as well as extension factory
-  * methods for [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]]s
+  * [[net.noresttherein.oldsql.sql.ast.SQLLiteral SQLLiteral]] expressions as well as extension factory
+  * methods for [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]]s
   * ([[net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.boundParameterSQL.? _.?]]) and
-  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.CompositeNull nulls]]
+  * [[net.noresttherein.oldsql.sql.ast.CompositeNull nulls]]
   * ([[net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.nullSQL.apply null]]`[T]`).
   *
   * It is extended by the [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals$ implicitSQLLiterals]] object, which
@@ -65,7 +66,7 @@ trait SQLLiteralImplicits extends LowPrioritySQLLiteralImplicits {
 
 	/** Enriches any Scala type for which a [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]
 	  * or an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] exists with a `?` method creating
-	  * an [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]] expression representing a JDBC parameter
+	  * an [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]] expression representing a JDBC parameter
 	  * together with its value.
 	  */ //todo: move it someplace better than mechanics and make it AnyVal
 	implicit class boundParameterSQL[T, P <: SQLParameter[T]](value :T)(implicit factory :ParameterFactory[T, P]) {
@@ -74,11 +75,11 @@ trait SQLLiteralImplicits extends LowPrioritySQLLiteralImplicits {
 		  * is set at this point to `this`, but any SQL ''selects'' using this expression will be translated
 		  * to a [[java.sql.PreparedStatement PreparedStatement]] with a parameter placeholder for this expression.
 		  * @return an expression of type `P`, being a subtype of
-		  *         [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]] defined by the available implicit
-		  *         [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter.ParameterFactory ParameterFactory]]
+		  *         [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]] defined by the available implicit
+		  *         [[net.noresttherein.oldsql.sql.ast.SQLParameter.ParameterFactory ParameterFactory]]
 		  *         for the type `T`. If an implicit [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]`[T]`
 		  *         is available, the result
-		  *         will be a [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameterColumn SQLParameterColumn]].
+		  *         will be a [[net.noresttherein.oldsql.sql.ast.SQLParameterColumn SQLParameterColumn]].
 		  *         Otherwise it will be a `SQLParameter[T]` (using an implicit
 		  *         [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[T]` provided by the factory).
 		  */
@@ -101,11 +102,11 @@ object SQLLiteralImplicits {
 
 	/** Extension method for `null` literals which creates SQL NULL expressions. Used in conjunction with the implicit
 	  * conversion [[net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.nullSQL nullSQL]], it allows the syntax of
-	  * `null[Int]` to create the expression [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]]`[Int]`.
+	  * `null[Int]` to create the expression [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]]`[Int]`.
 	  */
 	trait nullSQL extends Any {
-		/** Returns [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]]`[T]` or
-		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.CompositeNull CompositeNull]]`[T]`, depending on whether
+		/** Returns [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]]`[T]` or
+		  * [[net.noresttherein.oldsql.sql.ast.CompositeNull CompositeNull]]`[T]`, depending on whether
 		  * a [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]] or
 		  * [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] exists for type `T`.
 		  */

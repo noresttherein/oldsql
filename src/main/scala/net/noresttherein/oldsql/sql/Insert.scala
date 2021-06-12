@@ -24,7 +24,7 @@ import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.TableStatement.{GroundSetClauseFactory, GroundSupplantClauseFactory, ReturningClauseFactory, SetClauseFactory, SupplantClauseFactory}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamRelation}
 import net.noresttherein.oldsql.sql.ast.QuerySQL
-import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
+import net.noresttherein.oldsql.sql.ast.SQLParameter
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.MappingReveal.MappingSubject
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}

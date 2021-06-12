@@ -99,12 +99,12 @@ object SpecializingFactory {
 		  * useful in the common case when the more specific argument `SA[T]` is the same type as the more generic
 		  * argument `A[T]`.
 		  *
-		  * As an example, [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]] is one of many
+		  * As an example, [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]] is one of many
 		  * SQL expressions which extend the enclosing trait specifying `A[T] =:= SA[T] =:= T`,
 		  * `E[T] =:= `[[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[T]`
 		  * and `SE[T] =:= `[[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]`[T]`.
 		  * Thus, two implementations exist: one for `SQLParameter[T]` itself, and one for its subtype
-		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameterColumn SQLParameterColumn]]`[T]`,
+		  * [[net.noresttherein.oldsql.sql.ast.SQLParameterColumn SQLParameterColumn]]`[T]`,
 		  * which will always have precedence if an implicit `ColumnForm[T]` exists, falling back to the more generic
 		  * instance if only an `SQLForm[T]` is available.
 		  * @see [[net.noresttherein.oldsql.morsels.SpecializingFactory SpecializingFactory]]

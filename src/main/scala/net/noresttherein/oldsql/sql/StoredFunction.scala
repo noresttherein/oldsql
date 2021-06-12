@@ -20,7 +20,7 @@ import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.StoredProcedure.ProcedureParameterization
 import net.noresttherein.oldsql.sql.ast.FunctionSQL
 import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumnSQL
-import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
+import net.noresttherein.oldsql.sql.ast.SQLParameter
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{ProcedureSignature, SpelledSQL}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}

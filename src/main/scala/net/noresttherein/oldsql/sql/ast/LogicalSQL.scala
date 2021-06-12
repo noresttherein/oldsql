@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.UnaryCol
 import net.noresttherein.oldsql.sql.ast.LogicalSQL.AndSQL.{AndVisitor, CaseAnd}
 import net.noresttherein.oldsql.sql.ast.LogicalSQL.NotSQL.{CaseNot, NotVisitor}
 import net.noresttherein.oldsql.sql.ast.LogicalSQL.OrSQL.{CaseOr, OrVisitor}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.{False, True}
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 

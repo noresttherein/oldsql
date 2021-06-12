@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.sql.{Adjoin, AndFrom, From, JoinedRelation, RowP
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.ast.{JoinedTable, QuerySQL, TableSQL}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.{False, True}
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
 import net.noresttherein.oldsql.sql.mechanics.MappingReveal.MappingSubject
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}

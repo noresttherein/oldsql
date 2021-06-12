@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.sql.SQLDialect.{DefaultSpelling, SQLSpelling}
 import net.noresttherein.oldsql.sql.SQLDialect.SpellingScope.{FromScope, GroupByScope, HavingScope, InsertScope, SelectScope, UpdateScope, WhereScope}
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMapper, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.QuerySQL
-import net.noresttherein.oldsql.sql.ast.SQLTerm.True
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
@@ -225,7 +225,7 @@ object SQLDialect {
 		  *                The parameter is declared for consistency with other methods and to facilitate uniform
 		  *                passing of the context when formatting subsequent fragments of a larger query.
 		  * @return        a formatted SQL string with a [[net.noresttherein.oldsql.schema.SQLWriteForm form]] setting
-		  *                all potential [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters
+		  *                all potential [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters
 		  *                present in the query.
 		  */ //consider: removing context parameter, as we do not require Parameterization any way
 		//this cannot be apply, as then Query[F, V] doesn't overload to the method for generic SQLExpression
@@ -276,7 +276,7 @@ object SQLDialect {
 		  *                in the returned `SpelledSQL`, as only [[net.noresttherein.oldsql.sql.FromClause FromClause]]
 		  *                (including synthetic unbound parameters) can introduce new table aliases to scope.
 		  * @param params  ''in/out'' parameter carrying necessary information about all (relevant)
-		  *                [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] and
+		  *                [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] and
 		  *                [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters of the formatted SQL.
 		  *                In its main role, it is a list of
 		  *                [[net.noresttherein.oldsql.schema.SQLWriteForm write forms]] setting the parameters
@@ -325,7 +325,7 @@ object SQLDialect {
 		  *                in the returned `SpelledSQL`, as only [[net.noresttherein.oldsql.sql.FromClause FromClause]]
 		  *                (including synthetic unbound parameters) can introduce new table aliases to scope.
 		  * @param params  ''in/out'' parameter carrying necessary information about all (relevant)
-		  *                [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] and
+		  *                [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] and
 		  *                [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters of the formatted SQL.
 		  *                In its main role, it is a list of
 		  *                [[net.noresttherein.oldsql.schema.SQLWriteForm write forms]] setting the parameters

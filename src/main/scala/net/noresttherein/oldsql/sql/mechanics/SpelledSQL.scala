@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.sql.{Aggregated, By, DecoratedFrom, FromSome, Gr
 import net.noresttherein.oldsql.sql.RowProduct.{NonEmptyFrom, ParameterizedFrom, ParamlessFrom}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamAt}
 import net.noresttherein.oldsql.sql.ast.RelationSQL
-import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
+import net.noresttherein.oldsql.sql.ast.SQLParameter
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{ver, Parameterization, SQLContext}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization.{JoinParameterization, MappedParameterization, UngroupedParameterization}
 
@@ -369,7 +369,7 @@ object SpelledSQL {
 	  * primarily by adding additional forms with `:+`, `+:` or swapping the whole list with
 	  * [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization.reset reset]] method. These forms
 	  * are either constant forms (with a `Unit` argument) of bound
-	  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]]  expressions, or the mapping forms
+	  * [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]]  expressions, or the mapping forms
 	  * taken from [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] mappings of unbound parameters.
 	  * Adapting of the former to the required argument type `Ps` can happen by a trivial constant function
 	  * returning `()`, while the composition of the latter consists of the accessor function `Ps => P` returned by

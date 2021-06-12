@@ -4,7 +4,7 @@ import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.schema.Mapping
 import net.noresttherein.oldsql.sql.RowProduct.{SubselectOf, TableFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
-import net.noresttherein.oldsql.sql.SQLTerm.True
+import net.noresttherein.oldsql.sql.SQLLiteral.True
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 
 

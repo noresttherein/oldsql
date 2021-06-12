@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.TableStatement.{GroundWhereClauseFactory, WhereAllClauseFactory, WhereClauseFactory, WhereAnyClauseFactory}
 import net.noresttherein.oldsql.sql.UnboundParam.FromParam
 import net.noresttherein.oldsql.sql.ast.LogicalSQL.OrSQL
-import net.noresttherein.oldsql.sql.ast.SQLTerm.{False, True}
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
 import net.noresttherein.oldsql.sql.mechanics.MappingReveal.MappingSubject
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
@@ -126,7 +126,7 @@ trait Delete[-Args, M[O] <: MappingAt[O], +Res]
   *   1. parameterless statements extending
   *      [[net.noresttherein.oldsql.sql.Delete.implementation.GroundDelete GroundDelete]],
   *      which carry all required information for their execution
-  *      (possibly as [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters)
+  *      (possibly as [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters)
   *   1. statements parameterized with arbitrary types
   *      extending [[net.noresttherein.oldsql.sql.Delete.implementation.ParamDelete ParamDelete]],
   *   1. statements dedicated to removing individual entities, specified either at their creation (parameterless),
@@ -136,7 +136,7 @@ trait Delete[-Args, M[O] <: MappingAt[O], +Res]
   * The main methods of this object are:
   *   1. `Delete `[[net.noresttherein.oldsql.sql.Delete.from from]]` table` - constructs parameterless statements,
   *      with the ''where'' clause defined solely in terms of available values - literals
-  *      or [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters.
+  *      or [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters.
   *   1. `Delete `[[net.noresttherein.oldsql.sql.Delete.one one]]` table` - statements parameterized with
   *      the entity type mapped to `table`.
   *   1. `Delete `[[net.noresttherein.oldsql.sql.Delete.many many]]` table` - batches parameterized with
@@ -243,8 +243,8 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 	  *
 	  * All statements created starting with this method are parameterless:
 	  * the filter expression must not depend on [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters,
-	  * but use only [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literals]] and
-	  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound parameters]].
+	  * but use only [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] and
+	  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]].
 	  * See `Delete.`[[net.noresttherein.oldsql.sql.Delete.by by]]`[X] `[[net.noresttherein.oldsql.sql.Delete.syntax.DeleteParam.from from]]` table`
 	  * and `Delete`[[net.noresttherein.oldsql.sql.Delete.apply[M[O* (table)]]
 	  * for a generic way to create statements with parameters to be specified at execution time.
@@ -1688,8 +1688,8 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 //			  * Any such composite expressions can be used as parts of the returned condition.
 //			  * As the created expression doesn't declare [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters,
 //			  * values of all expressions other than those referring to the affected table must be known - either
-//			  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literals]] or
-//			  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters. The latter can be created
+//			  * [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] or
+//			  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters. The latter can be created
 //			  * using extension method [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL.? ?]]
 //			  * available after importing [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL]]
 //			  * (it is also present in packages [[net.noresttherein.oldsql.sql.lowercase sql.lowercase]]
@@ -1941,7 +1941,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 		/** A parameterless ''delete'' statement without a ''where'' clause, deleting all rows from a table.
 		  * As a `GroundDelete` subclass, it is completely equivalent
 		  * to a [[net.noresttherein.oldsql.sql.Delete.implementation.GroundDelete GroundDelete]] statement
-		  * with [[net.noresttherein.oldsql.sql.ast.SQLTerm.True True]]
+		  * with [[net.noresttherein.oldsql.sql.ast.SQLLiteral.True True]]
 		  * as its [[net.noresttherein.oldsql.sql.Delete.implementation.GroundDelete.condition condition]].
 		  * It provides however methods for narrowing the set of deleted rows by specifying
 		  * an SQL Boolean [[net.noresttherein.oldsql.sql.GlobalBoolean expression]] for the ''where'' clause.
@@ -1970,7 +1970,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 			override def where(condition :GlobalBoolean[From[M]]) :Delete[Unit, M, Int] =
 				new GroundDeleteWhere[S, M](table, condition)
 
-			/** Equals [[net.noresttherein.oldsql.sql.ast.SQLTerm.True True]]. **/
+			/** Equals [[net.noresttherein.oldsql.sql.ast.SQLLiteral.True True]]. **/
 			override val condition :GlobalBoolean[From[M]] = True
 
 			protected override def initToString :String = "Delete " + table
@@ -1978,7 +1978,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 
 
 		/** Standard implementation of arbitrary ''delete'' statements which have the values
-		  * of any [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter parameters]] embedded, not needing
+		  * of any [[net.noresttherein.oldsql.sql.ast.SQLParameter parameters]] embedded, not needing
 		  * any external data to create and execute a [[java.sql.PreparedStatement PreparedStatement]]
 		  * for the DML they represent. The [[net.noresttherein.oldsql.sql.Incantation Incantation]]`[(), Int]`
 		  * created by this statement will return the number of deleted rows.
@@ -2278,8 +2278,8 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 		  * property, which is an SQL Boolean [[net.noresttherein.oldsql.sql.ColumnSQL expression]] dependent
 		  * only on the table with deleted rows (parameterized with [[net.noresttherein.oldsql.sql.From From]]`[M]`) -
 		  * all terms must either be [[net.noresttherein.oldsql.sql.ast.ComponentSQL components]]
-		  * of its mapping `M` (in particular table columns), [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literals]],
-		  * or [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter parameters]] with already provided values.
+		  * of its mapping `M` (in particular table columns), [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]],
+		  * or [[net.noresttherein.oldsql.sql.ast.SQLParameter parameters]] with already provided values.
 		  *
 		  * Aside from a different [[net.noresttherein.oldsql.sql.Delete.implementation.GroundDelete.Domain Domain]] type
 		  * of the condition, the implementation is otherwise very similar

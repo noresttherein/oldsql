@@ -17,7 +17,7 @@ import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SubselectMapping, TopSelectMapping}
 import net.noresttherein.oldsql.sql.Select.SelectMapping
-import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
+import net.noresttherein.oldsql.sql.ast.SQLParameter
 import net.noresttherein.oldsql.sql.ast.TableSQL.TableVisitor
 
 

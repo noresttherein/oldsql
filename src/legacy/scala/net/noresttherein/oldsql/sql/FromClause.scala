@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.sql.RowProduct.{RowTables, SubselectFrom, TableF
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula}
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula
-import net.noresttherein.oldsql.sql.SQLTerm.True
+import net.noresttherein.oldsql.sql.SQLLiteral.True
 import net.noresttherein.oldsql.sql.SQLTuple.ChainFormula
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 

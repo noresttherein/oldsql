@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.sql.ast.ComponentSQL.ComponentConversion
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.{ColumnConversionSQL, ColumnPromotionConversion, PromotionConversion}
 import net.noresttherein.oldsql.sql.ast.LooseColumn.LooseColumnConversion
 import net.noresttherein.oldsql.sql.ast.LooseComponent.LooseComponentConversion
-import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
+import net.noresttherein.oldsql.sql.ast.SQLParameter
 import net.noresttherein.oldsql.sql.mechanics.{SQLNumber, TableCount}
 
 

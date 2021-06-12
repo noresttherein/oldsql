@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectAs, SelectColumnAs, SubselectAs, SubselectColumnAs, SubselectSQL, TopSelectAs, TopSelectColumnAs, TopSelectSQL}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral
+import net.noresttherein.oldsql.sql.ast.SQLLiteral
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.{CaseChainTuple, ChainEntry, ChainTupleVisitor, EmptyChain}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingEntry, ListingVisitor, ListingValueSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.SeqTuple.{CaseSeq, SeqVisitor}

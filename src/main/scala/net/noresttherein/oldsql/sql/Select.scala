@@ -51,7 +51,7 @@ trait Query[P, V] extends QueryTemplate[V, ({ type Q[X] = Query[P, X] })#Q] with
 	def intersect(other :Query[P, V]) :Query[P, V] = Select.Intersect(this, other)
 
 	/** Replaces all [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters in this instance with
-	  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters of values taken from the argument,
+	  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters of values taken from the argument,
 	  * turning this parameterized query statement
 	  * into a ground [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]].
 	  */

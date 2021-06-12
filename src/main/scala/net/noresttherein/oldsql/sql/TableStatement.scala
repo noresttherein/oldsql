@@ -15,7 +15,8 @@ import net.noresttherein.oldsql.sql.ComponentSetter.:=
 import net.noresttherein.oldsql.sql.DML.{BoundDML, ComposedDML, DMLAPI, RepeatedDML}
 import net.noresttherein.oldsql.sql.DMLStatement.{AlteredResultStatement, BoundStatement, ComposedStatement, DMLStatementAPI, StatementResult}
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamRelation}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.{False, SQLParameter, True}
+import net.noresttherein.oldsql.sql.ast.SQLParameter
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 
 //here be implicits
@@ -287,8 +288,8 @@ object TableStatement {
 	  *                               a [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] mapping
 	  *                               for the parameter type $Arg as an argument, which makes this method
 	  *                               more convenient for creating filter conditions based on constants
-	  *                               (either [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literals]] or
-	  *                               [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters),
+	  *                               (either [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] or
+	  *                               [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters),
 	  *                               as only a single placeholder `_` is expected. Any Scala value of type `X`
 	  *                               is implicitly convertible to a literal expression in the presence
 	  *                               of an implicit [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[X]`,
@@ -550,8 +551,8 @@ object TableStatement {
 	  *                                       a [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] mapping
 	  *                                       for the parameter type $Arg as an argument, which makes this method
 	  *                                       more convenient for creating filter conditions based on constants
-	  *                                       (either [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literals]] or
-	  *                                       [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters),
+	  *                                       (either [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] or
+	  *                                       [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters),
 	  *                                       as only a single placeholder `_` is expected. Any Scala value of type `X`
 	  *                                       is implicitly convertible to a literal expression in the presence
 	  *                                       of an implicit [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[X]`,
@@ -1153,8 +1154,8 @@ object TableStatement {
 		  * Any such composite expressions can be used as parts of the returned condition.
 		  * As the created expression doesn't declare [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters,
 		  * values of all expressions other than those referring to the affected table must be known - either
-		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literals]] or
-		  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters. The latter can be created
+		  * [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] or
+		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters. The latter can be created
 		  * using extension method [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL.? ?]]
 		  * available after importing [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL]]
 		  * (it is also present in packages [[net.noresttherein.oldsql.sql.lowercase sql.lowercase]]

@@ -27,7 +27,7 @@ import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
 import net.noresttherein.oldsql.sql.ast.{ChainSQL, ComponentSQL, ConversionSQL}
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion
-import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
+import net.noresttherein.oldsql.sql.ast.SQLParameter
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, ListingSQL, SeqTuple}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.MatchChainTuple
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingValueSQL, MatchListing}

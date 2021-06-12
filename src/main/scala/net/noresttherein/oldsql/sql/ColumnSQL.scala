@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.sql.SQLDialect.SpellingScope.SelectScope
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.StoredProcedure.Out
-import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ArithmeticSQL, ConcatSQL, LooseColumn, QuerySQL, SelectSQL}
+import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ArithmeticSQL, ConcatSQL, LooseColumn, QuerySQL, SelectSQL, SQLNull}
 import net.noresttherein.oldsql.sql.ast.AggregateSQL.{AggregateVisitor, CaseAggregate}
 import net.noresttherein.oldsql.sql.ast.ColumnComponentSQL.TypedColumnComponentSQL
 import net.noresttherein.oldsql.sql.ast.ColumnComponentSQL.TypedColumnComponentSQL.CaseColumnComponent
@@ -25,12 +25,15 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.MappingColumnVisitor
 import net.noresttherein.oldsql.sql.ast.LooseColumn.CaseLooseColumn
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, ColumnQuery, ColumnQueryVisitor, Rows}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{SelectColumn, SubselectColumn, TopSelectColumn}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.{ColumnTerm, False, SQLNull, True}
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
+import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermVisitor}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.SeqTuple
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLNumber, SQLOrdering, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
+
+
 
 
 
@@ -104,10 +107,10 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	/** Joins this expression and another expression in a logical conjunction represented by the `AND` operator in SQL.
 	  * This method is available only if the value type of this expression is `Boolean`. Unlike
 	  * [[net.noresttherein.oldsql.sql.ColumnSQL.and and]], which is rendered explicitly as `this AND other`,
-	  * this method recognizes the [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literals]] `true`, `false`
+	  * this method recognizes the [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] `true`, `false`
 	  * and `null`, reducing the result according to the rules of ternary logic.
 	  * @param other any other SQL expression with `Boolean` value type, to use as the right (second) operand.
-	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal,
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal,
 	  *         than `SQLNull[Boolean]`. Otherwise a `ColumnSQL` based on
 	  *         a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being the greatest lower bound of the bases
 	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
@@ -126,10 +129,10 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	/** Joins this expression and another expression in a logical disjunction represented by the `OR` operator in SQL.
 	  * This method is available only if the value type of this expression is `Boolean`. Unlike
 	  * [[net.noresttherein.oldsql.sql.ColumnSQL.or or]], which is rendered explicitly as `this OR other`,
-	  * this method recognizes the [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literals]] `true`, `false`
+	  * this method recognizes the [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] `true`, `false`
 	  * and `null`, reducing the result according to the rules of ternary logic.
 	  * @param other any other SQL expression with `Boolean` value type, to use as the right (second) operand.
-	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]] literal,
+	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal,
 	  *         than `SQLNull[Boolean]`. Otherwise a `ColumnSQL` based on
 	  *         a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being the greatest lower bound of the bases
 	  *         of `this` and `that`, and the [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope scope]]
@@ -147,8 +150,8 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 		}
 	//todo: xor
 	/** An SQL expression for `NOT this`. This method is available only if the value type of this expression is `Boolean`.
-	  * If this expression is a [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literal]] or
-	  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLNull SQLNull]], the result will be also a literal reduced according to
+	  * If this expression is a [[net.noresttherein.oldsql.sql.ast.SQLLiteral literal]] or
+	  * [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]], the result will be also a literal reduced according to
 	  * ternary logic.
 	  */
 	def unary_![E <: F, O >: LocalScope <: S](implicit ev :V =:= Boolean) :ColumnSQL[E, O, Boolean] =

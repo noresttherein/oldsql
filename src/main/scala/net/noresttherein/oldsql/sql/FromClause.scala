@@ -20,7 +20,7 @@ import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalSQL, LocalScope}
 import net.noresttherein.oldsql.sql.ast.{AggregateSQL, ComponentSQL, LooseColumn, RelationSQL}
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
-import net.noresttherein.oldsql.sql.ast.SQLTerm.True
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.ast.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.SelectSQL.SelectColumn
 import net.noresttherein.oldsql.sql.mechanics.{GroupingExpression, LastTableOf, RowProductVisitor, SpelledSQL, SQLNumber, SQLOrdering, TableCount}

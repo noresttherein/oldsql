@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, ExpandingClause, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf, RowComposition, RowDecomposition}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.RelationSQL
-import net.noresttherein.oldsql.sql.ast.SQLTerm.True
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 
 

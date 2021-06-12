@@ -11,8 +11,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.Relation.Table
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, SQLTypeUnification}
-import net.noresttherein.oldsql.sql.ast.{ColumnComponentSQL, ColumnLValueSQL, ComponentLValueSQL, ComponentSQL, denullify}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.{SQLNull, SQLParameter}
+import net.noresttherein.oldsql.sql.ast.{denullify, ColumnComponentSQL, ColumnLValueSQL, ComponentLValueSQL, ComponentSQL, SQLNull, SQLParameter}
 
 
 
@@ -41,7 +40,7 @@ import net.noresttherein.oldsql.sql.ast.SQLTerm.{SQLNull, SQLParameter}
   *           `From[M] `[[net.noresttherein.oldsql.sql.WithParam]]` X` (or
   *           `RowProduct AndFrom `[[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation ParamRelation]]`[X]#Param`)
   *           for parameterized updates. Note that in the former case, the expression can still contain
-  *           [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters.
+  *           [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters.
   * @tparam V the shared type of the left side's mapping's [[net.noresttherein.oldsql.schema.Mapping.Subject subject]]
   *           and of the assigned expression on the right side, possibly after unification.
   * @author Marcin Mościcki
@@ -118,8 +117,8 @@ object ComponentSetter {
 	  * for [[net.noresttherein.oldsql.sql.Update updates]]
 	  * of table [[net.noresttherein.oldsql.schema.Relation.RelVar RelVar]]`[M]` which do not depend on any outside
 	  * parameters (which use only to the updated table itself and expressions with concrete values -
-	  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral literals]] or
-	  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters); it can however also take many more
+	  * [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] or
+	  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters); it can however also take many more
 	  * forms, in practice some combination of `From[M]` and [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]
 	  * pseudo joins introducing expressions for statement parameters with values not known at their creation.
 	  * For example, `From[M] := (From[M] WithParam X)` is an assignment usable by ''update'' statements
@@ -139,8 +138,8 @@ object ComponentSetter {
 	  * [[net.noresttherein.oldsql.sql.ast.ComponentLValueSQL.:=? :=?]]
 	  * or [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.+=? +=?]] - which accept any scala value
 	  * of a compatible type with an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] type class,
-	  * and use it, wrapping it in a [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter SQLParameter]]
-	  * (rather than a [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLLiteral SQLLiteral]] to which it would be otherwise
+	  * and use it, wrapping it in a [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]]
+	  * (rather than a [[net.noresttherein.oldsql.sql.ast.SQLLiteral SQLLiteral]] to which it would be otherwise
 	  * implicitly converted). This will render the SQL for the expression as the JDBC parameter placeholder `"?"`,
 	  * which is important in order to not flood the cache of the driver and the database with countless versions
 	  * inlining their value.
@@ -208,7 +207,7 @@ object ComponentSetter {
   *           `From[M] `[[net.noresttherein.oldsql.sql.WithParam]]` X` (or
   *           `RowProduct AndFrom `[[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation ParamRelation]]`[X]#Param`)
   *           for parameterized updates. Note that in the former case, the expression can still contain
-  *           [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters.
+  *           [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters.
   * @tparam V the shared type of the left side's mapping's [[net.noresttherein.oldsql.schema.Mapping.Subject subject]]
   *           and of the assigned expression on the right side, possibly after unification.
   * @author Marcin Mościcki

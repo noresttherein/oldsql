@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.{CompositeNull, SQLNull}
+import net.noresttherein.oldsql.sql.ast.{CompositeNull, SQLNull}
 
 
 

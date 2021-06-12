@@ -30,7 +30,6 @@ import net.noresttherein.oldsql.sql.Returning.implementation.{CaseReturning, Ret
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamRelation}
 import net.noresttherein.oldsql.sql.Update.implementation.{CaseUpdate, UpdateVisitor}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.{False, SQLParameter, True}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 
 //implicits
@@ -394,7 +393,7 @@ object DML {
   * [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameter(s).  A lack of parameters on this class doesn't mean
   * that the resulting `PreparedStatement` will be parameterless;
   * if the SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] used contain
-  * [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]] parameters, they will be translated to JDBC
+  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters, they will be translated to JDBC
   * parameters which will always be assigned the embedded values.
   *
   * A single invocation of this instance is expected to result in a single database round-trip, unless the returned
@@ -715,7 +714,7 @@ object DMLStatement {
 	/** Combines a parameterized DML statement with a single value of its parameter(s), turning it into
 	  * a parameterless statement which will always ignore its arguments and use the preset value instead.
 	  * This allows late binding of previously created, reusable statements to obtain effectively the same result
-	  * as if the statement was defined using SQL [[net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter bound]]
+	  * as if the statement was defined using SQL [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]]
 	  * parameters, reducing the overhead. This is the public interface that can be used in pattern matching
 	  * by the application; extending classes typically also mix-in
 	  * [[net.noresttherein.oldsql.sql.DMLStatement.BoundStatement.Impl BoundStatement.Impl]].

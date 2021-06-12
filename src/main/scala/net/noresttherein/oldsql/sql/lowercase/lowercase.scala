@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.RowProduct.NonEmptyFrom
 import net.noresttherein.oldsql.sql.ast.{ConditionSQL, LogicalSQL}
-import net.noresttherein.oldsql.sql.ast.SQLTerm.SQLParameter
+import net.noresttherein.oldsql.sql.ast.SQLParameter
 import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits
 
 
