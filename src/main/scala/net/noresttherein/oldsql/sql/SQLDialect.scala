@@ -9,13 +9,13 @@ import net.noresttherein.oldsql.morsels.TextCase
 import net.noresttherein.oldsql.morsels.TextCase.LowerCase
 import net.noresttherein.oldsql.schema.{ColumnMapping, RelVar, Table}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.schema.Relation.Aliased
+import net.noresttherein.oldsql.schema.Table.Aliased
 import net.noresttherein.oldsql.slang.OptionGuardExtension
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult
 import net.noresttherein.oldsql.sql.Incantation.Cantrip
 import net.noresttherein.oldsql.sql.Select.{Intersect, Minus, SetOperator, Union, UnionAll}
 import net.noresttherein.oldsql.sql.SQLDialect.{DefaultSpelling, SQLSpelling}
-import net.noresttherein.oldsql.sql.SQLDialect.SpellingScope.{FromScope, GroupByScope, HavingScope, InsertScope, SelectScope, UpdateScope, WhereScope}
+import net.noresttherein.oldsql.sql.SQLDialect.SpellingScope.{FromScope, GroupByScope, HavingScope, InsertScope, SelectScope, UpdateScope, WhereScope, WithScope}
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMapper, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.QuerySQL
 import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
@@ -105,6 +105,7 @@ object SQLDialect {
 				op.defaultColumns(mapping)
 		}
 
+		val WithScope    :SpellingScope = new OperationTypeScope(SELECT, "WITH")
 		val SelectScope  :SpellingScope = new OperationTypeScope(SELECT, "SELECT")
 		val FromScope    :SpellingScope = new OperationTypeScope(SELECT, "FROM")
 		val WhereScope   :SpellingScope = new OperationTypeScope(FILTER, "WHERE")
@@ -193,15 +194,22 @@ object SQLDialect {
 		def spell[P, V](query :Query[P, V]) :SpelledSQL[P, RowProduct] =
 			apply(query)(newContext)
 
-		/** Renders as a stand alone SQL query a ''select'' top-level, parameterless ''select'' expression. Defaults to
+		/** Renders as a stand alone SQL query a top-level, parameterless ''select'' expression. Defaults to
 		  * [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.paramless paramless]]`(query)(`[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.newContext newContext]]`)`.
 		  * @tparam V      the nominal value type of the whole ''select'' clause of the query (or unified ''select''
 		  *                clauses for compound ''selects'').
 		  * @return a formatted SQL string with a [[net.noresttherein.oldsql.schema.SQLWriteForm form]] setting
 		  *         all bound and unbound parameters present in the query.
 		  */
-		def spell[V](query :QuerySQL[RowProduct, V]) :SpelledSQL[@~, RowProduct] =
-			paramless(query)(newContext)
+		def spell[V](query :QuerySQL[RowProduct, V]) :SpelledSQL[@~, RowProduct] = query.withClause.toSeq match {
+			case Seq() => paramless(query)(newContext)
+			case ctes =>
+				val ctx = newContext
+				val withClause = "WITH " +: ctes.map { cte =>
+					(cte.name + " " + AS + " (") +: (paramless(cte.query)(ctx).sql + ")")
+				}.reduce(_ + ", " + _)
+				withClause +: paramless(query)(ctx)
+		}
 
 
 		/** Renders as SQL a parameterless, [[net.noresttherein.oldsql.sql.ast.QuerySQL.GroundQuery ground]] ''select''
@@ -604,7 +612,7 @@ object SQLDialect {
 		  * of the formatted expression. This method terminates the recursion and simply returns the column name
 		  * qualified with the alias for the given `JoinedTable`, as specified by `context` - unless the alias
 		  * is an empty string, in which case the column name will not be qualified. The `table` argument
-		  * must refer to a [[net.noresttherein.oldsql.schema.Relation.Table Table]] relation (in official SQL
+		  * must refer to a [[net.noresttherein.oldsql.schema.Table Table]] relation (in official SQL
 		  * terminology this includes ''stored views'' and ''select'' expressions as well as ''base tables'') -
 		  * if it is some kind of synthetic pseudo relation existing only in the framework, an exception will be thrown.
 		  *///context must correspond to RowProduct the table is based on (same number of tables)
@@ -669,6 +677,7 @@ object SQLDialect {
 		  */
 		def inline    :SQLSpelling
 
+		def inWith    :SQLSpelling
 		def inSelect  :SQLSpelling //= in(SelectScope)
 		def inFrom    :SQLSpelling //= in(FromScope)
 		def inWhere   :SQLSpelling //= in(WhereScope)
@@ -678,6 +687,7 @@ object SQLDialect {
 		def inUpdate  :SQLSpelling //= in(UpdateScope)
 
 		def in(scope :SpellingScope) :SQLSpelling = scope match {
+			case WithScope    => inWith
 			case SelectScope  => inSelect
 			case FromScope    => inFrom
 			case WhereScope   => inWhere
@@ -704,6 +714,7 @@ object SQLDialect {
 		def UNION_ALL  :String = operator("union all")
 		def INTERSECT  :String = operator("intersect")
 		def MINUS      :String = operator("minus")
+		def WITH       :String = keyword("with")
 		def SELECT     :String = keyword("select")
 		def FROM       :String = keyword("from")
 		def WHERE      :String = keyword("where")
@@ -864,48 +875,50 @@ object SQLDialect {
 			override def function(sql :String) :String = author.function(sql)
 			override def keyword(sql :String) :String  = author.keyword(sql)
 
-			override def scope :SpellingScope   = author.scope
-			override def inline :SQLSpelling    = author.inline
-			override def inSelect :SQLSpelling  = author.inSelect
-			override def inFrom :SQLSpelling    = author.inFrom
-			override def inWhere :SQLSpelling   = author.inWhere
-			override def inGroupBy :SQLSpelling = author.inGroupBy
-			override def inHaving :SQLSpelling  = author.inHaving
-			override def inInsert :SQLSpelling  = author.inInsert
-			override def inUpdate :SQLSpelling  = author.inUpdate
+			override def scope     :SpellingScope = author.scope
+			override def inline    :SQLSpelling   = author.inline
+			override def inWith    :SQLSpelling   = author.inWith
+			override def inSelect  :SQLSpelling   = author.inSelect
+			override def inFrom    :SQLSpelling   = author.inFrom
+			override def inWhere   :SQLSpelling   = author.inWhere
+			override def inGroupBy :SQLSpelling   = author.inGroupBy
+			override def inHaving  :SQLSpelling   = author.inHaving
+			override def inInsert  :SQLSpelling   = author.inInsert
+			override def inUpdate  :SQLSpelling   = author.inUpdate
 			override def in(scope :SpellingScope) :SQLSpelling = author.in(scope)
 
-			override def NULL :String       = author.NULL
-			override def TRUE :String       = author.TRUE
-			override def FALSE :String      = author.FALSE
-			override def CONCAT :String     = author.CONCAT
-			override def LIKE :String       = author.LIKE
-			override def BETWEEN :String    = author.BETWEEN
-			override def NOT :String        = author.NOT
-			override def AND :String        = author.AND
-			override def OR :String         = author.OR
-			override def UNION :String      = author.UNION
-			override def UNION_ALL :String  = author.UNION_ALL
-			override def INTERSECT :String  = author.INTERSECT
-			override def MINUS :String      = author.MINUS
-			override def SELECT :String     = author.SELECT
-			override def FROM :String       = author.FROM
-			override def WHERE :String      = author.WHERE
-			override def GROUP_BY :String   = author.GROUP_BY
-			override def HAVING :String     = author.HAVING
-			override def AS :String         = author.AS
-			override def INNER_JOIN :String = author.INNER_JOIN
-			override def OUTER_JOIN :String = author.OUTER_JOIN
-			override def LEFT_JOIN :String  = author.LEFT_JOIN
-			override def RIGHT_JOIN :String = author.RIGHT_JOIN
-			override def ON :String         = author.ON
-			override def INSERT :String     = author.INSERT
-			override def INTO :String       = author.INTO
-			override def VALUES :String     = author.VALUES
-			override def UPDATE :String     = author.UPDATE
-			override def SET :String        = author.SET
-			override def MERGE :String      = author.MERGE
-			override def DELETE :String     = author.DELETE
+			override def NULL        :String = author.NULL
+			override def TRUE        :String = author.TRUE
+			override def FALSE       :String = author.FALSE
+			override def CONCAT      :String = author.CONCAT
+			override def LIKE        :String = author.LIKE
+			override def BETWEEN     :String = author.BETWEEN
+			override def NOT         :String = author.NOT
+			override def AND         :String = author.AND
+			override def OR          :String = author.OR
+			override def UNION       :String = author.UNION
+			override def UNION_ALL   :String = author.UNION_ALL
+			override def INTERSECT   :String = author.INTERSECT
+			override def MINUS       :String = author.MINUS
+			override def WITH        :String = author.WITH
+			override def SELECT      :String = author.SELECT
+			override def FROM        :String = author.FROM
+			override def WHERE       :String = author.WHERE
+			override def GROUP_BY    :String = author.GROUP_BY
+			override def HAVING      :String = author.HAVING
+			override def AS          :String = author.AS
+			override def INNER_JOIN  :String = author.INNER_JOIN
+			override def OUTER_JOIN  :String = author.OUTER_JOIN
+			override def LEFT_JOIN   :String = author.LEFT_JOIN
+			override def RIGHT_JOIN  :String = author.RIGHT_JOIN
+			override def ON          :String = author.ON
+			override def INSERT      :String = author.INSERT
+			override def INTO        :String = author.INTO
+			override def VALUES      :String = author.VALUES
+			override def UPDATE      :String = author.UPDATE
+			override def SET         :String = author.SET
+			override def MERGE       :String = author.MERGE
+			override def DELETE      :String = author.DELETE
 
 			override def newContext :SQLContext = author.newContext
 
@@ -949,7 +962,7 @@ object SQLDialect {
 	  * [[net.noresttherein.oldsql.sql.Query.defaultSpelling Query]],
 	  * [[net.noresttherein.oldsql.sql.SQLExpression.defaultSpelling SQLException]],
 	  * [[net.noresttherein.oldsql.sql.RowProduct.defaultSpelling RowProduct]],
-	  * [[net.noresttherein.oldsql.schema.Relation.Table.defaultSpelling Table]] and others, doing little by itself
+	  * [[net.noresttherein.oldsql.schema.Table.defaultSpelling Table]] and others, doing little by itself
 	  * that is not required by the contract of [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
 	  * One added feature is ensuring table aliases are unique, by treating `alias` parameters to
 	  * [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.table table]] methods as proposed, rather than required
@@ -983,6 +996,7 @@ object SQLDialect {
 			new DefaultSpelling(literals, operators, functions, keywords, aliases)(scope, isInline)
 
 		override def inline    :SQLSpelling = if (isInline) this else copy(scope, true)
+		override def inWith    :SQLSpelling = if (scope == WithScope) this else copy(WithScope, false)
 		override def inSelect  :SQLSpelling = if (scope == SelectScope) this else copy(SelectScope, true)
 		override def inFrom    :SQLSpelling = if (scope == FromScope) this else copy(FromScope, false)
 		override def inWhere   :SQLSpelling = if (scope == WhereScope) this else copy(WhereScope, false)
@@ -992,6 +1006,7 @@ object SQLDialect {
 		override def inUpdate  :SQLSpelling = if (scope == UpdateScope) this else copy(UpdateScope, false)
 
 		override def in(scope :SpellingScope) :SQLSpelling = scope match {
+			case WithScope    => inWith
 			case SelectScope  => inSelect
 			case FromScope    => inFrom
 			case WhereScope   => inWhere
@@ -1089,6 +1104,7 @@ object SQLDialect {
 		override val UNION_ALL  :String = operators("union all")
 		override val INTERSECT  :String = operators("intersect")
 		override val MINUS      :String = operators("minus")
+		override val WITH       :String = keywords("with")
 		override val SELECT     :String = keywords("select")
 		override val FROM       :String = keywords("from")
 		override val WHERE      :String = keywords("where")

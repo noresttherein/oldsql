@@ -10,8 +10,9 @@ import net.noresttherein.oldsql.exceptions.{IllegalSQLException, InseparableExpr
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadForm, SQLWriteForm, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
-import net.noresttherein.oldsql.schema.Table.SelectRelation
-import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLDialect, SQLExpression, StandardSQL}
+import net.noresttherein.oldsql.schema.Table.{Aliased, TableExpression}
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLDialect, SQLExpression, StandardSQL, WithClause}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult
 import net.noresttherein.oldsql.sql.Incantation.Cantrip
@@ -69,8 +70,8 @@ trait QuerySQL[-F <: RowProduct, V]
 	def one :SQLExpression[F, GlobalScope, V] = to[V]
 
 	/** Converts this ''select'' to an expression for a result set which can be used in conjunction with
-	  * [[net.noresttherein.oldsql.sql.ast.ConditionSQL.ExistsSQL ExistsSQL]] or
-	  * [[net.noresttherein.oldsql.sql.ast.ConditionSQL.InSQL InSQL]] and the like.
+	  * [[net.noresttherein.oldsql.sql.ast.ExistsSQL ExistsSQL]] or
+	  * [[net.noresttherein.oldsql.sql.ast.InSQL InSQL]] and the like.
 	  */
 	def rows :SQLExpression[F, GlobalScope, Seq[V]] = to[Seq[V]]
 
@@ -107,20 +108,21 @@ trait QuerySQL[-F <: RowProduct, V]
 	  */
 	protected def spellParamless(implicit spelling :SQLSpelling, top :QuerySQL[F, V] <:< QuerySQL[RowProduct, V])
 			:SpelledSQL[@~, RowProduct] =
-		cachedSpelling match {
-			case null =>
-				val sql = spelling.spell(top(this))
-				cachedSQL = sql
+	{
+		@inline def shazam = if (cachedSpelling == spelling) cachedSQL else spelling.spell(top(this))
+		if (cachedSQL == null) synchronized {
+			if (cachedSQL == null) {
 				cachedSpelling = spelling
-				sql
-			case s if s == spelling => cachedSQL
-			case _ => spelling.spell(top(this))
+				cachedSQL = spelling.spell(top(this))
+				cachedSQL
+			} else shazam
+		} else {
+			if (cachedSpelling == null) synchronized { shazam }
+			else shazam
 		}
-	//		if (spelling == StandardSQL.spelling) standardSQL else spelling.spell(this)
-
-	@volatile private var cachedSQL :SpelledSQL[@~, RowProduct] = _
-	@volatile private var cachedSpelling :SQLSpelling = _
-	//	private lazy val standardSQL = StandardSQL.spelling.spell(this)
+	}
+	private var cachedSQL :SpelledSQL[@~, RowProduct] = _
+	private var cachedSpelling :SQLSpelling = _
 
 
 	/** Formats this query as an SQL `String` expression for use inside a tuple with other expressions,
@@ -156,7 +158,7 @@ trait QuerySQL[-F <: RowProduct, V]
 		paramlessSpelling(context)(spelling, top)
 
 
-	/** Target of [[net.noresttherein.oldsql.sql.ast.QuerySQL.TopQuerySQLExtension.spell spell]] extension method.
+	/** Target of [[net.noresttherein.oldsql.sql.ast.QuerySQL.TopQuerySQLExtension.chant chant]] extension method.
 	  * Simply forwards to [[net.noresttherein.oldsql.sql.SQLDialect.apply[R,Y](query:QuerySQL[RowProduct,V])* apply]]
 	  * method of the implicit [[net.noresttherein.oldsql.sql.SQLDialect dialect]].
 	  */
@@ -178,10 +180,10 @@ sealed abstract class ImplicitDerivedTables {
 	//  we need to preserve the value type of the query as the subject type, and bound MappingAt does not specify it.
 	//todo: replace typed projection with projection once we get rid of references to BaseMapping in API
 	implicit def arbitraryQueryRelation[V](query :QuerySQL[RowProduct, V]) :Table[MappingOf[V]#TypedProjection] =
-		SelectRelation[query.ResultMapping, V](query).asInstanceOf[Table[MappingOf[V]#TypedProjection]]
+		TableExpression[query.ResultMapping, V](query).asInstanceOf[Table[MappingOf[V]#TypedProjection]]
 
 	implicit def singleColumnRelation[V](query :ColumnQuery[RowProduct, V]) :Table[MappingOf[V]#ColumnProjection] =
-		SelectRelation[query.ResultMapping, V](query)
+		TableExpression[query.ResultMapping, V](query)
 }
 
 
@@ -243,8 +245,10 @@ object QuerySQL extends ImplicitDerivedTables {
 	               (private val self :QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
 		extends AnyVal
 	{
-		def toRelation :Table[M] = SelectRelation[M, V](self)
-		def toTable :Table[M] = SelectRelation[M, V](self)
+		def toRelation :Table[M] = TableExpression[M, V](self)
+		def toTable :Table[M] = TableExpression[M, V](self)
+
+		def as[A <: Label](alias :A) :M Aliased A = self.toTable as alias
 
 //		def as[A <: Label](alias :A) :With[M] As A = With(alias, this) //todo: With for MappingQuerySQL
 		//extracted because of conflicts in TopSelect with Query
@@ -287,7 +291,7 @@ object QuerySQL extends ImplicitDerivedTables {
 
 
 	implicit def derivedTable[M[O] <: MappingAt[O]](query :MappingQuerySQL[RowProduct, M]) :Table[M] =
-		SelectRelation[M, M[Unit]#Subject](query)
+		TableExpression[M, M[Unit]#Subject](query)
 
 
 
@@ -498,6 +502,8 @@ trait CompoundSelectSQL[-F <: RowProduct, V] extends CompositeSQL[F, GlobalScope
 	val left :QuerySQL[F, V]
 	val right :QuerySQL[F, V]
 	val operator :SetOperator
+
+	override def withClause :WithClause = left.withClause ++ right.withClause
 
 	override def parts :Seq[QuerySQL[F, V]] = left::right::Nil
 	override def readForm :SQLReadForm[Rows[V]] = left.readForm

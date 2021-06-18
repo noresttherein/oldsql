@@ -694,6 +694,8 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 		applyTo(visitor)
 
 
+	def withClause :WithClause = WithClause.empty
+
 	/** List of [[net.noresttherein.oldsql.sql.ast.SQLParameter ''bound'']] parameters used by this expression,
 	  * in the order in which they would appear in the rendered SQL.
 	  */

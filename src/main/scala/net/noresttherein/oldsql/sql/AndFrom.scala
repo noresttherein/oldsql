@@ -69,25 +69,25 @@ trait AndFrom[+L <: RowProduct, R[O] <: MappingAt[O]]
 	override type Dealiased >: Self <: (left.Self AndFrom R) {
 		type Last[O <: RowProduct] = thisClause.Last[O]
 		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Implicit = thisClause.Implicit
+		type Params      = thisClause.Params
+		type FullRow     = thisClause.FullRow
+		type Explicit    = thisClause.Explicit
+		type Implicit    = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
+		type Row      = thisClause.Row
 		type OuterRow = thisClause.OuterRow
 	}
 
 	override type Self <: (left.Self AndFrom R) {
 		type Last[O <: RowProduct] = thisClause.Last[O]
 		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
+		type Params      = thisClause.Params
+		type FullRow     = thisClause.FullRow
+		type Explicit    = thisClause.Explicit
+		type Inner       = thisClause.Inner
+		type Implicit    = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
+		type Row      = thisClause.Row
 		type OuterRow = thisClause.OuterRow
 	}
 
@@ -293,29 +293,29 @@ trait NonParam[+L <: RowProduct, R[O] <: MappingAt[O]] extends AndFrom[L, R] wit
 
 	override type Generalized >: Dealiased <: (left.Generalized NonParam R) {
 		type Generalized <: thisClause.Generalized
-		type Explicit <: thisClause.Explicit
-		type Implicit <: thisClause.Implicit
+		type Explicit    <: thisClause.Explicit
+		type Implicit    <: thisClause.Implicit
 		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
 	}
 
 	override type Dealiased >: Self <: (left.Self NonParam R) {
 		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type Explicit = thisClause.Explicit
-		type Implicit = thisClause.Implicit
+		type Params      = thisClause.Params
+		type Explicit    = thisClause.Explicit
+		type Implicit    = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
+		type Row      = thisClause.Row
 		type OuterRow = thisClause.OuterRow
 	}
 
 	override type Self <: (left.Self NonParam R) {
 		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
+		type Params      = thisClause.Params
+		type Explicit    = thisClause.Explicit
+		type Inner       = thisClause.Inner
+		type Implicit    = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
+		type Row      = thisClause.Row
 		type OuterRow = thisClause.OuterRow
 	}
 
@@ -333,6 +333,15 @@ trait NonParam[+L <: RowProduct, R[O] <: MappingAt[O]] extends AndFrom[L, R] wit
 	override def fullRow[E <: RowProduct]
 	                    (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, FullRow] =
 		left.fullRow(target)(expansion.expandFront[left.Generalized, R]) ~ last.expand(target)
+
+
+	override type ParamsOnly = false
+	override type LastParam  = left.LastParam
+	override type Params     = left.Params
+	override type DecoratedParamless[D <: BoundParamless] = D
+
+	protected override def decoratedBind[D <: BoundParamless](params :Params)(decorate :Paramless => D) :D =
+		decorate(bind(params))
 
 
 	override type DefineBase[+I <: RowProduct] = I
@@ -394,11 +403,11 @@ sealed trait From[T[O] <: MappingAt[O]]
 
 	override type Last[O <: RowProduct] = JoinedTable[O, T]
 	override type Generalized = RowProduct NonParam T
-	override type Dealiased = From[T]
+	override type Dealiased   = From[T]
 	override type Self <: From[T]
 
 	override type GeneralizedLeft[+L <: RowProduct] = L NonParam T
-	override type DealiasedLeft[+L <: RowProduct] = L NonParam T
+	override type DealiasedLeft[+L <: RowProduct]   = L NonParam T
 	override type WithLeft[+L <: RowProduct] <: L NonParam T
 //	override type GeneralizedRight[R[O] <: MappingAt[O]] = RowProduct NonParam R
 //	override type WithRight[R[O] <: MappingAt[O]] = From[R]
@@ -417,18 +426,12 @@ sealed trait From[T[O] <: MappingAt[O]]
 		filter.basedOn(target)
 
 
-	override type LastParam = Nothing
-	override type Params = @~
 	override type AppliedParam = Nothing
 	override type GeneralizedParamless = Generalized
 	override type Paramless = Self
-	override type DecoratedParamless[D <: BoundParamless] = D
 
 	override def bind(param :Nothing) :Nothing = left.bind(param)
 	override def bind(params :Params) :Self = self
-
-	protected override def decoratedBind[D <: BoundParamless](params: @~)(decorate :Self => D) :D =
-		decorate(self)
 
 
 	override def size = 1
@@ -441,10 +444,10 @@ sealed trait From[T[O] <: MappingAt[O]]
 	override type JoinedWithSubselect[+P <: NonEmptyFrom] = JoinedWith[P, Subselect]
 
 	override type Explicit = RowProduct AndFrom T
-	override type Inner = RowProduct AndFrom T
+	override type Inner    = RowProduct AndFrom T
 	override type Implicit = RowProduct
-	override type Outer = Dual
-	override type Base = RowProduct
+	override type Outer    = Dual
+	override type Base     = RowProduct
 
 	override type Row = @~ ~ last.Subject
 

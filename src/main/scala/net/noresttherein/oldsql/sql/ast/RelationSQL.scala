@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.schema.{ColumnMapping, MappingExtract, Relation,
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingOf, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.sql.{AndFrom, ComponentSetter, Expanded, RowProduct, Select, SQLExpression}
+import net.noresttherein.oldsql.sql.{AndFrom, ComponentSetter, Expanded, RowProduct, Select, SQLExpression, WithClause}
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, PrefixOf, TopFrom}
 import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, LocalScope, SQLTypeUnification}
@@ -82,6 +82,8 @@ trait JoinedRelation[F <: RowProduct, T[A] <: MappingAt[A]] extends ComponentSQL
 	  */
 	def asIn[G <: RowProduct](implicit expansion :F PrefixOf G) :JoinedRelation[G, T]
 
+
+	override def withClause :WithClause = relation.withClause
 
 	/** Checks if this instance and the argument use the same [[net.noresttherein.oldsql.schema.Relation Relation]]
 	  * and have the same offset. When comparing relations from the same

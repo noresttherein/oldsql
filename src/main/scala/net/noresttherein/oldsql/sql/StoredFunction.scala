@@ -14,13 +14,12 @@ import net.noresttherein.oldsql.schema.ColumnWriteForm.SingletonColumnWriteForm
 import net.noresttherein.oldsql.sql.Call.{DirectCallFunction, DirectCallProcedure}
 import net.noresttherein.oldsql.sql.Call.CallFunction.{CallFunctionNamedParamDecl, CallFunctionParamDecl}
 import net.noresttherein.oldsql.sql.Call.CallProcedure.{CallProcedureNamedParamDecl, CallProcedureParamDecl}
-import net.noresttherein.oldsql.sql.DMLStatement.StatementResult
+import net.noresttherein.oldsql.sql.RowProduct.PureParamFrom
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.StoredProcedure.ProcedureParameterization
-import net.noresttherein.oldsql.sql.ast.FunctionSQL
+import net.noresttherein.oldsql.sql.ast.{FunctionSQL, SQLParameter}
 import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumnSQL
-import net.noresttherein.oldsql.sql.ast.SQLParameter
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{ProcedureSignature, SpelledSQL}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
@@ -469,8 +468,8 @@ object StoredFunction {
 		  * @tparam P the type of the - currently last - parameter of the `RowProduct` with the unbound parameters
 		  *           used by the future SQL expression with arguments for the procedure.
 		  */
-		def apply[P] :CallFunctionParamDecl[FromSome, @~, P, X, Y] =
-			new CallFunctionParamDecl(From.template, function)
+		def apply[P] :CallFunctionParamDecl[PureParamFrom[@~], @~, P, X, Y] =
+			CallFunctionParamDecl(function)
 
 		/** Initiates the preparation of a parameterized stored procedure call ending with the creation of
 		  * a [[net.noresttherein.oldsql.sql.Call.CallFunction CallFunction]] statement with `P` as its first - or only -
@@ -501,8 +500,8 @@ object StoredFunction {
 		  *           from [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]] for the whole domain
 		  *           when creating the SQL expression with the arguments for the procedure.
 		  */
-		def apply[N <: Label, P] :CallFunctionNamedParamDecl[FromSome, @~, N, P, X, Y] =
-			new CallFunctionNamedParamDecl(From.template, function)
+		def apply[N <: Label, P] :CallFunctionNamedParamDecl[PureParamFrom[@~], @~, N, P, X, Y] =
+			CallFunctionNamedParamDecl(function)
 
 		/** Create an SQL expression invoking this function, which can be used as part of larger SQL expressions
 		  * in an SQL query or a DML statement. If the result is a ground expression - based on `RowProduct` itself,
@@ -668,8 +667,8 @@ object ColumnFunction {
 		  * @tparam P the type of the - currently last - parameter of the `RowProduct` with the unbound parameters
 		  *           used by the future SQL expression with arguments for the procedure.
 		  */
-		def apply[P] :CallFunctionParamDecl[FromSome, @~, P, X, Y] =
-			new CallFunctionParamDecl(From.template, function)
+		def apply[P] :CallFunctionParamDecl[PureParamFrom[@~], @~, P, X, Y] =
+			CallFunctionParamDecl(function)
 
 		/** Initiates the preparation of a parameterized stored procedure call ending with the creation of
 		  * a [[net.noresttherein.oldsql.sql.Call.CallFunction CallFunction]] statement with `P` as its first - or only -
@@ -700,8 +699,8 @@ object ColumnFunction {
 		  *           from [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]] for the whole domain
 		  *           when creating the SQL expression with the arguments for the procedure.
 		  */
-		def apply[N <: Label, P] :CallFunctionNamedParamDecl[FromSome, @~, N, P, X, Y] =
-			new CallFunctionNamedParamDecl(From.template, function)
+		def apply[N <: Label, P] :CallFunctionNamedParamDecl[PureParamFrom[@~], @~, N, P, X, Y] =
+			CallFunctionNamedParamDecl(function)
 
 		/** Create an SQL expression invoking this function, which can be used as part of larger SQL expressions
 		  * in an SQL query or a DML statement. If the result is a ground expression - based on `RowProduct` itself,
@@ -722,7 +721,6 @@ object ColumnFunction {
 			form.last
 	}
 
-/*
 	implicit class ColumnFunction0Extension[Y](self :ColumnFunction0[Y]) extends ColumnFunctionExtension(self) {
 		def apply() :FunctionColumnSQL[_, _, _, Y] = function(ChainTuple())
 	}
@@ -928,7 +926,6 @@ object ColumnFunction {
 				:FunctionColumnSQL[X, Sc, @~ ~A~B~C~D~E~F~G~H~I~J, Y] =
 			function(a.chain~b~c~d~e~f~g~h~i~j)
 	}
-*/
 
 
 

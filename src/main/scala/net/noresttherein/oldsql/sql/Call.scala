@@ -9,9 +9,9 @@ import net.noresttherein.oldsql.sql.Call.CallProcedure.{CallProcedureNamedParamD
 import net.noresttherein.oldsql.sql.Call.InOutCallFunction.{CaseInOutFunction, InOutFunctionVisitor}
 import net.noresttherein.oldsql.sql.Call.InOutCallProcedure.{CaseInOutProcedure, InOutProcedureVisitor}
 import net.noresttherein.oldsql.sql.DML.{BoundDML, ComposedDML, DMLAPI, RepeatedDML}
-import net.noresttherein.oldsql.sql.DMLStatement.{BoundStatement, ComposedStatement, DMLStatementAPI, StatementVisitor, StatementResult, AlteredResultStatement}
+import net.noresttherein.oldsql.sql.DMLStatement.{AlteredResultStatement, BoundStatement, ComposedStatement, DMLStatementAPI, StatementResult, StatementVisitor}
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult.NoResult
-import net.noresttherein.oldsql.sql.RowProduct.{As, JoinedMappings, ParameterizedFrom, ParameterizedWith, ParamlessFrom}
+import net.noresttherein.oldsql.sql.RowProduct.{As, JoinedMappings, ParameterizedFrom, ParameterizedWith, ParamlessFrom, PureParamFrom}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
@@ -699,7 +699,7 @@ object Call {
 		  * of the arguments for the procedure are based on. It can be completely unrelated to the
 		  * [[net.noresttherein.oldsql.sql.Call.CallProcedure.Params types of parameters]] of the procedure.
 		  */
-		type Domain <: ParameterizedFrom[Bound]
+		type Domain <: PureParamFrom[Bound]
 
 		/** A join or joins of mappings for unbound parameters used by the SQL
 		  * [[net.noresttherein.oldsql.sql.SQLExpression expressions]] provided as the arguments for the procedure.
@@ -787,7 +787,7 @@ object Call {
 		  * @return a statement invoking the procedure using the JDBC procedure call syntax.
 		  */
 		def ParamCallProcedure[Args <: Chain, Params <: Chain]
-		                      (domain :ParameterizedFrom[Args]) //todo: type which enforces only JoinParam joins
+		                      (domain :PureParamFrom[Args]) //todo: type which enforces only JoinParam joins
 		                      (procedure :StoredProcedure[Params], args :ChainTuple[domain.Self, GlobalScope, Params])
 				:ParamCallProcedure[Args] =
 			new ParamCallProcedureImpl[domain.type, domain.Self, Args, Params](domain, procedure, args)
@@ -806,7 +806,7 @@ object Call {
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamCallProcedure[_]]
 		}
 
-		private[Call] class ParamCallProcedureImpl[D <: RowProduct { type Self <: F; type Params = Args },
+		private[Call] class ParamCallProcedureImpl[D <: PureParamFrom[Args] { type Self <: F },
 		                                           F <: ParameterizedFrom[Args], Args <: Chain, Xs <: Chain]
 		                                          (override val domain :D, override val procedure :StoredProcedure[Xs],
 		                                           override val args :ChainTuple[F, GlobalScope, Xs])
@@ -854,7 +854,7 @@ object Call {
 		                             protected val procedure :StoredProcedure[Xs])
 
 		object CallProcedureParamDecl {
-			implicit def domain[F <: FromSome, Ps <: Chain, P :SQLForm, Xs <: Chain]
+			implicit def domain[F <: PureParamFrom[Ps], Ps <: Chain, P :SQLForm, Xs <: Chain]
 			                   (param :CallProcedureParamDecl[F, Ps, P, Xs])
 					:CallProcedureParams[F WithParam P, Ps ~ P, Xs] =
 				new CallProcedureParams(JoinParam(param.domain, ?:[P]), param.procedure)
@@ -895,7 +895,7 @@ object Call {
 		                                  protected val procedure :StoredProcedure[Xs])
 
 		object CallProcedureNamedParamDecl {
-			implicit def domain[F <: FromSome, Ps <: Chain, N <: Label :ValueOf, P :SQLForm, Xs <: Chain]
+			implicit def domain[F <: PureParamFrom[Ps], Ps <: Chain, N <: Label :ValueOf, P :SQLForm, Xs <: Chain]
 			                   (param :CallProcedureNamedParamDecl[F, Ps, N, P, Xs])
 					:CallProcedureParams[F WithParam P As N, Ps ~ P, Xs] =
 				new CallProcedureParams(JoinParam(param.domain, ?:[N, P]), param.procedure)
@@ -922,7 +922,7 @@ object Call {
 		  *            [[net.noresttherein.oldsql.sql.SQLExpression expressions]] using `F` as their base.
 		  * @tparam Xs a chain listing the types of all formal type parameters of the executed procedure.
 		  */
-		class CallProcedureParams[F <: FromSome, Ps <: Chain, Xs <: Chain]
+		class CallProcedureParams[F <: PureParamFrom[Ps], Ps <: Chain, Xs <: Chain]
 		                         (domain :F ParameterizedWith Ps, procedure :StoredProcedure[Xs])
 		{
 			/** Add another unbound parameter to the parameters of the created
@@ -1103,7 +1103,7 @@ object Call {
 		  * @return a statement invoking the function using the JDBC function call syntax.
 		  */
 		def ParamCallFunction[Args <: Chain, Params <: Chain, Y]
-		                     (domain :ParameterizedFrom[Args])
+		                     (domain :PureParamFrom[Args])
 		                     (function :StoredFunction[Params, Y], args :ChainTuple[domain.Self, GlobalScope, Params])
 				:ParamCallFunction[Args, Y] =
 			new ParamCallFunctionImpl[domain.type, domain.Self, Args, Params, Y](domain, function, args)
@@ -1124,7 +1124,7 @@ object Call {
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamCallFunction[_, _]]
 		}
 
-		private class ParamCallFunctionImpl[D <: RowProduct { type Self <: F; type Params = Args },
+		private class ParamCallFunctionImpl[D <: PureParamFrom[Args] { type Self <: F },
 		                                    F <: ParameterizedFrom[Args], Args <: Chain, Xs <: Chain, Res]
 		                                   (override val domain :D, override val procedure :StoredFunction[Xs, Res],
 		                                    override val args :ChainTuple[F, GlobalScope, Xs])
@@ -1176,7 +1176,13 @@ object Call {
 		                            protected val function :StoredFunction[Xs, Y])
 
 		object CallFunctionParamDecl {
-			implicit def domain[F <: FromSome, Ps <: Chain, P :SQLForm, Xs <: Chain, Y]
+			def apply[P, Xs <: Chain, Y](function :StoredFunction[Xs, Y])
+					:CallFunctionParamDecl[PureParamFrom[@~], @~, P, Xs, Y] =
+				new CallFunctionParamDecl[PureParamFrom[@~], @~, P, Xs, Y](
+					PureParamFrom.empty.asInstanceOf[PureParamFrom[@~] ParameterizedWith @~], function
+				)
+
+			implicit def domain[F <: PureParamFrom[Ps], Ps <: Chain, P :SQLForm, Xs <: Chain, Y]
 			                   (param :CallFunctionParamDecl[F, Ps, P, Xs, Y])
 					:CallFunctionParams[F WithParam P, Ps ~ P, Xs, Y] =
 				new CallFunctionParams(JoinParam(param.domain, ?:[P]), param.function)
@@ -1218,7 +1224,13 @@ object Call {
 		                                 protected val function :StoredFunction[Xs, Y])
 
 		object CallFunctionNamedParamDecl {
-			implicit def domain[F <: FromSome, Ps <: Chain, N <: Label :ValueOf, P :SQLForm, Xs <: Chain, Y]
+			def apply[N <: Label, P, Xs <: Chain, Y](function :StoredFunction[Xs, Y])
+					:CallFunctionNamedParamDecl[PureParamFrom[@~], @~, N, P, Xs, Y] =
+				new CallFunctionNamedParamDecl[PureParamFrom[@~], @~, N, P, Xs, Y](
+					PureParamFrom.empty.asInstanceOf[PureParamFrom[@~] ParameterizedWith @~], function
+				)
+
+			implicit def domain[F <: PureParamFrom[Ps], Ps <: Chain, N <: Label :ValueOf, P :SQLForm, Xs <: Chain, Y]
 			                   (param :CallFunctionNamedParamDecl[F, Ps, N, P, Xs, Y])
 					:CallFunctionParams[F WithParam P As N, Ps ~ P, Xs, Y] =
 				new CallFunctionParams(JoinParam(param.domain, ?:[N, P]), param.function)
@@ -1244,7 +1256,7 @@ object Call {
 		  * @tparam Xs a chain listing the types of all formal parameters of the invoked function
 		  * @tparam Y  return type of the function.
 		  */
-		class CallFunctionParams[F <: FromSome, Ps <: Chain, Xs <: Chain, Y]
+		class CallFunctionParams[F <: PureParamFrom[Ps], Ps <: Chain, Xs <: Chain, Y]
 		                        (domain :F ParameterizedWith Ps, procedure :StoredFunction[Xs, Y])
 		{
 			/** Add another unbound parameter to the parameters of the created
@@ -1458,7 +1470,7 @@ object Call {
 		  * @return a statement invoking the procedure using the JDBC procedure call syntax.
 		  */
 		def ParamInOutCallProcedure[Args <: Chain, Params <: Chain, In <: Chain]
-		                           (domain :ParameterizedFrom[Args])
+		                           (domain :PureParamFrom[Args])
 		                           (procedure :StoredProcedure[Params], args :ChainTuple[domain.Self, GlobalScope, In])
 		                           (implicit signature :ProcedureInOutSignature[Params, In])
 				:ParamInOutCallProcedure[Args, signature.Out] =
@@ -1479,7 +1491,7 @@ object Call {
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamInOutCallProcedure[_, _]]
 		}
 
-		private class ParamInOutCallProcedureImpl[D <: RowProduct { type Self <: F; type Params = Args },
+		private class ParamInOutCallProcedureImpl[D <: PureParamFrom[Args] { type Self <: F; type Params = Args },
 		                                          F <: ParameterizedFrom[Args], Args <: Chain, Xs <: Chain, Res <: Chain]
 		                                         (domain :D, procedure :StoredProcedure[Xs],
 		                                          params :ChainTuple[F, GlobalScope, Xs],
@@ -1641,7 +1653,7 @@ object Call {
 		  * @return a statement invoking the function using the JDBC function call syntax.
 		  */
 		def ParamInOutCallFunction[Args <: Chain, Params <: Chain, In <: Chain, Y]
-		                          (domain :ParameterizedFrom[Args])
+		                          (domain :PureParamFrom[Args])
 		                          (function :StoredFunction[Params, Y], args :ChainTuple[domain.Self, GlobalScope, In])
 		                          (implicit signature :ProcedureInOutSignature[Params, In])
 				:ParamInOutCallFunction[Args, signature.Out, Y] =
@@ -1667,7 +1679,7 @@ object Call {
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamInOutCallFunction[_, _, _]]
 		}
 
-		private class ParamInOutCallFunctionImpl[D <: RowProduct { type Self <: F; type Params = Args },
+		private class ParamInOutCallFunctionImpl[D <: PureParamFrom[Args] { type Self <: F },
 		                                         F <: ParameterizedFrom[Args], Args <: Chain, Xs <: Chain, Out <: Chain, Res]
 		                                        (override val domain :D, override val procedure :StoredFunction[Xs, Res],
 		                                         override val args :ChainTuple[F, GlobalScope, Xs],

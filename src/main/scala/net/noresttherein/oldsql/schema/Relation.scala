@@ -5,23 +5,21 @@ import scala.collection.immutable.ArraySeq
 import net.noresttherein.oldsql.collection.{Opt, Unique}
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
+import net.noresttherein.oldsql.schema.BaseTable.TableFactory
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingOf, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.Relation.{AlteredRelation, NamedRelation, ProjectingRelation, RelationTemplate, StaticRelation}
-import net.noresttherein.oldsql.schema.BaseTable.TableFactory
+import net.noresttherein.oldsql.schema.Table.DerivedTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.ConstantMapping
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.{@:, Label}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.@:.Labeled
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.schema.support.AdjustedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.Adapted
-import net.noresttherein.oldsql.schema.BaseTable.TableFactory
-import net.noresttherein.oldsql.schema.Table.DerivedTable
-import net.noresttherein.oldsql.sql.{Adjoin, AndFrom, From, JoinedRelation, RowProduct}
+import net.noresttherein.oldsql.sql.{Adjoin, AndFrom, From, JoinedRelation, RowProduct, WithClause}
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.ast.{JoinedTable, QuerySQL, TableSQL}
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.mechanics.MappingReveal.MappingSubject
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
@@ -62,6 +60,16 @@ trait Relation[+M[O] <: MappingAt[O]] extends AbstractRelation with RelationTemp
 	  * component lists.
 	  */
 	def default :Relation[M] = this
+
+	/** All temporary named derived tables used by this relation, which should be included in the ''with'' clause
+	  * of any query or statement using this relation. It will return a non empty collection only
+	  * for [[net.noresttherein.oldsql.sql.CommonTableExpression CommonTableExpression]] itself, and those of
+	  * [[net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation GroupingRelation]] and
+	  * [[net.noresttherein.oldsql.schema.Table.TableExpression TableExpression]] instances which contain subselects
+	  * referencing them. Note that this refers only to `CommonTableExpression` instances and not all derived tables such
+	  * as database ''views'' or an inlined ''select'' of `TableExpression` itself.
+	  */
+	def withClause :WithClause = WithClause.empty
 
 	/** Checks if the given relation and this relation represent the same SQL object, that is are (possibly different)
 	  * views of the same relation.
@@ -177,15 +185,6 @@ object Relation {
 
 	type * = Relation[MappingAt]
 
-
-	/** Extension methods for [[net.noresttherein.oldsql.schema.Relation Relation]], extracted due to its covariance
-	  * in the mapping parameter.
-	  */
-	implicit class RelationAliasing[M[O] <: MappingAt[O]](private val self :Relation[M]) extends AnyVal {
-		@inline def alias[A <: Label :ValueOf] :M Aliased A = new Aliased[M, A](self, valueOf[A])
-		@inline def as[A <: Label](alias :A) :M Aliased A = new Aliased[M, A](self, alias)
-	}
-
 	implicit def identityCast[J[M[O] <: MappingAt[O]] <: _ Adjoin M, R[O] <: MappingAt[O], T[O] <: BaseMapping[_, O]]
 	                         (source :Relation[R])
 	                         (implicit cast :JoinedRelationSubject[J, R, T, BaseMapping.AnyAt]) :Relation[T] =
@@ -195,9 +194,9 @@ object Relation {
 
 	/** Factory methods of [[net.noresttherein.oldsql.schema.Relation Relation]] trait which return another
 	  * instance of the same type, representing a different column set of the same relation.
-	  */
+	  */ //consider: we are always returning R[M], maybe just declare R <: Relation[M]?
 	trait RelationTemplate[+M[O] <: MappingAt[O], +R[+T[O] <: MappingAt[O]] <: Relation[T]] {
-		this :RelationTemplate[M, R] =>
+//		this :RelationTemplate[M, R] =>
 
 		/** The mapping for this relation, with `Origin` type equal to `O`. This is the same as `apply[O]`, but can read
 		  * better if the origin type parameter `O` is omitted and inferred. Additionally, calling `apply[O]`
@@ -224,6 +223,10 @@ object Relation {
 		  */ //todo: in Scala 3 make the return type have the same subject type by using member types
 		def export[O] :MappingAt[O]// = apply[O]//Adapted[M[O]]
 
+//		/** The default view of the underlying SQL relation, that is an instance with cleared 'include' and 'exclude'
+//		  * component lists.
+//		  */
+//		def default :R[M] = this
 
 		def apply(components :M[this.type] => ComponentSelection[_, this.type]*) :R[M] = {
 			val self = row[this.type]; val alt = export[this.type]
@@ -274,7 +277,7 @@ object Relation {
 	  * relation `val`s before they are initialized - either have everything declared in a singleton object, or declare
 	  * relations as `lazy val`s (or `object`s themselves).
 	  */
-	private[schema] abstract class ProjectingRelation[+M[O] <: BaseMapping[S, O], S]
+	private[oldsql] abstract class ProjectingRelation[+M[O] <: BaseMapping[S, O], S]
 	                                                 (prototype: => M[Unit])
 	                                                 (implicit projection :IsomorphicProjection[M, S, Unit])
 		extends Relation[M]
@@ -372,91 +375,6 @@ object Relation {
 
 
 
-	/** A `Relation[M]` wrapper annotating it with an alias `L` (a string literal type).
-	  * The mapping of the relation is adapted to a [[net.noresttherein.oldsql.schema.bits.LabeledMapping LabeledMapping]]
-	  * `L @: M`. It exposes the labeled type as a single-argument type constructor `this.T[O]`
-	  * accepting the `Origin` type for use in `RowProduct` subclasses and other types accepting such a type constructor:
-	  * `Dual Join (Humans Aliased "humans")#T` (where `Humans[O] <: MappingAt[O]`).
-	  * @see [[net.noresttherein.oldsql.schema.bits.LabeledMapping.@:]]
-	  */
-	class Aliased[M[O] <: MappingAt[O], A <: Label](val relation :Relation[M], val alias :A)
-		extends StaticRelation[A, Labeled[A, M]#Projection]
-	{
-		type T[O] = A @: M[O]
-
-		override def apply[O] :A @: M[O] = labeled.asInstanceOf[A @: M[O]]
-		override def export[O] = relation.export[O]
-
-		override def name :A = alias
-
-		override def spell[P, O <: RowProduct, F <: O, T[X] <: MappingAt[X]]
-		                  (origin :JoinedRelation[O, T], component :MappingAt[O], inline :Boolean)
-		                  (context :SQLContext, params :Parameterization[P, F])
-		                  (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
-		{
-			val exported = if (component == labeled) relation.export[O] else component
-			relation.spell(origin, exported)(context, params)
-		}
-
-		protected override def spell[P, O <: RowProduct, F <: O, T[X] <: MappingAt[X], V]
-		                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
-		                            (context :SQLContext, params :Parameterization[P, F])
-		                            (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
-		{
-			val exported = if (column == labeled) relation.export[O].asInstanceOf[ColumnMapping[_, O]] else column
-			relation.spell(origin, exported)(context, params)
-		}
-
-		override def inline[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A]]
-		                   (origin :JoinedRelation[O, T], component :MappingAt[O])
-		                   (context :SQLContext, params :Parameterization[P, F])
-		                   (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, F]] =
-		{
-			val exported = if (component == labeled) relation.export[O] else component
-			relation.inline(origin, exported)(context, params)
-		}
-
-
-		private val labeled = alias @: relation[Unit].refine
-	}
-
-
-	object Aliased {
-		def apply[M[O] <: MappingAt[O], A <: Label](relation :Relation[M], alias :A) :Aliased[M, A] =
-			new Aliased(relation, alias)
-
-		def apply[M[O] <: MappingAt[O], A <: Label](table :Table[M], alias :A) :AliasedTable[M, A] =
-			new AliasedTable(table, alias)
-
-		def unapply[M[O] <: MappingAt[O]](relation :Relation[M]) :Opt[(Relation[MappingAt], Label)] =
-			relation match {
-				case aliased :Aliased.* => Got(aliased.relation, aliased.alias)
-				case _ => Lack
-			}
-
-
-		type * = Aliased[M, _ <: Label] forSome { type M[O] <: MappingAt[O] }
-
-		class AliasedTable[M[O] <: MappingAt[O], A <: Label](override val relation :Table[M], override val alias :A)
-			extends Aliased[M, A](relation, alias) with Table[Labeled[A, M]#Projection]
-		{
-			def table :Table[M] = relation
-
-			protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
-					:AliasedTable[M, A] =
-				new AliasedTable[M, A](relation.alterForwarder(includes, excludes), alias)
-
-			protected override def defaultSpelling[P, F <: RowProduct]
-			                                      (context :SQLContext, params :Parameterization[P, F])
-			                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
-				relation.defaultSpelling(spelling)(context, params)
-
-			override lazy val toString :String = relation.toString + " as " + alias
-		}
-	}
-
-
-
 	private[oldsql] val Dummy = Table("Dummy", new ConstantMapping["Dummy", "Dummy"]("Dummy"))
 
 }
@@ -490,7 +408,7 @@ trait Table[+M[O] <: MappingAt[O]] extends Relation[M] with RelationTemplate[M, 
 
 	/** Formats the relation for use in a ''from'' clause. For example,
 	  * a [[net.noresttherein.oldsql.schema.BaseTable table]] will simply return its name,
-	  * while a [[net.noresttherein.oldsql.schema.Table.SelectRelation select]] will format its whole SQL.
+	  * while a [[net.noresttherein.oldsql.schema.Table.TableExpression select]] will format its whole SQL.
 	  * This is the default spelling used by [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
 	  */
 	protected def defaultSpelling[P, F <: RowProduct]
@@ -507,6 +425,9 @@ trait Table[+M[O] <: MappingAt[O]] extends Relation[M] with RelationTemplate[M, 
 	                            (context :SQLContext, params :Parameterization[P, F])
 	                            (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
 		spelling.column(origin, export[O].export(column))(context, params)
+
+
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Table.* @unchecked]
 }
 
 
@@ -519,14 +440,26 @@ object Table {
 
 	def apply[S] :TableFactory[S] = BaseTable[S]
 
-	trait StaticTable[N <: String with Singleton, M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M] {
+	def delay[M[O] <: MappingAt[O]](table : => Table[M]) :Table[M] = new LazyTable(table)
+
+
+
+	trait StaticTable[N <: String with Singleton, +M[O] <: MappingAt[O]] extends Table[M] with StaticRelation[N, M] {
 		override def name :N
 	}
 
 	type * = Table[M] forSome { type M[O] <: MappingAt[O] }
 
 
+
+
+	/** Extension methods for [[net.noresttherein.oldsql.schema.Table Table]], extracted due to its covariance
+	  * in the mapping parameter.
+	  */
 	implicit class TableExtension[M[O] <: MappingAt[O]](private val table :Table[M]) extends AnyVal {
+		@inline def alias[A <: Label :ValueOf] :M Aliased A = new Aliased[M, A](table, valueOf[A])
+		@inline def as[A <: Label](alias :A) :M Aliased A = new Aliased[M, A](table, alias)
+
 		@inline def asLast :JoinedTable[RowProduct AndFrom M, M] =
 			table.expr.asInstanceOf[JoinedTable[RowProduct AndFrom M, M]]
 
@@ -549,7 +482,7 @@ object Table {
 
 	/** Supertype of all non-persistent (at least semantically) SQL relations.
 	  * This includes [[net.noresttherein.oldsql.schema.View views]] and
-	  * [[net.noresttherein.oldsql.schema.Table.SelectRelation selects]] used in ''from'' and ''with'' clauses.
+	  * [[net.noresttherein.oldsql.schema.Table.TableExpression selects]] used in ''from'' and ''with'' clauses.
 	  */
 	trait DerivedTable[+M[O] <: MappingAt[O]] extends Table[M] with RelationTemplate[M, DerivedTable] {
 
@@ -571,16 +504,20 @@ object Table {
 
 
 
-	trait SelectRelation[M[O] <: MappingAt[O]] extends DerivedTable[M] with RelationTemplate[M, SelectRelation] { outer =>
+	/** A (parameterless) SQL ''select'' adapted for use as a table in a ''from'' clause. */
+	trait TableExpression[+M[O] <: MappingAt[O]] extends DerivedTable[M] with RelationTemplate[M, TableExpression] {
+		outer =>
 		type Row
-		val query :QuerySQL[RowProduct, Row] { type ResultMapping[O] = M[O] }
+		val query :QuerySQL[RowProduct, Row] { type ResultMapping[O] <: M[O] }
 
-		override def apply[O] :M[O] = query.mapping[O]
+		override def apply[O]  :M[O]         = query.mapping[O]
 		override def export[O] :MappingAt[O] = query.export[O]
 
+		override def withClause :WithClause = query.withClause
+
 		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
-				:SelectRelation[M] =
-			new AlteredRelation[M, SelectRelation](this, includes, excludes) with SelectRelation[M] {
+				:TableExpression[M] =
+			new AlteredRelation[M, TableExpression](this, includes, excludes) with TableExpression[M] {
 				override type Row = default.Row
 //				override val default = outer //stabilizer for Row type
 				override val query = default.query
@@ -599,21 +536,138 @@ object Table {
 		}
 
 		override def refString :String = "select[" + query.mapping.mappingName + "]"
-		override lazy val toString :String = query.toString
+		override def toString  :String = queryString
+		private lazy val queryString = query.toString
 	}
 
 
-	object SelectRelation {
+	object TableExpression {
 		def apply[M[O] <: MappingAt[O], V](select :QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
-				:SelectRelation[M] =
-			new SelectRelation[M] {
+				:TableExpression[M] =
+			new TableExpression[M] {
 				override type Row = V
 				override val query = select
 			}
 
-		type * = SelectRelation[M] forSome { type M[O] <: MappingAt[O] }
+		type * = TableExpression[M] forSome { type M[O] <: MappingAt[O] }
 	}
 
+
+
+
+	/** A `Relation[M]` wrapper annotating it with an alias `A` (a string literal type). The alias becomes
+	  * the [[net.noresttherein.oldsql.schema.Relation.NamedRelation.name name]] of the relation and is also
+	  * used as the 'name' type parameter to [[net.noresttherein.oldsql.schema.Relation.StaticRelation StaticRelation]]
+	  * supertype; this means that when creating queries, joining such a table will automatically
+	  * add an [[net.noresttherein.oldsql.sql.RowProduct.As As]] clause to the returned join:
+	  * {{{
+	  *     val hamsters = Familiars as "hamsters"
+	  *     val query = From(Rangers) as "rangers" join hamsters where {
+	  *         row => row("rangers").familiar === row("hamsters").name
+	  *     }
+	  *     query :From[Rangers] As "rangers" Join Hamsters As "hamsters"
+	  * }}}
+	  * The added `As` clause identifies the mapping within the [[net.noresttherein.oldsql.sql.RowProduct RowProduct]]
+	  * and can be used to retrieve the relation by the alias in a type safe manner.
+	  */
+	class Aliased[+M[O] <: MappingAt[O], A <: Label](val table :Table[M], val alias :A)
+		extends StaticTable[A, M] with RelationTemplate[M, ({ type R[+T[O] <: MappingAt[O]] = T Aliased A })#R]
+	{
+		override def apply[O]  :M[O]         = table[O]
+		override def export[O] :MappingAt[O] = table.export[O]
+		override def default   :Relation[M]  = table.default
+		override def name      :A            = alias
+
+		protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+				:M Aliased A =
+			new Aliased(table.alterForwarder(includes, excludes), alias)
+
+		override def spell[P, O <: RowProduct, F <: O, T[B] <: MappingAt[B]]
+		                  (origin :JoinedRelation[O, T], component :MappingAt[O], inline :Boolean)
+		                  (context :SQLContext, params :Parameterization[P, F])
+		                  (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+			table.spell(origin, component, inline)(context, params)
+
+		override def inline[P, O <: RowProduct, F <: O, T[B] <: MappingAt[B]]
+		                   (origin :JoinedRelation[O, T], component :MappingAt[O])
+		                   (context :SQLContext, params :Parameterization[P, F])
+		                   (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, F]] =
+			table.inline(origin, component)(context, params)
+
+		protected override def spell[P, O <: RowProduct, F <: O, T[B] <: MappingAt[B], V]
+		                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
+		                            (context :SQLContext, params :Parameterization[P, F])
+		                            (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+			table.spell(origin, column)(context, params)
+
+		protected override def defaultSpelling[P, F <: RowProduct](context :SQLContext, params :Parameterization[P, F])
+		                                                          (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+			table.defaultSpelling(context, params)
+
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case aliased :Aliased[M @unchecked, _] if canEqual(aliased) && (aliased canEqual this) =>
+				aliased.alias == alias && aliased.table == table
+			case _ => false
+		}
+		override def hashCode :Int = table.hashCode * 31 + alias.hashCode
+
+		override def toString :String = table.toString + " as " + alias
+	}
+
+
+
+	object Aliased {
+		def apply[M[O] <: MappingAt[O], A <: Label](table :Table[M], alias :A) :Aliased[M, A] =
+			new Aliased(table, alias)
+
+		def unapply[M[O] <: MappingAt[O]](relation :Relation[M]) :Opt[(Table[MappingAt], Label)] =
+			relation match {
+				case aliased :Aliased.* => Got(aliased.table, aliased.alias)
+				case _ => Lack
+			}
+
+
+		type * = Aliased[M, _ <: Label] forSome { type M[O] <: MappingAt[O] }
+
+	}
+
+
+
+	class LazyTable[+M[O] <: MappingAt[O]](init : => Table[M]) extends Table[M] {
+		lazy val underlying :Table[M] = init
+
+		override def apply[O]  :M[O]         = underlying[O]
+		override def export[O] :MappingAt[O] = underlying.export[O]
+		override def default   :Relation[M]  = underlying.default
+
+
+		override def spell[P, O <: RowProduct, F <: O, T[B] <: MappingAt[B]]
+		                  (origin :JoinedRelation[O, T], component :MappingAt[O], inline :Boolean)
+		                  (context :SQLContext, params :Parameterization[P, F])
+		                  (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+			underlying.spell(origin, component, inline)(context, params)
+
+		override def inline[P, O <: RowProduct, F <: O, T[B] <: MappingAt[B]]
+		                   (origin :JoinedRelation[O, T], component :MappingAt[O])
+		                   (context :SQLContext, params :Parameterization[P, F])
+		                   (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, F]] =
+			underlying.inline(origin, component)(context, params)
+
+		protected override def spell[P, O <: RowProduct, F <: O, T[B] <: MappingAt[B], V]
+		                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
+		                            (context :SQLContext, params :Parameterization[P, F])
+		                            (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+			underlying.spell(origin, column)(context, params)
+
+		protected override def defaultSpelling[P, F <: RowProduct](context :SQLContext, params :Parameterization[P, F])
+		                                                          (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+			underlying.defaultSpelling(context, params)
+
+		override def refString :String = underlying.refString
+		override def toString  :String = underlying.toString
+	}
 }
 
 

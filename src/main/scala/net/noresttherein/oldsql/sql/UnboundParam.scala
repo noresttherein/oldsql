@@ -63,33 +63,33 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 	override type Last[O <: RowProduct] = JoinedRelation[O, P]
 
 	override type Generalized >: Dealiased <: (left.Generalized UnboundParam P) {
-		type FromLast = thisClause.FromLast
+		type FromLast     = thisClause.FromLast
 		type Generalized <: thisClause.Generalized
-		type Explicit <: thisClause.Explicit
-		type Implicit <: thisClause.Implicit
+		type Explicit    <: thisClause.Explicit
+		type Implicit    <: thisClause.Implicit
 	}
 
 	type Dealiased >: Self <: (left.Self UnboundParam P) {
-		type FromLast = thisClause.FromLast
+		type FromLast    = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Implicit = thisClause.Implicit
-		type Base = thisClause.Base
+		type FullRow     = thisClause.FullRow
+		type Explicit    = thisClause.Explicit
+		type Implicit    = thisClause.Implicit
+		type Base        = thisClause.Base
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
+		type Row      = thisClause.Row
 		type OuterRow = thisClause.OuterRow
 	}
 
 	override type Self <: (left.Self UnboundParam P) {
-		type FromLast = thisClause.FromLast
+		type FromLast    = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+		type FullRow     = thisClause.FullRow
+		type Explicit    = thisClause.Explicit
+		type Inner       = thisClause.Inner
+		type Implicit    = thisClause.Implicit
+		type Row         = thisClause.Row
+		type OuterRow    = thisClause.OuterRow
 	}
 
 
@@ -102,11 +102,12 @@ sealed trait UnboundParam[+F <: NonEmptyFrom, P[O] <: ParamAt[O]] extends NonSub
 	/** The type of this parameter, that is the subject type of the joined mapping. */
 	type Param = last.Subject
 
-	override type LastParam = Param
-	override type Params = left.Params ~ Param
-	override type AppliedParam = left.Copy
+	override type ParamsOnly           = left.ParamsOnly
+	override type LastParam            = Param
+	override type Params               = left.Params ~ Param
+	override type AppliedParam         = left.Copy
 	override type GeneralizedParamless = left.GeneralizedParamless
-	override type Paramless = left.Paramless
+	override type Paramless            = left.Paramless
 	override type DecoratedParamless[D <: BoundParamless] = Paramless
 
 	protected override def decoratedBind[D <: BoundParamless]
@@ -680,7 +681,7 @@ object UnboundParam {
   * (and hence a valid ''free'' select or subselect clause. This is enforced
   * by [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]]`[F]` type, used to define valid
   * subselect clauses of a clause `F`. Before selecting any expressions, it will need to be replaced
-  * with wither ''bound'' parameters, or a normal join with a [[net.noresttherein.oldsql.schema.Relation.Table table]]
+  * with wither ''bound'' parameters, or a normal join with a [[net.noresttherein.oldsql.schema.Table table]]
   * using a mapping with the same [[net.noresttherein.oldsql.schema.Mapping.Subject subject]] type
   * as this unbound parameter.
   *
@@ -707,14 +708,14 @@ sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]]
 	//consider: it's tempting to have simply the parameter type as the second parameter, not the mapping,
 	// but it would require changes to RowDecomposition, ExpandedBy et al, GetTable...
 	override type Generalized = left.Generalized JoinParam P
-	override type Dealiased = left.Self JoinParam P
+	override type Dealiased   = left.Self JoinParam P
 	override type Self <: left.Self JoinParam P
 
 	override def narrow :left.type JoinParam P
 
 	override type GeneralizedLeft[+L <: FromSome] = L JoinParam P
-	override type DealiasedLeft[+L <: FromSome] = L JoinParam P
-	override type WithLeft[+L <: FromSome] <: L JoinParam P
+	override type DealiasedLeft[+L <: FromSome]   = L JoinParam P
+	override type WithLeft[+L <: FromSome]       <: L JoinParam P
 
 
 	override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :GlobalBoolean[E] =
@@ -747,7 +748,7 @@ sealed trait JoinParam[+F <: FromSome, P[O] <: ParamAt[O]]
 
 
 	override type Explicit = left.Explicit JoinParam P
-	override type Inner = left.Inner JoinParam P
+	override type Inner    = left.Inner JoinParam P
 
 
 	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext =
@@ -809,7 +810,7 @@ object JoinParam {
 	  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
 	  *              time, removing the join an replacing its usages with
 	  *              [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]], or substituting
-	  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
+	  *              it with a normal [[net.noresttherein.oldsql.schema.Table table]].
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @return `F` [[net.noresttherein.oldsql.sql.WithParam WithParam]] `X`.
@@ -833,7 +834,7 @@ object JoinParam {
 	  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
 	  *              time, removing the join an replacing its usages with
 	  *              [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]], or substituting
-	  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
+	  *              it with a normal [[net.noresttherein.oldsql.schema.Table table]].
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @param filter an optional join condition filtering the clause based on the value of `X`.
@@ -860,7 +861,7 @@ object JoinParam {
 	  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
 	  *              time, removing the join an replacing its usages with
 	  *              [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]], or substituting
-	  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
+	  *              it with a normal [[net.noresttherein.oldsql.schema.Table table]].
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @return `F JoinParam `[[net.noresttherein.oldsql.sql.UnboundParam.FromParam.Of FromParam.Of[X]#P]]` `[[net.noresttherein.oldsql.sql.RowProduct.As As]]` N`.
@@ -884,7 +885,7 @@ object JoinParam {
 	  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
 	  *              time, removing the join an replacing its usages with
 	  *              [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]], or substituting
-	  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
+	  *              it with a normal [[net.noresttherein.oldsql.schema.Table table]].
 	  * @param param the last relation of the created ''from'' clause,
 	  *              using the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
 	  * @param filter an optional join condition filtering the clause based on the value of `X`.
@@ -922,7 +923,7 @@ object JoinParam {
 		  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
 		  *              time, removing the join an replacing its usages with
 		  *              [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]], or substituting
-		  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
+		  *              it with a normal [[net.noresttherein.oldsql.schema.Table table]].
 		  * @param form  the form for the last [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation parameter]]
 		  *              relation of the created ''from'' clause,
 		  *              using [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam[X, _] ]] `Mapping` type.
@@ -947,7 +948,7 @@ object JoinParam {
 		  *              It may still however be useful for other purposes and the parameter can be ''bound'' at a later
 		  *              time, removing the join an replacing its usages with
 		  *              [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]], or substituting
-		  *              it with a normal [[net.noresttherein.oldsql.schema.Relation.Table table]].
+		  *              it with a normal [[net.noresttherein.oldsql.schema.Table table]].
 		  * @param name
 		  * @param form  the form for the last [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation parameter]]
 		  *              relation of the created ''from'' clause,
@@ -1144,8 +1145,8 @@ sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]]
 { thisClause =>
 //consider: making relation protected so it can't be misused
 	override type Generalized = left.Generalized GroupParam P
-	override type Dealiased = left.Self GroupParam P
-	override type Self <: left.Self GroupParam P
+	override type Dealiased   = left.Self GroupParam P
+	override type Self       <: left.Self GroupParam P
 
 	override type GeneralizedLeft[+L <: GroupByClause] = L GroupParam P
 	override type DealiasedLeft[+L <: GroupByClause] = L GroupParam P
@@ -1180,7 +1181,7 @@ sealed trait GroupParam[+F <: GroupByClause, P[O] <: ParamAt[O]]
 
 
 	override type Explicit = left.Explicit GroupParam P
-	override type Inner = left.Inner GroupParam P
+	override type Inner    = left.Inner GroupParam P
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroupParam.* @unchecked]

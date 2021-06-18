@@ -56,6 +56,8 @@ trait DecoratedFrom[+F <: RowProduct] extends RowProduct { thisClause =>
 	override def isValidSubselect :Boolean = clause.isValidSubselect
 
 
+	override def withClause :WithClause = clause.withClause
+	override def collect[X](fun :PartialFunction[SQLExpression.*, X]) :Seq[X] = clause.collect(fun)
 
 	protected override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.decorator(this)
 

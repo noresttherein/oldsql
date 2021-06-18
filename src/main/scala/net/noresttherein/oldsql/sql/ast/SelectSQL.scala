@@ -317,6 +317,8 @@ object SelectSQL {
 		override def mapping[O] :ResultMapping[O] = selectClause.mapping.withOrigin[O]
 		override def export[O] :RefinedMapping[V, O] = selectClause.export.withOrigin[O]
 
+		override val withClause = from.withClause ++ selectClause.withClause
+
 		override val columns: Seq[SelectedColumn[_]] = //todo: is this the place where we finally decide on the column set?
 			selectClause.export.selectedByDefault.toSeq.map(include(_))
 
@@ -443,6 +445,7 @@ object SelectSQL {
 		override type From = S
 
 		override val selectClause = result.expr
+		override val withClause   = from.withClause ++ selectClause.withClause
 
 		/** A column in the header of owning select.
 		  * @param column the `ColumnMapping` implementation based on a `ColumnSQL` expression

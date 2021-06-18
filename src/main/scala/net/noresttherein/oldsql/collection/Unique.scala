@@ -59,8 +59,7 @@ trait Unique[+T]
 
 
 	def :++[U >: T](elems :IterableOnce[U]) :Unique[U]
-
-	def ++:[U >: T](elems :IterableOnce[U]) :Unique[U]
+//	def ++:[U >: T](elems :IterableOnce[U]) :Unique[U] = prependedAll(elems)
 
 	def -[U >: T](elem :U) :Unique[T]
 
@@ -245,9 +244,9 @@ object Unique extends IterableFactory[Unique] {
 			if (elems.iterator.isEmpty) this
 			else items :++ elems
 
-		override def ++:[U >: T](elems :IterableOnce[U]) :Unique[U] =
-			if (elems.iterator.isEmpty) this
-			else elems ++: items : @nowarn
+//		override def ++:[U >: T](elems :IterableOnce[U]) :Unique[U] =
+//			if (elems.iterator.isEmpty) this
+//			else elems ++: items : @nowarn
 
 		override def -[U >: T](elem :U) :Unique[T] = items - elem
 
@@ -295,11 +294,11 @@ object Unique extends IterableFactory[Unique] {
 
 		override def :++[U >: T](elems :IterableOnce[U]) :Unique[U] = concat(elems)
 
-		override def ++:[U >: T](elems :IterableOnce[U]) :Unique[U] =
-			if (elems.iterator.isEmpty)
-				this
-			else
-	            (new UniqueBuilder ++= elems ++= this).result()
+//		override def ++:[U >: T](elems :IterableOnce[U]) :Unique[U] =
+//			if (elems.iterator.isEmpty)
+//				this
+//			else
+//	            (new UniqueBuilder ++= elems ++= this).result()
 
 		override def -[U >: T](elem :U) :Unique[T] =
 			index.get(elem.asInstanceOf[T]) match {

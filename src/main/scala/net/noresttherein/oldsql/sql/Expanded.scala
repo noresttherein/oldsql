@@ -619,6 +619,8 @@ object Expanded {
 		override def outerRow[E <: RowProduct]
 		             (target :E)(implicit expansion :Implicit ExpandedBy E) :ChainTuple[E, GlobalScope, OuterRow] =
 			left.outerRow(target)
+
+		override def withClause :WithClause = left.withClause ++ right.withClause ++ condition.withClause
 	}
 
 

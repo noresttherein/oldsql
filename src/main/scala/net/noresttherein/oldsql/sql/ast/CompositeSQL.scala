@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql.ast
 import net.noresttherein.oldsql.OperationType
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.~
-import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
+import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression, WithClause}
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn
 import net.noresttherein.oldsql.sql.ColumnSQL.AliasedColumn.{AliasedColumnVisitor, CaseAliasedColumn}
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
@@ -24,6 +24,7 @@ import net.noresttherein.oldsql.sql.ast.QuerySQL.Rows
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{CaseTuple, TupleVisitor}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
+import net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation
 
 
 
@@ -96,6 +97,7 @@ trait CompositeSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionVisitor[F, Y]) :Y[S, V] =
 //			matcher.composite(this)
 
+	override def withClause :WithClause = parts.view.map(_.withClause).reduce(_ ++ _)
 
 	protected override def reverseCollect[X](fun: PartialFunction[SQLExpression.*, X], acc: List[X]): List[X] =
 		(super.reverseCollect(fun, acc) /: inOrder) {
@@ -198,6 +200,8 @@ object CompositeSQL {
 		override def split(implicit scope :OperationType) :Seq[ColumnSQL[F, S, _]] = value.split
 //				throw new InseparableExpressionException("This multi column expression " + this + " cannot be split.")
 
+		override def withClause :WithClause = value.withClause
+
 		override def columnCount(implicit spelling :SQLSpelling) :Int = value.columnCount
 
 
@@ -244,6 +248,7 @@ object CompositeSQL {
 		protected def reapply[E <: RowProduct, C >: LocalScope <: GlobalScope]
 		                     (left :SQLExpression[E, C, X], right :SQLExpression[E, C, X]) :SQLExpression[E, C, V]
 
+		override def withClause :WithClause = left.withClause ++ right.withClause
 
 		override def contentsIsomorphic(other :CompositeSQL.*) :Boolean = other match {
 			case e :BinaryOperatorSQL[_, _, _, _] => (left isomorphic e.left) && (right isomorphic e.right)
@@ -323,6 +328,8 @@ object CompositeSQL {
 			protected def reapply[E <: RowProduct, C >: LocalScope <: GlobalScope]
 			                     (e :ColumnSQL[E, C, X]) :ColumnSQL[E, C, V]
 
+			override def withClause :WithClause = value.withClause
+
 
 			override def contentsIsomorphic(other :CompositeSQL.*) :Boolean = other match {
 				case unary :UnaryColumnOperator[_, _, _, _] => value isomorphic unary.value
@@ -369,6 +376,7 @@ object CompositeSQL {
 			protected def reapply[E <: RowProduct, C >: LocalScope <: GlobalScope]
 			                     (left :ColumnSQL[E, C, X], right :ColumnSQL[E, C, X]) :ColumnSQL[E, C, V]
 
+			override def withClause :WithClause = left.withClause ++ right.withClause
 
 			override def contentsIsomorphic(other :CompositeSQL.*) :Boolean = other match {
 				case e :BinaryColumnOperator[_, _, _, _] => (left isomorphic e.left) && (right isomorphic e.right)

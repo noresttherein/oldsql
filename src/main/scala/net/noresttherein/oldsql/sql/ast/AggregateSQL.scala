@@ -3,11 +3,11 @@ package net.noresttherein.oldsql.sql.ast
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.ColumnReadForm
-import net.noresttherein.oldsql.sql.{AggregateClause, AggregateFunction, ColumnSQL, FromSome, RowProduct, SQLExpression}
+import net.noresttherein.oldsql.sql.{AggregateClause, AggregateFunction, ColumnSQL, FromSome, RowProduct, SQLExpression, WithClause}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{*, GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
@@ -87,6 +87,11 @@ trait AggregateSQL[-F <: RowProduct, -G <: RowProduct, X, Y] extends ColumnSQL[G
 	protected override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[G, R]) :R[LocalScope, Y] =
 		visitor.aggregate(this)
 
+
+	override def withClause :WithClause = arg.withClause
+
+	protected override def reverseCollect[Z](fun :PartialFunction[*, Z], acc :List[Z]) :List[Z] =
+		arg.reverseCollectForwarder(fun, super.reverseCollect(fun, acc))
 
 	override def isomorphic(that: SQLExpression.*) :Boolean = that match {
 		case self :AnyRef if self eq this => true

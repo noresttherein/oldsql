@@ -102,6 +102,9 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 	def joinWith[F <: FromSome](suffix :F, join :JoinLike.* = InnerJoin.template) :JoinWith[join.LikeJoin, F]
 
 
+	override def collect[X](fun :PartialFunction[SQLExpression.*, X]) :Seq[X] =
+		row.collect(fun) ++: filter.collect(fun)
+
 
 	override def spell(context :SQLContext)(implicit spelling :SQLSpelling) :SpelledSQL[Params, Generalized] =
 		spelling.fromWhere(this)(context)

@@ -14,7 +14,7 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
-import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseTemplate
+import net.noresttherein.oldsql.sql.GroupByClause.{GroupByClauseTemplate, GroupingRelation}
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf, RowProductTemplate}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL, LocalScope}
@@ -367,7 +367,7 @@ sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateC
 		throw new UnsupportedOperationException
 
 
-	override def chunkedString :ChunkedString = clause.chunkedString + " aggregated"
+	override def chunkedString :ChunkedString = "aggregate " +: clause.chunkedString
 
 }
 
@@ -512,6 +512,11 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.from`.
 	  */ //'from' conflicts with the 'from' method for creating subselects. 'grouped' is an extension method returning JoinedMappings[Discrete]
 	override val fromClause :Discrete
+
+
+	override def collect[X](fun :PartialFunction[SQLExpression.*, X]) :Seq[X] =
+		fromClause.collect(fun) ++: row.collect(fun) ++: filter.collect(fun)
+
 
 
 	override def spell(context :SQLContext)(implicit spelling :SQLSpelling) :SpelledSQL[Params, Generalized] =
@@ -1064,6 +1069,7 @@ object GroupByClause {
 		override def apply[O] :M[O] = projection(template)
 		override def export[O] :MappingAt[O] = projection(template)
 
+		override def withClause :WithClause = expr.withClause
 
 		override def refString :String = expr.toString
 		override def toString :String = expr.toString
@@ -1088,6 +1094,8 @@ object GroupByClause {
 				:GroupingRelation[Project[F, GlobalScope, S]#C, S, F] =
 			new GroupingColumnRelation(expression)
 
+
+		type * = GroupingRelation[M, S, _] forSome { type M[O] <: BaseMapping[S, O]; type S }
 
 		private class GroupingComponentRelation[F <: RowProduct, M[O] <: BaseMapping[S, O], S, A >: F <: RowProduct]
 		                                       (override val expr :ComponentSQL[F, M] { type Origin = A })

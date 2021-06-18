@@ -43,38 +43,38 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 	override type Generalized >: Dealiased <: (left.Generalized JoinLike R) {
 		type Generalized <: thisClause.Generalized
-		type Explicit <: thisClause.Explicit
-		type Implicit <: thisClause.Implicit
+		type Explicit    <: thisClause.Explicit
+		type Implicit    <: thisClause.Implicit
 		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
 	}
 
 	type Dealiased >: Self <: (left.Self JoinLike R) {
 		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Implicit = thisClause.Implicit
+		type Params      = thisClause.Params
+		type FullRow     = thisClause.FullRow
+		type Explicit    = thisClause.Explicit
+		type Implicit    = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+		type Row         = thisClause.Row
+		type OuterRow    = thisClause.OuterRow
 	}
 
 	override type Self <: (left.Self JoinLike R) {
 		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
+		type Params      = thisClause.Params
+		type FullRow     = thisClause.FullRow
+		type Explicit    = thisClause.Explicit
+		type Inner       = thisClause.Inner
+		type Implicit    = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+		type Row         = thisClause.Row
+		type OuterRow    = thisClause.OuterRow
 	}
 
 	override def narrow :left.type JoinLike R
 
 	override type GeneralizedLeft[+F <: FromSome] = F GeneralizedJoin R
-	override type DealiasedLeft[+F <: FromSome] = F LikeJoin R
+	override type DealiasedLeft[+F <: FromSome]   = F LikeJoin R
 //	override type WithLeft[+F <: FromSome] <: F LikeJoin R // <: because alias is kept
 //	override type GeneralizedRight[T[O] <: MappingAt[O]] <: L JoinLike T
 
@@ -132,13 +132,6 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 	  */
 	def likeJoin[P <: FromSome, S <: FromSome](left :P, right :S) :right.JoinedWith[P, LikeJoin]
 
-
-	override type LastParam = left.LastParam
-	override type Params = left.Params
-	override type DecoratedParamless[D <: BoundParamless] = D
-
-	protected override def decoratedBind[D <: BoundParamless](params :Params)(decorate :Paramless => D) :D =
-		decorate(bind(params))
 
 	override def generalizedExpansion[P <: FromSome] :P PrefixOf (P GeneralizedJoin R) =
 		PrefixOf.itself[P].expand[GeneralizedJoin, R]
@@ -281,8 +274,8 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 { thisClause =>
 
 	override type Generalized = left.Generalized Join R
-	override type Dealiased = left.Self LikeJoin R
-	override type Self <: left.Self LikeJoin R
+	override type Dealiased   = left.Self LikeJoin R
+	override type Self       <: left.Self LikeJoin R
 
 	override def narrow :WithLeft[left.type]
 
@@ -333,10 +326,10 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 
 
 	override type Explicit = left.Explicit Join R
-	override type Inner = left.Inner LikeJoin R
+	override type Inner    = left.Inner LikeJoin R
 	override type Implicit = left.Implicit
-	override type Outer = left.Outer
-	override type Row = left.Row ~ last.Subject
+	override type Outer    = left.Outer
+	override type Row      = left.Row ~ last.Subject
 	override type OuterRow = left.OuterRow
 
 	override def row[E <: RowProduct]
@@ -652,12 +645,12 @@ object InnerJoin {
 	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L InnerJoin R As A =
 		new InnerJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
-			override val left = prefix
-			override val last = next
-			override val aliasOpt = asOpt
+			override val left      = prefix
+			override val last      = next
+			override val aliasOpt  = asOpt
 			override val condition = cond
-			override val outer = left.outer
-			override val fullSize = left.fullSize + 1
+			override val outer     = left.outer
+			override val fullSize  = left.fullSize + 1
 			override val parameterization = left.parameterization.join[Self, left.Self, R]
 
 			override type Alias = A
@@ -844,12 +837,12 @@ object OuterJoin {
 	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L OuterJoin R As A =
 		new OuterJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
-			override val left = prefix
-			override val last = next
-			override val aliasOpt = asOpt
+			override val left      = prefix
+			override val last      = next
+			override val aliasOpt  = asOpt
 			override val condition = cond
-			override val outer = left.outer
-			override val fullSize = left.fullSize + 1
+			override val outer     = left.outer
+			override val fullSize  = left.fullSize + 1
 			override val parameterization = left.parameterization.join[Self, left.Self, R]
 
 			override type Alias = A
@@ -1038,12 +1031,12 @@ object LeftJoin {
 	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L LeftJoin R As A =
 		new LeftJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
-			override val left = prefix
-			override val last = next
-			override val aliasOpt = asOpt
+			override val left      = prefix
+			override val last      = next
+			override val aliasOpt  = asOpt
 			override val condition = cond
-			override val outer = left.outer
-			override val fullSize = left.fullSize + 1
+			override val outer     = left.outer
+			override val fullSize  = left.fullSize + 1
 			override val parameterization = left.parameterization.join[Self, left.Self, R]
 
 			override type Alias = A
@@ -1231,12 +1224,12 @@ object RightJoin {
 	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Join R]) :L RightJoin R As A =
 		new RightJoin[prefix.type, R] with AbstractJoin[prefix.type, R, S] {
-			override val left = prefix
-			override val last = next
-			override val aliasOpt = asOpt
+			override val left      = prefix
+			override val last      = next
+			override val aliasOpt  = asOpt
 			override val condition = cond
-			override val outer = left.outer
-			override val fullSize = left.fullSize + 1
+			override val outer     = left.outer
+			override val fullSize  = left.fullSize + 1
 			override val parameterization = left.parameterization.join[Self, left.Self, R]
 
 			override type Alias = A
@@ -1356,15 +1349,15 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 { thisClause =>
 
 	override type Generalized = left.Generalized Subselect T
-	override type Dealiased = left.Self Subselect T
-	override type Self <: left.Self Subselect T
+	override type Dealiased   = left.Self Subselect T
+	override type Self       <: left.Self Subselect T
 
 	//widened bounds
 	override type WithLeft[+L <: NonEmptyFrom] <: L Subselect T
 //	override type GeneralizedRight[R[O] <: MappingAt[O]] = WithRight[R] //<: F Subselect R
 //	override type WithRight[R[O] <: MappingAt[O]] <: F Subselect R
 	override type GeneralizedJoin[+L <: FromSome, R[O] <: MappingAt[O]] = L Subselect R
-	override type LikeJoin[+L <: FromSome, R[O] <: MappingAt[O]] = L Subselect R
+	override type LikeJoin[+L <: FromSome, R[O] <: MappingAt[O]]        = L Subselect R
 
 	override def withLeft[L <: NonEmptyFrom](left :L)(filter :GlobalBoolean[left.Generalized Subselect T]) :WithLeft[L] //wider bound
 
@@ -1410,9 +1403,9 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 	override def isValidSubselect = true
 
 	override type Explicit = RowProduct AndFrom T
-	override type Inner = NonEmptyFrom Subselect T
+	override type Inner    = NonEmptyFrom Subselect T
 	override type Implicit = left.Generalized
-	override type Outer = left.Self
+	override type Outer    = left.Self
 
 
 
@@ -1454,6 +1447,9 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 		val substitute = SQLScribe.shiftBack(generalized, unfiltered.generalized, expansion.length, 1)
 		withLeft[newOuter.type](newOuter)(substitute(condition))
 	}
+
+
+	override def withClause :WithClause = table.withClause ++ condition.withClause
 
 
 	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
@@ -1549,12 +1545,12 @@ object Subselect {
 	                      (prefix :L, next :LastTable[R, S], asOpt :Option[A])
 	                      (cond :GlobalBoolean[prefix.Generalized Subselect R]) :L Subselect R As A =
 		new Subselect[prefix.type, R] with AbstractExpanded[prefix.type, R, S] {
-			override val left = prefix
-			override val last = next
-			override val aliasOpt = asOpt
+			override val left      = prefix
+			override val last      = next
+			override val aliasOpt  = asOpt
 			override val condition = cond
-			override val outer = left.self
-			override val fullSize = left.fullSize + 1
+			override val outer     = left.self
+			override val fullSize  = left.fullSize + 1
 			override val parameterization = left.parameterization.join[Self, left.Self, R]
 			override def lastRelation = last
 

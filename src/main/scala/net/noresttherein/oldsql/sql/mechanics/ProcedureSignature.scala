@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.sql.Call.InOutCallProcedure.ParamInOutCallProced
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult.NoResult
 import net.noresttherein.oldsql.sql.FromSome.TopFromSome
-import net.noresttherein.oldsql.sql.RowProduct.{ParameterizedFrom, PartOf, SelfTyped}
+import net.noresttherein.oldsql.sql.RowProduct.{ParameterizedFrom, PartOf, PureParamFrom, SelfTyped}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.StoredProcedure.Out
 import net.noresttherein.oldsql.sql.StoredProcedure.Out.OutForm
@@ -101,7 +101,7 @@ sealed trait ProcedureSignature[Params <: Chain, Args <: Chain] {
 
 	def apply(procedure :StoredProcedure[Params], args :ChainTuple[Domain, GlobalScope, Args]) :Call[CallParams, Out]
 
-	def apply[Ps <: Chain](domain :ParameterizedFrom[Ps], procedure :StoredProcedure[Params])
+	def apply[Ps <: Chain](domain :PureParamFrom[Ps], procedure :StoredProcedure[Params])
 	                      (args :ChainTuple[domain.Self, GlobalScope, Args]) :Call[Ps, Out]
 
 	def apply[Y](function :StoredFunction[Params, Y]) :Call[Args, FunctionResult[Y]]
@@ -112,7 +112,7 @@ sealed trait ProcedureSignature[Params <: Chain, Args <: Chain] {
 	def apply[Y](function :StoredFunction[Params, Y], args :ChainTuple[Domain, GlobalScope, Args])
 			:Call[CallParams, FunctionResult[Y]]
 
-	def apply[Ps <: Chain, Y](domain :ParameterizedFrom[Ps], function :StoredFunction[Params, Y])
+	def apply[Ps <: Chain, Y](domain :PureParamFrom[Ps], function :StoredFunction[Params, Y])
 	                         (args :ChainTuple[domain.Self, GlobalScope, Args]) :Call[Ps, FunctionResult[Y]]
 }
 
@@ -160,11 +160,11 @@ sealed abstract class ProcedureInOutSignatureDefaultImplicit extends Level1Proce
 					:ChainTuple[F, S, Params ~ X] =
 				init(in.init) ~ in.last
 
-			override def apply[Ps <: Chain](domain :ParameterizedFrom[Ps], procedure :StoredProcedure[Params ~ X])
+			override def apply[Ps <: Chain](domain :PureParamFrom[Ps], procedure :StoredProcedure[Params ~ X])
 			                               (args :ChainTuple[domain.Self, GlobalScope, Args ~ X]) :Call[Ps, Out] =
 				ParamInOutCallProcedure[Ps, Params ~ X, Args ~ X](domain)(procedure, args)(this)
 
-			override def apply[Ps <: Chain, Y](domain :ParameterizedFrom[Ps], fun :StoredFunction[Params ~ X, Y])
+			override def apply[Ps <: Chain, Y](domain :PureParamFrom[Ps], fun :StoredFunction[Params ~ X, Y])
 			                                  (args :ChainTuple[domain.Self, GlobalScope, Args ~ X]) :Call[Ps, Out ~ Y] =
 				ParamInOutCallFunction[Ps, Params ~ X, Args ~ X, Y](domain)(fun, args)(this)
 		}
@@ -209,7 +209,7 @@ object ProcedureSignature extends ProcedureInOutSignatureDefaultImplicit {
 				:Call[Unit, Any] =
 			GroundCallProcedure(procedure, args)
 
-		override def apply[Ps <: Chain](domain :ParameterizedFrom[Ps], procedure :StoredProcedure[Params])
+		override def apply[Ps <: Chain](domain :PureParamFrom[Ps], procedure :StoredProcedure[Params])
 		                               (args :ChainTuple[domain.Self, GlobalScope, Params]) :Call[Ps, Any] =
 			ParamCallProcedure[Ps, Params](domain)(procedure, args)
 
@@ -219,7 +219,7 @@ object ProcedureSignature extends ProcedureInOutSignatureDefaultImplicit {
 				:Call[Unit, Y] =
 			GroundCallFunction(function, args)
 
-		override def apply[Ps <: Chain, Y](domain :ParameterizedFrom[Ps], function :StoredFunction[Params, Y])
+		override def apply[Ps <: Chain, Y](domain :PureParamFrom[Ps], function :StoredFunction[Params, Y])
 		                                  (args :ChainTuple[domain.Self, GlobalScope, Params]) :Call[Ps, Y] =
 			ParamCallFunction[Ps, Params, Y](domain)(function, args)
 	}
@@ -245,7 +245,7 @@ object ProcedureSignature extends ProcedureInOutSignatureDefaultImplicit {
 		override type Out <: ProcedureResult
 		override type ProcedureResult <: Chain
 		override type FunctionResult[Y] = Out ~ Y
-		override type Domain <: TopFromSome { type Self <: sig.Domain; type Params = Args }
+		override type Domain <: TopFromSome { type Self <: sig.Domain; type Params = Args; type ParamsOnly = true }
 		override type CallParams = Args
 		def outForm(inOut :ChainForm[Params]) :ChainForm[Out]
 		def reverseOutParams(inOut :ChainForm[Params], offset :Int = 0) :List[Int]
@@ -292,14 +292,22 @@ object ProcedureSignature extends ProcedureInOutSignatureDefaultImplicit {
 	implicit def noParams :ProcedureInOutSignature[@~, @~] { type Out = @~ } =
 		NoParams
 
-	private object NoParams extends ProcedureInOutSignature[@~, @~] {
+	//Extracted so that the Domain type returned by def domain is erased, as type Domain is impossible to define due to recursiveness
+	private abstract class NoParams extends ProcedureInOutSignature[@~, @~] {
+		override def domain(form :ChainForm[@~]) :Domain = emptyDomain
+
+		private val emptyDomain = From(
+			Table("InParams", new ConstantMapping[@~, ""](@~))
+		).asInstanceOf[Domain]
+	}
+
+	private object NoParams extends NoParams {
 		override type Out = @~
 		override type ProcedureResult = @~
 		override type FunctionResult[Y] = @~ ~ Y
-		override type Domain = From[MappingOf[@~]#TypedProjection]
+		override type Domain = Nothing //PureParamFrom[@~] { type Implicit = RowProduct; type Self <: NoParams.Domain }
 		override type CallParams = @~
 
-		override def domain(form :ChainForm[@~]) :Domain = emptyDomain
 		override def reverseOutParams(inOut :ChainForm[@~], offset :Int) :List[Int] = Nil
 		override def outForm(in :ChainForm[@~]) :ChainForm[@~] = in
 
@@ -319,11 +327,11 @@ object ProcedureSignature extends ProcedureInOutSignatureDefaultImplicit {
 				:ChainTuple[F, S, @~] =
 			in
 
-		override def apply[Ps <: Chain](domain :ParameterizedFrom[Ps], procedure :StoredProcedure[@~])
+		override def apply[Ps <: Chain](domain :PureParamFrom[Ps], procedure :StoredProcedure[@~])
 		                               (args :ChainTuple[domain.Self, GlobalScope, @~]) :Call[Ps, Out] =
 			ParamInOutCallProcedure[Ps, @~, @~](domain)(procedure, args)(this)
 
-		override def apply[Ps <: Chain, Y](domain :ParameterizedFrom[Ps], function :StoredFunction[@~, Y])
+		override def apply[Ps <: Chain, Y](domain :PureParamFrom[Ps], function :StoredFunction[@~, Y])
 		                                  (args :ChainTuple[domain.Self, GlobalScope, @~]) :Call[Ps, @~ ~ Y] =
 			ParamInOutCallFunction[Ps, @~, @~, Y](domain)(function, args)(this)
 	}
@@ -361,12 +369,12 @@ object ProcedureSignature extends ProcedureInOutSignatureDefaultImplicit {
 					:ChainTuple[F, S, Params ~ OutParam[X]] =
 				init(in.init) ~ in.last.out
 
-			override def apply[Ps <: Chain](domain :ParameterizedFrom[Ps],
+			override def apply[Ps <: Chain](domain :PureParamFrom[Ps],
 			                                procedure :StoredProcedure[Params ~ OutParam[X]])
 			                               (args :ChainTuple[domain.Self, GlobalScope, Args ~ X]) :Call[Ps, Out] =
 				ParamInOutCallProcedure(domain)(procedure, args)(this)
 
-			override def apply[Ps <: Chain, Y](domain :ParameterizedFrom[Ps],
+			override def apply[Ps <: Chain, Y](domain :PureParamFrom[Ps],
 			                                   function :StoredFunction[Params ~ OutParam[X], Y])
 			                                  (args :ChainTuple[domain.Self, GlobalScope, Args ~ X])
 					:Call[Ps, Out ~ Y] =
@@ -407,13 +415,13 @@ object ProcedureSignature extends ProcedureInOutSignatureDefaultImplicit {
 			                  (in :ChainTuple[F, S, Args ~ OutParam[X]]) :ChainTuple[F, S, Params ~ OutParam[X]] =
 				init(in.init) ~ in.last
 
-			override def apply[Ps <: Chain](domain :ParameterizedFrom[Ps],
+			override def apply[Ps <: Chain](domain :PureParamFrom[Ps],
 			                                procedure :StoredProcedure[Params ~ OutParam[X]])
 			                               (args :ChainTuple[domain.Self, GlobalScope, Args ~ OutParam[X]])
 					:Call[Ps, Out] =
 				ParamInOutCallProcedure(domain)(procedure, args)(this)
 
-			override def apply[Ps <: Chain, Y](domain :ParameterizedFrom[Ps],
+			override def apply[Ps <: Chain, Y](domain :PureParamFrom[Ps],
 			                                   function :StoredFunction[Params ~ OutParam[X], Y])
 			                                  (args :ChainTuple[domain.Self, GlobalScope, Args ~ OutParam[X]])
 					:Call[Ps, Out ~ Y] =
@@ -425,9 +433,5 @@ object ProcedureSignature extends ProcedureInOutSignatureDefaultImplicit {
 		case other => other.nullBimap(_.param)(Out.apply)
 	}
 
-
-	private val emptyDomain :From[MappingOf[@~]#TypedProjection] = From(
-		Table("InParams", new ConstantMapping[@~, ""](@~))
-	)
 
 }

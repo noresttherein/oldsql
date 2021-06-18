@@ -9,12 +9,12 @@ import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComp
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.slang.classNameMethods
-import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, Select, SQLExpression}
+import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, Select, SQLExpression, WithClause}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
 import net.noresttherein.oldsql.sql.Select.SelectMapping
-import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, Lift, LocalScope}
+import net.noresttherein.oldsql.sql.SQLExpression.{*, ExpressionVisitor, GlobalScope, Lift, LocalScope}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.ast.ColumnComponentSQL.{ColumnComponentConversion, TypedColumnComponentSQL}
 import net.noresttherein.oldsql.sql.ast.ColumnComponentSQL.TypedColumnComponentSQL.{CaseColumnComponent, ColumnComponentVisitor}
@@ -126,6 +126,13 @@ trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 
 	override def columnCount(implicit spelling :SQLSpelling) :Int =
 		spelling.scope.defaultColumns(export).size
+
+
+	override def withClause :WithClause = origin.withClause
+
+	protected override def reverseCollect[X](fun :PartialFunction[*, X], acc :List[X]) :List[X] =
+		origin.reverseCollectForwarder(fun, super.reverseCollect(fun, acc))
+
 
 	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
 	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =

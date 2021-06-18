@@ -4,15 +4,15 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.Lazy
-import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
+import net.noresttherein.oldsql.schema.Relation
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.Expanded.{AbstractExpanded, ExpandedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroupingOfGeneralized, NonEmptyFrom, PartOf}
 import net.noresttherein.oldsql.sql.GroupBy.AndBy
 import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseTemplate
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroupingOfGeneralized, NonEmptyFrom, PartOf}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.{ComponentSQL, RelationSQL}
@@ -217,6 +217,9 @@ trait GroupBy[+F <: FromSome, M[A] <: MappingAt[A]]
 		)
 		withLeft[newLeft.type](newLeft)(substitute(condition))
 	}
+
+
+	override def withClause :WithClause = left.withClause ++ right.withClause ++ condition.withClause
 
 
 	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)

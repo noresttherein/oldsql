@@ -1,121 +1,73 @@
-
 package net.noresttherein.oldsql.sql
 
+import scala.collection.mutable.Builder
+import scala.collection.Factory
 
-/*
-import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.collection.{Opt, Unique}
+import net.noresttherein.oldsql.collection.Opt.Got
+import net.noresttherein.oldsql.schema.{RelVar, Table}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Relation.{AlteredRelation, RelationTemplate}
+import net.noresttherein.oldsql.schema.Table.{Aliased, TableExpression, StaticTable}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.Relation.{DerivedTable, Table}
-import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.sql.AndWith.RecursiveAndWithFactory
-import net.noresttherein.oldsql.sql.Expanded.{AbstractExpanded, NonSubselect}
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf}
-import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
-import net.noresttherein.oldsql.sql.WithClause.CommonTableExpression
-import net.noresttherein.oldsql.sql.ast.RelationSQL
+import net.noresttherein.oldsql.sql.CommonTableExpression.CommonTableAlias
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
+import net.noresttherein.oldsql.sql.WithClause.AbstractSingletonWithClause
+import net.noresttherein.oldsql.sql.With.CTEName
 import net.noresttherein.oldsql.sql.ast.QuerySQL
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.mechanics.{RowProductVisitor, SQLScribe}
+import net.noresttherein.oldsql.sql.ast.QuerySQL.MappingQuerySQL
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
 
 
 
+trait With {
+	implicit def CTEName[N <: Label](name :N) :CTEName[N] = new CTEName(name)
 
-//todo: we need to define if TopSelect/GroundSelect[Query] are parameterized with RowProduct, or any WithClause.
-//  - RowProduct is cleaner, more intuitive, and makes union and friends easy
-//  - WithClause allows the separator between WithClause and FromClause to be a Subselect-like type,
-//    which makes it behave nicely with GroupBy. We might though make a special case when *creating* selects
-//    and gobble up the WithClause.
-//  - Alternatively, we might get rid of WithClause and allow With/AndWith in any place in FromClause
-//    This Alexander's solution, apart from being somewhat messy, causes a problem with the dual state
-//    of empty/non empty of With (it must be non-empty at the very least to be used with As, and empty not to be used
-//    with Subselect). Seams solvable, though.
-
-//todo: With/AndWith for MappingQuerySQL. Currently conflicts with erasure, but we likely will make it
-//  the single Query class and QuerySQL only a type alias, especially with SQLExpression refactor for Scala 3
+}
 
 
-trait WithClause extends NonEmptyFrom with NonEmptyFromTemplate[WithClause, WithClause] { thisClause =>
-	override type Last[O <: RowProduct] = JoinedRelation[O, LastMapping]
-	override type FromLast >: Generalized <: WithClause
 
 
-	override type Generalized >: Dealiased <: WithClause {
-//			type LastMapping[O] = thisClause.LastMapping[O]
-		type FromLast = thisClause.FromLast
-		type Generalized <: thisClause.Generalized //all these below must be <: because of From
-		type Explicit <: thisClause.Explicit
-		type Implicit <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = RowProduct
-		type Base <: thisClause.Base
-		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
+object With {
+	//todo: ParamTables
+	//todo: recursive
+	//todo: dependency graph to enforce correct order
+	def apply[H](query :QuerySQL[RowProduct, H]) :WithQuerySQL[H] = new WithQuerySQL(query)
+
+	def apply[M[O] <: MappingAt[O]](query :MappingQuerySQL[RowProduct, M]) :WithMappingQuerySQL[M] =
+		new WithMappingQuerySQL(query)
+
+
+	class WithQuerySQL[H] private[With] (private val query :QuerySQL[RowProduct, H]) extends AnyVal {
+		def apply[Q](f :Table[MappingOf[H]#TypedProjection] => Q) :Q = f(query)
+
+		def as[A <: Label](alias :A) :Proceed[MappingOf[H]#TypedProjection Aliased A] =
+			//because the extension method for query doesn't currently preserve the result type H
+			new Proceed((query :Table[MappingOf[H]#TypedProjection]) as alias)
 	}
 
-	override type Dealiased >: Self <: WithClause {
-		type LastMapping[O] = thisClause.LastMapping[O]
-		type FromLast = thisClause.FromLast
-		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Implicit = thisClause.Implicit
-		type Base = thisClause.Base
-		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+	class WithMappingQuerySQL[M[O] <: MappingAt[O]] private[With] (private val query :MappingQuerySQL[RowProduct, M])
+		extends AnyVal
+	{
+		def apply[Q](f :Table[M] => Q) :Q = f(query)
+
+		def as[A <: Label](alias :A) :Proceed[M Aliased A] =
+			new Proceed(query as alias)
 	}
 
-	override type Self <: WithClause {
-		type LastMapping[O] = thisClause.LastMapping[O]
-		type FromLast = thisClause.FromLast
-		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Base = thisClause.Base
-		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+	class Proceed[T] private[With](private val table :T) extends AnyVal {
+		def apply[Q](f :T => Q) :Q = f(table)
 	}
 
-
-	override type AppliedParam <: BoundParamless
-	override type Paramless <: BoundParamless
-	override type BoundParamless = WithClause { type Params = @~ }
-
-	override def filter :GlobalBoolean[Generalized] = True
-	override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :GlobalBoolean[E] = True
-
-	override def filtered[P >: GlobalScope <: GlobalScope](filter :SQLBoolean[Generalized, P]) :Copy =
-		throw new UnsupportedOperationException(s"$this.where")
-
-	override type JoinFilter = Nothing
-
-	override def filtered(condition :Nothing) :Copy =
-		throw new UnsupportedOperationException(s"$this.on: this call should have been impossible.")
-
-	override type FromNext[E[+W <: RowProduct] <: RowProduct] = Nothing
-
-	override type FilterNext[E[+L <: FromSome] <: L Expanded N, S <: RowProduct Expanded N, G <: S, N[O] <: MappingAt[O]] =
-		Nothing
-
-	override def filterNext[F <: AndFrom[RowProduct, N], N[O] <: MappingAt[O]](next :F)(filter :Nothing) :Nothing =
-		throw new UnsupportedOperationException(s"$this.filterNext: this call should have been impossible.")
-
-
-
-	override def fromClause :Nothing = throw new UnsupportedOperationException(s"$this.fromClause")
-
-	protected override def applyTo[Y](matcher :RowProductVisitor[Y]) :Option[Y] = None //todo:
-
-
-	private[sql] override def concrete_RowProduct_subclass_must_extend_FromClause_or_GroupByClause :Nothing =
-		throw new UnsupportedOperationException
+	class CTEName[N <: Label](private val name :N) extends AnyVal {
+		def as[M[O] <: MappingAt[O], V](select: => QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
+				:CommonTableAlias[N, M] =
+			CommonTableExpression(select) as name
+	}
 
 }
 
@@ -124,205 +76,77 @@ trait WithClause extends NonEmptyFrom with NonEmptyFromTemplate[WithClause, With
 
 
 
-object WithClause {
+trait CommonTableExpression[+M[O] <: MappingAt[O]]
+	extends TableExpression[M] with RelVar[M] with RelationTemplate[M, CommonTableExpression]
+{
+	override def default :CommonTableExpression[M] = this
 
-	implicit class WithClauseExtension[W <: WithClause](private val thisClause :W) extends AnyVal {
-		def andWith[A <: Label, V](alias :A, cte :QuerySQL[RowProduct, V]) :W AndWith MappingOf[V]#TypedProjection As A =
-			AndWith(thisClause, alias, cte)
+	def as[A <: Label](alias :A) :CommonTableAlias[A, M] =
+		CommonTableExpression.as[A, query.ResultMapping, Row](alias, query)
 
-		def recursive[A <: Label](alias :A) :RecursiveAndWithFactory[W, A] =
-			new RecursiveAndWithFactory[W, A](thisClause, alias)
-	}
+	override def withClause :WithClause = query.withClause + default
 
-
-
-	trait CommonTableExpression[+M[O] <: MappingAt[O]] extends DerivedTable[M] {
-		protected type Row[O] <: M[O] //= select.ResultMapping[O]
-		type Subject
-		type Name <: Label
-		type CTEs <: WithClause //NextWith Row As Name
-
-		def ctes :CTEs
-		def alias :Name
-		val select :QuerySQL[RowProduct, Subject]// { type ResultMapping[O] <: M[O] }
-
-		override def apply[O] :M[O] = relation.row[O]
-		override def export[O] :MappingAt[O] = relation.export[O]
-
-		override def sql :String = alias + " as " + relation.sql
-
-		protected def relation :Table[Row] //= select
-	}
-
-	def CommonTableExpression[A <: Label, V]
-	                         (name :A)(cte :(With[MappingOf[V]#TypedProjection] As A) => QuerySQL[RowProduct, V])
-			:CommonTableExpression[MappingOf[V]#TypedProjection]
-				{ type Name = A; type Subject = V; type CTEs = With[MappingOf[V]#TypedProjection] As A } =
-		new CommonTableExpression[MappingOf[V]#TypedProjection] {
-			override type Row[O] = BaseMapping[V, O]
-			override type Subject = V
-			override type Name = A
-			override type CTEs = With[MappingOf[V]#TypedProjection] As A
-			override val alias = name
-			override val ctes :CTEs = With[A, MappingOf[V]#TypedProjection, V](this)
-			override val select = cte(ctes)
-			override val relation = select
-			//todo: `this` leaks from the constructor, is not really thread safe; lets just mention it in the docs
+	protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
+			:CommonTableExpression[M] =
+		new AlteredRelation[M, CommonTableExpression](this, includes, excludes) with CommonTableExpression[M] {
+			override val default = CommonTableExpression.this
+			override type Row = default.Row
+			override val query = default.query
+			override def name = default.name
+			override def export[O] = super[AlteredRelation].export[O]
+			override lazy val toString :String = alteredString
 		}
 
-	def CommonTableExpression[L <: WithClause, A <: Label, V]
-	                         (left :L, name :A)(cte :(L AndWith MappingOf[V]#TypedProjection As A) => QuerySQL[RowProduct, V])
-			:CommonTableExpression[MappingOf[V]#TypedProjection]
-				{ type Name = A; type Subject = V; type CTEs = L AndWith MappingOf[V]#TypedProjection As A } =
-		new CommonTableExpression[MappingOf[V]#TypedProjection] {
-			override type Row[O] = BaseMapping[V, O]
-			override type Subject = V
-			override type Name = A
-			override type CTEs = L AndWith MappingOf[V]#TypedProjection As A
-			override val alias = name
-			override val ctes :CTEs = AndWith(left, this)
-			override val select = cte(ctes)
-			override val relation = select
-			//todo: `this` leaks from the constructor, is not really thread safe; lets just mention it in the docs
+	def declarationSpelling[P, F <: RowProduct]
+	                       (context :SQLContext, params :Parameterization[P, F])
+	                       (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+		super[TableExpression].defaultSpelling(context, params)
+
+	override def refString :String = name
+	override def toString  :String = name + " as " + super[TableExpression].toString
+}
+
+
+
+object CommonTableExpression {
+	def apply[M[O] <: MappingAt[O], V]
+	         (alias :String, select : => QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
+			:CommonTableExpression[M] =
+		new AbstractSingletonWithClause with CommonTableExpression[M] {
+			override type Row = V
+			override val name = alias
+			override lazy val query = select
+			override def head = this
+			override val withClause :WithClause = { val q = query.withClause; if (q.isEmpty) this else q + this }
 		}
 
-}
+	def apply[M[O] <: MappingAt[O], V]
+	         (select : => QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] }) :CommonTableExpression[M] =
+		apply[M, V]("cte", select)
 
+	def apply[A <: Label](alias :A) :WithTableAsFactory[A] = new WithTableAsFactory(alias)
 
-
-
-
-
-trait NextWith[+L <: RowProduct, R[O] <: MappingAt[O]] 
-	extends NonSubselect[L, R] with WithClause with NonEmptyFromTemplate[L NextWith R, L NextWith R] 
-{ thisClause =>
-
-	override type LastMapping[O] = R[O]
-	override type FromLast = RowProduct NextWith R
-
-	override def lastAsIn[E <: RowProduct](implicit expansion :FromLast PrefixOf E) :Last[E] = last.asIn[E]
-
-	override val right :CommonTableExpression[R] = null
-	override def condition :GlobalBoolean[Generalized] = True
-
-	override type Alias = right.Name
-	override def alias :Alias = aliasOpt.get
-
-	override type Generalized >: Dealiased <: (left.Generalized NextWith R) {
-		type Generalized <: thisClause.Generalized
-		type Explicit <: thisClause.Explicit
-		type Implicit <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = RowProduct
-		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
+	class WithTableAsFactory[A <: Label] private[CommonTableExpression](private val alias :A) extends AnyVal {
+		def as[M[O] <: MappingAt[O], V]
+		      (select : => QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] }) :CommonTableAlias[A, M] =
+			CommonTableExpression.as[A, M, V](alias, select)
 	}
 
-	override type Dealiased >: Self <: (left.Self NextWith R) {
-		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-	}
-
-	override type Self <: (left.Self NextWith R) {
-		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-	}
-
-	//types used by As
-	type LeftBound >: WithClause <: RowProduct
-	type DealiasedLeft[+W <: LeftBound] <: W NextWith R
-	type WithLeft[+W <: LeftBound] = DealiasedLeft[W] As Alias
+	def as[A <: Label, M[O] <: MappingAt[O], V]
+	      (alias :A, select : => QuerySQL[RowProduct, V] { type ResultMapping[O] = M[O] })
+			:CommonTableAlias[A, M] =
+		new AbstractSingletonWithClause with CommonTableAlias[A, M] {
+			override type Row = V
+			override val name = alias
+			override lazy val query = select
+			override def head = this
+			override val withClause :WithClause = { val q = query.withClause; if (q.isEmpty) this else q + this }
+		}
 
 
-	//todo:
-	override type JoinedWith[+P <: RowProduct, +J[+W <: P, M[O] <: MappingAt[O]] <: W AndFrom M] = Nothing
-	override type JoinedWithSubselect[+P <: NonEmptyFrom] = Nothing
-	override type AsSubselectOf[+F <: NonEmptyFrom] = Nothing
+	type * = CommonTableExpression[MappingAt]
 
-	override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) :Nothing =
-		throw new UnsupportedOperationException(s"$this.joinedWith($prefix, ${firstJoin.name})")
-
-	override def joinedWithSubselect[F <: NonEmptyFrom](prefix :F) :Nothing =
-		throw new UnsupportedOperationException(s"$this.joinedWithSubselect($prefix)")
-
-	override def appendedTo[P <: FromClause](prefix :P) :Nothing =
-		throw new UnsupportedOperationException(s"$this.appendedTo($prefix)")
-
-	override def asSubselectOf[F <: NonEmptyFrom](newOuter :F)(implicit expansion :Implicit ExpandedBy F) :Nothing =
-		throw new UnsupportedOperationException(s"$this.asSubselectOf($newOuter)")
-
-
-
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[NextWith.*]
-}
-
-
-
-
-
-
-object NextWith {
-	type * = NextWith[RowProduct, M] forSome { type M[O] <: MappingAt[O] }
-}
-
-
-
-
-
-
-trait With[M[O] <: MappingAt[O]] extends NextWith[Dual, M] with NonEmptyFromTemplate[With[M], With[M]] { thisClause =>
-
-	override type Generalized = RowProduct NextWith M
-	override type Dealiased = With[M]
-	override type DealiasedCopy = With[M]
-	override type Self <: Dealiased
-	override type LeftBound = RowProduct
-	override type DealiasedLeft[+W <: RowProduct] = W NextWith M
-	override type WithLeft[+W <: RowProduct] = W NextWith M As Alias
-
-
-	override type LastParam = Nothing
-	override type Params = @~
-	override type AppliedParam = Nothing
-	override type Paramless = Self
-	override type DecoratedParamless[D <: BoundParamless] = D
-
-	override def bind(param :Nothing) :Nothing = left.bind(param)
-	override def bind(params :Params) :Self = self
-
-	protected override def decoratedBind[D <: BoundParamless](params: @~)(decorate :Self => D) :D =
-		decorate(self)
-
-	override type FullRow = left.FullRow ~ last.Subject
-
-	override def fullRow[E <: RowProduct]
-	                    (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, FullRow] =
-		ChainTuple.EmptyChain ~ last.expand(target)
-
-
-	override type DefineBase[+I <: RowProduct] = I
-	override type Explicit = RowProduct NextWith M
-	override type Inner = RowProduct NextWith M
-
-	override def base :RowProduct = Dual
-
-	override type Row = @~ ~ last.Subject
-
-	override def row[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
-			:ChainTuple[E, GlobalScope, Row] =
-		ChainTuple.EmptyChain ~ last.expand(target)
-
-
-	override def name = "with"
-
-	override def toString :String = "with " + right //already incorporates alias into the string
+	trait CommonTableAlias[A <: Label, +M[O] <: MappingAt[O]] extends CommonTableExpression[M] with StaticTable[A, M]
 
 }
 
@@ -331,171 +155,152 @@ trait With[M[O] <: MappingAt[O]] extends NextWith[Dual, M] with NonEmptyFromTemp
 
 
 
-object With { 
+sealed trait WithClause extends Iterable[CommonTableExpression.*] {
+	def +(table :CommonTableExpression.*) :WithClause =
+		if (isEmpty)
+			table.withClause
+		else if (table.withClause.size == 1 && contains(table))
+			this
+		else
+			this ++ table.withClause
 
-	def apply[A <: Label, V](alias :A, cte :QuerySQL[RowProduct, V]) :With[MappingOf[V]#TypedProjection] As A =
-		CommonTableExpression[A, V](alias)(_ => cte).ctes
-	
-//	def apply[A <: Label, M[O] <: MappingAt](alias :A, cte :MappingQuerySQL[RowProduct, M]) :With[M] As A =
-//		CommonTableExpression[A, M](alias, _ => cte).ctes
+	def ++(tables :WithClause) :WithClause =
+		if (tables.isEmpty)
+			this
+		else {
+			val b = WithClause.newBuilder; b.sizeHint(size + tables.size)
+			(b ++= this ++= tables).result()
+		}
 
-	def recursive[A <: Label](alias :A) :RecursiveWithFactory[A] =
-		new RecursiveWithFactory[A](alias)
+	def +:(table :CommonTableExpression.*)  :WithClause =
+		if (isEmpty)
+			table.withClause
+		else if (table.withClause.size == 1 && contains(table))
+			this
+		else
+			table.withClause ++: this
 
-	class RecursiveWithFactory[A <: Label] private[With] (private val alias :Label) extends AnyVal {
-		def as[V](cte :(With[MappingOf[V]#TypedProjection] As A) => QuerySQL[RowProduct, V])
-				:With[MappingOf[V]#TypedProjection] As A =
-			CommonTableExpression(alias.asInstanceOf[A])(cte).ctes
-	}
+	def ++:(tables :WithClause) :WithClause =
+		if (tables.isEmpty) this
+		else {
+			val b = WithClause.newBuilder; b.sizeHint(size + tables.size)
+			(b ++= tables ++= this).result()
+		}
 
+	def contains(table :CommonTableExpression.*) :Boolean
 
-	private[sql] def apply[A <: Label, M[O] <: BaseMapping[S, O], S]
-	                      (cte :CommonTableExpression[M] { type Name = A; type CTEs = With[Row] As A }) :With[M] As A =
-		new With[M] with AbstractExpanded[Dual, M, S] {
-			override val left :Dual.type = Dual
-			override val right = cte
-			override val last = RelationSQL[Generalized, M, S, FromLast](cte, 0)
-			override val aliasOpt = Some(cte.alias)
-			override val outer = left.outer
-			override def lastRelation = last
+	protected override def newSpecificBuilder :Builder[CommonTableExpression.*, WithClause] =
+		WithClause.newBuilder
 
-			override def narrow :Dual.type NextWith M = this.asInstanceOf[Dual.type NextWith M]
+	protected override def fromSpecific(coll :IterableOnce[CommonTableExpression.*]) :WithClause =
+		WithClause.fromSpecific(coll)
 
-			override type Alias = cte.Name
-			override type WithLeft[+L <: RowProduct] = L NextWith M As A
-			override type Self = With[M] As A
-			override type Copy = With[M] As A
-
-			override def aliased[N <: Label](alias :N) :With[M] As N = {
-				CommonTableExpression[N, right.Subject](alias) { withClause =>
-					val replacement = withClause.last.asInstanceOf[RelationSQL[withClause.Generalized, M, S, withClause.FromLast]]
-					val substitute = SQLScribe.replaceRelation[M, S, M, S, Generalized, withClause.Generalized](
-						generalized, withClause.generalized, last, replacement
-					)
-					substitute(right.select) match {
-						case query :QuerySQL[RowProduct, S @unchecked] if query.toTable.row == right.row => query
-						case other => throw new IllegalStateException(
-							s"The result of renaming last view of $this to $alias transformed query ${right.select} " +
-							s"into a non-query expression $other (or a query with a different mapping)."
-						)
-					}
-				}
-				??? //fixme: the above expression doesn't have mapping type M
-			}
-
-		}.asInstanceOf[With[M] As A]
-
+	def toSeq    :Seq[CommonTableExpression.*]
+	def toUnique :Unique[CommonTableExpression.*]
+//	def toSet :Set[CommonTableExpression.*]
+	protected[this] override def className = "With"
 }
 
 
 
+object WithClause extends Factory[CommonTableExpression.*, WithClause] {
+	def apply(tables :CommonTableExpression.* *) :WithClause =
+		if (tables.isEmpty) EmptyWithClause
+		else if (tables.sizeIs == 1) tables.head.withClause
+		else tables.view.flatMap(_.withClause).to(this)
 
-
-
-trait AndWith[+L <: WithClause, R[O] <: MappingAt[O]]
-	extends NextWith[L, R] with NonEmptyFromTemplate[L AndWith R, L AndWith R]
-{ thisClause =>
-	override type Generalized = left.Generalized AndWith R
-	override type Dealiased = left.Self AndWith R
-	override type Self <: Dealiased
-	override type LeftBound = WithClause
-	override type DealiasedLeft[+W <: WithClause] = W AndWith R
-	override type WithLeft[+W <: WithClause] = W AndWith R As Alias
-
-	protected override def narrow :left.type AndWith R
-
-	override type LastParam = left.LastParam
-	override type Params = left.Params
-	override type AppliedParam = WithLeft[left.AppliedParam]
-	override type Paramless = WithLeft[left.Paramless]
-	override type DecoratedParamless[D <: BoundParamless] = D
-
-
-	override def bind(param :LastParam) :AppliedParam = {
-		val l = left.bind(param)
-		CommonTableExpression[left.AppliedParam, Alias, right.Subject](l, alias) { withClause =>
-			val substitute = SQLScribe.applyParam(self, withClause :RowProduct, param, lastParamOffset)
-			substitute(right.select) match {
-				case query :QuerySQL[RowProduct, right.Subject] if query.toTable.row == right.row => query
-				case other => throw new IllegalStateException(
-					s"The result of binding last parameter of $this to $param transformed query ${right.select} " +
-					s"into a non-query expression $other (or a query with a different mapping)."
-				)
-			}
-		}.ctes
-		??? //fixme: above expression does not have AndWith R type
+	override def fromSpecific(tables :IterableOnce[CommonTableExpression.*]) :WithClause = tables match {
+		case tables :WithClause => tables
+		case iter :Iterable[CommonTableExpression.*] if iter.isEmpty => EmptyWithClause
+		case iter :Iterable[CommonTableExpression.*] if iter.sizeIs == 1 => iter.head.withClause
+		case tables :Unique[CommonTableExpression.*] => tables.view.map(_.withClause).reduce(_ ++ _)
+		case iter :Iterator[_] if !iter.hasNext => EmptyWithClause
+		case _ => (newBuilder ++= tables).result()
 	}
 
-	override def bind(params :Params) :Paramless = {
-		val l = left.bind(params)
-		CommonTableExpression[left.Paramless, Alias, right.Subject](l, alias) { withClause =>
-			val substitute = SQLScribe.applyParams(self, withClause :RowProduct)(params)
-			substitute(right.select) match {
-				case query :QuerySQL[RowProduct, right.Subject] if query.toTable.row == right.row => query
-				case other => throw new IllegalStateException(
-					s"The result of binding parameters of $this to $params transformed query ${right.select} " +
-						s"into a non-query expression $other (or a query with a different mapping)."
-				)
-			}
-		}.ctes
-		??? //fixme: above expression does not have AndWith R type
+	def single(table :CommonTableExpression.*) :WithClause = table.withClause
+
+	def empty :WithClause = EmptyWithClause
+
+	override def newBuilder :Builder[CommonTableExpression.*, WithClause] =
+		new Builder[CommonTableExpression.*, WithClause] {
+			val unique = Unique.newBuilder[CommonTableExpression.*]
+
+			override def addOne(elem :CommonTableExpression.*) = { unique addAll elem.withClause; this }
+
+			override def clear() :Unit = unique.clear()
+			override def result() = new UniqueWithClause(unique.result())
+		}
+
+	def unapplySeq(ctes :WithClause) :Opt[Seq[CommonTableExpression.*]] = Got(ctes.toSeq)
+
+
+	private object EmptyWithClause extends WithClause {
+		override def size = 0
+		override def knownSize = 0
+		override def iterator = Iterator.empty
+		override def foreach[U](f :CommonTableExpression.* => U) :Unit = ()
+
+		override def contains(table :CommonTableExpression.*) = false
+
+		override def +(table :CommonTableExpression.*)   = table.withClause
+		override def ++(tables :WithClause)  = tables
+		override def +:(table :CommonTableExpression.*)  = table.withClause
+		override def ++:(tables :WithClause) = tables
+
+		override def toSeq = Nil
+		override def toUnique = Unique.empty
+//		override def toSet = Set.empty
+		override def toString :String = "With()"
 	}
 
-	protected override def decoratedBind[D <: BoundParamless](params :Params)(decorate :Paramless => D) :D =
-		decorate(bind(params))
+	protected[sql] sealed trait AbstractSingletonWithClause extends WithClause {
+		override def size = 1
+		override def knownSize = 1
+		override def iterator :Iterator[CommonTableExpression.*] = Iterator.single(head)
+		override def foreach[U](f :CommonTableExpression.* => U) :Unit = f(head)
 
+		override def contains(table :CommonTableExpression.*) :Boolean = table.default == head
 
-	override type FullRow = left.FullRow ~ last.Subject
+		override def +(table :CommonTableExpression.*)   :WithClause =
+			if (table.withClause.size == 1)
+				if (head == table.default) this else new UniqueWithClause(Unique(head, table.default))
+			else
+				this ++: table.withClause
 
-	override def fullRow[E <: RowProduct]
-	                    (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, FullRow] =
-		left.fullRow(target)(expansion.expandFront[left.Generalized, R]) ~ last.expand(target)
+		override def +:(table :CommonTableExpression.*)  :WithClause =
+			if (table.withClause.size == 1)
+				if (head == table.default) this else new UniqueWithClause(Unique(table.default, head))
+			else
+				this ++: table.withClause
 
+		override def ++(tables :WithClause)  :WithClause = if (tables.isEmpty) this else head +: tables
+		override def ++:(tables :WithClause) :WithClause = if (tables.isEmpty) this else tables + head
 
+		override def toSeq    :Seq[CommonTableExpression.*]    = head::Nil
+		override def toUnique :Unique[CommonTableExpression.*] = Unique.single(head)
+//		override def toSet :Set[CommonTableExpression.*] = Set(head)
+	}
 
-	override type DefineBase[+I <: RowProduct] = I
-	override type Explicit = left.Explicit AndWith R
-	override type Inner = left.Inner AndWith R
+	private class SingletonWithClause(override val head :CommonTableExpression.*) extends AbstractSingletonWithClause {
+		override def toString :String = "With(" + head + ")"
+	}
 
-	override type Row = left.Row ~ last.Subject
+	private class UniqueWithClause(override val toUnique :Unique[CommonTableExpression.*]) extends WithClause {
+		override def iterator = toUnique.iterator
+		override def foreach[U](f :CommonTableExpression.* => U) :Unit = toUnique.foreach(f)
 
-	override def row[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
-			:ChainTuple[E, GlobalScope, Row] =
-		left.row(target)(expansion.expandFront[left.Generalized, R]) ~ last.expand(target)
+		override def contains(table :CommonTableExpression.*) :Boolean = toUnique.contains(table)
 
-	override def name = "with"
-	override def toString :String = left + " with " + right
+		override def ++(tables :WithClause)  =
+			if (tables.isEmpty) this else new UniqueWithClause(toUnique ++ tables)
 
+		override def ++:(tables :WithClause) =
+			if (tables.isEmpty) this else new UniqueWithClause((Unique.newBuilder ++= tables ++= toUnique).result())
+
+		override def toSeq = toUnique.toSeq
+	}
 }
 
 
 
-
-
-
-object AndWith {
-	def apply[L <: WithClause, A <: Label, V]
-	         (left :L, alias :A, cte :QuerySQL[RowProduct, V])
-			:L AndWith MappingOf[V]#TypedProjection As A =
-		CommonTableExpression[L, A, V](left, alias)(ctes => cte.basedOn(ctes)).ctes
-
-
-
-	private[sql] def apply[L <: WithClause, A <: Label, R[O] <: MappingAt[O]]
-	                      (left :L, right :CommonTableExpression[R] { type Name = A; type CTEs = L AndWith Row As A })
-			:L AndWith R As A =
-		???
-
-
-
-	class RecursiveAndWithFactory[W <: WithClause, A <: Label](preceding :W, alias :A) {
-		def as[V](select :(W AndWith MappingOf[V]#TypedProjection As A) => QuerySQL[RowProduct, V])
-				:W AndWith MappingOf[V]#TypedProjection As A =
-			CommonTableExpression[W, A, V](preceding, alias)(select).ctes
-	}
-
-}
-
-//todo: SubselectWith and WithParam
-
-*/

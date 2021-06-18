@@ -11,10 +11,11 @@ import net.noresttherein.oldsql.schema.{ColumnMapping, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Table.StaticTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.bits.ConstantMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, NonEmptyFrom, ParamlessFrom, PartOf, PrefixOf, RowProductTemplate, TopFrom}
 import net.noresttherein.oldsql.sql.DecoratedFrom.ExpandingDecorator
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, NonEmptyFrom, ParamlessFrom, PartOf, PrefixOf, RowProductTemplate, TopFrom}
 import net.noresttherein.oldsql.sql.Expanded.NonSubselect
 import net.noresttherein.oldsql.sql.FromSome.GroundFromSome
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
@@ -238,11 +239,11 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 		//caution: there is a serious issue in that this.generalized.Self <:< this.generalized.Generalized does not hold.
 		//  This is a direct consequence of using Self as a lower bound, rather than declaring Self <: Generalized.
 		//  The alternative however would make Self volatile, so no member types of self could be used.
-		type FromLast <: thisClause.FromLast
+		type FromLast    <: thisClause.FromLast
 		type Generalized <: thisClause.Generalized //these can't be =:= because Dual.Generalized =:= RowProduct
-		type Explicit <: thisClause.Explicit
-		type Implicit <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = RowProduct
-		type Base <: thisClause.Base
+		type Explicit    <: thisClause.Explicit
+		type Implicit    <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = RowProduct
+		type Base        <: thisClause.Base
 //		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
 	}
 
@@ -264,16 +265,16 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	type Dealiased >: Self <: RowProduct {
 		type LastMapping[O] = thisClause.LastMapping[O]
 //		type Last[O <: RowProduct] = thisClause.Last[O] //lets leave some flexibility for unforseen implementations
-		type FromLast = thisClause.FromLast
+		type FromLast    = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Implicit = thisClause.Implicit
-		type Base = thisClause.Base
+		type Params      = thisClause.Params
+		type FullRow     = thisClause.FullRow
+		type Explicit    = thisClause.Explicit
+		type Implicit    = thisClause.Implicit
+		type Base        = thisClause.Base
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+		type Row         = thisClause.Row
+		type OuterRow    = thisClause.OuterRow
 	}
 
 	/** A recursive reconstruction of this clause's concrete type. It is defined by replacing every type parameter
@@ -298,17 +299,17 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	type Self <: RowProduct {
 		type LastMapping[O] = thisClause.LastMapping[O]
 //		type Last[O <: RowProduct] = thisClause.Last[O] //lets leave some flexibility for unforseen implementations
-		type FromLast = thisClause.FromLast
+		type FromLast    = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Base = thisClause.Base
+		type Params      = thisClause.Params
+		type FullRow     = thisClause.FullRow
+		type Explicit    = thisClause.Explicit
+		type Inner       = thisClause.Inner
+		type Implicit    = thisClause.Implicit
+		type Base        = thisClause.Base
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+		type Row         = thisClause.Row
+		type OuterRow    = thisClause.OuterRow
 	}
 
 	/** This clause as its [[net.noresttherein.oldsql.sql.RowProduct.Self Self]] type.
@@ -362,6 +363,16 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 		filterNext[F, N](next)(filter)
 
 
+
+	/** A flag type which specifies if the clause contains any relations ''other'' than
+	  * [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation unbound]] parameters. `true` for
+	  * [[net.noresttherein.oldsql.sql.Dual Dual]] and set to false (literal type) by all joins except for
+	  * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]], which defines it as equal to that of its left side.
+	  * Together with [[net.noresttherein.oldsql.sql.RowProduct.PureParamFrom PureParamFrom]] type alias it can be used
+	  * to define types introducing solely parameters to SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]]
+	  * used within DML statements.
+	  */
+	type ParamsOnly <: Boolean
 
 	/** The type of the last [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameter among these relations.
 	  * It is the last element of the type of chain [[net.noresttherein.oldsql.sql.RowProduct.Params Params]].
@@ -694,9 +705,9 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  */
 	type DirectSubselect = NonEmptyFrom {
 		type Implicit = thisClause.Generalized
-		type Base = thisClause.Generalized
+		type Base     = thisClause.Generalized
+		type Params   = thisClause.Params
 		type DefineBase[+I <: RowProduct] = I
-		type Params = thisClause.Params
 	}
 
 	/** Super type of all not aggregated/grouped ''from'' clauses representing a subselect directly nested
@@ -706,9 +717,9 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  */
 	type SubselectSome = FromSome {
 		type Implicit = thisClause.Generalized
-		type Base = thisClause.Generalized
+		type Base     = thisClause.Generalized
+		type Params   = thisClause.Params
 		type DefineBase[+I <: RowProduct] = I
-		type Params = thisClause.Params
 	}
 
 
@@ -777,7 +788,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  */
 	type Outer <: Implicit {
 		type Generalized = thisClause.Implicit
-		type FullRow = thisClause.OuterRow
+		type FullRow     = thisClause.OuterRow
 	}
 
 	/** Return the outer clause of this instance if it (or, recursively, any clause in the left side of the join)
@@ -1069,13 +1080,13 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 
 	/** A ''from'' clause for a subselect of this clause with the single relation `T`, conforming to `SubselectOf[Self]`. */
 	type FromRelation[T[O] <: MappingAt[O]] <: (Self AndFrom T) {
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow ~ T[Unit]#Subject
+		type Params   = thisClause.Params
+		type FullRow  = thisClause.FullRow ~ T[Unit]#Subject
 		type Explicit = RowProduct AndFrom T
 		type Implicit = thisClause.Generalized
-		type Base = thisClause.Generalized
+		type Base     = thisClause.Generalized
 		type DefineBase[+I <: RowProduct] = I
-		type Row = @~ ~ T[Unit]#Subject
+		type Row      = @~ ~ T[Unit]#Subject
 		type OuterRow = thisClause.FullRow
 	}
 
@@ -1187,6 +1198,23 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	def fromSubselect[F <: NonEmptyFrom](subselect :F)(implicit expansion :subselect.Implicit ExpandedBy Generalized)
 			:FromSubselect[F] { type DefineBase[+I <: RowProduct] = subselect.DefineBase[I] }
 
+
+	/** The collection of all [[net.noresttherein.oldsql.sql.CommonTableExpression CommonTableExpression]] named derived tables used by any
+	  * dependent ''select'' expressions used by any SQL ''select'' based on this clause - in ''where''/''having''
+	  * (i.e, in [[net.noresttherein.oldsql.sql.RowProduct.filter filter]] and `this.fromClause.filter`),
+	  * or in ''from''/''group by'' (i.e, by any relations
+	  * in [[net.noresttherein.oldsql.sql.RowProduct.tableStack tableStack]] or
+	  * `this.`[[net.noresttherein.oldsql.sql.RowProduct.fromClause fromClause]]`.tableStack`) clauses of this instance.
+	  * These named ''selects'' are collected together to form a single ''with'' clause of the generated
+	  * complete SQL query using this instance, with each derived table receiving a single, unique declaration,
+	  * rather than being repeated with every subselect of this instance using them. Note that this only covers
+	  * the [[net.noresttherein.oldsql.sql.RowProduct.Explicit explicit]] span of this instance, ignoring any
+	  * expressions in the [[net.noresttherein.oldsql.sql.RowProduct.Implicit implicit]] tables inherited from
+	  * outer clauses.
+	  */
+	def withClause :WithClause
+
+	def collect[X](fun :PartialFunction[SQLExpression.*, X]) :Seq[X]
 
 	/** Creates SQL for the full ''from'' and ''where'' clauses of this instance (as well as a ''group by''
 	  * and ''having'', if present). The returned SQL fragment can be than used to create the SQL for a full ''select''
@@ -1330,19 +1358,19 @@ object RowProduct {
 		type Copy <: F { //todo: Copy <: UpperBound
 			type LastMapping[O] = thisClause.LastMapping[O]
 			type Last[C <: RowProduct] = thisClause.Last[C]
-			type FromLast = thisClause.FromLast
+			type FromLast    = thisClause.FromLast
 			type Generalized = thisClause.Generalized
-			type Dealiased = thisClause.Dealiased
-			type Params = thisClause.Params
-			type FullRow = thisClause.FullRow
-			type Explicit = thisClause.Explicit
-			type Inner = thisClause.Inner
-			type Implicit = thisClause.Implicit
-			type Outer = thisClause.Outer
-			type Base = thisClause.Base
+			type Dealiased   = thisClause.Dealiased
+			type Params      = thisClause.Params
+			type FullRow     = thisClause.FullRow
+			type Explicit    = thisClause.Explicit
+			type Inner       = thisClause.Inner
+			type Implicit    = thisClause.Implicit
+			type Outer       = thisClause.Outer
+			type Base        = thisClause.Base
 			type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-			type Row = thisClause.Row
-			type OuterRow = thisClause.OuterRow
+			type Row         = thisClause.Row
+			type OuterRow    = thisClause.OuterRow
 		}
 
 
@@ -1458,19 +1486,19 @@ object RowProduct {
 		type DealiasedCopy >: Copy <: U { //todo: Copy <: UpperBound
 			type LastMapping[O] = thisClause.LastMapping[O]
 			type Last[C <: RowProduct] = thisClause.Last[C]
-			type FromLast = thisClause.FromLast
+			type FromLast    = thisClause.FromLast
 			type Generalized = thisClause.Generalized
-			type Dealiased = thisClause.Dealiased
-			type Params = thisClause.Params
-			type FullRow = thisClause.FullRow
-			type Explicit = thisClause.Explicit
-			type Inner = thisClause.Inner
-			type Implicit = thisClause.Implicit
-			type Outer = thisClause.Outer
-			type Base = thisClause.Base
+			type Dealiased   = thisClause.Dealiased
+			type Params      = thisClause.Params
+			type FullRow     = thisClause.FullRow
+			type Explicit    = thisClause.Explicit
+			type Inner       = thisClause.Inner
+			type Implicit    = thisClause.Implicit
+			type Outer       = thisClause.Outer
+			type Base        = thisClause.Base
 			type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-			type Row = thisClause.Row
-			type OuterRow = thisClause.OuterRow
+			type Row         = thisClause.Row
+			type OuterRow    = thisClause.OuterRow
 		}
 
 		/** A function type creating an [[net.noresttherein.oldsql.sql.SQLBoolean SQLBoolean]] based on the last
@@ -1613,41 +1641,41 @@ object RowProduct {
 //			type LastMapping[O] = thisClause.LastMapping[O]
 			type FromLast = thisClause.FromLast
 			type Generalized <: thisClause.Generalized //all these below must be <: because of From
-			type Explicit <: thisClause.Explicit
-			type Implicit <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = RowProduct
-			type Base <: thisClause.Base
+			type Explicit    <: thisClause.Explicit
+			type Implicit    <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = RowProduct
+			type Base        <: thisClause.Base
 			type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
 		}
 
 		override type Dealiased >: Self <: NonEmptyFrom {
 			type LastMapping[O] = thisClause.LastMapping[O]
 //			type Last[O <: RowProduct] = thisClause.Last[O]
-			type FromLast = thisClause.FromLast
+			type FromLast    = thisClause.FromLast
 			type Generalized = thisClause.Generalized
-			type Params = thisClause.Params
-			type FullRow = thisClause.FullRow
-			type Explicit = thisClause.Explicit
-			type Implicit = thisClause.Implicit
-			type Base = thisClause.Base
+			type Params      = thisClause.Params
+			type FullRow     = thisClause.FullRow
+			type Explicit    = thisClause.Explicit
+			type Implicit    = thisClause.Implicit
+			type Base        = thisClause.Base
 			type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-			type Row = thisClause.Row
-			type OuterRow = thisClause.OuterRow
+			type Row         = thisClause.Row
+			type OuterRow    = thisClause.OuterRow
 		}
 
 		override type Self <: NonEmptyFrom {
 			type LastMapping[O] = thisClause.LastMapping[O]
 //			type Last[O <: RowProduct] = thisClause.Last[O]
-			type FromLast = thisClause.FromLast
+			type FromLast    = thisClause.FromLast
 			type Generalized = thisClause.Generalized
-			type Params = thisClause.Params
-			type FullRow = thisClause.FullRow
-			type Explicit = thisClause.Explicit
-			type Inner = thisClause.Inner
-			type Implicit = thisClause.Implicit
-			type Base = thisClause.Base
+			type Params      = thisClause.Params
+			type FullRow     = thisClause.FullRow
+			type Explicit    = thisClause.Explicit
+			type Inner       = thisClause.Inner
+			type Implicit    = thisClause.Implicit
+			type Base        = thisClause.Base
 			type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-			type Row = thisClause.Row
-			type OuterRow = thisClause.OuterRow
+			type Row         = thisClause.Row
+			type OuterRow    = thisClause.OuterRow
 		}
 
 		//these remain NonEmptyFrom so Subselect never becomes Dual Subselect
@@ -1781,7 +1809,7 @@ object RowProduct {
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ConcreteFrom]]
 	  */
 	type GeneralizedFrom = RowProduct {
-		type FromLast >: this.type <: RowProduct
+		type FromLast    >: this.type <: RowProduct
 		type Generalized >: this.type <: FromLast
 	}
 
@@ -1802,9 +1830,9 @@ object RowProduct {
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.GeneralizedFrom]]
 	  */
 	type ConcreteFrom = RowProduct {
-		type FromLast >: this.type <: RowProduct
+		type FromLast    >: this.type <: RowProduct
 		type Generalized >: this.type <: FromLast
-		type Self >: this.type <: Generalized
+		type Self        >: this.type <: Generalized
 	}
 
 
@@ -1963,6 +1991,18 @@ object RowProduct {
 	  */ //consider: renaming to ParamRow/ParamProduct/ParamRelations
 	type ParameterizedFrom[P] = RowProduct { //todo: type which enforces only JoinParam joins
 		type Params = P
+	}
+
+	/** A type alias marking a `RowProduct` as containing no joins
+	  * other than [[net.noresttherein.oldsql.sql.JoinParam JoinParam]], used for stored procedure call expressions
+	  * and DML.
+	  */
+	type PureParamFrom[P] = FromSome { //FromSome to use it on the left side of JoinParam
+		type Params = P
+		type ParamsOnly = true
+	}
+	object PureParamFrom {
+		val empty :PureParamFrom[@~] = From.template.asInstanceOf[PureParamFrom[@~]]
 	}
 
 	/** A narrowing of a ''from'' clause type `F` enforcing that `P` is the type of

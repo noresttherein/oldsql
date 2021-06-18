@@ -12,8 +12,8 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult
-import net.noresttherein.oldsql.sql.RowProduct.{GroundFrom, TopFrom}
 import net.noresttherein.oldsql.sql.Query.{CompoundSelect, CompoundSelectMapping, MappingQuery, QueryTemplate}
+import net.noresttherein.oldsql.sql.RowProduct.{GroundFrom, TopFrom}
 import net.noresttherein.oldsql.sql.Select.{ArbitrarySelect, Minus, SelectTemplate, SetOperator}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.LocalScope
@@ -153,6 +153,8 @@ object Query {
 		def mapping[O] :ResultMapping[O]
 		def export[O] :RefinedMapping[ResultMapping[O]#Subject, O]
 
+		def withClause :WithClause
+
 		def map[X](f :V => X) :S[X]
 
 		def map[Fun, C <: Chain, X](f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :V <:< C) :S[X] =
@@ -206,6 +208,7 @@ object Query {
 		val left :Query[P, V]
 		val right :Query[P, V]
 		val operator :SetOperator
+		override def withClause :WithClause = left.withClause ++ right.withClause
 
 		override def rowForm :SQLReadForm[V] = left.rowForm
 
@@ -274,6 +277,8 @@ object Query {
 			override type ResultMapping[O] = left.ResultMapping[O]
 			override def mapping[O] = left.mapping[O]
 			override def export[O] = left.export[O] //todo: this should involve some reconciliation
+
+			override val withClause = left.withClause ++ right.withClause
 		}
 	}
 
@@ -294,7 +299,7 @@ object Query {
 		override val right :MappingQuery[P, M]
 
 		override def mapping[O] = left.mapping
-		override def export[O] = left.export //todo: this should involve some reconciliation
+		override def export[O]  = left.export //todo: this should involve some reconciliation
 
 		override def bind(params :P) :MappingQuerySQL[RowProduct, M] = operator(left.bind(params), right.bind(params))
 	}
@@ -318,6 +323,9 @@ object Query {
 		                     (override val left :MappingQuery[P, M], override val operator :SetOperator,
 		                      override val right :MappingQuery[P, M])
 			extends CompoundSelectMapping[P, M]
+		{
+			override val withClause = left.withClause ++ right.withClause
+		}
 
 	}
 
@@ -346,11 +354,11 @@ trait Select[P, V] extends Query[P, V] with SelectTemplate[V, ({ type S[X] = Sel
 	override def map[X](f :V => X) :Select[P, X] =
 		new ArbitrarySelect[P, From, X](from, selectClause.map(f), parameterization, isDistinct)
 
-	protected def reverseCollect[X](fun: PartialFunction[SQLExpression.*, X], acc: List[X]): List[X] = {
+	protected override def reverseCollect[X](fun: PartialFunction[SQLExpression.*, X], acc: List[X]): List[X] = {
 		//we ignore filters in the implicit portion as, if this is a subselect, they would be collected by the enclosing expression.
 		val headerItems = selectClause.reverseCollectForwarder(fun, acc)
 		from.filter.reverseCollectForwarder(fun, from match { //todo: make this a method in RowProduct
-			case GroupByClause(ungrouped) => ungrouped.filter.reverseCollectForwarder(fun, headerItems)
+			case AggregateClause(ungrouped) => ungrouped.filter.reverseCollectForwarder(fun, headerItems)
 			case _ => headerItems
 		})
 	}
@@ -522,6 +530,8 @@ object Select {
 		def isDistinct :Boolean
 		def distinct :S[V]
 
+		//same as in SQLExpression
+		protected def reverseCollect[X](fun: PartialFunction[SQLExpression.*, X], acc: List[X]): List[X]
 
 		override def canEqual(that :Any) :Boolean = that.getClass == getClass
 
@@ -567,6 +577,8 @@ object Select {
 		override def mapping[O] :ResultMapping[O] = selectClause.mapping.withOrigin[O]
 		override def export[O] :RefinedMapping[V, O] = selectClause.export.withOrigin[O]
 
+		override val withClause = from.withClause ++ selectClause.withClause
+
 		override val columns: Seq[SelectedColumn[_]] = //todo: is this the place where we finally decide on the column set?
 			selectClause.export.selectedByDefault.toSeq.map(include(_))
 
@@ -607,6 +619,7 @@ object Select {
 		override type From = F
 
 		override val selectClause = result.expr
+		override val withClause   = from.withClause ++ selectClause.withClause
 
 		/** A column in the header of owning select.
 		  * @param column the `ColumnMapping` implementation based on a `ColumnSQL` expression

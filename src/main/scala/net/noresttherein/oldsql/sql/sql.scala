@@ -105,7 +105,7 @@ package object sql {
 
 	val JoinedRelation = ast.JoinedRelation
 
-	/** An occurrence of an SQL [[net.noresttherein.oldsql.schema.Relation.Table Table]] in a ''from'' clause
+	/** An occurrence of an SQL [[net.noresttherein.oldsql.schema.Table Table]] in a ''from'' clause
 	  * of an SQL ''select''. It declares the [[net.noresttherein.oldsql.schema.Mapping mapping]] for that table
 	  * and is a valid SQL [[net.noresttherein.oldsql.sql.SQLExpression expression]] based on the ''from'' clause
 	  * of its second type parameter.

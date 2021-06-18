@@ -75,12 +75,13 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	override def isParameterized :Boolean = false
 	override def isSubselectParameterized :Boolean = false
 
-	override type LastParam = Nothing
-	override type Params = @~
-	override type AppliedParam = Nothing
+	override type ParamsOnly           = true
+	override type LastParam            = Nothing
+	override type Params               = @~
+	override type AppliedParam         = Nothing
 	override type GeneralizedParamless = FromClause
-	override type Paramless = Dual
-	override type BoundParamless = FromClause { type Params = @~ } //todo: FromClause | WithClause
+	override type Paramless            = Dual
+	override type BoundParamless       = FromClause { type Params = @~ } //todo: FromClause | WithClause
 	override type DecoratedParamless[D <: BoundParamless] = D
 
 	override def bind(param :Nothing) :Nothing = throw new UnsupportedOperationException("Dual.bind(" + param + ")")
@@ -145,10 +146,10 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	override def isValidSubselect = false
 
 	override type Explicit = RowProduct
-	override type Inner = FromClause
+	override type Inner    = FromClause
 	override type Implicit = RowProduct
-	override type Outer = Dual
-	override type Base = RowProduct
+	override type Outer    = Dual
+	override type Base     = RowProduct
 	override type DefineBase[+I <: RowProduct] = I
 
 	override val outer :Dual = this
@@ -216,6 +217,11 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	                          (subselect :F)(implicit expansion :subselect.Implicit ExpandedBy RowProduct)
 			:F { type Implicit = RowProduct; type DefineBase[+I <: RowProduct] = subselect.DefineBase[I] } =
 		subselect.asInstanceOf[F { type Implicit = RowProduct; type DefineBase[+I <: RowProduct] = subselect.DefineBase[I] }]
+
+
+	override def withClause :WithClause = filter.withClause
+
+	override def collect[X](fun :PartialFunction[SQLExpression.*, X]) :Seq[X] = filter.collect(fun)
 
 
 	protected override def defaultSpelling(context :SQLContext)
