@@ -2,18 +2,19 @@ package net.noresttherein.oldsql.sql.mechanics
 
 import scala.collection.immutable.ArraySeq
 
-import net.noresttherein.oldsql.collection.Chain
+import net.noresttherein.oldsql.collection.{Chain, Opt}
 import net.noresttherein.oldsql.collection.Chain.{~, ChainGet}
+import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.morsels.ChunkedString
+import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.SQLWriteForm
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.sql.{Aggregated, By, DecoratedFrom, FromSome, GroupBy, GroupByClause, JoinedRelation, NonParam, RowProduct, UnboundParam}
-import net.noresttherein.oldsql.sql.RowProduct.{NonEmptyFrom, ParameterizedFrom, ParamlessFrom}
-import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamAt}
-import net.noresttherein.oldsql.sql.ast.RelationSQL
-import net.noresttherein.oldsql.sql.ast.SQLParameter
-import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{ver, Parameterization, SQLContext}
+import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, By, DecoratedFrom, Expanded, FromSome, GroupBy, GroupByClause, NonParam, ParamClause, RowProduct}
+import net.noresttherein.oldsql.sql.ParamClause.{ParamAt, UnboundParam}
+import net.noresttherein.oldsql.sql.RowProduct.{AggregateOf, AggregateOfGeneralized, NonEmptyFrom, ParameterizedFrom, ParamlessFrom, SubselectOf}
+import net.noresttherein.oldsql.sql.ast.{BoundParam, JoinedRelation, RelationSQL}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{ver, SQLContext}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization.{JoinParameterization, MappedParameterization, UngroupedParameterization}
 
 
@@ -31,36 +32,37 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization.{JoinP
   * @author Marcin Mościcki
   */
 @SerialVersionUID(ver)
-class SpelledSQL[-P, +F <: RowProduct]
-                (val sql :ChunkedString, val context :SQLContext, val params :Parameterization[P, F])
+class SpelledSQL[-P](val sql :ChunkedString, val context :SQLContext[P], val setter :SQLWriteForm[P])
 	extends Serializable
 {
-	def +(char :Char) :SpelledSQL[P, F] = new SpelledSQL(sql + char, context, params)
-	def +(string :String) :SpelledSQL[P, F] = new SpelledSQL(sql + string, context, params)
-	def +(string :ChunkedString) :SpelledSQL[P, F] = new SpelledSQL(sql + string, context, params)
-	def +[X, E <: RowProduct](string :(SQLContext, Parameterization[P, F]) => SpelledSQL[X, E]) :SpelledSQL[X, E] = {
-		val suffix = string(context, params)
-		new SpelledSQL(sql + suffix.sql, suffix.context, suffix.params)
+	def isEmpty  :Boolean = sql.isEmpty
+	def nonEmpty :Boolean = sql.nonEmpty
+
+	def +[X <: P](form :SQLWriteForm[X]) :SpelledSQL[X] = new SpelledSQL(sql, context, this.setter + form)
+	def +(char :Char) :SpelledSQL[P] = new SpelledSQL(sql + char, context, setter)
+	def +(string :String) :SpelledSQL[P] = new SpelledSQL(sql + string, context, setter)
+	def +(string :ChunkedString) :SpelledSQL[P] = new SpelledSQL(sql + string, context, setter)
+	def +[X <: P, E <: RowProduct](string :SQLContext[P] => SpelledSQL[X]) :SpelledSQL[X] = {
+		val suffix = string(context)
+		new SpelledSQL(sql + suffix.sql, suffix.context, setter + suffix.setter)
 	}
+	def +[X <: P](sql :SpelledSQL[X]) :SpelledSQL[X] =
+		new SpelledSQL(this.sql + sql.sql, sql.context, setter + sql.setter)
 
-	def +(param :SQLParameter[_]) :SpelledSQL[P, F] = param.writeForm.unmap { _ :Any => () } match {
-		case form if form.writtenColumns == 1 =>
-			new SpelledSQL(this.sql + "?", context, params :+ form)
-		case form =>
-			val tuple = Iterator.fill(form.writtenColumns)("?").mkString("(", ", ", ")")
-			new SpelledSQL(this.sql + tuple, context, params :+ form)
+	def +(param :BoundParam[_]) :SpelledSQL[P] = {
+		val f = param.writeForm.unmap { _ :Any => () }
+		new SpelledSQL(this.sql + f.param, context, setter + param.form)
 	}
+	//todo: verify all 'reduce' operations to see if we are not losing forms!!!
+	def +:[X <: P](form :SQLWriteForm[X]) :SpelledSQL[X] = new SpelledSQL(sql, context, form + this.setter)
+	def +:(char :Char) :SpelledSQL[P] = new SpelledSQL(char.toString +: sql, context, setter)
+	def +:(string :String) :SpelledSQL[P] = new SpelledSQL(string +: sql, context, setter)
+	def +:(string :ChunkedString) :SpelledSQL[P] = new SpelledSQL(string + sql, context, setter)
+	def +:[X <: P](sql :SpelledSQL[X]) :SpelledSQL[X] = new SpelledSQL(sql.sql + this.sql, context, sql.setter + setter)
 
-	def +:(char :Char) :SpelledSQL[P, F] = new SpelledSQL(char.toString +: sql, context, params)
-	def +:(string :String) :SpelledSQL[P, F] = new SpelledSQL(string +: sql, context, params)
-	def +:(string :ChunkedString) :SpelledSQL[P, F] = new SpelledSQL(string + sql, context, params)
-
-	def +:(param :SQLParameter[_]) :SpelledSQL[P, F] = param.writeForm.unmap { _ :Any => () } match {
-		case form if form.writtenColumns == 1 =>
-			new SpelledSQL(this.sql + "?", context, form +: params)
-		case form =>
-			val tuple = Iterator.fill(form.writtenColumns)("?").mkString("(", ", ", ")")
-			new SpelledSQL(this.sql + tuple, context, form +: params)
+	def +:(param :BoundParam[_]) :SpelledSQL[P] = {
+		val f = param.writeForm.unmap { _ :Any => () }
+		new SpelledSQL(f.param +: this.sql, context, param.form + setter)
 	}
 
 	/** Updates the [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.context context]] of this SQL fragment
@@ -70,31 +72,23 @@ class SpelledSQL[-P, +F <: RowProduct]
 	  * already included. The process is similar to monadic ''flat map'', with the context being passed through
 	  * all chained operations.
 	  */
-	def &&[X <: P, E <: RowProduct]
-	      (condition :(SQLContext, Parameterization[P, F]) => SpelledSQL[X, E]) :SpelledSQL[X, E] =
-	{
-		val suffix = condition(context, params)
-		new SpelledSQL(sql, context && suffix, suffix.params)
+	def &&[X <: P](condition :SQLContext[P] => SpelledSQL[X]) :SpelledSQL[X] = {
+		val suffix = condition(context)
+		new SpelledSQL(sql, context && suffix, setter + suffix.setter)
 	}
 
-	def compose[X](f :X => P) :SpelledSQL[X, F] = SpelledSQL(sql, context, params compose f)
+	def adapt[X](f :X => P) :SpelledSQL[X] = new SpelledSQL(sql, context adapt f, setter unmap f)
+
+	def compose[X](f :X =?> P) :SpelledSQL[X] = new SpelledSQL(sql, context compose f, setter compose f)
 
 
 	override def toString :String = {
-		val tables = context.tablesReversed
-		val from = params.aliasedString(tables.view.filter(context.isLegal).toList) getOrElse {
-			if (tables.isEmpty)
-				ChunkedString(params.name)
-			else
-				params.name +: " as " +: (ChunkedString(tables.head) /: tables.tail) {
-					(acc, alias) =>  alias +: ", "+: acc
-				}
-		}
+		val prefix = "SQL('" +: (sql + "' " + setter.toString + "; FROM ")
+		val terminator = if (context.groupings > 0) " GROUP BY #" + context.groupings + ")" else ")"
 		val where =
-			if (context.where.isEmpty) from
-			else ((from + " WHERE ") /: context.where) { _ + " && " + _ }
-
-		("SQL('" +: sql +: "' " +: params.setter.toString +: "; " +: (where + ")")).toString
+			if (context.whereReversed.isEmpty) terminator
+			else context.whereReversed.reverseIterator.mkString(" WHERE ", " && ", terminator)
+		context.tablesReversed.reverseIterator.mkString(prefix.toString, ", ", where)
 	}
 }
 
@@ -107,32 +101,34 @@ object SpelledSQL {
 	private[sql] final val ver = 1L
 
 	private[this] val empty =
-		new SpelledSQL[Any, Nothing](ChunkedString.empty, SQLContext(), Parameterization.paramless)
+		new SpelledSQL[Any](ChunkedString.empty, SQLContext(), SQLWriteForm.empty)
 
-	def apply() :SpelledSQL[Any, Nothing] = empty
-//fixme: what type params these should be?
-	def apply(sql :String) :SpelledSQL[Any, Nothing] =
-		new SpelledSQL(ChunkedString(sql), SQLContext(), Parameterization.paramless)
+	def apply() :SpelledSQL[Any] = empty
 
-	def apply(sql :ChunkedString) :SpelledSQL[Any, Nothing] =
-		new SpelledSQL(sql, SQLContext(), Parameterization.paramless)
+	def apply(sql :String) :SpelledSQL[Any] =
+		new SpelledSQL(ChunkedString(sql), SQLContext(), SQLWriteForm.empty)
 
-	def apply(context :SQLContext) :SpelledSQL[Any, Nothing] =
-		new SpelledSQL(ChunkedString.empty, context, Parameterization.paramless)
+	def apply(sql :ChunkedString) :SpelledSQL[Any] =
+		new SpelledSQL(sql, SQLContext(), SQLWriteForm.empty)
 
-	def apply[P, F <: RowProduct](context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
-		new SpelledSQL(ChunkedString.empty, context, params)
+	def apply[P](context :SQLContext[P]) :SpelledSQL[P] =
+		new SpelledSQL(ChunkedString.empty, context, SQLWriteForm.empty)
 
-	def apply[P, F <: RowProduct](sql :String, context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
-		new SpelledSQL(ChunkedString(sql), context, params)
+	def apply[P](sql :String, context :SQLContext[P]) :SpelledSQL[P] =
+		new SpelledSQL(ChunkedString(sql), context, SQLWriteForm.empty)
 
-	def apply[P, F <: RowProduct](sql :ChunkedString, context :SQLContext, params :Parameterization[P, F])
-			:SpelledSQL[P, F] =
-		new SpelledSQL(sql, context, params)
+	def apply[P](sql :ChunkedString, context :SQLContext[P]) :SpelledSQL[P] =
+		new SpelledSQL(sql, context, SQLWriteForm.empty)
+
+	def apply[P](sql :String, context :SQLContext[P], form :SQLWriteForm[P]) :SpelledSQL[P] =
+		new SpelledSQL(ChunkedString(sql), context, form)
+
+	def apply[P](sql :ChunkedString, context :SQLContext[P], form :SQLWriteForm[P]) :SpelledSQL[P] =
+		new SpelledSQL(sql, context, form)
 
 
-	@inline def unapply[P, F <: RowProduct](sql :SpelledSQL[P, F]) :(ChunkedString, SQLContext, Parameterization[P, F]) =
-		(sql.sql, sql.context, sql.params)
+	@inline def unapply[P](sql :SpelledSQL[P]) :Opt[(ChunkedString, SQLContext[P], SQLWriteForm[P])] =
+		Got((sql.sql, sql.context, sql.setter))
 
 
 
@@ -170,38 +166,60 @@ object SpelledSQL {
 	  *                       [[net.noresttherein.oldsql.sql.By By]] and [[net.noresttherein.oldsql.sql.GroupParam]]
 	  *                       (including their type aliases) elements of the ''group by'' clause of the SQL fragment.
 	  *                       It is the number of grouping relations which are ''not'' included in the alias index.
+	  *                       Zero signifies an aggregate clause, while `-1` is used for `RowProduct` types not
+	  *                       conforming to `GroupByClause`.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.spellingContext]]
 	  */ //consider: parameterizing it with the RowProduct
 	@SerialVersionUID(ver)
-	class SQLContext(/** See [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext SQLContext]]. */
-	                 val tablesReversed :IndexedSeq[String] = IndexedSeq.empty[String],
-	                 /** See [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext SQLContext]]. */
-	                 val whereReversed :List[ChunkedString] = Nil,
-	                 /** See [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext SQLContext]]. */
-	                 val outerOffset :Int = -1,
-	                 /** See [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext SQLContext]]. */
-	                 val groupings :Int = -1)
+	class SQLContext[-P](/** See [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext SQLContext]]. */
+	                     val tablesReversed :IndexedSeq[String]  = IndexedSeq.empty[String],
+	                     /** See [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext SQLContext]]. */
+	                     val whereReversed  :List[SpelledSQL[P]] = Nil,
+	                     /** See [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext SQLContext]]. */
+	                     val outerOffset :Int = -1,
+	                     /** See [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext SQLContext]]. */
+	                     val groupings   :Int = -1)
 		extends Serializable
 	{
 		/** A copy constructor used by all methods adding to the context so subclasses need override only this method. */
-		def copy(tablesReversed :IndexedSeq[String] = tablesReversed,
-		         whereReversed :List[ChunkedString] = whereReversed,
-		         outerOffset :Int = outerOffset, groupings :Int = groupings) :SQLContext =
+		def reset[X](tablesReversed :IndexedSeq[String] = tablesReversed,
+		             whereReversed :List[SpelledSQL[X]] = Nil,
+		             outerOffset :Int = outerOffset, groupings :Int = groupings) :SQLContext[X] =
 			new SQLContext(tablesReversed, whereReversed, outerOffset, groupings)
 
-		private[SpelledSQL] def isLegal(alias :String) :Boolean =
-			alias != null && alias.length > 0 && !alias.startsWith("?") && !alias.startsWith("<")
+		/** A copy constructor used by all methods adding to the context, shielding users from its manual creations
+		  * by providing all member values. It is just a delegate
+		  * to [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext.reset reset]], providing a default value
+		  * for `whereReversed`.
+		  */
+		def copy[X <: P](tablesReversed :IndexedSeq[String] = tablesReversed,
+		                 whereReversed :List[SpelledSQL[X]] = whereReversed,
+		                 outerOffset :Int = outerOffset, groupings :Int = groupings) :SQLContext[X] =
+			reset(tablesReversed, whereReversed, outerOffset, groupings)
+
+		/** Adapts this context to a new parameter type. Currently this only adapts
+		  * all [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext.whereReversed whereReversed]] chunks.
+		  */
+		def adapt[X](f :X => P) :SQLContext[X] = reset(whereReversed = whereReversed.map(_.adapt(f)))
+
+		/** Adapts this context to a new parameter type. Currently this only composes
+		  * all [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext.whereReversed whereReversed]] chunks.
+		  */
+		def compose[X](f :X =?> P) :SQLContext[X] = reset(whereReversed = whereReversed.map(_.compose(f)))
 
 		/** A virtual constructor of a default context for an empty SQL fragment used instead of the global
 		  * factory to propagate custom implementations for the use by the whole 'spelling' process.
 		  */
-		def fresh = new SQLContext()
+		def fresh[X] = new SQLContext[X]()
+
+		private[SpelledSQL] def isLegal(alias :String) :Boolean =
+			alias != null && alias.length > 0 && !alias.startsWith("?") && !alias.startsWith("<")
 
 		/** SQL fragments coming from individual join conditions (and other `RowProduct` subcomponents),
 		  * which were not included in a ''join ... on'' clause and should become part of a logical conjunction
 		  * forming the ''where'' clause. This in particular includes conditions present on `From` and `JoinParam`.
 		  */
-		def where :List[ChunkedString] = whereReversed.reverse
+		def where :List[SpelledSQL[P]] = whereReversed.reverse
 
 		/**	Aliases of all real tables in the ''from'' clause of the SQL fragment, not including aliases of tables from
 		  * outer ''selects'' or synthetic relations corresponding to unbound parameters or grouping expressions,
@@ -229,7 +247,8 @@ object SpelledSQL {
 		def newAlias(proposed :String) :String =
 			if (proposed.length == 0)
 				newAlias("table")
-			else if (!tablesReversed.contains(proposed)) proposed
+			else if (!tablesReversed.contains(proposed))
+				proposed
 			else {
 				var i = 1
 				var indexed = proposed + i
@@ -270,11 +289,13 @@ object SpelledSQL {
 		/** Adds a new table alias at index `0`, shifting back existing table aliases. */
 		@throws[IllegalStateException]("if the context corresponds to an aggregate select (with a group by clause).")
 		@throws[IllegalArgumentException]("if the alias is already in use.")
-		def join(table :String) :SQLContext =
+		def join(table :String) :SQLContext[P] =
 			if (groupings >= 0)
 				throw new IllegalStateException(s"Cannot join '$table' with an aggregate clause: $this.")
 			else if (table.length > 0 && tablesReversed.contains(table))
 				throw new IllegalArgumentException(s"$this already contains table named '$table' in scope.")
+			else if (outerOffset < 0)
+				copy(tablesReversed = table +: tablesReversed)
 			else
 				copy(tablesReversed = table +: tablesReversed, outerOffset = outerOffset + 1)
 
@@ -282,7 +303,7 @@ object SpelledSQL {
 		  * @return `this.subselect.join(table)`.
 		  */
 		@throws[IllegalArgumentException]("if the alias is already in use.")
-		def subselect(table :String) :SQLContext =
+		def subselect(table :String) :SQLContext[P] =
 			if (table.length > 0 && tablesReversed.contains(table))
 				throw new IllegalArgumentException(s"$this already contains table named '$table' in scope.")
 			else if (groupings >= 0) {
@@ -298,7 +319,7 @@ object SpelledSQL {
 		  * are prepended to the index. It resets however the `outerOffset` to zero, corresponding to an empty
 		  * ''from'' clause.
 		  */
-		def subselect :SQLContext =
+		def subselect :SQLContext[P] =
 			if (groupings >= 0) { //groupings == 0 means an aggregate (not group by) clause
 				val aliases = Iterator.tabulate(groupings)("<grouping" + _ + ">") ++:
 					(if (outerOffset > 0) tablesReversed.drop(outerOffset) else ArraySeq.empty[String])
@@ -311,32 +332,84 @@ object SpelledSQL {
 		  * Use `grouped` method instead to represent a [[net.noresttherein.oldsql.sql.GroupParam GroupParam]].
 		  * The actual alias will have "?" prepended to it and, if it is not unique, an additional suffix.
 		  */
-		def param(alias :String) :SQLContext = join(newAlias("?" + alias))
+		def param(alias :String) :SQLContext[P] = join(newAlias("?" + alias))
 
 		/** Adds another ''group by'' clause expression corresponding to either
 		  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]], [[net.noresttherein.oldsql.sql.By By]] or
 		  * [[net.noresttherein.oldsql.sql.GroupParam GroupParam]] element.
 		  */
-		def grouped :SQLContext = copy(outerOffset = outerOffset + 1, groupings = groupings + 1)
+		@throws[IllegalStateException]("if the associated clause is an instance of Aggregated[_].")
+		def grouped :SQLContext[P] =
+			if (groupings == 0)
+				throw new IllegalStateException("Cannot group an aggregated clause " + this + ".")
+			else copy(
+				groupings = if (groupings > 0) groupings + 1 else 1,
+				outerOffset = if (outerOffset >= 0) outerOffset + 1 else -1
+			)
 
 		/** Marks the ''select'' as ''aggregated'', i.e. containing aggregate functions in its ''select'' clause.
 		  * This corresponds to an artificial [[net.noresttherein.oldsql.sql.Aggregated Aggregated]] wrapper of
 		  * a [[net.noresttherein.oldsql.sql.FromClause FromClause]]. The effect is the same that a ''group by''
 		  * clause with zero grouping expressions would have.
 		  */
-		def aggregate :SQLContext =
+		@throws[IllegalStateException]("if the context corresponds to an aggregate select (with a group by clause).")
+		def aggregate :SQLContext[P] =
 			if (groupings >= 0)
-				throw new IllegalStateException("Cannot aggregate an already aggregated clause: "+ this +".")
+				throw new IllegalStateException("Cannot aggregate an already aggregated clause: " + this + ".")
 			else copy(groupings = 0)
 
 		/** Adds the SQL for a boolean expression which should be included in the ''where'' clause of a larger SQL
 		  * fragment.
 		  */
-		def &&(condition :SpelledSQL[_, _]) :SQLContext = copy(whereReversed = condition.sql::this.whereReversed)
+		def &&[X <: P](condition :SpelledSQL[X]) :SQLContext[X] = copy(whereReversed = condition.sql::this.whereReversed)
+
+		def shrink(relations :Int = 1) :SQLContext[P] =
+			if (relations > 0)
+				if (relations <= groupings)
+					copy(groupings = groupings - relations)
+				else if (groupings < 0)
+					if (outerOffset >= 0)
+						if (relations <= outerOffset)
+							copy(tablesReversed.drop(relations), outerOffset = outerOffset - relations)
+						else
+							throw new IllegalArgumentException(
+								s"Cannot shrink $this into the outer select past $outerOffset relations ($relations)."
+							)
+					else
+						if (tablesReversed.sizeIs >= relations)
+							copy(tablesReversed.drop(relations))
+						else
+							throw new IllegalArgumentException(
+								s"Cannot shrink $this of ${tablesReversed.size} tables by $relations relations."
+							)
+				else if (outerOffset >= 0)
+					if (relations - groupings <= outerOffset)
+						copy(
+							tablesReversed = tablesReversed.drop(relations - groupings),
+							outerOffset = outerOffset - (relations - groupings),
+							groupings = -1
+						)
+					else
+						throw new IllegalArgumentException(
+							s"Cannot shrink $this into the outer select past $outerOffset relations ($relations)."
+						)
+				else if (tablesReversed.sizeIs >= relations - groupings)
+					copy(tablesReversed = tablesReversed.drop(relations), groupings = -1)
+				else
+					throw new IllegalArgumentException(
+						s"Cannot shrink $this by more than the existing number of relations ($relations)."
+					)
+			else if (relations == 0)
+				this
+			else
+				throw new IllegalArgumentException("Cannot shrink " + this + " by " + relations + " relations.")
 
 
 		override def toString :String = {
-			val where = whereReversed.reverseIterator.mkString(" WHERE ", " && ", "})")
+			val terminator = if (groupings > 0) " GROUP BY #" + groupings + ")" else ")"
+			val where =
+				if (whereReversed.isEmpty) terminator
+				else whereReversed.reverseIterator.mkString(" WHERE ", " && ", terminator)
 			tablesReversed.reverseIterator.mkString("SQLContext(FROM ", ", ", where)
 		}
 	}
@@ -344,12 +417,12 @@ object SpelledSQL {
 
 
 	object SQLContext {
-		private[this] val empty = new SQLContext(ArraySeq.empty[String])
+		private[this] val empty = new SQLContext[Any](ArraySeq.empty[String])
 
 		/** An empty context. */
-		def apply() :SQLContext = empty
+		def apply() :SQLContext[Any] = empty
 
-		def apply(aliases :IndexedSeq[String], fromClauseSize :Int) :SQLContext =
+		def apply(aliases :IndexedSeq[String], fromClauseSize :Int) :SQLContext[Any] =
 			new SQLContext(aliases.reverse, outerOffset = fromClauseSize)
 	}
 
@@ -357,31 +430,37 @@ object SpelledSQL {
 
 
 	/** Parameter context of an SQL `PreparedStatement` as a function of a single parameter `Ps` representing
-	  * all [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters of ''from'' clause `F`.
+	  * all [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters of ''from'' clause `F`.
 	  * This class serves two purposes:
 	  *   1. it contains a list of [[net.noresttherein.oldsql.schema.SQLWriteForm forms]] setting the values
 	  *      of all parameters for a particular statement,
 	  *   1. and is a factory of accessors for `Ps` which return values of individual
-	  *      [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters based on
-	  *      [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]] instances from `F` for these parameters.
-	  * This class is used in conjunction with [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL SpelledSQL]],
-	  * carrying information about that statement fragment. As the latter is expanded, so too is this object:
-	  * primarily by adding additional forms with `:+`, `+:` or swapping the whole list with
-	  * [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization.reset reset]] method. These forms
-	  * are either constant forms (with a `Unit` argument) of bound
-	  * [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]]  expressions, or the mapping forms
-	  * taken from [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] mappings of unbound parameters.
-	  * Adapting of the former to the required argument type `Ps` can happen by a trivial constant function
-	  * returning `()`, while the composition of the latter consists of the accessor function `Ps => P` returned by
-	  * [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization.apply apply]]
-	  * for a [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]]`[_ >: F, P]`, being the
-	  * synthetic relation taken from an `UnboundParam` pseudo join, and - if the value required is not that of the
-	  * parameter `P` itself, but a derived one `X` represented by a component of `FromParam` - an optional selector
-	  * `P => X` for the particular parameter component taken from `FromParam`, as with all mappings.
-	  * Additionally, the polymorphic function returning the parameter accessors is updated recursively by following
-	  * the structure of the [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] of the statement, in order
-	  * to reflect updated indexing and, in case of parameter relations, expanding also the parameter type `Ps`.
-	  * This happens by factory methods defined by this class and corresponding to particular `Adjoin` subtypes.
+	  *      [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters based on
+	  *      [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]] instances from `F` for these parameters.
+	  *      This class is used in conjunction with [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL SpelledSQL]],
+	  *      carrying information about that statement fragment. As the latter is expanded, so too is this object:
+	  *      primarily by adding additional forms with `:+`, `+:` or swapping the whole list with
+	  *      [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization.reset reset]] method. These forms
+	  *      are either constant forms (with a `Unit` argument) of bound
+	  *      [[net.noresttherein.oldsql.sql.ast.BoundParam BoundParam]]  expressions, or the mapping forms
+	  *      taken from [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]] mappings of unbound parameters.
+	  *      Adapting of the former to the required argument type `Ps` can happen by a trivial constant function
+	  *      returning `()`, while the composition of the latter consists of the accessor function `Ps => P` returned by
+	  *      [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization.apply apply]]
+	  *      for a [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]]`[_ >: F, P]`, being the
+	  *      synthetic relation taken from an `ParamClause` pseudo join, and - if the value required is not that of the
+	  *      parameter `P` itself, but a derived one `X` represented by a component of `UnboundParam` - an optional selector
+	  *      `P => X` for the particular parameter component taken from `UnboundParam`, as with all mappings.
+	  *      Additionally, the polymorphic function returning the parameter accessors is updated recursively by following
+	  *      the structure of the [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] of the statement, in order
+	  *      to reflect updated indexing and, in case of parameter relations, expanding also the parameter type `Ps`.
+	  *      This happens by factory methods defined by this class and corresponding to particular `Adjoin` subtypes.
+	  *
+	  * An instance of `Parameterization[Ps, F]` does not declare that it can provide a getter from `Ps`
+	  * for any parameter of any instance of `F`; rather, it states that it can provide the getters
+	  * for all parameters listed by type `F` itself (that is, in its non-wildcard suffix).
+	  * For this reason, the origin (domain) type of any relation resolvable to a parameter getter must
+	  * be a supertype of `F`, as it is declared and returned by any instance of `F`.
 	  *
 	  * The values of this class can be created by factory methods in the companion object, either based on
 	  * an existing `RowProduct` instance of `F`, or by expanding
@@ -389,7 +468,7 @@ object SpelledSQL {
 	  * in the manner described above.
 	  *
 	  * @tparam Ps a composite type combining the values of all individual unbound parameters in `F`, typically
-	  *            `F#Params` [[net.noresttherein.oldsql.collection.Chain Chain]].
+	  *            `F#Params` [[net.noresttherein.oldsql.collection.Chain Chain]] (for concrete `F`).
 	  * @tparam F  a (potentially) parameterized ''from'' clause defining the positions of all unbound parameters.
 	  * @param settersReversed A list of write forms setting the statement parameters ''in the reverse order''.
 	  *                        The 'reverse order' here means that after reversing the lists and applying the forms
@@ -397,11 +476,11 @@ object SpelledSQL {
 	  *                        due to multi-column forms, applying the forms in the order of this list needs not
 	  *                        result in the written columns being written in the exact reverse of the former.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.parameterization]]
-	  */ //This class is flawed. It should be split into a class with getters (+F) and setters (-F).
+	  */
 	@SerialVersionUID(ver) //todo: this should be applied to all anonymous classes
 	abstract class Parameterization[-Ps, +F <: RowProduct](val settersReversed :List[SQLWriteForm[Ps]])
 		extends Serializable
-	{ left =>
+	{ outer =>
 		/** Forms setting all bound and unbound parameters off an associated SQL fragment
 		  * [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL SpelledSQL]] accepting the whole parameter set `Ps`
 		  * of the statement (or a particular statement fragment).
@@ -411,7 +490,7 @@ object SpelledSQL {
 		/** A write form combining all forms on `setters` list into a single instance. */
 		def setter :SQLWriteForm[Ps] = SQLWriteForm.join(setters :_*)
 
-		/** Returns an accessor function returning the value of an [[net.noresttherein.oldsql.sql.UnboundParam unbound]]
+		/** Returns an accessor function returning the value of a [[net.noresttherein.oldsql.sql.ParamClause unbound]]
 		  * parameter of `F` represented by the synthetic relation expression carried by the parameter pseudo join.
 		  *///fixme: should return an Extractor
 		@throws[IllegalArgumentException]("if the given relation does not represent an unbound parameter of `F`.")
@@ -427,22 +506,22 @@ object SpelledSQL {
 			new Parameterization[Xs, F](settersReversed) {
 				override def apply[T[A] <: BaseMapping[S, A], S, O >: F <: RowProduct]
 				                  (param :JoinedRelation[O, T]) :Xs => S =
-					left[T, S, O](param)
+					outer[T, S, O](param)
 
 				override def ungroup[E <: FromSome](implicit grouped :F <:< E#GeneralizedAggregate) =
-					left.ungroup(grouped)
+					outer.ungroup(grouped)
 
-				override def compose[Ys](f :Ys => Xs) :Parameterization[Ys, F] = left.compose(f)
+				override def compose[Ys](f :Ys => Xs) :Parameterization[Ys, F] = outer.compose(f)
 
-				override def name = left.name
-				override def aliasedString(aliases :List[String]) :Option[ChunkedString] = left.aliasedString(aliases)
+				override def name = outer.name
+				override def aliasedString(aliases :List[String]) :Option[ChunkedString] = outer.aliasedString(aliases)
 			}
 
 		/** Adds a write form for the given bound parameter following the existing parameters in the associated SQL. */
-		def :+[X](param :SQLParameter[X]) :Parameterization[Ps, F] = this :+ param.writeForm.unmap { _ :Ps => () }
+		def :+[X](param :BoundParam[X]) :Parameterization[Ps, F] = this :+ param.writeForm.unmap { _ :Ps => () }
 
 		/** Adds a write form for the given bound parameter preceding the existing parameters in the associated SQL. */
-		def +:[X](param :SQLParameter[X]) :Parameterization[Ps, F] = param.writeForm.unmap { _ :Ps => () } +: this
+		def +:[X](param :BoundParam[X]) :Parameterization[Ps, F] = param.writeForm.unmap { _ :Ps => () } +: this
 
 		/** Appends the given form for a bound or unbound parameter to this instance. */
 		def :+[Xs <: Ps](setter :SQLWriteForm[Xs]) :Parameterization[Xs, F] = reset(setter::settersReversed)
@@ -495,6 +574,36 @@ object SpelledSQL {
 		        (join :L J R)(implicit left :F <:< L) :Parameterization[Ps, L J R] =
 			this.join[L J R, L, R]
 
+
+		def subselect[E <: SubselectOf[F]](from :E) :Parameterization[Ps, E] =
+			new Parameterization[Ps, E](Nil) {
+				override def apply[T[A] <: BaseMapping[S, A], S, O >: E <: RowProduct](param :JoinedRelation[O, T]) =
+					if (param.offset < from.size)
+						throw new IllegalArgumentException(
+							"Requested a parameter for relation " + param + " inside a subselect from clause " + from + "."
+						)
+					else
+						outer[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset - from.size))
+
+				override def ungroup[C <: FromSome](implicit grouped :E <:< C#GeneralizedAggregate) = ???
+
+				override def fromClause[C <: FromSome](implicit grouped :E <:< AggregateOfGeneralized[C]) =
+					from match {
+						case aggr :AggregateClause =>
+							val inner = aggr.fromClause.asInstanceOf[SubselectOf[F]]
+							outer.subselect(inner).asInstanceOf[Parameterization[Ps, C]]
+						case _ =>
+							throw new UnsupportedOperationException("Cannot ungroup a non-aggregate clause " + from + ".")
+					}
+
+				override def left[L <: RowProduct, R[O] <: MappingAt[O]](implicit expanded :E <:< (L Expanded R)) =
+					if (expanded(from).left eq expanded(from).outer)
+						outer.asInstanceOf[Parameterization[Ps, L]]
+					else
+						outer.subselect(expanded(from).left.asInstanceOf[SubselectOf[F]]).asInstanceOf[Parameterization[Ps, L]]
+			}
+
+
 		/** Adapts this instance to a ''from'' expanded with a ''group by'' clause into type `F GroupBy R`.
 		  * This has the effect of ignoring the relation for the grouping expression (with index `0`) and shifting
 		  * to lower indices all relations from the parent (`outer`) ''select'', removing the relations
@@ -514,7 +623,7 @@ object SpelledSQL {
 							s"Grouping mapping of $groupBy is not (should not be) an unbound parameter: $param."
 						)
 					else
-						left[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset + expansion))
+						original[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset + expansion))
 
 				override def ungroup[E <: FromSome](implicit grouped :G <:< E#GeneralizedAggregate) =
 					new Parameterization[Ps, E](Nil) with UngroupedParameterization[Ps, E] {
@@ -524,11 +633,11 @@ object SpelledSQL {
 
 						override def apply[T[A] <: BaseMapping[S, A], S, O >: E <: RowProduct]
 						                  (param :JoinedRelation[O, T]) :Ps => S =
-							left[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset))
+							original[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset))
 					}
 
 				override def aliasedString(aliases :List[String]) :Option[ChunkedString] =
-					left.aliasedString(aliases).map(_ + " group by _")
+					original.aliasedString(aliases).map(_ + " group by _")
 			}
 
 		/** Adapts this instance to a ''group by'' clause with an additional grouping expression represented by
@@ -549,8 +658,8 @@ object SpelledSQL {
 		  * to encompass an additional unbound parameter from the relation added by the pseudo join `E`.
 		  * This has the effect of shifting all relation indices by one, and of associating the last (now at index `0`)
 		  * relation with the new parameter `X`.
-		  */
-		def param[E <: L UnboundParam R, L <: NonEmptyFrom, R[O] <: FromParam[X, O], Xs <: Chain with Ps, X]
+		  */ //fixme: E can be completely unrelated to F due to upcasting and downcasting
+		def param[E <: L ParamClause R, L <: NonEmptyFrom, R[O] <: UnboundParam[X, O], Xs <: Chain with Ps, X]
 		         (implicit ev :F <:< L) :Parameterization[Xs ~ X, E] =
 			new Parameterization[Xs ~ X, E](settersReversed.map(_.unmap { xs :(Xs ~ X) => xs.init })) {
 
@@ -559,25 +668,31 @@ object SpelledSQL {
 					if (param.offset == 0)
 						(xs :(Xs ~ X)) => xs.last.asInstanceOf[S]
 					else {
-						val prev :Xs => S = left[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset - 1))
+						val prev :Xs => S = outer[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset - 1))
 						(xs :(Xs ~ X)) => prev(xs.init)
 					}
 
-				override def ungroup[G <: FromSome](implicit grouped :E <:< G#GeneralizedAggregate) =
-					new Parameterization[Xs, G](Nil) with UngroupedParameterization[Xs ~ X, G] {
-						override type Params = Xs
+				override def ungroup[G <: FromSome](implicit grouped :E <:< G#GeneralizedAggregate) = {
+					val ungrouped = outer.ungroup[G](grouped.asInstanceOf[F <:< G#GeneralizedAggregate])
+					new Parameterization[ungrouped.Params, G](Nil) with UngroupedParameterization[Xs ~ X, G] {
+						override type Params = ungrouped.Params
 						override def params = this
-						override val ungroupParams = { xs :(Xs ~ X) => xs.init }
+						override val ungroupParams = { xs :(Xs ~ X) => ungrouped.ungroupParams(xs.init) }
 
 						override def apply[T[A] <: BaseMapping[S, A], S, O >: G <: RowProduct]
-						                  (param :JoinedRelation[O, T]) :Xs => S =
-							left[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset))
-					}
+						                  (param :JoinedRelation[O, T]) :Params => S =
+							ungrouped.params.apply[T, S, G](RelationSQL[G, T, S, G](param.relation, param.offset))
 
-				override def name = left.name + " param _"
+						override def left[C <: RowProduct, M[O] <: MappingAt[O]](implicit expanded :G <:< (C Expanded M)) =
+							??? //outerb
+//							outer.asInstanceOf[Parameterization[Ps, C]]
+					}
+				}
+
+				override def name = outer.name + " param _"
 
 				override def aliasedString(aliases :List[String]) :Option[ChunkedString] =
-					left.aliasedString(aliases).map { _ + " param _" }
+					outer.aliasedString(aliases).map { _ + " param _" }
 			}
 
 		/** Expands both the parameter chain `Ps` and the ''from'' clause `F` associated with this instance
@@ -585,12 +700,10 @@ object SpelledSQL {
 		  * This has the effect of shifting all relation indices by one, and of associating the last (now at index `0`)
 		  * relation with the new parameter `X`.
 		  */
-		def param[L <: NonEmptyFrom, J[+A <: L, B[O] <: R[O]] <: A UnboundParam B,
-		          R[O] <: FromParam[X, O], Xs <: Chain with Ps, X]
+		def param[L <: NonEmptyFrom, J[+A <: L, B[O] <: R[O]] <: A ParamClause B,
+		          R[O] <: UnboundParam[X, O], Xs <: Chain with Ps, X]
 		         (join :L J R)(implicit ev :F <:< L) :Parameterization[Xs ~ X, L J R] =
 			param[L J R, L, R, Xs, X]
-
-//		def subselect()
 
 		/** Lifts this instance to one representing an aggregated select based on `F`, using the special type
 		  * [[net.noresttherein.oldsql.sql.Aggregated Aggregated]]`[F]`. This removes all relations in the deepest
@@ -603,7 +716,7 @@ object SpelledSQL {
 
 				override def apply[T[A] <: BaseMapping[S, A], S, O >: Aggregated[E] <: RowProduct]
 				                  (param :JoinedRelation[O, T]) :Ps => S =
-					left[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset + grouped))
+					outer[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset + grouped))
 
 				override def ungroup[U <: FromSome](implicit grouped :Aggregated[E] <:< U#GeneralizedAggregate) =
 					new Parameterization[Ps, U](Nil) with UngroupedParameterization[Ps, U] {
@@ -613,18 +726,27 @@ object SpelledSQL {
 
 						override def apply[T[A] <: BaseMapping[S, A], S, O >: U <: RowProduct]
 						                  (param :JoinedRelation[O, T]) :Ps => S =
-							left[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset))
+							outer[T, S, F](RelationSQL[F, T, S, F](param.relation, param.offset))
+
+						override def left[L <: RowProduct, R[O] <: MappingAt[O]](implicit expanded :U <:< Expanded[L, R]) =
+							??? //outer.left
 					}
 
-				override def name = "Aggregate(" + left.name + ")"
+				override def left[L <: RowProduct, R[O] <: MappingAt[O]]
+				                 (implicit expanded :Aggregated[E] <:< (L Expanded R)) =
+					throw new UnsupportedOperationException("Cannot get the left side of an Aggregated clause.")
+
+				override def name = "Aggregate(" + outer.name + ")"
 				override def aliasedString(aliases :List[String]) :Option[ChunkedString] =
-					left.aliasedString(aliases).map(as => "Aggregate(" +: (as + ")"))
+					outer.aliasedString(aliases).map(as => "Aggregate(" +: (as + ")"))
 			}
 
 		/** Adapts this instance to one based on the decorated clause `E`, without any actual changes in behaviour. */
 		def decorate[G >: F <: RowProduct, E <: DecoratedFrom[G]] :Parameterization[Ps, E] =
 			this.asInstanceOf[Parameterization[Ps, E]]
 
+
+		def left[L <: RowProduct, R[O] <: MappingAt[O]](implicit expanded :F <:< (L Expanded R)) :Parameterization[Ps, L]
 
 		/** Adapts this instance to the 'ungrouped' ''from'' clause under this ''group by'' clause.
 		  * This is the reverse operation to
@@ -638,6 +760,23 @@ object SpelledSQL {
 		  * and will throw an `UnsupportedOperationException` otherwise.
 		  */
 		def ungroup[E <: FromSome](implicit grouped :F <:< E#GeneralizedAggregate) :UngroupedParameterization[Ps, E]
+		//fixme: replace ungroup with this method
+		def fromClause[E <: RowProduct](implicit grouped :F <:< AggregateOfGeneralized[E]) :Parameterization[Ps, E] = ???
+
+		/** Presents itself as a parameterization of the [[net.noresttherein.oldsql.sql.RowProduct.Self Self]] type
+		  * of the current domain type `F`. This is an identity cast derived from the fact that
+		  * `RowProduct.`[[net.noresttherein.oldsql.sql.RowProduct.self self]] is always an identity function.
+		  */
+		def self[S <: RowProduct](implicit self :F <:< RowProduct { type Self <: S }) :Parameterization[Ps, S] =
+			this.asInstanceOf[Parameterization[Ps, S]]
+
+		/** Presents itself as a parameterization of the [[net.noresttherein.oldsql.sql.RowProduct.Self Self]] type
+		  * of the current domain type `F`. This is an identity cast derived from the fact that
+		  * `RowProduct.`[[net.noresttherein.oldsql.sql.RowProduct.self self]] is always an identity function.
+		  */
+//		def self[U >: F <: RowProduct, S <: RowProduct](from :U)(implicit self :U <:< RowProduct { type Self = S })
+//				:Parameterization[Ps, S] =
+//			this.asInstanceOf[Parameterization[Ps, S]]
 
 		//todo: we need compose[Xs](f :Xs =?> Ps)
 		/** Adapts this instance to one using a different parameter set type `Xs`, from which the parameters `Ps`
@@ -667,7 +806,7 @@ object SpelledSQL {
 
 
 	object Parameterization {
-		//todo: this bound is useless in light of covariance of Parameterization in F
+
 		/** A parameterization of an SQL or DML fragment with no bound or unbound parameters, and hence no setter forms.
 		  * It is parameterless in the context of ''unbound'' parameters - all calls to its
 		  * [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization.apply apply]] method throw
@@ -694,7 +833,6 @@ object SpelledSQL {
 		  * with an abstract parameter set type `Params`, together with a function for obtaining said parameter set
 		  * from the values of type parameter `Xs` (of some other parameterization instance).
 		  */
-		@SerialVersionUID(ver)
 		trait UngroupedParameterization[-Xs, +F <: FromSome] extends Serializable { this :Parameterization[Nothing, F] =>
 			/** The type of the parameter set of `params` :`Parameterization[Params, F]` property. */
 			type Params
@@ -738,6 +876,9 @@ object SpelledSQL {
 					override def params = this
 					override def ungroupParams = { ps :Ps => ps }
 				}
+
+			override def left[L <: RowProduct, R[O] <: MappingAt[O]](implicit expanded :F <:< (L Expanded R)) =
+				this.asInstanceOf[Parameterization[Ps, L]]
 
 			override def name = "_"
 
@@ -799,6 +940,8 @@ object SpelledSQL {
 							}
 				}
 
+			override def left[L <: RowProduct, R[O] <: MappingAt[O]](implicit expanded :F <:< (L Expanded R)) =
+				new ParamChain[Ps, L](expanded(from).left, Nil)
 
 			override def name = from.toString
 
@@ -809,8 +952,8 @@ object SpelledSQL {
 
 		@SerialVersionUID(ver)
 		private class JoinParameterization[-Ps, L <: RowProduct, +F <: RowProduct]
-		                                  (protected val left :Parameterization[Ps, L], val join :String)
-			extends Parameterization[Ps, F](left.settersReversed)
+		                                  (protected val original :Parameterization[Ps, L], val join :String)
+			extends Parameterization[Ps, F](original.settersReversed)
 		{
 			override def apply[T[A] <: BaseMapping[S, A], S, O >: F <: RowProduct]
 			                  (param :JoinedRelation[O, T]) :Ps => S =
@@ -819,7 +962,7 @@ object SpelledSQL {
 						"The last relation of the associated FROM clause is not an unbound parameter: " + param + "."
 					)
 				else
-					left[T, S, L](RelationSQL[L, T, S, L](param.relation, param.offset - 1))
+					original[T, S, L](RelationSQL[L, T, S, L](param.relation, param.offset - 1))
 
 
 			override def ungroup[E <: FromSome](implicit grouped :F <:< E#GeneralizedAggregate)
@@ -828,10 +971,13 @@ object SpelledSQL {
 					"Not grouped FROM clause cannot be ungrouped. This method should not have been possible to call."
 				)
 
-			override def name = left.name + " " + join + " _"
+			override def left[C <: RowProduct, R[O] <: MappingAt[O]](implicit expanded :F <:< (C Expanded R)) =
+				original.asInstanceOf[Parameterization[Ps, C]]
+
+			override def name = original.name + " " + join + " _"
 
 			override def aliasedString(aliases :List[String]) :Option[ChunkedString] = aliases match {
-				case hd::tail => left.aliasedString(tail).map(_ + (" " + join + " ") + hd)
+				case hd::tail => original.aliasedString(tail).map(_ + (" " + join + " ") + hd)
 				case _ => None
 			}
 		}
@@ -861,6 +1007,9 @@ object SpelledSQL {
 						ungrouped.params.compose(f)
 				}
 			}
+
+			override def left[L <: RowProduct, R[O] <: MappingAt[O]](implicit expanded :F <:< (L Expanded R)) =
+				new MappedParameterization[Xs, Ys, L](original.left, f)
 
 			override def compose[Zs](g :Zs => Xs) :Parameterization[Zs, F] = original.compose(g andThen f)
 

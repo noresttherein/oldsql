@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 
 import net.noresttherein.oldsql.schema.Mapping
-import net.noresttherein.oldsql.sql.RowProduct.{SubselectFrom, TableFormula}
+import net.noresttherein.oldsql.sql.RowProduct.{SelectedFrom, TableFormula}
 import net.noresttherein.oldsql.sql.SelectFormula.MatchSelect
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula.CaseComposite
 import net.noresttherein.oldsql.sql.SQLFormula.CompositeFormula
@@ -72,15 +72,15 @@ abstract class SQLScribe[F <: RowProduct, T <: RowProduct](protected val from :F
 
 	override def select[H](e :GroundedSelectFormula[H]) :SelectFormula[T, H] = e
 
-	private def subselect[R<:SubselectFrom[F], H](e :SubselectFormula[F, R, H]) :SelectFormula[T, H] = {
-		val sf = e.asInstanceOf[SubselectFormula[F, SubselectFrom[F], H]]
+	private def subselect[R<:SelectedFrom[F], H](e :SubselectFormula[F, R, H]) :SelectFormula[T, H] = {
+		val sf = e.asInstanceOf[SubselectFormula[F, SelectedFrom[F], H]]
 		val transplanted = sf.source.transplant(to, this.asInstanceOf[mechanics.SQLScribe[sf.source.Parent, T]])
-		val header = SQLScribe.subselect[F, SubselectFrom[F], T, transplanted.type, H](sf.header, sf.source, transplanted, this)
+		val header = SQLScribe.subselect[F, SelectedFrom[F], T, transplanted.type, H](sf.header, sf.source, transplanted, this)
 		SelectFormula.subselect[T, transplanted.type, H](to, transplanted :transplanted.type, header)
 	}
 
 	override def subselect[X](f: SelectFormula[F, X]): SelectFormula[T, X] =
-		subselect(f.asInstanceOf[SubselectFormula[F, SubselectFrom[F], X]])
+		subselect(f.asInstanceOf[SubselectFormula[F, SelectedFrom[F], X]])
 }
 
 
@@ -156,7 +156,7 @@ object SQLScribe {
 	  * @return a formula isomorphic with argument formula, where all references to tables from S are replaced
 	  *         to references to a last in R at the corresponding index.
 	  */
-	def subselect[F<:RowProduct, S<:SubselectFrom[F], T<:RowProduct, R<:SubselectFrom[T], X](
+	def subselect[F<:RowProduct, S<:SelectedFrom[F], T<:RowProduct, R<:SelectedFrom[T], X](
 		                                                                                  expr :SQLFormula[S, X], from :S, to :R, scribe :mechanics.SQLScribe[F, T]) :SQLFormula[R, X] =
 	{
 		val tables = to.all.toIndexedSeq

@@ -300,7 +300,7 @@ object AlteredMapping {
 			:Overrides[O] =
 	{
 		val excludeExports = excludes.view.map(original.export(_)).to(Unique)
-		val includeExports = includes.view.map(original.export(_)).filterNot(excludeExports).toList
+		val includeExports = includes.view.map(original.export(_)).filterNot(excludeExports.toSet).toList
 		val included = this.include(original, includeExports, prohibited, nonDefault)
 		val excluded = this.exclude(original, excludeExports, nonDefault, exclude, optional)
 		included ++ excluded
@@ -556,7 +556,7 @@ object AdjustedMapping {
 			:Overrides[O] =
 	{
 		val excludeExports = excludes.map(original.export(_)).to(Unique)
-		val includeExports = includes.map(original.export(_)).filterNot(excludeExports)
+		val includeExports = includes.map(original.export(_)).filterNot(excludeExports.toSet)
 		val included = include(original, includeExports)
 		val excluded = exclude(original, excludeExports)
 		included ++ excluded
@@ -585,8 +585,8 @@ object AdjustedMapping {
 	{
 		val excludedOps = operations.filter(o => o.Prohibited.inactive(component) && o.NonDefault.active(component))
 		if (excludedOps.nonEmpty) {
-			val noExcludes = component.buffs.filter { buff => excludedOps.forall(_.NonDefault.inactive(buff)) }
-			val buffed = component.withBuffs(noExcludes)
+			val withoutExcludes = component.buffs.filter { buff => excludedOps.forall(_.NonDefault.inactive(buff)) }
+			val buffed = component.withBuffs(withoutExcludes)
 			builder += new Override(component, buffed)
 
 			@inline def substitute[X](subcomponent :RefinedMapping[X, O]) :Unit =
@@ -611,8 +611,8 @@ object AdjustedMapping {
 	{
 		val optionalOps = operations.filter(o => o.Optional.active(component) && o.NonDefault.inactive(component))
 		if (optionalOps.nonEmpty) {
-			val excludes = optionalOps.map(_.Exclude[T]) ++: component.buffs.declared
-			val buffed = component.withBuffs(excludes)
+			val withExcludes = optionalOps.map(_.Exclude[T]) ++: component.buffs.declared
+			val buffed = component.withBuffs(withExcludes)
 			builder += new Override(component, buffed)
 
 			@inline def substitute[X](subcomponent :RefinedMapping[X, O]) :Unit =

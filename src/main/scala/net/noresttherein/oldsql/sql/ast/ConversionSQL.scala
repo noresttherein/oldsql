@@ -51,13 +51,13 @@ trait ConversionSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, Y] ext
 		visitor.conversion(this)
 
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		spelling(value :SQLExpression[E, S, X])(context, params)
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		spelling(value)(from, context, params)
 
-	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
-		spelling.explode(value :SQLExpression[E, S, X])(context, params)
+	protected override def explodedSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                                  (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
+		spelling.explode(value)(from, context, params)
 
 
 	protected def name :String = this.localClassName

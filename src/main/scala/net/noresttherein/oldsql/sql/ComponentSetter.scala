@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.schema.{ColumnMapping, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, SQLTypeUnification}
-import net.noresttherein.oldsql.sql.ast.{denullify, ColumnComponentSQL, ColumnLValueSQL, ComponentLValueSQL, ComponentSQL, SQLNull, SQLParameter}
+import net.noresttherein.oldsql.sql.ast.{denullify, ColumnComponentSQL, ColumnLValueSQL, ComponentLValueSQL, ComponentSQL, SQLNull, BoundParam}
 
 
 
@@ -37,9 +37,9 @@ import net.noresttherein.oldsql.sql.ast.{denullify, ColumnComponentSQL, ColumnLV
   *           (or `RowProduct `[[net.noresttherein.oldsql.sql.AndFrom AndFrom]]` M`) for updates without
   *           [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters and
   *           `From[M] `[[net.noresttherein.oldsql.sql.WithParam]]` X` (or
-  *           `RowProduct AndFrom `[[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation ParamRelation]]`[X]#Param`)
+  *           `RowProduct AndFrom `[[net.noresttherein.oldsql.sql.ParamClause.ParamRelation ParamRelation]]`[X]#Param`)
   *           for parameterized updates. Note that in the former case, the expression can still contain
-  *           [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters.
+  *           [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters.
   * @tparam V the shared type of the left side's mapping's [[net.noresttherein.oldsql.schema.Mapping.Subject subject]]
   *           and of the assigned expression on the right side, possibly after unification.
   * @author Marcin Mościcki
@@ -114,10 +114,10 @@ object ComponentSetter {
 	  * [[net.noresttherein.oldsql.sql.From From]]`[M]`, enforcing that `lvalue` of `:=` is a component
 	  * of a table with row [[net.noresttherein.oldsql.schema.Mapping mapping]] `M`. `F` can also be `From[M]` -
 	  * for [[net.noresttherein.oldsql.sql.Update updates]]
-	  * of table [[net.noresttherein.oldsql.schema.Relation.RelVar RelVar]]`[M]` which do not depend on any outside
+	  * of table [[net.noresttherein.oldsql.schema.RelVar RelVar]]`[M]` which do not depend on any outside
 	  * parameters (which use only to the updated table itself and expressions with concrete values -
 	  * [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] or
-	  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters); it can however also take many more
+	  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters); it can however also take many more
 	  * forms, in practice some combination of `From[M]` and [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]
 	  * pseudo joins introducing expressions for statement parameters with values not known at their creation.
 	  * For example, `From[M] := (From[M] WithParam X)` is an assignment usable by ''update'' statements
@@ -137,7 +137,7 @@ object ComponentSetter {
 	  * [[net.noresttherein.oldsql.sql.ast.ComponentLValueSQL.:=? :=?]]
 	  * or [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.+=? +=?]] - which accept any scala value
 	  * of a compatible type with an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] type class,
-	  * and use it, wrapping it in a [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]]
+	  * and use it, wrapping it in a [[net.noresttherein.oldsql.sql.ast.BoundParam BoundParam]]
 	  * (rather than a [[net.noresttherein.oldsql.sql.ast.SQLLiteral SQLLiteral]] to which it would be otherwise
 	  * implicitly converted). This will render the SQL for the expression as the JDBC parameter placeholder `"?"`,
 	  * which is important in order to not flood the cache of the driver and the database with countless versions
@@ -204,9 +204,9 @@ object ComponentSetter {
   *           (or `RowProduct `[[net.noresttherein.oldsql.sql.AndFrom AndFrom]]` M`) for updates without
   *           [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters and
   *           `From[M] `[[net.noresttherein.oldsql.sql.WithParam]]` X` (or
-  *           `RowProduct AndFrom `[[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation ParamRelation]]`[X]#Param`)
+  *           `RowProduct AndFrom `[[net.noresttherein.oldsql.sql.ParamClause.ParamRelation ParamRelation]]`[X]#Param`)
   *           for parameterized updates. Note that in the former case, the expression can still contain
-  *           [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters.
+  *           [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters.
   * @tparam V the shared type of the left side's mapping's [[net.noresttherein.oldsql.schema.Mapping.Subject subject]]
   *           and of the assigned expression on the right side, possibly after unification.
   * @author Marcin Mościcki
@@ -255,7 +255,7 @@ object ColumnSetter {
 			def filter[T](column :ColumnMapping[T, RowProduct AndFrom M]) :ColumnSetter[From[M], RowProduct, T] = {
 				val extract = mapping(column) //this is somewhat fishy, as we create SQL for an export, not original
 				val t = extract.opt(value)
-				if (t.isDefined) domain.last \ column :=  SQLParameter(t.get)(column.form)
+				if (t.isDefined) domain.last \ column :=  BoundParam(t.get)(column.form)
 				else domain.last \ column := SQLNull[T](column.form)
 			}
 			filter(column)

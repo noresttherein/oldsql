@@ -1,22 +1,18 @@
 package net.noresttherein.oldsql.schema
 
-import java.sql
-
 import scala.collection.immutable.ArraySeq
-
-import net.noresttherein.oldsql.schema.Buff.{BuffExtractor, BuffType}
-import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, MappingOf}
-import net.noresttherein.oldsql.schema.bits.Temporal
-import net.noresttherein.oldsql.slang._
 import scala.reflect.ClassTag
 
 import net.noresttherein.oldsql.collection.{Opt, Unique}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.exceptions.OldSQLException
-import net.noresttherein.oldsql.morsels.generic.{Fixed, Self}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
+import net.noresttherein.oldsql.morsels.generic.Self
+import net.noresttherein.oldsql.schema.Buff.{BuffExtractor, BuffType}
 import net.noresttherein.oldsql.schema.Buff.BuffType.NamedBuffType
 import net.noresttherein.oldsql.schema.Buff.FlagBuffType.NamedFlag
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
+import net.noresttherein.oldsql.schema.bits.Temporal
+import net.noresttherein.oldsql.slang._
 
 
 
@@ -675,7 +671,8 @@ object Buff {
 		  * of [[net.noresttherein.oldsql.schema.Buffs.apply Buffs.apply]].
 		  */
 		case object Active {
-			val columns = new ColumnFilter.WithBuff(BuffType.this)
+			def columns(mapping :Mapping) :Unique[ColumnMapping[_, mapping.Origin]] =
+				mapping.columnsWith(BuffType.this)
 
 			@inline def apply[T](buff :Buff[T]) :Boolean = !get(buff).isEmpty
 			@inline def apply[T](buffs :Iterable[Buff[T]]) :Boolean = !get(buffs).isEmpty
@@ -698,7 +695,8 @@ object Buff {
 		  * buff type, with a possible intermediate role of [[net.noresttherein.oldsql.schema.Buffs.apply Buffs.apply]].
 		  */
 		case object Inactive {
-			val columns = new ColumnFilter.WithoutBuff(BuffType.this)
+			def columns(mapping :Mapping) :Unique[ColumnMapping[_, mapping.Origin]] =
+				mapping.columnsWithout(BuffType.this)
 
 			@inline def apply[T](buff :Buff[T]) :Boolean = get(buff).isEmpty //buff(Active).isEmpty
 			@inline def apply[T](buffs :Iterable[Buff[T]]) :Boolean = get(buffs).isEmpty

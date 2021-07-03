@@ -39,6 +39,8 @@ class MisspelledSQLException(msg :String, cause :Throwable = null)
 	def this(expression :SQLExpression.*) = this("Invalid SQL expression: " + expression + ".")
 	def this(query :Query.*) = this("Invalid SQL query: " + query + ".")
 	def this(statement :DMLStatement.*) = this("Invalid DML statement: " + statement + ".")
+
+	override def stackOn(msg :String) :OldSQLException = new MisspelledSQLException(msg, this)
 }
 
 
@@ -51,6 +53,8 @@ class InseparableExpressionException(msg :String, cause :Throwable = null) exten
 	def this(expression :SQLExpression.*) = this(
 		s"Cannot split expression '$expression' of ${expression.readForm.readColumns} columns into individual columns."
 	)
+
+	override def stackOn(msg :String) :OldSQLException = new InseparableExpressionException(msg, this)
 }
 
 
@@ -61,6 +65,8 @@ class InseparableExpressionException(msg :String, cause :Throwable = null) exten
   * This is the case when two expressions with the same value type are used in a comparison, assignment or ''select''
   * clauses of composites of a compound ''select'' have different implementation and structure.
   */
-class MismatchedExpressionsException(msg :String, cause :Throwable = null) extends MisspelledSQLException(msg, cause)
+class MismatchedExpressionsException(msg :String, cause :Throwable = null) extends MisspelledSQLException(msg, cause) {
+	override def stackOn(msg :String) :OldSQLException = new MismatchedExpressionsException(msg, this)
+}
 
 

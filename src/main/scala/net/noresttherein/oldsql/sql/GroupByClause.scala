@@ -1,408 +1,33 @@
 package net.noresttherein.oldsql.sql
 
+import scala.collection.immutable.ArraySeq
+
 import net.noresttherein.oldsql.collection.Chain.@~
-import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.{Opt, ReversedList, Unique}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.morsels.{ChunkedString, InferTypeParams}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
-import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, SQLForm, Table}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection}
+import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, MappingExtract, Relation, SQLForm, Table}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.Relation.PseudoRelation
 import net.noresttherein.oldsql.schema.Table.StaticTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
 import net.noresttherein.oldsql.sql.ColumnSQL.GlobalColumn
-import net.noresttherein.oldsql.sql.GroupByClause.{GroupByClauseTemplate, GroupingRelation}
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf, RowProductTemplate}
+import net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseTemplate
+import net.noresttherein.oldsql.sql.ParamClause.{NamedParamRelation, ParamRelation}
+import net.noresttherein.oldsql.sql.RowProduct.{As, JoinedMappings, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf}
+import net.noresttherein.oldsql.sql.SQLBoolean.True
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, GlobalSQL, LocalScope}
-import net.noresttherein.oldsql.sql.UnboundParam.{NamedParamRelation, ParamRelation}
-import net.noresttherein.oldsql.sql.ast.{ComponentSQL, RelationSQL}
+import net.noresttherein.oldsql.sql.ast.{ComponentSQL, JoinedGrouping, JoinedRelation, ParamSQL, RelationSQL}
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.EmptyChain
-import net.noresttherein.oldsql.sql.mechanics.{GroupingExpression, RowProductVisitor, SpelledSQL, TableCount}
+import net.noresttherein.oldsql.sql.mechanics.{CanGroup, RowProductVisitor, SpelledSQL, TableCount}
+import net.noresttherein.oldsql.sql.mechanics.MappingReveal.BaseMappingSubject
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
-
-
-
-
-
-/** A base type for all ''from'' clauses of SQL ''selects'' which make use of aggregate functions.
-  * This encompasses both queries with a ''group by'' clause
-  * - [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]] - and a special
-  * [[net.noresttherein.oldsql.sql.Aggregated Aggregated]] implementation used for ''selects'' which feature
-  * an aggregate function in their ''select'' clause, aggregating all rows into a single result.
-  */
-sealed trait AggregateClause extends RowProduct with RowProductTemplate[AggregateClause] { thisClause =>
-
-	override type FromNext[E[+L <: FromSome] <: RowProduct] = Nothing
-
-	override type Generalized >: Dealiased <: AggregateClause {
-		type FromLast = thisClause.FromLast
-		type Generalized <: thisClause.Generalized
-		type Explicit <: thisClause.Explicit
-		type Implicit <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = RowProduct
-		type Base <: thisClause.Base
-		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
-	}
-
-	type Dealiased >: Self <: AggregateClause {
-		type LastMapping[O] = thisClause.LastMapping[O]
-//		type Last[O <: RowProduct] = thisClause.Last[O]
-		type FromLast = thisClause.FromLast
-		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Implicit = thisClause.Implicit
-		type Base = thisClause.Base
-		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
-	}
-
-	override type Self <: AggregateClause {
-		type LastMapping[O] = thisClause.LastMapping[O]
-//		type Last[O <: RowProduct] = thisClause.Last[O]
-		type FromLast = thisClause.FromLast
-		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Base = thisClause.Base
-		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
-	}
-
-
-
-	override type FilterNext[E[+L <: FromSome] <: L Expanded N, S <: RowProduct Expanded N, G <: S, N[O] <: MappingAt[O]] =
-		Nothing
-
-	protected override def filterNext[F <: RowProduct AndFrom N, N[O] <: MappingAt[O]]
-	                       (next :F)(filter :FilterNext[next.GeneralizedLeft, next.FromLast, next.Generalized, N]) =
-		throw new UnsupportedOperationException(s"GroupByClause.filterNext (on $this)")
-
-
-
-	/** Type constructor for this clause. It applies all grouping/aggregate clauses in the suffix of this type
-	  * to an arbitrary ungrouped, non empty ''from'' clause `U`. Syntactically, this replaces
-	  * the [[net.noresttherein.oldsql.sql.AggregateClause.Discrete Discrete]] portion of this type
-	  * (that is, the longest prefix type conforming to [[net.noresttherein.oldsql.sql.FromClause FromClause]],
-	  * including both the grouped relations in the ''from'' clause and all
-	  * [[net.noresttherein.oldsql.sql.RowProduct.Outer outer]] relations) with `U`.
-	  */
-	type Grouping[+U <: FromSome] <: AggregateClause
-
-	/** The ''from'' clause containing all the aggregated relations in its
-	  * [[net.noresttherein.oldsql.sql.RowProduct.Explicit ''explicit'']] portion.
-	  * This is the ''generalized'' supertype of [[net.noresttherein.oldsql.sql.AggregateClause.Discrete this.Discrete]].
-	  * For [[net.noresttherein.oldsql.sql.Aggregated Aggregated]] it is `clause.Generalized`;
-	  * for [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] it is `left.Generalized`;
-	  * [[net.noresttherein.oldsql.sql.By By]]
-	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.GeneralizedDiscrete`.
-	  */ //todo: rename to GeneralizedUngrouped
-	type GeneralizedDiscrete >: Discrete <: FromSome {
-		type Generalized <: thisClause.GeneralizedDiscrete
-	}
-
-	/** The self typ of the ''from'' clause containing all the aggregated relations in its
-	  * [[net.noresttherein.oldsql.sql.RowProduct.Explicit ''explicit'']] portion.
-	  * For [[net.noresttherein.oldsql.sql.Aggregated Aggregated]] it is `clause.Self`;
-	  * for [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] it is `left.Self`;
-	  * [[net.noresttherein.oldsql.sql.By By]]
-	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.Discrete`.
-	  */ //todo: rename to Ungrouped
-	type Discrete <: FromSome {
-		type Generalized = thisClause.GeneralizedDiscrete
-	}
-
-	/** The [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] forming the prefix of this clause which contains
-	  * all the aggregated relations in its [[net.noresttherein.oldsql.sql.RowProduct.Explicit ''explicit'']] portion.
-	  * These relations are ''not'' available to SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]]
-	  * based on this clause.
-	  */
-	override val fromClause :Discrete
-
-	/** The supertype of [[net.noresttherein.oldsql.sql.AggregateClause.GeneralizedDiscrete GeneralizedDiscrete]]
-	  * which replaces its whole [[net.noresttherein.oldsql.sql.RowProduct.Implicit ''implicit'']] prefix with
-	  * [[net.noresttherein.oldsql.sql.RowProduct RowProduct]]. Equals `fromClause.Explicit`.
-	  */ //todo: rename to GeneralizedFrom
-	type GeneralizedGrouped = fromClause.Explicit
-
-	/** The supertype of [[net.noresttherein.oldsql.sql.AggregateClause.Discrete Discrete]]
-	  * which replaces its whole [[net.noresttherein.oldsql.sql.RowProduct.Outer outer]] prefix with
-	  * the upper bound for the left side of the [[net.noresttherein.oldsql.sql.AndFrom join]] between the
-	  * outer and inner sections. Equals `fromClause.Inner`.
-	  */ //todo: rename to InnerFrom
-	type Grouped = fromClause.Inner
-
-
-
-	protected override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.aggregateClause(this)
-
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[AggregateClause]
-
-}
-
-
-
-
-object AggregateClause {
-
-	def unapply(from :RowProduct) :Opt[FromSome] = from match {
-		case aggro :Aggregated.* => Got(aggro.clause)
-		case group :GroupByClause => Got(group.fromClause)
-		case _ => Lack
-	}
-}
-
-
-
-
-
-
-/** A special [[net.noresttherein.oldsql.sql.FromSome FromSome]] adapter used when selecting
-  * an aggregate [[net.noresttherein.oldsql.sql.ast.AggregateSQL! expression]], coalescing all rows from the adapted
-  * clause into a single result. Its existence is needed as such aggregate functions are - aside from ''selects''
-  * with a ''group by'' clause - allowed only in the ''select'' clause, and not the ''where'' clause.
-  * It is considered a part of the implementors' interface, exposed for applications
-  * which add their own aggregate [[net.noresttherein.oldsql.sql.AggregateFunction functions]] or
-  * SQL dialects (requiring access to the whole [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] hierarchy).
-  * Applications which satisfy themselves with the standard aggregate functions defined in
-  * [[net.noresttherein.oldsql.sql.ast.AggregateSQL$ AggregateSQL]] should have no need for this class, as appropriate
-  * 'shortcut' methods are defined in [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension FromSomeExtension]]
-  * implicit extension class for [[net.noresttherein.oldsql.sql.FromSome non-empty, ungrouped]] clauses.
-  * Be warned that several standard methods (in particular `where`) are unsupported, as this type should be used only
-  * as an intermediate value created directly before calling one of its `select` methods.
-  * @tparam F a non-empty, ungrouped ''from'' clause which rows are being aggregated for the purpose of selecting
-  *           a result of an aggregate function. As with [[net.noresttherein.oldsql.sql.GroupByClause]], all relations
-  *           following the last [[net.noresttherein.oldsql.sql.Subselect Subselect]]
-  *           (or [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]) are unavailable
-  *           to [[net.noresttherein.oldsql.sql.SQLExpression SQL expressions]] based on this clause other than
-  *           as arguments to aggregate functions.
-  * @author Marcin Mościcki
-  */
-sealed trait Aggregated[+F <: FromSome] extends DecoratedFrom[F] with AggregateClause { thisClause =>
-
-	override type LastMapping[O] = Nothing
-	override type Last[E <: RowProduct] = Nothing
-	override type FromLast = RowProduct
-
-	/** Throws an `NoSuchElementException`. */
-	override def last :Nothing = throw new NoSuchElementException(s"($this).last")
-
-	/** Throws an `NoSuchElementException`. */
-	override def lastAsIn[E <: FromSome](implicit expansion :FromLast PrefixOf E) :Nothing = last
-
-	override type Bound = FromSome
-	override type Generalized = Aggregated[clause.Generalized]
-	override type Dealiased = Aggregated[clause.Dealiased]
-	override type Self = Aggregated[clause.Self]
-	override type Copy = Aggregated[clause.Copy]
-
-
-	override def withClause[C <: FromSome](from :C) :Aggregated[C] = Aggregated(from)
-
-
-	/** Always returns [[net.noresttherein.oldsql.sql.ast.SQLLiteral.True True]]. For the actual, ungrouped ''where'' clause
-	  * use `this.clause.filter`.
-	  */
-	override def filter[E <: RowProduct](target :E)(implicit expansion :Generalized PartOf E) :LocalBoolean[E] = True
-
-	/** Throws an `UnsupportedOperationException`. */
-	override def filtered[S >: GlobalScope <: GlobalScope](condition :SQLBoolean[Generalized, S]) :Nothing =
-		throw new UnsupportedOperationException(s"($this).where($condition)")
-
-
-	override type AppliedParam = Aggregated[clause.AppliedParam]
-	override type GeneralizedParamless = Aggregated[clause.GeneralizedParamless]
-	override type Paramless = Aggregated[clause.Paramless]
-	override type DecoratedParamless[D <: BoundParamless] = D
-
-	override def bind(param :LastParam) :AppliedParam = withClause(clause.bind(param))
-	override def bind(params :Params) :Paramless = withClause(clause.bind(params))
-
-	protected override def decoratedBind[D <: BoundParamless](params :Params)(decorate :Paramless => D) :D =
-		decorate(bind(params))
-
-
-	override def isEmpty :Boolean = outer.isEmpty
-	override def fullSize :Int = outer.fullSize
-	override def size :Int = 0
-
-
-	override type FullRow = clause.OuterRow
-
-	override def fullRow[E <: RowProduct]
-	                    (target :E)(implicit expansion :Generalized ExpandedBy E) :ChainTuple[E, GlobalScope, FullRow] =
-		clause.outerRow(target)(explicitSpan expand expansion)
-
-	override def fullTableStack[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
-			:LazyList[RelationSQL.AnyIn[E]] =
-		outer.fullTableStack(target)(explicitSpan.expand(expansion))
-
-
-	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] =
-		Aggregated[clause.JoinedWith[P, J]]
-
-	override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*) :JoinedWith[P, firstJoin.LikeJoin] =
-		withClause(clause.joinedWith(prefix, firstJoin))
-
-	override type JoinedWithSubselect[+P <:  NonEmptyFrom] = Aggregated[clause.JoinedWithSubselect[P]]
-
-	override def joinedWithSubselect[P <: NonEmptyFrom](prefix :P) :JoinedWithSubselect[P] =
-		withClause(clause.joinedWithSubselect(prefix))
-
-	override def appendedTo[P <: FromClause](prefix :P) :Aggregated[clause.JoinedWith[P, NonParam]] =
-		withClause(clause.appendedTo(prefix))
-
-
-
-	override type Explicit = Aggregated[clause.Explicit]
-	override type Inner = Aggregated[clause.Inner]
-	override type Base = clause.DefineBase[clause.Implicit] //a supertype of clause.Base (in theory, equal in practice)
-	override type DefineBase[+I <: RowProduct] = clause.DefineBase[I]
-
-	override def base :Base = clause.base
-
-	override type Row = @~
-
-	/** Returns an empty chain expression. */
-	override def row[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
-			:ChainTuple[E, GlobalScope, @~] =
-		EmptyChain
-
-	/** Returns an empty list. */
-	override def tableStack[E <: RowProduct](target :E)(implicit expansion :Generalized ExpandedBy E)
-			:LazyList[RelationSQL.AnyIn[E]] =
-		LazyList.empty
-
-	override type OuterRow = clause.OuterRow
-
-	override def outerRow[E <: RowProduct](target :E)(implicit expansion :Implicit ExpandedBy E)
-			:ChainTuple[E, GlobalScope, OuterRow] =
-		clause.outerRow(target)
-
-
-	override type AsSubselectOf[+P <: NonEmptyFrom] = Aggregated[clause.AsSubselectOf[P]]
-
-	override def asSubselectOf[P <: NonEmptyFrom](newOuter :P)(implicit expansion :Implicit ExpandedBy P)
-			:Aggregated[clause.AsSubselectOf[P]] { type Implicit = newOuter.Generalized; type Outer = newOuter.Self } =
-		withClause(clause.asSubselectOf(newOuter))
-
-
-
-	override type Grouping[+D <: FromSome] = Aggregated[D]
-	override type GeneralizedDiscrete = clause.Generalized
-	override type Discrete = clause.Self
-
-	//these could probably be made to work, but I'm lazy and this class shouldn't be used for much else than a select call
-	override type FromRelation[T[O] <: MappingAt[O]] = Nothing
-
-	/** Throws `UnsupportedOperationException`. */
-	override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-	                 (first :Table[M])
-	                 (implicit cast :InferTypeParams[Table[M], Table[T], Table[MappingOf[S]#TypedProjection]])
-			:Nothing =
-		throw new UnsupportedOperationException(s"($this).from($first)")
-
-	/** Throws `UnsupportedOperationException`. */
-	override def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A <: Label]
-	                 (first :StaticTable[A, M])
-	                 (implicit cast :InferTypeParams[StaticTable[A, M], StaticTable[A, T], Table[MappingOf[S]#TypedProjection]])
-			:Nothing =
-		throw new UnsupportedOperationException(s"($this).from($first)")
-
-	override type FromSubselect[+S <: NonEmptyFrom] = Nothing
-
-	/** Throws `UnsupportedOperationException`. */
-	override def from[S <: NonEmptyFrom with GroundFrom](subselect :S) :Nothing =
-		throw new UnsupportedOperationException(s"($this).from($subselect)")
-
-	/** Throws `UnsupportedOperationException`. */
-	override def fromSubselect[E <: NonEmptyFrom]
-	                          (subselect :E)(implicit expansion :subselect.Implicit ExpandedBy Generalized) :Nothing =
-		throw new UnsupportedOperationException(s"($this).fromSubselect($subselect)")
-
-
-
-	protected override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.aggregated(this)
-
-
-
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Aggregated.*]
-
-	override def equals(that :Any) :Boolean = that match {
-		case self :AnyRef if self eq this => true
-		case other :Aggregated.* if other canEqual this => other.clause == clause
-		case _ => false
-	}
-
-	override def hashCode :Int = clause.hashCode
-
-
-	override def spell(context :SQLContext)(implicit spelling :SQLSpelling) :SpelledSQL[Params, Generalized] =
-		spelling(this)(context)
-
-	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
-			:SpelledSQL[Params, Generalized] =
-	{
-		val res = clause.spell(context)
-		SpelledSQL(res.sql, res.context.aggregate, res.params.aggregate(generalized))
-	}
-
-	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext = clause.spellingContext.aggregate
-
-
-	private[sql] override def concrete_RowProduct_subclass_must_extend_FromClause_or_GroupByClause =
-		throw new UnsupportedOperationException
-
-
-	override def chunkedString :ChunkedString = "aggregate " +: clause.chunkedString
-
-}
-
-
-
-
-
-
-object Aggregated {
-
-	def apply[F <: FromSome](discrete :F) :Aggregated[F] =
-		new Aggregated[discrete.type] {
-			override val clause :discrete.type = discrete
-			override val fromClause = discrete.self
-			override val outer = clause.outer
-			override val parameterization = clause.parameterization.aggregate(self)
-		}
-
-	def unapply[F <: FromSome](from :Aggregated[F]) :Opt[F] = Got(from.clause)
-
-	def unapply[F <: RowProduct](from :DecoratedFrom[F]) :Opt[F] = from match {
-		case _ :Aggregated[_] => Got(from.clause)
-		case _ => Lack
-	}
-
-	def unapply(from :RowProduct) :Opt[FromSome] = from match {
-		case aggro :Aggregated.* => Got(aggro.clause)
-		case _ => Lack
-	}
-
-
-	type * = Aggregated[_ <: FromSome]
-}
-
-
+//implicits
+import net.noresttherein.oldsql.slang._
 
 
 
@@ -421,44 +46,51 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 	override type FromNext[E[+L <: FromSome] <: RowProduct] = Nothing
 
 	override type Generalized >: Dealiased <: GroupByClause {
-		type FromLast = thisClause.FromLast
-		type Generalized <: thisClause.Generalized
+		type FromLast             = thisClause.FromLast
+		type Generalized         <: thisClause.Generalized
+//		type Dealiased   >: Self <: Generalized
 		type GeneralizedDiscrete <: thisClause.GeneralizedDiscrete
-		type Explicit <: thisClause.Explicit
-		type Implicit <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = RowProduct
-		type Base <: thisClause.Base
+		type Explicit            <: thisClause.Explicit
+		type Implicit            <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = RowProduct
+		type Base                <: thisClause.Base
 		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
 	}
 
 	type Dealiased >: Self <: GroupByClause {
-		type LastMapping[O] = thisClause.LastMapping[O]
-		type FromLast = thisClause.FromLast
-		type Generalized = thisClause.Generalized
+		type LastMapping[O]      = thisClause.LastMapping[O]
+		type FromLast            = thisClause.FromLast
+		type Generalized         = thisClause.Generalized
+//		type Dealiased  >: Self <: Generalized
 		type GeneralizedDiscrete = thisClause.GeneralizedDiscrete
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Implicit = thisClause.Implicit
-		type Base = thisClause.Base
+		type ParamsOnly          = thisClause.ParamsOnly
+		type LastParam           = thisClause.LastParam
+		type Params              = thisClause.Params
+		type FullRow             = thisClause.FullRow
+		type Explicit            = thisClause.Explicit
+		type Implicit            = thisClause.Implicit
+		type Base                = thisClause.Base
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+		type Row                 = thisClause.Row
+		type OuterRow            = thisClause.OuterRow
 	}
 
 	override type Self <: GroupByClause {
-		type LastMapping[O] = thisClause.LastMapping[O]
-		type FromLast = thisClause.FromLast
-		type Generalized = thisClause.Generalized
+		type LastMapping[O]      = thisClause.LastMapping[O]
+		type FromLast            = thisClause.FromLast
+		type Generalized         = thisClause.Generalized
+//		type Dealiased  >: Self <: Generalized
 		type GeneralizedDiscrete = thisClause.GeneralizedDiscrete
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
-		type Base = thisClause.Base
+		type ParamsOnly          = thisClause.ParamsOnly
+		type LastParam           = thisClause.LastParam
+		type Params              = thisClause.Params
+		type FullRow             = thisClause.FullRow
+		type Explicit            = thisClause.Explicit
+		type Inner               = thisClause.Inner
+		type Implicit            = thisClause.Implicit
+		type Base                = thisClause.Base
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+		type Row                 = thisClause.Row
+		type OuterRow            = thisClause.OuterRow
 	}
 
 	override type AppliedParam <: GroupByClause
@@ -478,7 +110,7 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 
 	/** The number of columns in the whole ''group by'' clause. This assumes all component expressions use
 	  * [[net.noresttherein.oldsql.schema.Mapping.selectedByDefault selectedByDefault]] column set.
-	  */
+	  */ //consider: or should it be filteredByDefault? Depends on how comparing BLOBs works probably - must be consistent with SpellingScope.GroupByScope.
 	def columnCount :Int
 
 
@@ -500,7 +132,7 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 	  * For [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] it is `left.Self`;
 	  * [[net.noresttherein.oldsql.sql.By By]]
 	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.Discrete`.
-	  */ //overriden for docs only //consider: renaming to Ungrouped?
+	  */ //overriden for docs only //consider: renaming to Ungrouped? Grouped? Groups? From?
 	override type Discrete <: FromSome {
 		type Generalized = thisClause.GeneralizedDiscrete
 	}
@@ -510,7 +142,7 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 	  * For [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] it is its left side;
 	  * [[net.noresttherein.oldsql.sql.By By]]
 	  * (and [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]) define it as `left.from`.
-	  */ //'from' conflicts with the 'from' method for creating subselects. 'grouped' is an extension method returning JoinedMappings[Discrete]
+	  */ //'from' conflicts with the 'from' method for creating subselects. 'ungrouped' is an extension method returning JoinedMappings[Discrete]
 	override val fromClause :Discrete
 
 
@@ -519,10 +151,11 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 
 
 
-	override def spell(context :SQLContext)(implicit spelling :SQLSpelling) :SpelledSQL[Params, Generalized] =
-		spelling.groupByHaving(this)(context)
+	override def spell[P](context :SQLContext[P], params :Parameterization[P, Generalized])
+	                     (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		spelling.groupByHaving(this)(context, params)
 
-	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext =
+	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext[Any] =
 		fromClause.spellingContext.copy(groupings = size)
 
 	protected override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.groupByClause(this)
@@ -539,9 +172,11 @@ trait GroupByClause extends NonEmptyFrom with AggregateClause with GroupByClause
 
 object GroupByClause {
 
-	type Group[S] = {
-		type T[O] = SQLMapping[Nothing, GlobalScope, S, O]
-		type C[O] = ColumnSQLMapping[Nothing, GlobalScope, S, O]
+	type Group[S] = { //fixme: By/GroupBy are invariant in the mapping type, meaning this catches only expressions really declared with a Nothing type.
+//		type E[O] = SQLMapping[F, GlobalScope, S, O]
+//		type C[O] = ColumnSQLMapping[F, GlobalScope, S, O]
+		type E[O] = BaseMapping[S, O]
+		type C[O] = ColumnMapping[S, O]
 	}
 
 	def unapply(f :RowProduct) :Opt[FromClause] = f match {
@@ -624,7 +259,7 @@ object GroupByClause {
 		  *                  The provided `JoinedRelations` do ''not'' include the relations from the actual ''from''
 		  *                  clause (i.e. listed by the [[net.noresttherein.oldsql.sql.GroupByClause.Discrete Discrete]]),
 		  *                  as the values for their individual rows are unavailable. They can however be accessed
-		  *                  by [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.grouped grouped]] method.
+		  *                  by [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.ungrouped ungrouped]] method.
 		  *                  The expressions for these relations will be based however on the `GeneralizedDiscrete`
 		  *                  type rather than this clause; they can be adapted for the required `this.Generalized` by
 		  *                  passing them to an
@@ -660,13 +295,13 @@ object GroupByClause {
 		//this needs to be an extension rather than a NonEmptyFromTemplate subtype because of As:
 		// GroupByClause As A would inherit the generic template trait, not parameterized with F As A
 		import thisClause.fromClause.{FromLast, LastMapping}
-		import thisClause.{Discrete, GeneralizedDiscrete}
+		import thisClause.{Discrete, Generalized, GeneralizedDiscrete}
 
 		/** Adds another expression (column or columns) to the [[net.noresttherein.oldsql.sql.GroupBy group by]]
 		  * clause to this ''from'' clause. The expression is based on the last
 		  * @tparam E an expression used for grouping, for which
-		  *           a [[net.noresttherein.oldsql.sql.mechanics.GroupingExpression GroupingExpression]]
-		  *           type class exist. The [[net.noresttherein.oldsql.sql.mechanics.GroupingExpression$ companion]]
+		  *           a [[net.noresttherein.oldsql.sql.mechanics.CanGroup CanGroup]]
+		  *           type class exist. The [[net.noresttherein.oldsql.sql.mechanics.CanGroup$ companion]]
 		  *           object contains definitions for:
 		  *             - `M <: `[[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[_, O]`, having an implicit
 		  *               [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] (which exists
@@ -713,14 +348,14 @@ object GroupByClause {
 		  *         of the expression `E`.
 		  */
 		def byLast[E](expr :JoinedRelation[FromLast, LastMapping] => E)
-		             (implicit grouping :GroupingExpression[GeneralizedDiscrete, G, E]) :grouping.Result =
+		             (implicit grouping :CanGroup[GeneralizedDiscrete, G, E]) :grouping.Result =
 			grouping(thisClause, expr(thisClause.fromClause.last))
 
 		/** Adds another expression (column or columns) to the [[net.noresttherein.oldsql.sql.GroupBy group by]]
 		  * clause to this ''from'' clause.
 		  * @tparam E an expression used for grouping, for which
-		  *           a [[net.noresttherein.oldsql.sql.mechanics.GroupingExpression GroupingExpression]]
-		  *           type class exist. The [[net.noresttherein.oldsql.sql.mechanics.GroupingExpression$ companion]]
+		  *           a [[net.noresttherein.oldsql.sql.mechanics.CanGroup CanGroup]]
+		  *           type class exist. The [[net.noresttherein.oldsql.sql.mechanics.CanGroup$ companion]]
 		  *           object contains definitions for:
 		  *             - `M <: `[[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[_, O]`, having an implicit
 		  *               [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]] (which exists
@@ -772,7 +407,7 @@ object GroupByClause {
 		  *         of the expression `E`.
 		  */
 		def by[E](expr :JoinedMappings[Discrete] => E)
-		         (implicit grouping :GroupingExpression[GeneralizedDiscrete, G, E]) :grouping.Result =
+		         (implicit grouping :CanGroup[GeneralizedDiscrete, G, E]) :grouping.Result =
 			grouping(thisClause, expr(thisClause.fromClause.mappings))
 
 		/** Expands this ''group by'' clause with all [[net.noresttherein.oldsql.schema.Mapping.selectable selectable]]
@@ -801,7 +436,7 @@ object GroupByClause {
 			val relation = thisClause.fromClause.fullTableStack(shift.offset).toRelationSQL
 				.asInstanceOf[RelationSQL[GeneralizedDiscrete, MappingOf[Any]#TypedProjection, Any, GeneralizedDiscrete]]
 			val expr = TypedComponentSQL(relation, projection[GeneralizedDiscrete](component))(projection.isomorphism)
-			By[thisClause.type, projection.WithOrigin, projection.WithOrigin, S](thisClause, expr.groupingRelation, expr)
+			By[thisClause.type, projection.WithOrigin, projection.WithOrigin, S](thisClause)(expr.asGrouping, True)
 		}
 
 		/** Expands this ''group by'' clause with all [[net.noresttherein.oldsql.schema.Mapping.selectable selectable]]
@@ -813,12 +448,12 @@ object GroupByClause {
 		  */
 		def by[M[A] <: MappingAt[A], T[A] <: BaseMapping[S, A], S]
 		      (component :ComponentSQL[GeneralizedDiscrete, M])
-		      (implicit cast :InferSubject[thisClause.type, By, M, T, S]) :G By M =
-			By[thisClause.type, T, T, S](thisClause :thisClause.type, cast(component.groupingRelation), cast.<:<(component))
+		      (implicit cast :BaseMappingSubject[M, T, S]) :G By M =
+			By[thisClause.type, M, T, S](thisClause)(component.asGrouping, True)
 
 		/** Expands this ''group by'' clause with the given single column expression. */
 		def by[V](column :GlobalColumn[GeneralizedDiscrete, V]) :G ByOne V =
-			ByOne[GeneralizedDiscrete, thisClause.type, V](thisClause, column)
+			ByOne[GeneralizedDiscrete, thisClause.type, Generalized, V](thisClause, column)
 
 		/** Expands this ''group by'' clause with all member columns of the given expression.
 		  * The expression is traversed structurally until a [[net.noresttherein.oldsql.sql.ColumnSQL column expression]]
@@ -834,7 +469,7 @@ object GroupByClause {
 		  *     [[ast.TupleSQL.ListingSQL indexed tuples]].
 		  */
 		def by[V](expr :GlobalSQL[GeneralizedDiscrete, V]) :G ByVal V =
-			ByVal[GeneralizedDiscrete, thisClause.type, V](thisClause, expr)
+			ByVal[GeneralizedDiscrete, thisClause.type, Generalized, V](thisClause, expr)
 
 
 		//the subselect methods are exact copy&paste from FromSomeExtension
@@ -854,8 +489,7 @@ object GroupByClause {
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  */
 		@inline def subselect[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		                     (table :Table[R])
-		                     (implicit cast :InferSubject[G, Subselect, R, T, S]) :G Subselect R =
+		                     (table :Table[R])(implicit cast :BaseMappingSubject[R, T, S]) :G Subselect R =
 			Subselect(thisClause, table)
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based on this clause.
@@ -877,8 +511,8 @@ object GroupByClause {
 		  */
 		@inline def subselect[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                     (table :StaticTable[N, R])
-		                     (implicit cast :InferAliasedSubject[G, Subselect, R, T, S, N]) :G Subselect R As N =
-			Subselect(thisClause, table)(cast)
+		                     (implicit cast :BaseMappingSubject[R, T, S]) :G Subselect R As N =
+			Subselect(thisClause, table)
 
 		/** Creates a ''from'' clause of a subselect of an SQL ''select'' expression based on this clause.
 		  * The explicit list of relations in the clause is initialized with the relations given as a `RowProduct`
@@ -898,8 +532,8 @@ object GroupByClause {
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
 		  * @throws UnsupportedOperationException if `other` is empty or its first join is a `JoinParam`.
 		  */
-		@inline def subselect[R <: NonEmptyFrom](other :R) :other.JoinedWithSubselect[G] =
-			other.joinedWithSubselect(thisClause)
+		@inline def subselect[R <: NonEmptyFrom](other :R) :other.SelectedFrom[G] =
+			other.selectedFrom(thisClause)
 
 	}
 
@@ -916,7 +550,7 @@ object GroupByClause {
 		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
 		  * as a parameter of SQL statements created using the returned instance.
 		  * @see [[net.noresttherein.oldsql.sql.GroupParam]]
-		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
+		  * @see [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam]]
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.?]]
 		  */
 		@inline def param[X :SQLForm] :F ByParam X = GroupParam(thisClause, ParamRelation[X]())
@@ -928,17 +562,17 @@ object GroupByClause {
 		  * the same way as other mappings' components. The value for the parameter will be provided at a later time
 		  * as a parameter of SQL statements created using the returned instance.
 		  *
-		  * The artificial pseudo relation [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation ParamRelation]]
+		  * The artificial pseudo relation [[net.noresttherein.oldsql.sql.ParamClause.ParamRelation ParamRelation]]
 		  * is best obtained using the [[net.noresttherein.oldsql.sql.?: ?:]] factory method from package `sql`:
 		  * {{{
 		  *     From(Critters) groupBy (_.last.species) as "species" param ?:[String] on (_.name === _) having {
 		  *         t => t("species") === t(-1)
 		  *     }
 		  * }}}
-		  * @param relation a pseudo relation dedicated to `UnboundParam` joins, representing a future parameter
+		  * @param relation a pseudo relation dedicated to `ParamClause` joins, representing a future parameter
 		  *                 of type `X`, which can be later accessed as any other mappings.
 		  * @see [[net.noresttherein.oldsql.sql.GroupParam]]
-		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
+		  * @see [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam]]
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.?]]
 		  */
 		@inline def param[X](relation :ParamRelation[X]) :F ByParam X = GroupParam(thisClause, relation)
@@ -951,7 +585,7 @@ object GroupByClause {
 		  * as a parameter of SQL statements created using the returned instance.
 		  * @param name the suggested name for the parameter in the generated SQL, as specified by JDBC.
 		  * @see [[net.noresttherein.oldsql.sql.GroupParam]]
-		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
+		  * @see [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam]]
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.?]]
 		  */
 		@inline def param[X :SQLForm](name :String) :F ByParam X = GroupParam(thisClause, ParamRelation[X](name))
@@ -965,7 +599,7 @@ object GroupByClause {
 		  * @tparam N a string literal used as the label for the mapping and suggested parameter name.
 		  * @tparam X parameter type.
 		  * @see [[net.noresttherein.oldsql.sql.GroupParam]]
-		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
+		  * @see [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam]]
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.?]]
 		  */ //the order of implicits is important to avoid a double definition
 		@inline def param[N <: Label, X](implicit form :SQLForm[X], name :ValueOf[N]) :F ByParam X As N =
@@ -992,13 +626,13 @@ object GroupByClause {
 		  * Importing the `?:` symbol imports at the same time the factory methods for named and unnamed parameter
 		  * relations, the implicit conversion enriching `String` literals, and the container type
 		  * with the type constructor for the type of `Mapping` used by `JoinParam`.
-		  * @param relation a pseudo relation dedicated to `UnboundParam` joins, representing a future parameter
+		  * @param relation a pseudo relation dedicated to `ParamClause` joins, representing a future parameter
 		  *                 of type `X`, with its similarly synthetic `Mapping` being labeled with `N`,
 		  *                 used at the same time for the suggested parameter name.
 		  * @tparam N a string literal used as the label for the mapping and suggested parameter name.
 		  * @tparam X parameter type.
 		  * @see [[net.noresttherein.oldsql.sql.GroupParam]]
-		  * @see [[net.noresttherein.oldsql.sql.UnboundParam.FromParam]]
+		  * @see [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam]]
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings.?]]
 		  */
 		@inline def param[N <: Label, X](relation :NamedParamRelation[N, X]) :F ByParam X As N =
@@ -1060,109 +694,301 @@ object GroupByClause {
 
 	/** A pseudo relation used by the ''group by'' clauses [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] and
 	  * [[net.noresttherein.oldsql.sql.By By]].
-	  */
-	abstract class GroupingRelation[+M[O] <: BaseMapping[S, O], S, A] private
-	                               (val expr :SQLExpression[_, GlobalScope, S], template :M[A])
-	                               (implicit projection :IsomorphicProjection[M, S, A])
-		extends PseudoRelation[M]
+	  */ //todo: try to make it covariant in Scala 3 refactor - if successful, asGrouping could become a polymorphic method on SQLExpression
+	sealed trait GroupingRelation[-F <: RowProduct, G[O] <: MappingAt[O]]
+		extends PseudoRelation[G] //with RelationTemplate[G, ({ type R[+M[O] <: MappingAt[O]] = GroupingRelation[F, M] })#R]
 	{
-		override def apply[O] :M[O] = projection(template)
-		override def export[O] :MappingAt[O] = projection(template)
+		type Subject = G[Unit]#Subject
+		val expr :SQLExpression[F, GlobalScope, G[Unit]#Subject]
+
+		def copy[R <: RowProduct](expr :SQLExpression[R, GlobalScope, G[Unit]#Subject]) :GroupingRelation[R, G]
 
 		override def withClause :WithClause = expr.withClause
 
-		override def refString :String = expr.toString
-		override def toString :String = expr.toString
-//		override def toString :String = template.selectedByDefault.view.map(_.name).mkString(", ")
+		/** Formats the expression for use in a ''group by'' clause.
+		  * This is the default spelling used by [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
+		  */
+		protected def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                                (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+			spelling.inline(expr)(from, context, params)
+
+		private[oldsql] def defaultSpelling[P](spelling :SQLSpelling)
+		                                      (from :F, context :SQLContext[P], params :Parameterization[P, F])
+				:SpelledSQL[P] =
+			defaultSpelling(from, context, params)(spelling)
+
+
+		protected def spell[P, M[O] <: MappingAt[O]]
+		                   (component :ComponentSQL[_ <: RowProduct, M])
+		                   (from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                   (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		{
+			val columns = spellExploded(component)(from, context, params).filter(!_.isEmpty)
+			if (columns.isEmpty)
+				SpelledSQL(context)
+			else if (columns.sizeIs <= 1)
+				columns.head
+			else
+				columns.reduce(_ +: ", " +: _)
+		}
+
+		private[oldsql] def spell[P, M[O] <: MappingAt[O]]
+		                         (spelling :SQLSpelling)(component :ComponentSQL[_ <: RowProduct, M])
+		                         (from :F, context :SQLContext[P], params :Parameterization[P, F])
+				:SpelledSQL[P] =
+			spell(component)(from, context, params)(spelling)
+
+
+		protected def spellExploded[P, M[O] <: MappingAt[O]]
+		                           (component :ComponentSQL[_ <: RowProduct, M])
+		                           (from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                           (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]]
+
+		private[oldsql] def spellExploded[P, M[O] <: MappingAt[O]]
+		                                 (spelling :SQLSpelling)(component :ComponentSQL[_ <: RowProduct, M])
+		                                 (from :F, context :SQLContext[P], params :Parameterization[P, F])
+				:Seq[SpelledSQL[P]] =
+			spellExploded(component)(from, context, params)(spelling)
+
+
+		override def sameAs(that :Relation.*) :Boolean = that match {
+			case grouping :GroupingRelation[_, G @unchecked] => grouping.expr isomorphic expr
+			case _ => false
+		}
+		override def canEqual(that :Any) :Boolean = that.getClass == getClass
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :GroupingRelation[_, G @unchecked] if other canEqual this => other.expr == expr
+			case _ => false
+		}
+		override def hashCode :Int = expr.hashCode
+
+		override def refString :String = ""
+		override def toString :String = "(" + expr + ")"
 	}
 
 
 
 	object GroupingRelation {
-		import SQLMapping.Project
 
-		def apply[F <: RowProduct, M[A] <: BaseMapping[S, A], S, O >: F <: RowProduct]
-		         (component :ComponentSQL[F, M] { type Origin = O })(implicit project :IsomorphicProjection[M, S, O])
-				:GroupingRelation[M, S, O] =
-			new GroupingComponentRelation[F, M, S, O](component)
+		def apply[F <: RowProduct, G[A] <: BaseMapping[S, A], S]
+		         (component :ComponentSQL[F, G])(implicit project :IsomorphicProjection[G, S, F])
+				:GroupingRelation[F, G] =
+			if (component.origin.asTableSQL.isEmpty)
+				throw new IllegalArgumentException(
+					"Cannot create a grouping relation for a component " + component + " of non-table relation " +
+					component.origin + " :" + component.origin.getClass.getName + "."
+				)
+			else
+				new GroupingComponentRelation[F, G, S](component)
 
-		def apply[F <: FromSome, S](expression :SQLExpression[F, GlobalScope, S])
-				:GroupingRelation[Project[F, GlobalScope, S]#E, S, F] =
-			new GroupingExpressionRelation(expression)
+		def apply[F <: RowProduct, U[O] >: SQLMapping[F, GlobalScope, S, O] <: BaseMapping[S, O], S]
+		         (expression :SQLExpression[F, GlobalScope, S]) :GroupingRelation[F, U] =
+			new GroupingExpressionRelation[F, U, S](expression)
 
-		def apply[F <: FromSome, S](expression :ColumnSQL[F, GlobalScope, S])
-				:GroupingRelation[Project[F, GlobalScope, S]#C, S, F] =
-			new GroupingColumnRelation(expression)
+		def apply[F <: RowProduct, U[O] >: ColumnSQLMapping[F, GlobalScope, S, O] <: BaseMapping[S, O], S]
+		         (expression :ColumnSQL[F, GlobalScope, S]) :GroupingRelation[F, U] =
+			new GroupingColumnRelation[F, U, S](expression)
+
+		def param[F <: RowProduct, G[A] <: BaseMapping[S, A], S]
+		         (param :ComponentSQL[F, G])(implicit project :IsomorphicProjection[G, S, F]) :GroupingRelation[F, G] =
+			new GroupingParamRelation[F, G, S](param)
 
 
-		type * = GroupingRelation[M, S, _] forSome { type M[O] <: BaseMapping[S, O]; type S }
+		type * = GroupingRelation[_ <: RowProduct, M] forSome { type M[O] <: MappingAt[O] }
 
-		private class GroupingComponentRelation[F <: RowProduct, M[O] <: BaseMapping[S, O], S, A >: F <: RowProduct]
-		                                       (override val expr :ComponentSQL[F, M] { type Origin = A })
-		                                       (implicit projection :IsomorphicProjection[M, S, A])
-			extends GroupingRelation[M, S, A](expr, expr.mapping)
+
+		private abstract class AbstractGroupingRelation[F <: RowProduct, M[O] <: BaseMapping[S, O], S]
+		                       (override val expr :SQLExpression[F, GlobalScope, S], template :M[F])
+		                       (implicit projection :IsomorphicProjection[M, S, F])
+			extends GroupingRelation[F, M]
+		{
+			override type Subject = S
+			override def apply[O] :M[O] = projection(template)
+			override def export[O] :MappingAt[O] = projection(template)
+
+			override lazy val toString :String = "(" + expr + ")"
+		}
+
+
+		/** A relation for a grouping expression for a component of a `JoinedRelation`.
+		  * Default implementation is correct only for `JoinedTable` components.
+		  */
+		private class GroupingComponentRelation[F <: RowProduct, G[O] <: BaseMapping[S, O], S]
+		                                       (override val expr :ComponentSQL[F, G])
+		                                       (implicit projection :IsomorphicProjection[G, S, F])
+			extends AbstractGroupingRelation[F, G, S](expr, expr.mapping.withOrigin[F])
 		{
 			override def export[O] :MappingAt[O] = expr.export.withOrigin[O]
 
-			protected override def spell[P, O <: RowProduct, G <: O, T[X] <: MappingAt[X], V]
-			                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
-			                            (context :SQLContext, params :Parameterization[P, G])
-			                            (implicit spelling :SQLSpelling) :SpelledSQL[P, G] =
+			override def copy[R <: RowProduct](expr :SQLExpression[R, GlobalScope, S]) = expr match {
+				case comp :ComponentSQL[R, G @unchecked] if comp.mapping == this.expr.mapping =>
+					new GroupingComponentRelation[R, G, S](comp)(projection.isomorphism[R])
+				case _ =>
+					throw new IllegalArgumentException(
+						"Cannot create a substitute copy of GroupingRelation(" + this + ") for expression " + expr +
+						": not a ComponentSQL instance."
+					)
+			}
+
+			override def spell[P, M[O] <: MappingAt[O]](component :ComponentSQL[_ <: RowProduct, M])
+			                                           (from :F, context :SQLContext[P], params :Parameterization[P, F])
+			                                           (implicit spelling :SQLSpelling) :SpelledSQL[P] =
 			{
-//				spelling.column(origin, export[O].export(column))(context, params) //incompatible parameterization, but it's unused anyway
-				//fixme: remove the cast; we could just go all the way and have JoinedParam and JoinedGrouping
-				val ungroupedTable = expr.origin.asInstanceOf[JoinedRelation[O, expr.Entity]]
-				spelling.column(ungroupedTable, export[O].export(column))(context, params)
+				val origin = expr.origin.alter(
+					component.origin.includes.asInstanceOf[Unique[RefinedMapping[_, expr.Origin]]],
+					component.origin.excludes.asInstanceOf[Unique[RefinedMapping[_, expr.Origin]]]
+				)
+				val actual = origin \ component.mapping.refine.withOrigin[expr.Origin] :SQLExpression[F, GlobalScope, _]
+				spelling(actual)(from, context, params)
+			}
+
+			override def spellExploded[P, M[O] <: MappingAt[O]]
+			                          (component :ComponentSQL[_ <: RowProduct, M])
+			                          (from :F, context :SQLContext[P], params :Parameterization[P, F])
+			                          (implicit spelling :SQLSpelling) =
+			{
+				val origin = expr.origin.alter(
+					component.origin.includes.asInstanceOf[Unique[RefinedMapping[_, expr.Origin]]],
+					component.origin.excludes.asInstanceOf[Unique[RefinedMapping[_, expr.Origin]]]
+				)
+				val actual = origin \ component.mapping.refine.withOrigin[expr.Origin] :SQLExpression[F, GlobalScope, _]
+				spelling.explode(actual)(from, context, params)
 			}
 
 			override def refString :String = expr.export.mappingName
-			override def toString :String = expr.toString
 		}
 
 
-		private class GroupingExpressionRelation[F <: FromSome, S, A]
-		                                        (override val expr :SQLExpression[F, GlobalScope, S])
-			extends GroupingRelation[Project[F, GlobalScope, S]#E, S, A](
-					expr, SQLMapping(expr))(OriginProjection[Project[F, GlobalScope, S]#E[Any], S].isomorphism[A])
+		/** A relation for a grouping expression of a component of an `JoinedParam`.
+		  * This is not a declaration of a new unbound parameter; instead, it works as `GroupingComponentRelation`
+		  * for components of tables, with the exception that it translates to an empty SQL in the ''group by'' clause.
+		  */
+		private class GroupingParamRelation[F <: RowProduct, G[O] <: BaseMapping[S, O], S]
+		                                   (override val expr :ComponentSQL[F, G])
+		                                   (implicit projection :IsomorphicProjection[G, S, F])
+			extends GroupingComponentRelation[F, G, S](expr)
 		{
-			protected override def spell[P, O <: RowProduct, G <: O, T[X] <: MappingAt[X], V]
-			                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
-			                            (context :SQLContext, params :Parameterization[P, G])
-			                            (implicit spelling :SQLSpelling) :SpelledSQL[P, G] =
-				row[O].export(column) match { //todo: get rid of the cast by a nice method in SQLMapping
-					case expr :ColumnSQLMapping[F @unchecked, _, V @unchecked, _] => //todo: F#GeneralizedAggregate is too strict
-						val groupedParams =
-							params.reset().asInstanceOf[Parameterization[P, F#GeneralizedAggregate]].ungroup[F]
-						val sql = spelling(expr.expr)(context, groupedParams.params)
-						val asParamsOfG = sql.params.settersReversed.map(_.unmap(groupedParams.ungroupParams))
-						SpelledSQL(sql.sql, context, params.reset(asParamsOfG ::: params.settersReversed))
-					case _ =>
-						throw new IllegalArgumentException(
-							s"Column $column of SQLMapping $row is not a ColumnSQLMapping???"
-						)
-				}
-		}
+			if (!expr.origin.isInstanceOf[ParamSQL.*])
+				throw new IllegalArgumentException(
+					"Cannot export component expression " + expr + " to a group by clause as a parameter " +
+						"because its origin is not a ParamSQL."
+				)
 
-		private class GroupingColumnRelation[F <: FromSome, S, A](override val expr :ColumnSQL[F, GlobalScope, S])
-			extends GroupingRelation[Project[F, GlobalScope, S]#C, S, A](
-					expr, ColumnSQLMapping(expr))(OriginProjection[Project[F, GlobalScope, S]#C[Any], S].isomorphism[A])
-		{
-			protected override def spell[P, O <: RowProduct, G <: O, T[X] <: MappingAt[X], V]
-			                            (origin :JoinedRelation[O, T], column :ColumnMapping[V, O])
-			                            (context :SQLContext, params :Parameterization[P, G])
-			                            (implicit spelling :SQLSpelling) :SpelledSQL[P, G] =
-				if (column != export)
+			override def copy[R <: RowProduct](expr :SQLExpression[R, GlobalScope, S]) = expr match {
+				case ComponentSQL(
+					ParamSQL(this.expr.origin.relation, _),
+					MappingExtract(_, _, this.expr.extract.export)
+				) =>
+					new GroupingParamRelation[F, G, S](expr.asInstanceOf[ComponentSQL[R, G]])
+				case _ =>
 					throw new IllegalArgumentException(
-						s"Column $column of ColumnSQLMapping $row is not a ColumnSQLMapping???"
+						"Cannot create a substitute copy of GroupingRelation(" + this + ") for expression " + expr +
+						" because it is not a ComponentSQL for the same (sub)parameter " + this.expr.mapping + "."
 					)
-				else {
-					val groupedParams =
-						params.reset().asInstanceOf[Parameterization[P, F#GeneralizedAggregate]].ungroup[F]
-					val sql = spelling(expr)(context, groupedParams.params)
-					val asParamsOfG = sql.params.settersReversed.map(_.unmap(groupedParams.ungroupParams))
-					SpelledSQL(sql.sql, context, params.reset(asParamsOfG ::: params.settersReversed))
-				}
+			}
+
+			override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+			                               (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+				SpelledSQL()
 		}
+
+
+		/** A relation for an arbitrary grouping expression. */
+		private class GroupingExpressionRelation[F <: RowProduct,
+		                                         U[O] >: SQLMapping[F, GlobalScope, S, O] <: BaseMapping[S, O], S]
+		                                        (override val expr :SQLExpression[F, GlobalScope, S])
+			extends AbstractGroupingRelation[F, U, S](expr, SQLMapping(expr))(
+				OriginProjection[U[F], S].isomorphism[F]
+			)
+		{
+			override def row[O] :SQLMapping[F, GlobalScope, S, O] =
+				super.row[O].castFrom[U[O], SQLMapping[F, GlobalScope, S, O]]
+
+			override def copy[R <: RowProduct](expr :SQLExpression[R, GlobalScope, S]) =
+				new GroupingExpressionRelation[R, U, S](expr)
+
+			override def spell[P, M[O] <: MappingAt[O]](component :ComponentSQL[_ <: RowProduct, M])
+			                                           (from :F, context :SQLContext[P], params :Parameterization[P, F])
+			                                           (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+				 //SQLMapping doesn't have any optional columns, so we ignore includes/excludes
+				component.origin match {
+					case origin if origin.relation.row == row =>
+						spelling(row[component.Origin].export(component.mapping.refine).expr)(from, context, params)
+
+					case grouping :JoinedGrouping[_, _, U @unchecked] //todo: this should be comparison ignoring adjustments
+							if grouping.relation.expr == expr && grouping.includes.isEmpty && grouping.excludes.isEmpty =>
+						spelling(expr)(from, context, params)
+
+					case _ => super.spell(component)(from, context, params)
+				}
+
+			override def spellExploded[P, M[O] <: MappingAt[O]]
+			                          (component :ComponentSQL[_ <: RowProduct, M])
+			                          (from :F, context :SQLContext[P], params :Parameterization[P, F])
+			                          (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
+			{
+				val row = component.origin.export //todo: would be good to have some compatibility test as well
+				//fixme: this will fail every time a ComponentSQL with an altered column set is a part of the tuple
+				if (row.columns.size != this.row.columns.size)
+					throw new IllegalArgumentException(
+						"Cannot spell grouping component expression " + component + " of " + this + " as in " + from +
+						" because the grouping expression of the argument has a different number of columns than " +
+						"this grouping relation: " + this.row.columns + " (in this) and " + row.columns + " (in the argument)."
+					)
+				//note that a GroupingRelation has always export == mapping
+				//fixme: remember about single column expressions, which currently will return empty lists here
+				val exprColumns = spelling.scope.defaultColumns(row, component.export)
+				val actualColumns = exprColumns.map(col => this.row[Unit].columns(row.columns.indexOf(col)))
+				actualColumns.view.scanLeft(SpelledSQL(context)) {
+					(sql, col) => spell(col)(from, sql.context, params)
+				}.tail.to(ArraySeq)
+			}
+
+			def spell[P](column :ColumnMapping[_, Unit])(from :F, context :SQLContext[P], params :Parameterization[P, F])
+			            (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+				spelling(row[Unit].export(column).expr)(from, context, params)
+		}
+
+
+		/** A relation for a single column grouping expression. */
+		private class GroupingColumnRelation[F <: RowProduct,
+		                                     U[O] >: ColumnSQLMapping[F, GlobalScope, S, O] <: BaseMapping[S, O], S]
+		                                    (override val expr :ColumnSQL[F, GlobalScope, S])
+			extends AbstractGroupingRelation[F, U, S](expr, ColumnSQLMapping(expr))(
+					OriginProjection[U[F], S].isomorphism[F]
+			)
+		{
+			override def copy[R <: RowProduct](expr :SQLExpression[R, GlobalScope, S]) = expr match {
+				case column :ColumnSQL[R, GlobalScope, S] =>
+					new GroupingColumnRelation[R, U, S](column)
+				case _ =>
+					throw new IllegalArgumentException(
+						"Cannot create a substitute copy of a single column GroupingRelation(" + this +
+						") for expression " + expr + " as it is not a ColumnSQL instance."
+					)
+			}
+
+			override def spell[P, M[O] <: MappingAt[O]](component :ComponentSQL[_ <: RowProduct, M])
+			                                           (from :F, context :SQLContext[P], params :Parameterization[P, F])
+			                                           (implicit spelling :SQLSpelling) =
+				if (component.export.columns.size != 1)
+					throw new IllegalArgumentException(
+						"Cannot spell grouping component expression " + component + " of " + this + " as in " + from +
+						" because the grouping expression of the argument consists of more than one column: " +
+						component.export.columns + "."
+					)
+				else
+					spelling(expr)(from, context, params)
+
+			override def spellExploded[P, M[O] <: MappingAt[O]]
+			                          (component :ComponentSQL[_ <: RowProduct, M])
+			                          (from :F, context :SQLContext[P], params :Parameterization[P, F])
+			                          (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
+				ReversedList :+ spell(component)(from, context, params)
+		}
+
 	}
 
 }

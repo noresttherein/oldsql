@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadFo
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Table.{Aliased, TableExpression}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLDialect, SQLExpression, StandardSQL, WithClause}
+import net.noresttherein.oldsql.sql.{ColumnSQL, Dual, RowProduct, SQLDialect, SQLExpression, StandardSQL, WithClause}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult
 import net.noresttherein.oldsql.sql.Incantation.Cantrip
@@ -56,7 +56,7 @@ trait QuerySQL[-F <: RowProduct, V]
 	override def groundValue :Opt[Rows[V]] = Lack
 
 	override def isAnchored = true
-	override def anchor(from :F) :QuerySQL[F, V] = this
+	override def anchor(from :F) :QuerySQL[F, V]// = this
 
 	/** Wraps this ''select'' in an SQL `EXISTS(...)` function. */
 	def exists :ColumnSQL[F, GlobalScope, Boolean] = ExistsSQL(this)
@@ -131,10 +131,10 @@ trait QuerySQL[-F <: RowProduct, V]
 	  * Single column instances, even when not conforming to [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]],
 	  * delegate to [[net.noresttherein.oldsql.sql.SQLExpression.defaultSpelling defaultSpelling]].
 	  */
-	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
+	protected override def explodedSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                          (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
 		readForm.readColumns match {
-			case 1 => defaultSpelling(context, params)::Nil
+			case 1 => defaultSpelling(from, context, params)::Nil
 			case n =>
 				throw new InseparableExpressionException(
 					s"Cannot inline a compound select of multiple ($n :$readForm) columns: $this."
@@ -147,15 +147,15 @@ trait QuerySQL[-F <: RowProduct, V]
 	  * Currently though this method does forward to
 	  * [[net.noresttherein.oldsql.sql.SQLExpression.defaultSpelling defaultSpelling]].
 	  */
-	protected def paramlessSpelling(context :SQLContext)
-	                               (implicit spelling :SQLSpelling, top :QuerySQL[F, V] <:< QuerySQL[RowProduct, V])
-			:SpelledSQL[@~, RowProduct] =
-		top(this).defaultSpelling[@~, RowProduct](spelling)(context, Parameterization.paramless[ParamlessFrom])
-
-	private[oldsql] final def paramlessSpelling(spelling :SQLSpelling, context :SQLContext)
-	                                           (implicit top :QuerySQL[F, V] <:< QuerySQL[RowProduct, V])
-			:SpelledSQL[@~, RowProduct] =
-		paramlessSpelling(context)(spelling, top)
+//	protected def topSpelling(context :SQLContext[@~])
+//	                         (implicit spelling :SQLSpelling, top :QuerySQL[F, V] <:< QuerySQL[RowProduct, V])
+//			:SpelledSQL[@~] =
+//		top(this).defaultSpelling(spelling)(Dual, context, Parameterization.paramless)
+//
+//	private[oldsql] final def topSpelling(spelling :SQLSpelling, context :SQLContext[@~])
+//	                                     (implicit top :QuerySQL[F, V] <:< QuerySQL[RowProduct, V])
+//			:SpelledSQL[@~] =
+//		topSpelling(context)(spelling, top)
 
 
 	/** Target of [[net.noresttherein.oldsql.sql.ast.QuerySQL.TopQuerySQLExtension.chant chant]] extension method.
@@ -316,7 +316,7 @@ object QuerySQL extends ImplicitDerivedTables {
 		override type ResultMapping[O] <: ColumnMapping[V, O]
 
 		override def asGlobal :Option[ColumnQuery[F, V]] = Some(this)
-		override def anchor(from :F) :ColumnQuery[F, V] = this
+		override def anchor(from :F) :ColumnQuery[F, V] //= this
 
 		def union[E <: F](other :ColumnQuery[E, V]) :ColumnQuery[E, V] = Union(this, other)
 		def unionAll[E <: F](other :ColumnQuery[E, V]) :ColumnQuery[E, V] = UnionAll(this, other)
@@ -341,6 +341,7 @@ object QuerySQL extends ImplicitDerivedTables {
 	trait MappingQuerySQL[-F <: RowProduct, M[O] <: MappingAt[O]] extends QuerySQL[F, M[Unit]#Subject] {
 		override type ResultMapping[O] = M[O]
 
+		override def anchor(from :F) :MappingQuerySQL[F, M] //= this
 		def union[E <: F](other :MappingQuerySQL[E, M]) :MappingQuerySQL[E, M] = Union(this, other)
 		def unionAll[E <: F](other :MappingQuerySQL[E, M]) :MappingQuerySQL[E, M] = UnionAll(this, other)
 		def minus[E <: F](other :MappingQuerySQL[E, M]) :MappingQuerySQL[E, M] = Minus(this, other)
@@ -364,6 +365,7 @@ object QuerySQL extends ImplicitDerivedTables {
 	trait ColumnMappingQuery[-F <: RowProduct, M[O] <: ColumnMapping[V, O], V]
 		extends ColumnQuery[F, V] with MappingQuerySQL[F, M]
 	{
+		override def anchor(from :F) :ColumnMappingQuery[F, M, V] //= this
 		def union[E <: F](other :ColumnMappingQuery[E, M, V]) :ColumnMappingQuery[E, M, V] = Union(this, other)
 		def unionAll[E <: F](other :ColumnMappingQuery[E, M, V]) :ColumnMappingQuery[E, M, V] = UnionAll(this, other)
 		def minus[E <: F](other :ColumnMappingQuery[E, M, V]) :ColumnMappingQuery[E, M, V] = Minus(this, other)
@@ -509,6 +511,13 @@ trait CompoundSelectSQL[-F <: RowProduct, V] extends CompositeSQL[F, GlobalScope
 	override def readForm :SQLReadForm[Rows[V]] = left.readForm
 	override def rowForm :SQLReadForm[V] = left.rowForm
 
+	override def isAnchored(from :F) :Boolean = left.isAnchored(from) && right.isAnchored(from)
+
+	override def anchor(from :F) :CompoundSelectSQL[F, V] = {
+		val (l, r) = (left.anchor(from), right.anchor(from))
+		if ((l eq left) && (r eq right)) this else CompoundSelectSQL(l, operator, r)
+	}
+
 	override def map[X](f :V => X) :QuerySQL[F, X] = CompoundSelectSQL(left.map(f), operator, right.map(f))
 
 	override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :CompoundSelectSQL[E, V] =
@@ -548,22 +557,22 @@ trait CompoundSelectSQL[-F <: RowProduct, V] extends CompositeSQL[F, GlobalScope
 		l
 	}
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
 	{
 		val l = left match {
 			case CompoundSelectSQL(_, op, _) if op != operator =>
-				"(" +: (spelling(left :QuerySQL[E, V])(context, params) + ")")
+				"(" +: (spelling(left)(from, context, params) + ")")
 			case _ =>
-				spelling(left :QuerySQL[E, V])(context, params)
+				spelling(left)(from, context, params)
 		}
 		val r = right match {
 			case CompoundSelectSQL(_, op, _) if op != operator || operator == Minus =>
-				"(" +: (spelling(right :QuerySQL[E, V])(context, params.reset()) + ")")
+				"(" +: (spelling(right)(from, context, params) + ")")
 			case _ =>
-				spelling(right :QuerySQL[E, V])(context, l.params)
+				spelling(right)(context, params)
 		}
-		SpelledSQL(l.sql + (" " + spelling(operator) +" ") + r.sql, context, l.params :++ r.params)
+		SpelledSQL(l.sql + (" " + spelling(operator) +" ") + r.sql, context, l.setter + r.setter)
 	}
 
 
@@ -672,6 +681,11 @@ trait CompoundSelectColumn[-F <: RowProduct, V]
 	override val left :ColumnQuery[F, V]
 	override val right :ColumnQuery[F, V]
 
+	override def anchor(from :F) :CompoundSelectColumn[F, V] = {
+		val l = left.anchor(from); val r = right.anchor(from)
+		if ((l eq left) && (r eq right)) this else CompoundSelectColumn(l, operator, r)
+	}
+
 	override def readForm :ColumnReadForm[Rows[V]] = left.readForm
 
 	override def map[X](f :V => X) :ColumnQuery[F, X] = CompoundSelectColumn(left.map(f), operator, right.map(f))
@@ -768,6 +782,11 @@ trait CompoundSelectMappingSQL[-F <: RowProduct, M[O] <: MappingAt[O]]
 	override val left :MappingQuerySQL[F, M]
 	override val right :MappingQuerySQL[F, M]
 
+	override def anchor(from :F) :CompoundSelectMappingSQL[F, M] = {
+		val l = left.anchor(from); val r = right.anchor(from)
+		if ((l eq left) && (r eq right)) this else CompoundSelectMappingSQL(l, operator, r)
+	}
+
 	override def mapping[O] = left.mapping
 	override def export[O] = left.export //todo: this should involve some reconciliation
 
@@ -855,6 +874,10 @@ trait CompoundSelectColumnMapping[-F <: RowProduct, M[O] <: ColumnMapping[V, O],
 	override val left :ColumnMappingQuery[F, M, V]
 	override val right :ColumnMappingQuery[F, M, V]
 
+	override def anchor(from :F) :CompoundSelectColumnMapping[F, M, V] = {
+		val l = left.anchor(from); val r = right.anchor(from)
+		if ((l eq left) && (r eq right)) this else CompoundSelectColumnMapping(l, operator, r)
+	}
 
 	override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ColumnMappingQuery[E, M, V] =
 		(left.basedOn(base), right.basedOn(base)) match {

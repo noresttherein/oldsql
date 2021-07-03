@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.Mapping
-import net.noresttherein.oldsql.sql.RowProduct.{SubselectFrom, TableFormula}
+import net.noresttherein.oldsql.sql.RowProduct.{SelectedFrom, TableFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula
 import net.noresttherein.oldsql.sql.SQLLiteral.True
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe

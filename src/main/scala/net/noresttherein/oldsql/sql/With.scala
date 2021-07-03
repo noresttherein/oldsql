@@ -88,14 +88,20 @@ trait CommonTableExpression[+M[O] <: MappingAt[O]]
 
 	protected override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]])
 			:CommonTableExpression[M] =
-		new AlteredRelation[M, CommonTableExpression](this, includes, excludes) with CommonTableExpression[M] {
-			override val default = CommonTableExpression.this
-			override type Row = default.Row
-			override val query = default.query
-			override def name = default.name
-			override def export[O] = super[AlteredRelation].export[O]
-			override lazy val toString :String = alteredString
-		}
+		if (includes.isEmpty && excludes.isEmpty)
+			this
+		else
+			new AlteredRelation[M, CommonTableExpression](this, includes, excludes) with CommonTableExpression[M] {
+				override def alter(includes :Unique[RefinedMapping[_, _]], excludes :Unique[RefinedMapping[_, _]]) =
+					super[AlteredRelation].alter(includes, excludes)
+
+				override val default = CommonTableExpression.this
+				override type Row = default.Row
+				override val query = default.query
+				override def name = default.name
+				override def export[O] = super[AlteredRelation].export[O]
+				override lazy val toString :String = alteredString
+			}
 
 	def declarationSpelling[P, F <: RowProduct]
 	                       (context :SQLContext, params :Parameterization[P, F])

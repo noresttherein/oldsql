@@ -37,14 +37,14 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
   *        - [[net.noresttherein.oldsql.sql.ast.SelectColumnAs.TopSelectColumnMapping TopSelectColumnMapping]]`[S, M, T]` for
   *          `F <: `[[net.noresttherein.oldsql.sql.RowProduct.GroundFrom GroundFrom]] and
   *        - [[net.noresttherein.oldsql.sql.ast.SelectColumnAs.SubselectColumnMapping SubselectColumnMapping]]`[B, S, M, T]`
-  *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]];
+  *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SelectedFrom SelectedFrom]];
   *   1. `E <: `[[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]]:
   *        - [[net.noresttherein.oldsql.sql.ast.SelectColumnAs SelectColumnAs]]`[B, M, T]`
   *          for any `F <: RowProduct`,
   *        - [[net.noresttherein.oldsql.sql.ast.SelectColumnAs.TopSelectColumnMapping TopSelectColumnMapping]]`[S, M, T]` for
   *          `F <: `[[net.noresttherein.oldsql.sql.RowProduct.GroundFrom GroundFrom]] and
   *        - [[net.noresttherein.oldsql.sql.ast.SelectColumnAs.SubselectColumnMapping SubselectColumnMapping]]`[B, S, M, T]`
-  *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]]
+  *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SelectedFrom SelectedFrom]]
   *          (where `M[O]` is the origin [[net.noresttherein.oldsql.schema.Mapping.OriginProjection projection]] of `E`);
   *   1. `E <: `[[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]]`[G, M]`,
   *      `M[O] <: `[[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[T, O]`:
@@ -52,30 +52,30 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.ListingColumn
   *        - [[net.noresttherein.oldsql.sql.ast.SelectAs.TopSelectMapping TopSelectMapping]]`[S, M, T]` for
   *          `F <: `[[net.noresttherein.oldsql.sql.RowProduct.GroundFrom GroundFrom]] and
   *        - [[net.noresttherein.oldsql.sql.ast.SelectAs.SubselectMapping SubselectMapping]]`[B, S, M, T]`
-  *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]];
+  *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SelectedFrom SelectedFrom]];
   *   1. `E <: `[[net.noresttherein.oldsql.schema.Mapping Mapping]]:
   *        - [[net.noresttherein.oldsql.sql.ast.SelectAs SelectAs]]`[B, M]` for any `F <: RowProduct`,
   *        - [[net.noresttherein.oldsql.sql.ast.SelectAs.TopSelectMapping TopSelectMapping]]`[S, M, T]` for
   *          `F <: `[[net.noresttherein.oldsql.sql.RowProduct.GroundFrom GroundFrom]] and
   *        - [[net.noresttherein.oldsql.sql.ast.SelectAs.SubselectMapping SubselectMapping]]`[B, S, M, T]`
-  *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]]
+  *          for `F <: `[[net.noresttherein.oldsql.sql.RowProduct.SelectedFrom SelectedFrom]]
   *          (where `M[O]` is the origin [[net.noresttherein.oldsql.schema.Mapping.OriginProjection projection]] of `E`);
   *   1. `E <: `[[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`G, LocalScope, T]`:
   *        - [[net.noresttherein.oldsql.sql.ast.SelectColumn SelectColumn]]`[B, T]` for any `F <: RowProduct`,
   *        - [[net.noresttherein.oldsql.sql.ast.SelectColumn.TopSelectColumn TopSelectColumn]]`[T]` for `F <: GroundFrom` and
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectColumn.SubselectColumn SubselectColumn]]`[B, T]` for `F <: SubselectFrom`;
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectColumn.SubselectColumn SubselectColumn]]`[B, T]` for `F <: SelectedFrom`;
   *   1. `E <: `[[net.noresttherein.oldsql.sql.ast.TupleSQL TupleSQL]]`[G, LocalScope, T]`:
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]]`[B, T]` for any `F <: RowProduct`,
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL TopSelectSQL]]`[T]` for `F <: GroundFrom` and
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectSQL SubselectSQL]]`[B, T]` for `F <: SubselectFrom`;
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectSQL SubselectSQL]]`[B, T]` for `F <: SelectedFrom`;
   *   1. `E <: `[[net.noresttherein.oldsql.sql.ast.ConversionSQL ConversionSQL]]`[G, LocalScope, X, Y]`:
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]]`[B, Y]` for any `F <: RowProduct`,
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL TopSelectSQL]]`[Y]` for `F <: GroundFrom` and
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectSQL SubselectSQL]]`[B, Y]` for `F <: SubselectFrom`;
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectSQL SubselectSQL]]`[B, Y]` for `F <: SelectedFrom`;
   *   1. `E =:= sql.*` pseudo expression:
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]]`[B, F#Row]` for any `F <: RowProduct`,
   *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL TopSelectSQL]]`[F#Row]` for `F <: GroundFrom` and
-  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectSQL SubselectSQL]]`[B, F#Row]` for `F <: SubselectFrom`;
+  *        - [[net.noresttherein.oldsql.sql.ast.SelectSQL.SubselectSQL SubselectSQL]]`[B, F#Row]` for `F <: SelectedFrom`;
   *   1.  Any `E` such that an implicit `select :SelectFactory[Aggregated[F], E]` exists: `select.Select`;
   *
   * where `G =:= F#`[[net.noresttherein.oldsql.sql.RowProduct.Generalized Generalized]] and
@@ -415,8 +415,8 @@ sealed abstract class SecondChoiceSelectFactories extends ThirdChoiceSelectFacto
 
 
 
-	implicit def subselectColumn
-	             [F <: G { type Generalized <: G; type Base = B; type DefineBase[+I <: RowProduct] = I },
+	implicit def subselectColumn //todo: in Scala 3 reduce all these dependencies on all of Implicit, Base, DefineBase
+	             [F <: G { type Generalized <: G; type Implicit = B; type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              G <: RowProduct, B <: NonEmptyFrom, E <: ColumnSQL[G, LocalScope, X], X]
 	             (implicit base :F <:< RowProduct { type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              typer :E <:< ColumnSQL[G, LocalScope, X])
@@ -452,7 +452,7 @@ sealed abstract class SecondChoiceSelectFactories extends ThirdChoiceSelectFacto
 
 	//no ambiguity with column conversion as SelectFactory is not contravariant in the expression type
 	implicit def subselectConversion
-	             [F <: G { type Generalized <: G; type Base = B; type DefineBase[+I <: RowProduct] = I },
+	             [F <: G { type Generalized <: G; type Implicit = B; type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              G <: RowProduct, S >: LocalScope <: GlobalScope, B <: NonEmptyFrom, X, Y]
 	             (implicit base :F <:< RowProduct { type Base = B; type DefineBase[+I <: RowProduct] = I })
 			:SelectFactory[F, ConversionSQL[G, S, X, Y]] { type Select = SubselectSQL[B, Y] } =
@@ -462,7 +462,7 @@ sealed abstract class SecondChoiceSelectFactories extends ThirdChoiceSelectFacto
 		}
 
 	implicit def subselectChain
-	             [F <: G { type Generalized <: G; type Base = B; type DefineBase[+O <: RowProduct] = O },
+	             [F <: G { type Generalized <: G; type Implicit = B; type Base = B; type DefineBase[+O <: RowProduct] = O },
 	              G <: RowProduct, B <: NonEmptyFrom, E <: ChainSQL[G, LocalScope, I, L], I <: Chain, L]
 	             (implicit base :F <:< RowProduct { type Base = B; type DefineBase[+O <: RowProduct] = O },
 	              typer :E <:< ChainSQL[G, LocalScope, I, L])
@@ -473,7 +473,7 @@ sealed abstract class SecondChoiceSelectFactories extends ThirdChoiceSelectFacto
 		}
 
 	implicit def subselectTuple
-	             [F <: G { type Generalized <: G; type Base = B; type DefineBase[+I <: RowProduct] = I },
+	             [F <: G { type Generalized <: G; type Implicit = B; type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              G <: RowProduct, B <: NonEmptyFrom, E <: TupleSQL[G, LocalScope, X], X]
 	             (implicit base :F <:< RowProduct { type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              typer :E <:< TupleSQL[G, LocalScope, X])
@@ -552,7 +552,7 @@ object SelectFactory extends SecondChoiceSelectFactories {
 
 
 	implicit def subselectColumnMapping
-	             [F <: G { type Generalized <: G; type Base = B; type DefineBase[+I <: RowProduct] = I },
+	             [F <: G { type Generalized <: G; type Implicit = B; type Base = B; type DefineBase[+I <: RowProduct] = I },
 		          G <: RowProduct, B <: NonEmptyFrom, E <: ColumnMapping[_, _], X]
 	             (implicit base :F <:< RowProduct { type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              mapping :E <:< ColumnMapping[X, G], offset :TableCount[G, _ <: Numeral],
@@ -565,7 +565,7 @@ object SelectFactory extends SecondChoiceSelectFactories {
 		}
 
 	implicit def subselectColumnComponent
-	             [F <: G { type Generalized <: G; type Base = B; type DefineBase[+I <: RowProduct] = I },
+	             [F <: G { type Generalized <: G; type Implicit = B; type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              G <: RowProduct, B <: NonEmptyFrom, M[A] <: ColumnMapping[V, A], V]
 	             (implicit typer :F <:< RowProduct { type Base = B; type DefineBase[+I <: RowProduct] = I })
 			:SelectFactory[F, ColumnComponentSQL[G, M, V]] { type Select = SubselectColumnAs[B, M, V] } =
@@ -576,7 +576,7 @@ object SelectFactory extends SecondChoiceSelectFactories {
 		}
 
 	implicit def subselectIndexedColumn
-	             [F <: G { type Generalized <: G; type Base = B; type DefineBase[+I <: RowProduct] = I },
+	             [F <: G { type Generalized <: G; type Implicit = B; type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              G <: RowProduct, B <: NonEmptyFrom, S >: LocalScope <: GlobalScope, A <: Label, V]
 	             (implicit typer :F <:< RowProduct { type Base = B; type DefineBase[+I <: RowProduct] = I })
 			:SelectFactory[F, ListingColumn[G, S, A, V]]
@@ -589,7 +589,7 @@ object SelectFactory extends SecondChoiceSelectFactories {
 
 
 	implicit def subselectIndexedTuple
-	             [F <: G { type Generalized <: G; type Base = B; type DefineBase[+I <: RowProduct] = I },
+	             [F <: G { type Generalized <: G; type Implicit = B; type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              G <: RowProduct, B <: NonEmptyFrom, E <: ListingSQL[G, LocalScope, X], X <: Listing]
 	             (implicit base :F <:< RowProduct { type Base = B; type DefineBase[+I <: RowProduct] = I },
 	              typer :E <:< TupleSQL[G, LocalScope, X])
@@ -601,6 +601,6 @@ object SelectFactory extends SecondChoiceSelectFactories {
 
 
 
-	def apply[F <: RowProduct, E](implicit factory :SelectFactory[F, E]) :factory.type = factory
+	@inline def apply[F <: RowProduct, E](implicit factory :SelectFactory[F, E]) :factory.type = factory
 
 }

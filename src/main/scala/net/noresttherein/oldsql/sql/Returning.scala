@@ -353,7 +353,7 @@ object Returning {
 		{
 			override type tuple[X <: Chain] <: ReturningTupleClause[Args, M, X, X]
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] =
 				spelling.spell(statement)
 		}
 
@@ -364,7 +364,7 @@ object Returning {
 		{
 			override type tuple[X <: Chain] <: ReturningTuplesClause[Args, M, X, X]
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] =
 				spelling.spell(statement)
 		}
 
@@ -613,7 +613,7 @@ object Returning {
 
 			override val table :RelVar[M] = statement.table
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] =
 				spelling.spell(statement)
 		}
 

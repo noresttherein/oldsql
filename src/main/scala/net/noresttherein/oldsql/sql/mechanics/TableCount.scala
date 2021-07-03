@@ -6,11 +6,12 @@ import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.morsels.InferTypeParams
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, AndFrom, By, Dual, Expanded, From, FromClause, FromSome, GroupBy, GroupByClause, GroupParam, Join, JoinParam, NonParam, RowProduct, Subselect}
+import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, AndBy, AndFrom, By, Dual, Expanded, From, FromClause, FromSome, GroupBy, GroupByClause, GroupParam, Join, JoinParam, NonParam, RowProduct, Subselect}
 import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExpandingDecorator}
 import net.noresttherein.oldsql.sql.Expanded.{ExpandedDecomposition, NonSubselect}
+import net.noresttherein.oldsql.sql.ParamClause.ParamAt
 import net.noresttherein.oldsql.sql.RowProduct.{As, NonEmptyFrom}
-import net.noresttherein.oldsql.sql.UnboundParam.ParamAt
+import net.noresttherein.oldsql.sql.ast.{JoinedGrouping, JoinedParam, JoinedRelation, JoinedTable}
 
 
 
@@ -242,10 +243,11 @@ object SubselectTableCount {
   * This evidence is invariant in `F` in order to maintain the invariant of `M` being the first `Mapping` type
   * listed and preserve the correct relation count `N`. When `F` is used as the `Origin` type for the mapping `M`,
   * this allows to track back any component of `M` back to the relation it originated from.
-  */
+  */ //todo: rename to RelationOffset; create aliases for TableOffset, GroupingOffset, ParamOffset etc.
 @implicitNotFound("Relation mapping ${M} is not the first known mapping of the FROM clause ${F}: "+
                   "no implicit TableOffset[${F}, ${M}].")
 class TableOffset[F <: RowProduct, M[O] <: MappingAt[O]] private[sql] (private val n :Int) extends AnyVal {
+	type Rel <: JoinedRelation[F, M]
 	type N <: Numeral
 
 	@inline def tables :N = n.asInstanceOf[N] //val tables :N crashes scalac
@@ -255,69 +257,92 @@ class TableOffset[F <: RowProduct, M[O] <: MappingAt[O]] private[sql] (private v
 
 
 
-object TableOffset {
-	type Of[F <: RowProduct, M[O] <: MappingAt[O], I <: Numeral] = TableOffset[F, M] { type N = I }
 
-	//this is the only one really needed by JoinedRelations + GetTable, which use FromLast
-	implicit def firstAndFrom[T[A] <: MappingAt[A]] :TableOffset.Of[RowProduct AndFrom T, T, 0] =
-		new TableOffset[RowProduct AndFrom T, T](0).asInstanceOf[Of[RowProduct AndFrom T, T, 0]]
+object TableOffset {
+	type Def[F <: RowProduct, M[O] <: MappingAt[O],
+	         R[C <: RowProduct, T[O] <: MappingAt[O]] <: JoinedRelation[C, T], I <: Numeral] =
+		TableOffset[F, M] { type Rel = R[F, M]; type N = I }
+
+	@inline def apply[F <: RowProduct, M[O] <: MappingAt[O]](implicit offset :TableOffset[F, M]) :offset.type = offset
+
+
+	//FromLast types for JoinedRelations + GetTable
+	implicit def firstAndFrom[T[A] <: MappingAt[A]] :TableOffset.Def[RowProduct AndFrom T, T, JoinedRelation, 0] =
+		new TableOffset[RowProduct AndFrom T, T](0).asInstanceOf[Def[RowProduct AndFrom T, T, JoinedRelation, 0]]
+
+	implicit def firstAndBy[T[A] <: MappingAt[A]] :TableOffset.Def[GroupByClause AndBy T, T, JoinedRelation, 0] =
+		new TableOffset[GroupByClause AndBy T, T](0).asInstanceOf[Def[GroupByClause AndBy T, T, JoinedRelation, 0]]
+
+	implicit def firstGroupBy[G[A] <: MappingAt[A]]
+			:TableOffset[FromSome GroupBy G, G] { type N = 0; type Rel = JoinedGrouping[_, FromSome GroupBy G, G] } =
+		new TableOffset[FromSome GroupBy G, G](0).asInstanceOf[
+			TableOffset[FromSome GroupBy G, G] { type N = 0; type Rel = JoinedGrouping[_, FromSome GroupBy G, G] }
+		]
+
 
 	//generalized form of From
-	implicit def firstNonParam[T[A] <: MappingAt[A]] :TableOffset.Of[RowProduct NonParam T, T, 0] =
-		new TableOffset[RowProduct NonParam T, T](0).asInstanceOf[Of[RowProduct NonParam T, T, 0]]
+	implicit def firstNonParam[T[A] <: MappingAt[A]] :TableOffset.Def[RowProduct NonParam T, T, JoinedTable, 0] =
+		new TableOffset[RowProduct NonParam T, T](0).asInstanceOf[Def[RowProduct NonParam T, T, JoinedTable, 0]]
 
 	//these firstXxx are here mostly to allow other uses of TableOffset
-	implicit def firstFrom[T[A] <: MappingAt[A]] :TableOffset.Of[From[T], T, 0] =
-		new TableOffset[From[T], T](0).asInstanceOf[Of[From[T], T, 0]]
+	implicit def firstFrom[T[A] <: MappingAt[A]] :TableOffset.Def[From[T], T, JoinedTable, 0] =
+		new TableOffset[From[T], T](0).asInstanceOf[Def[From[T], T, JoinedTable, 0]]
 
 	implicit def firstJoin[J[+L <: FromSome, R[A] <: MappingAt[A]] <: L Join R, T[A] <: MappingAt[A]]
-			:TableOffset.Of[FromSome J T, T, 0] =
-		new TableOffset[FromSome J T, T](0).asInstanceOf[Of[FromSome J T, T, 0]]
+			:TableOffset.Def[FromSome J T, T, JoinedTable, 0] =
+		new TableOffset[FromSome J T, T](0).asInstanceOf[Def[FromSome J T, T, JoinedTable, 0]]
 
-	implicit def firstSubselect[T[A] <: MappingAt[A]] :TableOffset.Of[NonEmptyFrom Subselect T, T, 0] =
-		new TableOffset[NonEmptyFrom Subselect T, T](0).asInstanceOf[Of[NonEmptyFrom Subselect T, T, 0]]
+	implicit def firstSubselect[T[A] <: MappingAt[A]] :TableOffset.Def[NonEmptyFrom Subselect T, T, JoinedTable, 0] =
+		new TableOffset[NonEmptyFrom Subselect T, T](0).asInstanceOf[Def[NonEmptyFrom Subselect T, T, JoinedTable, 0]]
 
-	implicit def firstParam[P[A] <: ParamAt[A]] :TableOffset.Of[FromSome JoinParam P, P, 0] =
-		new TableOffset[FromSome JoinParam P, P](0).asInstanceOf[Of[FromSome JoinParam P, P, 0]]
+	implicit def firstParam[P[A] <: ParamAt[A]] :TableOffset.Def[FromSome JoinParam P, P, JoinedParam, 0] =
+		new TableOffset[FromSome JoinParam P, P](0).asInstanceOf[Def[FromSome JoinParam P, P, JoinedParam, 0]]
 
-	implicit def firstGroupParam[P[A] <: ParamAt[A]] :TableOffset.Of[GroupByClause GroupParam P, P, 0] =
-		new TableOffset[GroupByClause GroupParam P, P](0).asInstanceOf[Of[GroupByClause GroupParam P, P, 0]]
+	implicit def firstGroupParam[P[A] <: ParamAt[A]] :TableOffset.Def[GroupByClause GroupParam P, P, JoinedParam, 0] =
+		new TableOffset[GroupByClause GroupParam P, P](0).asInstanceOf[Def[GroupByClause GroupParam P, P, JoinedParam, 0]]
 
-	implicit def firstBy[G[A] <: MappingAt[A]] :TableOffset.Of[GroupByClause By G, G, 0] =
-		new TableOffset[GroupByClause By G, G](0).asInstanceOf[Of[GroupByClause By G, G, 0]]
-
-	implicit def firstGroupBy[G[A] <: MappingAt[A]] :TableOffset.Of[FromSome GroupBy G, G, 0] =
-		new TableOffset[FromSome GroupBy G, G](0).asInstanceOf[Of[FromSome GroupBy G, G, 0]]
+	implicit def firstBy[G[A] <: MappingAt[A]]
+			:TableOffset[GroupByClause By G, G] { type N = 0; type Rel = JoinedGrouping[_, GroupByClause By G, G] } =
+		new TableOffset[GroupByClause By G, G](0).asInstanceOf[
+			TableOffset[GroupByClause By G, G] { type N = 0; type Rel = JoinedGrouping[_, GroupByClause By G, G] }
+		]
 
 
 
 	implicit def expanded[E <: L J R, L <: U, R[O] <: MappingAt[O],
 	                      J[+A <: U, B[O] <: R[O]] <: A Expanded B, U <: RowProduct,
-	                      T[O] <: MappingAt[O], M <: Numeral, N <: Numeral]
+	                      T[O] <: MappingAt[O], X <: Numeral, Y <: Numeral]
 	                     (implicit decompose :ExpandedDecomposition[E, L, R, J, U],
-	                      prev :TableOffset.Of[L, T, M], inc :Inc[M, N])
-			:TableOffset.Of[E, T, N] =
-		new TableOffset[E, T](inc.n).asInstanceOf[Of[E, T, N]]
+	                      prev :TableOffset[L, T] { type N = X }, inc :Inc[X, Y])
+			:TableOffset[E, T] { type N = X; type Rel = prev.Rel } =
+		new TableOffset[E, T](inc.n).asInstanceOf[TableOffset[E, T] { type N = X; type Rel = prev.Rel }]
 
-	implicit def decorated[E <: D[C], C <: U, D[+B <: U] <: ExpandingDecorator[B], U <: RowProduct,
-	                       T[O] <: MappingAt[O], N <: Numeral]
-	                      (implicit decompose :DecoratorDecomposition[E, C, D, U], body :TableOffset.Of[C, T, N])
-			:TableOffset.Of[E, T, N] =
-		new TableOffset[E, T](body.tables).asInstanceOf[Of[E, T, N]]
+	implicit def decorated[E <: D[C], C <: U, D[+B <: U] <: ExpandingDecorator[B], U <: RowProduct, T[O] <: MappingAt[O]]
+	                      (implicit decompose :DecoratorDecomposition[E, C, D, U], body :TableOffset[C, T])
+			:TableOffset[E, T] { type N = body.N; type Rel = body.Rel } =
+		new TableOffset[E, T](body.tables).asInstanceOf[TableOffset[E, T] { type N = body.N; type Rel = body.Rel }]
 
-	implicit def grouped[O <: RowProduct, F <: FromSome, T[A] <: MappingAt[A], M <: Numeral, N <: Numeral]
-	                    (implicit outer :O OuterClauseOf F, ungrouped :TableOffset.Of[O, T, M], plus :Inc[M, N])
-			:TableOffset.Of[F GroupBy T, T, N] =
-		new TableOffset[F GroupBy T, T](plus.n).asInstanceOf[Of[F GroupBy T, T, N]]
+	implicit def grouped[O <: RowProduct, F <: FromSome, T[A] <: MappingAt[A], X <: Numeral, Y <: Numeral]
+	                    (implicit outer :O OuterClauseOf F, ungrouped :TableOffset[O, T] { type N = X }, plus :Inc[X, Y])
+			:TableOffset[F GroupBy T, T] { type N = Y; type Rel = ungrouped.Rel } =
+		new TableOffset[F GroupBy T, T](plus.n).asInstanceOf[
+			TableOffset[F GroupBy T, T] { type N = Y; type Rel = ungrouped.Rel }
+		]
 
-	implicit def aggregated[O <: RowProduct, F <: FromSome, T[A] <: MappingAt[A], N <: Numeral]
-	                       (implicit outer :O OuterClauseOf F, ungrouped :TableOffset.Of[O, T, N])
-			:TableOffset.Of[Aggregated[F], T, N] =
-		new TableOffset[Aggregated[F], T](ungrouped.tables).asInstanceOf[Of[Aggregated[F], T, N]]
+	implicit def aggregated[O <: RowProduct, F <: FromSome, T[A] <: MappingAt[A]]
+	                       (implicit outer :O OuterClauseOf F, ungrouped :TableOffset[O, T])
+			:TableOffset[Aggregated[F], T] { type N = ungrouped.N; type Rel = ungrouped.Rel } =
+		new TableOffset[Aggregated[F], T](ungrouped.tables).asInstanceOf[
+			TableOffset[Aggregated[F], T] { type N = ungrouped.N; type Rel = ungrouped.Rel }
+		]
 
-	implicit def aliased[F <: NonEmptyFrom, A <: Label, T[O] <: MappingAt[O], N <: Numeral]
-	                    (implicit shift :TableOffset.Of[F, T, N]) :TableOffset.Of[F As A, T, N] =
-		new TableOffset[F As A, T](shift.tables).asInstanceOf[Of[F As A, T, N]]
+	implicit def aliased[F <: NonEmptyFrom, A <: Label, T[O] <: MappingAt[O]]
+	                    (implicit shift :TableOffset[F, T])
+			:TableOffset[F As A, T] { type N = shift.N; type Rel = shift.Rel } =
+		new TableOffset[F As A, T](shift.tables).asInstanceOf[
+			TableOffset[F As A, T] { type N = shift.N; type Rel = shift.Rel }
+		]
 
 }
+
 

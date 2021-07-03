@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.morsels.ChunkedString.{AppendedString, Chunk, Co
   * in the process of SQL/DML formatting.
   */
 sealed trait ChunkedString extends CharSequence with Seq[Char] with SeqOps[Char, Seq, ChunkedString] with Serializable {
-	override def knownSize :Int= length
+	override def knownSize :Int = length
 	override def charAt(index :Int) :Char = apply(index)
 	override def subSequence(start :Int, end :Int) :CharSequence = slice(start, end)
 

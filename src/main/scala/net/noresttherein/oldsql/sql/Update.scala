@@ -13,17 +13,17 @@ import net.noresttherein.oldsql.sql.ComponentSetter.:=
 import net.noresttherein.oldsql.sql.DML.{BoundDML, ComposedDML, DMLAPI, GroundDML, RepeatedDML}
 import net.noresttherein.oldsql.sql.DMLStatement.{AlteredResultStatement, BoundStatement, ComposedStatement, DMLStatementAPI, StatementResult, StatementVisitor}
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult.{UpdateCount, UpdatedEntities}
+import net.noresttherein.oldsql.sql.ParamClause.UnboundParam
 import net.noresttherein.oldsql.sql.Returning.implementation.{AbstractReturningEntities, GenericBatchReturningEntities, ReturningProperTuple, ReturningTupleSeqTemplate, ReturningTupleSingleton, ReturningTuplesTemplate}
 import net.noresttherein.oldsql.sql.Returning.syntax.{BatchReturningEntitiesClause, BatchReturningTuplesClause, EntitiesBatch, EntitiesStatement, EntityStatement, EntityStatementsTemplate, GenericReturningEntitiesClause, GenericRowStatements, GroundBatchReturningEntitiesClause, GroundBatchReturningTuplesClause, GroundEntitiesBatch, GroundRowsBatch, ReturningEntitiesClause, ReturningEntitiesClauses, ReturningEntityClause, ReturningTupleClause, ReturningTuplesClause, ReturningTuplesClauses, ReturningTuplesClausesTemplate, RowsBatch, RowsStatement, RowStatement}
 import net.noresttherein.oldsql.sql.RowProduct.ParameterizedFrom
+import net.noresttherein.oldsql.sql.SQLBoolean.True
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL
-import net.noresttherein.oldsql.sql.TableStatement.{GroundSetClauseFactory, GroundSupplantClauseFactory, GroundWhereClauseFactory, ReturningClauseFactory, SetClauseFactory, SupplantClauseFactory, WhereAllClauseFactory, WhereAnyClauseFactory, WhereClauseFactory}
-import net.noresttherein.oldsql.sql.UnboundParam.FromParam
+import net.noresttherein.oldsql.sql.TableStatement.{seqAt, GroundSetClauseFactory, GroundSupplantClauseFactory, GroundWhereClauseFactory, ReturningClauseFactory, SetClauseFactory, SupplantClauseFactory, WhereAllClauseFactory, WhereAnyClauseFactory, WhereClauseFactory}
 import net.noresttherein.oldsql.sql.Update.implementation.{updateDomain, DefaultEntityUpdate, DefaultGroundEntitiesUpdate, DefaultGroundEntityUpdate, DefaultGroundUpdate, DefaultUpdate, DefaultUpdateReturningEntityWhereSeed, DefaultUpdateUpdatingEntity, GroundUpdate, ParamUpdate, UpdateReturning, UpdatesReturning}
 import net.noresttherein.oldsql.sql.Update.syntax.{DefaultUpdateReturningEntity, DefaultUpdateUpdatingOne, EntitiesUpdate, EntityUpdate, EntityUpdateWhere, EntityUpdateWhereAll, EntityUpdateWhereSeed, GenericUpdateFactory, GroundEntitiesUpdate, GroundEntitiesUpdateWhereSeed, GroundEntityMultiUpdateFactory, GroundEntityUpdate, GroundEntityUpdateWhereSeed, GroundRowUpdateWhereSeed, GroundUpdateAllFactory, GroundUpdateFactory, GroundUpdateOneFactory, RowUpdate, RowUpdateWhereAll, RowUpdateWhereSeed, UpdateFacade, UpdateMany, UpdateOne, UpdateParam, UpdateUpdatingOne}
-import net.noresttherein.oldsql.sql.ast.{OrSQL, SQLParameter}
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
+import net.noresttherein.oldsql.sql.ast.{BoundParam, OrSQL}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.MappingReveal.MappingSubject
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
@@ -711,14 +711,14 @@ object Update {
 		sealed trait GenericUpdateFactory[Arg, M[O] <: MappingAt[O], +Res]
 			extends Any with SetClauseFactory[Arg, M, From[M] WithParam Arg, Res]
 		{
-			def set(setter :(M[From[M]], M[From[M] WithParam Arg], FromParam.Last[Arg])
+			def set(setter :(M[From[M]], M[From[M] WithParam Arg], UnboundParam.Last[Arg])
 	                        => From[M] := (From[M] WithParam Arg)) :Res =
 			{
 				val base = setDomain
 				set(setter(table.row, table.row, base.last.mapping).anchor(base.left, base))
 			}
 
-			def setAll(setters :(M[From[M]], M[From[M] WithParam Arg], FromParam.Last[Arg])
+			def setAll(setters :(M[From[M]], M[From[M] WithParam Arg], UnboundParam.Last[Arg])
 			                    => Seq[From[M] := SetDomain]) :Res =
 			{
 				val base = setDomain
@@ -809,7 +809,7 @@ object Update {
 		sealed trait GenericSupplantedUpdateFactory[Arg, M[O] <: MappingAt[O], +Res]
 			extends Any with SupplantClauseFactory[Arg, M, From[M] WithParam Arg, Res]
 		{
-			def supplant(update :(M[From[M]], M[From[M] WithParam Arg], FromParam.Last[Arg])
+			def supplant(update :(M[From[M]], M[From[M] WithParam Arg], UnboundParam.Last[Arg])
 			                     => From[M] := (From[M] WithParam Arg)) :Res =
 			{
 				val base = setDomain
@@ -858,7 +858,7 @@ object Update {
 		                      (protected override val setDomain :From[M] WithParam Arg)
 			extends AnyVal with GenericUpdateFactory[Arg, M, RowUpdateSeed[Arg, M, Int]]
 		{
-			protected override def table :RelVar[M] = setDomain.left.table.castTo[Table[M], RelVar[M]]
+			protected override def table :RelVar[M] = setDomain.left.table.castFrom[Table[M], RelVar[M]]
 
 			protected override def setAll(updates :Seq[From[M] := (From[M] WithParam Arg)]) :RowUpdateSeed[Arg, M, Int] =
 				new DefaultUpdate[Arg, S, M](setDomain, setDomain, table, updates, True)
@@ -872,7 +872,7 @@ object Update {
 		                        (protected override val setDomain :From[M] WithParam Arg)
 			extends AnyVal with GenericUpdateFactory[Arg, M, BatchUpdateSetClause[Arg, M, Int]]
 		{
-			protected override def table :RelVar[M] = setDomain.left.table.castTo[Table[M], RelVar[M]]
+			protected override def table :RelVar[M] = setDomain.left.table.castFrom[Table[M], RelVar[M]]
 
 			protected override def setAll(setters :Seq[From[M] := JoinParam.Last[Arg]]) :BatchUpdateSetClause[Arg, M] =
 				new BatchUpdateSetClause[Arg, S, M](setDomain, table, setters)
@@ -976,8 +976,7 @@ object Update {
 			override lazy val setters :Seq[From[M] := (From[M] WithParam Seq[Arg])] =
 				(0 until max).flatMap { i =>
 					val scribe = SQLScribe.replaceParam(
-						setDomain, domain, setDomain.last.toRelationSQL, domain.last.toRelationSQL)(
-						Optional { args :Seq[Arg] => if (args.sizeIs > i) Got(args(i)) else Lack }
+						setDomain, domain, setDomain.last.toRelationSQL, domain.last.toRelationSQL)(seqAt(i)
 					)
 					setOne map { set =>
 						def update[T](setter :ComponentSetter[From[M], From[M] WithParam Arg, T]) =
@@ -1111,9 +1110,9 @@ object Update {
 		final class UpdateFacade[S, M[O] <: BaseMapping[S, O]] private[Update] (override val table :RelVar[M])
 			extends UpdateOne[S, M](table)
 		{
-			def set(first  :(M[From[M]], FromParam.Last[S]) => From[M] := (From[M] WithParam S),
-			        second :(M[From[M]], FromParam.Last[S]) => From[M] := (From[M] WithParam S),
-			        rest   :(M[From[M]], FromParam.Last[S]) => From[M] := (From[M] WithParam S)*)
+			def set(first  :(M[From[M]], UnboundParam.Last[S]) => From[M] := (From[M] WithParam S),
+			        second :(M[From[M]], UnboundParam.Last[S]) => From[M] := (From[M] WithParam S),
+			        rest   :(M[From[M]], UnboundParam.Last[S]) => From[M] := (From[M] WithParam S)*)
 					:EntityUpdateWhereSeed[S, M, Int] =
 			{
 				val row = table.row[From[M]]
@@ -1314,7 +1313,7 @@ object Update {
 			extends GroundSetClauseFactory[M, From[M], GroundUpdateSetClause[S, M]]
 		{
 			@inline protected override def setDomain :From[M] = domain
-			@inline protected override def table :RelVar[M] = domain.table.castTo[Table[M], RelVar[M]]
+			@inline protected override def table :RelVar[M] = domain.table.castFrom[Table[M], RelVar[M]]
 
 			override def setAll(setters :Seq[From[M] := From[M]]) :GroundUpdateSetClause[S, M] =
 				new GroundUpdateSetClause[S, M](domain, table, setters)
@@ -1388,12 +1387,12 @@ object Update {
 
 			override lazy val setters :Seq[From[M] := From[M]] = {
 				implicit val updateForm = table[From[M]].selectForm <> table[From[M]].updateForm
-				ReversedList :+ (domain.last := SQLParameter(value))
+				ReversedList :+ (domain.last := BoundParam(value))
 			}
 
 			override lazy val condition :GlobalBoolean[From[M]] = {
 				implicit val filterForm = table[From[M]].selectForm <> table[From[M]].filterForm
-				domain.last === SQLParameter(value)
+				domain.last === BoundParam(value)
 			}
 
 
@@ -1512,10 +1511,10 @@ object Update {
 			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Arg, Int] =
 				visitor.paramUpdate(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Arg, RowProduct] = {
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Arg] = {
 				val ctx = SQLContext().join("").param("?")
 				implementation.spell[M, Domain, @~ ~ Arg](this)(setters, condition)(ctx, domain.parameterization)
-					.compose { @~ ~ _ }
+					.adapt { @~ ~ _ }
 			}
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamUpdate[_, MappingAt @unchecked]]
@@ -1684,10 +1683,10 @@ object Update {
 			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Any, Int] =
 				visitor.groundUpdate(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any, RowProduct] =
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any] =
 				implementation.spell[M, From[M], @~](this)(setters, condition)(
 					SQLContext().join(""), Parameterization.paramless
-				).compose { _ => @~ }
+				).adapt { _ => @~ }
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroundUpdate[MappingAt @unchecked]]
 
@@ -1855,32 +1854,30 @@ object Update {
 		private[Update] def spell[M[O] <: MappingAt[O], R <: ParameterizedFrom[Xs], Xs]
 		                         (self :UpdateDML[Nothing, M, Any])
 		                         (setters :Seq[From[M] := R], condition :LocalBoolean[R])
-		                         (context :SQLContext, params :Parameterization[Xs, R])
-		                         (implicit spelling :SQLSpelling) :SpelledSQL[Xs, RowProduct] =
+		                         (context :SQLContext[Xs], params :Parameterization[Xs, R])
+		                         (implicit spelling :SQLSpelling) :SpelledSQL[Xs] =
 		{
 			val spell = spelling.inUpdate
 			val tableSQL = spell.table(self.table, "")(SQLContext(), Parameterization.paramless[From[M]])
 	
-			val columnSetters = setters.flatMapWith(params) {
-				(ps, update) =>
+			val columnSetters = setters.flatMap { update =>
 					val lefts = spell.explode(update.lvalue)(tableSQL.context, Parameterization.paramless[From[M]])
-					val rights = spell.explode(update.rvalue)(context, ps)
+					val rights = spell.explode(update.rvalue)(context, params)
 					if (lefts.size != rights.size)
 						throw new MismatchedExpressionsException(
 							s"Illegal DML '$this': cannot set component ${update.lvalue} of ${self.table} " +
 							s"to ${update.rvalue} due to differing numbers of columns for both sides:\n$lefts\nvs\n$rights."
 						)
-					val exploded = lefts.iterator zip rights.iterator map {
-						case (l, r) => l.sql +: " = " +: r
+					lefts.iterator zip rights.iterator map {
+						case (l, r) => l +: " = " +: r
 					} to List
-					(if (exploded.isEmpty) ps else exploded.last.params, exploded)
 			}
 			if (columnSetters.isEmpty)
 				throw new MisspelledSQLException(s"Illegal DML '$this': an empty SET clause.")
-			val set = columnSetters.reduce(_.sql +: ", " +: _)
-			val where = spelling.inWhere(condition)(set.context, set.params)
-			(spell.UPDATE + " ") +: tableSQL.sql +: (" " + spell.SET + " ") +: set.sql +:
-				(" " + spell.WHERE + " ") +: where
+			val set = columnSetters.reduce(_ + ", " + _)
+			val where = spelling.inWhere(condition)(set.context, params)
+			spell.UPDATE_ +: tableSQL.sql +: spell._SET_ +: set +:
+				spell._WHERE_ +: where
 		}
 	}
 	

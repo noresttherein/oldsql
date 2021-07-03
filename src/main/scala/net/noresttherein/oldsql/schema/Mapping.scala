@@ -699,7 +699,7 @@ trait Mapping {
 	  * of itself by this method).
 	  */
 	@throws[NoSuchElementException]("if the component is not a subcomponent of this instance.")
-	def export[T](component :Component[T]) :Component[T] =
+	def export[T](component :Component[T]) :Component[T] = //todo: rename to actualize
 		if (component eq this) component else apply(component).export //extra check in order to not create a MappingExtract
 
 	/** Same as [[net.noresttherein.oldsql.schema.Mapping.export export]]`(component)`, but instead of throwing
@@ -890,7 +890,7 @@ trait Mapping {
 	  * and returns those with [[net.noresttherein.oldsql.schema.Buff.NoSelect NoSelect]] inactive.
 	  * @return the same column set as `component.columns.map(export(_)).filter(NoSelectByDefault.inactive)`,
 	  *         in an undefined order.
-	  */
+	  */ //consider: for columns, this can return an empty list which is counterintuitive to returning *something*
 	def selectedByDefault(component :Component[_]) :Unique[Column[_]] = columnsWithout(component, NoSelectByDefault)
 
 	/** All columns of `component` which are specified as filtered by default (included in component vs component
@@ -913,7 +913,7 @@ trait Mapping {
 	/** All columns of `component` which are specified as updated by default this mapping. $ExportSubcomponentsInfo
 	  * All subcomponents need exporting before use; this method exports all columns of `component`
 	  * and returns those with [[net.noresttherein.oldsql.schema.Buff.NoUpdateByDefault NoUpdateByDefault]] inactive.
-	  * @return the same column set as `component.columns.map(export(_)).filter(NoSelectByDefault.inactive)`,
+	  * @return the same column set as `component.columns.map(export(_)).filter(NoUpdateByDefault.inactive)`,
 	  *         in an undefined order.
 	  */
 	def updatedByDefault(component :Component[_]) :Unique[Column[_]] = columnsWithout(component, NoUpdateByDefault)
@@ -1900,76 +1900,57 @@ object Mapping extends LowPriorityMappingImplicits {
 
 
 
-	trait ColumnFilter {
-		def apply[S](mapping :MappingOf[S]) :Unique[mapping.Column[_]] =
-			mapping.columns.filter(test[mapping.Origin])
 
-		def filter[O](columns :Unique[ColumnMapping[_, O]]) :Unique[ColumnMapping[_, O]] =
-			columns.filter(test[O])
+	trait MappingTemplate[S, O, +M[T] <: RefinedMapping[T, O], +C[T] <: M[O] with ColumnMapping[T, O]]
+		extends BaseMapping[S, O]
+	{ this :M[S] =>
+		override def apply[T](component :Component[T]) :GenericExtract[M[T], S, T, O] =
+			extracts(component)
 
-		def test[O](column :MappingAt[O]) :Boolean
+		override def apply[T](column :Column[T]) :GenericExtract[C[T], S, T, O] =
+			columnExtracts(column)
 
-		def read[S](mapping :MappingOf[S]) :SQLReadForm[S] =
-			MappingReadForm[S, mapping.Origin](mapping, apply(mapping :mapping.type))
+		override def export[T](component :Component[T]) :M[T] =
+			if (component eq this) this.asInstanceOf[M[T]]
+			else apply(component).export
 
-		def write[S](op :WriteOperationType, mapping :MappingOf[S]) :SQLWriteForm[S] =
-			MappingWriteForm[S, mapping.Origin](op, mapping.refine, apply(mapping :mapping.type))
+		override def export[T](column :Column[T]) :C[T] =
+			apply(column).export
+
+//		type SQLExtract[T] = GenericExtract[ExpressionMapping[F, S, T, O], V, T, O] //problem with variance of F
+//		type ColumnSQLExtract[T] = GenericExtract[ColumnExpressionMapping[F, S, T, O], V, T, O]
+		override def extracts :NaturalMap[Component, ({ type E[X] = GenericExtract[M[X], S, X, O] })#E]
+		override def columnExtracts :NaturalMap[Column, ({ type E[X] = GenericExtract[C[X], S, X, O] })#E]
+
+		override def components :Unique[M[_]]
+		override def subcomponents :Unique[M[_]]
+
+		override def columns(op :OperationType) :Unique[C[_]] = op match {
+			case SELECT => selectable
+			case FILTER => filterable
+			case INSERT => insertable
+			case UPDATE => updatable
+		}
+
+		override def columns           :Unique[C[_]]
+		override def selectable        :Unique[C[_]] = columnsWithout(NoSelect)
+		override def filterable        :Unique[C[_]] = columnsWithout(NoFilter)
+		override def insertable        :Unique[C[_]] = columnsWithout(NoInsert)
+		override def updatable         :Unique[C[_]] = columnsWithout(NoUpdate)
+		override def autoInserted      :Unique[C[_]] = columnsWith(AutoInsert)
+		override def autoUpdated       :Unique[C[_]] = columnsWith(AutoUpdate)
+		override def selectedByDefault :Unique[C[_]] = columnsWithout(NoSelectByDefault)
+		override def filteredByDefault :Unique[C[_]] = columnsWithout(NoFilterByDefault)
+		override def insertedByDefault :Unique[C[_]] = columnsWithout(NoInsertByDefault)
+		override def updatedByDefault  :Unique[C[_]] = columnsWithout(NoUpdateByDefault)
+
+		override def columnsWith(buff :BuffType) :Unique[C[_]] =
+			columns.filter(buff.active)
+
+		override def columnsWithout(buff :BuffType) :Unique[C[_]] =
+			columns.filter(buff.inactive)
+
 	}
-
-
-
-	object ColumnFilter {
-
-		def apply(pred :Mapping => Boolean) :ColumnFilter =
-			new ColumnFilter {
-				override def test[O](column :MappingAt[O]) :Boolean = pred(column)
-			}
-
-
-		class WithBuff(buff :BuffType) extends ColumnFilter {
-			def components[S](mapping :MappingOf[S]) :Unique[mapping.Component[_]] =
-				mapping.components.filter(test)
-
-			def test[O](column :MappingAt[O]): Boolean = buff.active(column)
-		}
-
-		class WithoutBuff(buff :BuffType) extends ColumnFilter {
-			def components[S](mapping :MappingOf[S]) :Unique[mapping.Component[_]] =
-				mapping.components.filter(test)
-
-			def test[O](column :MappingAt[O]): Boolean = buff.inactive(column)
-		}
-
-		class ReadFilter(buff :BuffType) extends WithoutBuff(buff) {
-			override def write[S](op :WriteOperationType, mapping :MappingOf[S]) :SQLWriteForm[S] =
-				SQLWriteForm.unsupported(s"$this.write for $mapping")
-		}
-
-		class WriteFilter(buff :BuffType) extends WithoutBuff(buff) {
-			override def read[S](mapping: MappingOf[S]) =
-				SQLReadForm.unsupported(s"$this: read for $mapping")
-		}
-
-
-		case object ForSelect extends ReadFilter(NoSelectByDefault) {
-			override def read[S](mapping: MappingOf[S]) :SQLReadForm[S] = mapping.selectForm
-		}
-
-		case object ForFilter extends WriteFilter(NoFilterByDefault)
-
-		case object ForUpdate extends WriteFilter(NoUpdateByDefault)
-
-		case object ForInsert extends WriteFilter(NoInsertByDefault)
-
-
-		case object AllColumns extends ColumnFilter {
-			override def apply[S](mapping :MappingOf[S]) :Unique[mapping.Column[_]] = mapping.columns
-			override def filter[O](columns :Unique[ColumnMapping[_, O]]) :Unique[ColumnMapping[_, O]] = columns
-			override def test[O](column :MappingAt[O]) = true
-		}
-	}
-
-
 
 
 

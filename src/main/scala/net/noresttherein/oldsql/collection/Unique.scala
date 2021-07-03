@@ -128,9 +128,9 @@ object Unique extends IterableFactory[Unique] {
 
 
 
-	implicit def uniqueToSeq[T](unique :Unique[T]) :Seq[T] = unique.toSeq
-
-	implicit def uniqueToSet[T](unique :Unique[T]) :Set[T] = unique.toSet
+//	implicit def uniqueToSeq[T](unique :Unique[T]) :Seq[T] = unique.toSeq
+//
+//	implicit def uniqueToSet[T](unique :Unique[T]) :Set[T] = unique.toSet
 
 	/** An implicit extension of a ''by-name'' expression evaluating to a `Unique[T]` instance, adding a `delayed`
 	  * method which creates a proxy using it to initialize its target. */

@@ -8,16 +8,22 @@ class NoSuchComponentException(msg :String, cause :Throwable = null)
 	extends NoSuchElementException(msg) with OldSQLException
 {
 	initCause(cause)
+
+	override def stackOn(msg :String) :OldSQLException = new NoSuchComponentException(msg, this)
 }
 
 
 /**
   * @author Marcin Mościcki
   */
-class MissingKeyException(msg :String, cause :Throwable = null) extends BaseOldSQLException(msg, cause)
+class MissingKeyException(msg :String, cause :Throwable = null) extends BaseOldSQLException(msg, cause) {
+	override def stackOn(msg :String) :OldSQLException = new MissingKeyException(msg, this)
+}
 
 
-class MismatchedKeyException(msg :String, cause :Throwable = null) extends BaseOldSQLException(msg, cause)
+class MismatchedKeyException(msg :String, cause :Throwable = null) extends BaseOldSQLException(msg, cause) {
+	override def stackOn(msg :String) :OldSQLException = new MismatchedKeyException(msg, this)
+}
 
 
 
@@ -29,6 +35,10 @@ class MismatchedKeyException(msg :String, cause :Throwable = null) extends BaseO
   */
 class BuffMappingFailureException(msg :String, cause :Throwable = null)
 	extends RuntimeException(msg, cause) with OldSQLException
+{
+	override def stackOn(msg :String) :OldSQLException =
+		new BuffMappingFailureException(msg, this)
+}
 
 
 

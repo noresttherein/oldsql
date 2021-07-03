@@ -357,6 +357,10 @@ trait Kin[+T] extends Serializable {
 	  * @param as information about the composition of the required type `C` from individual property values `X`.
 	  * @param decomposition implicit information how the value `T` of this kin decomposes to individual elements `E`.
 	  */
+	@throws[IncompatibleElementTypeException](
+		"if this kin is a DerivedKin and its composition is incompatible with the passed decomposition (that is, " +
+		"type E of intended elements doesn't match the internal element type of this instance."
+	)
 	def properties[E, X, C](property :PropertyPath[E, X], as :C ComposableFrom X)
 	                       (implicit decomposition :T DecomposableTo E) :Kin[C] //=
 //		Property(this, property)(decomposition, as)
@@ -1350,6 +1354,10 @@ object Kin {
 				:Derived[X, C[X]] =
 			properties(property, ComposableFrom.Collection.of[X](in))
 
+		@throws[IncompatibleElementTypeException](
+			"if this.composition is incompatible with decomposition (that is, type I of intended elements doesn't match" +
+			" type E of elements of this instance."
+		)
 		override def properties[I, X, C](property :PropertyPath[I, X], as :C ComposableFrom X)
 		                                (implicit decomposition :T DecomposableTo I) :Derived[X, C] =
 			if (decomposition compatibleWith composition)

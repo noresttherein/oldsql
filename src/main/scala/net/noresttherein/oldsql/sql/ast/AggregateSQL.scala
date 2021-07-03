@@ -60,6 +60,14 @@ trait AggregateSQL[-F <: RowProduct, -G <: RowProduct, X, Y] extends ColumnSQL[G
 	override def asGlobal :Option[Nothing] = None
 	override def isAnchored :Boolean = arg.isAnchored
 
+	override def isAnchored(from :G) :Boolean = from match {
+		case aggregate :AggregateClause =>
+			val arg = this.arg.asInstanceOf[ColumnSQL[aggregate.Discrete, LocalScope, X]]
+			arg.isAnchored(aggregate.fromClause)
+		case _ =>
+			throw new IllegalArgumentException(s"Cannot anchor an AggregateSQL $this in a non AggregateClause $from.")
+	}
+
 	override def anchor(from :G) :ColumnSQL[G, LocalScope, Y]  = from match {
 		case aggregate :AggregateClause =>
 			val arg = this.arg.asInstanceOf[ColumnSQL[aggregate.Discrete, LocalScope, X]]
@@ -131,7 +139,7 @@ object AggregateSQL {
 	  * [[net.noresttherein.oldsql.sql.AggregateFunction AggregateFunction]] implementation.
 	  * @param fun an SQL aggregate function used.
 	  * @param arg an SQL expression based on `F` which is used as the argument for `fun`.
-	  * @param distinct a flag specifying if the argument should be preceded with the 'DISTINCT' clause.
+	  * @param distinct a flag specifying if the argument should be preceded with a 'DISTINCT' clause.
 	  * @return an `SQLExpression` based on the ''from'' clause aggregating the rows from the clause `F`.
 	  */ //fixme: abstract type projection
 	def apply[F <: FromSome, X, V :ColumnReadForm]
@@ -167,15 +175,11 @@ object AggregateSQL {
 		override def distinct =
 			if (isDistinct) this else new DefaultAggregateSQL(function, arg, true)
 
-		protected override def defaultSpelling[P, E <: F#GeneralizedAggregate]
-		                                      (context :SQLContext, params :Parameterization[P, E])
-		                                      (implicit spelling :SQLSpelling) =
-		{
-			val ungroupedParams = params.ungroup[F]
-			val res = spelling(function, isDistinct)(arg)(context, ungroupedParams.params)
-			val grouped = res.params.settersReversed.map(_.unmap(ungroupedParams.ungroupParams))
-			SpelledSQL(res.sql, res.context, params.reset(grouped ::: params.settersReversed))
-		}
+		protected override def defaultSpelling[P](from :F#GeneralizedAggregate, context :SQLContext[P],
+		                                          params :Parameterization[P, F#GeneralizedAggregate])
+		                                         (implicit spelling :SQLSpelling) =
+			//fixme: if we switch from F#GeneralizedAggregate to AggregateOfGeneralized[F] this cast can go away
+			spelling(function, isDistinct)(arg)(from.fromClause.asInstanceOf[F], context, params.fromClause)
 	}
 
 

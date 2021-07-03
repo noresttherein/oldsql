@@ -12,6 +12,8 @@ class AssetUnavailableException(message :String, cause :Throwable)
 {
 	def this(message :String) = this(message, null)
 	def this(cause :Throwable) = this(cause.getMessage, cause)
+
+	override def stackOn(msg :String) :OldSQLException = new AssetUnavailableException(msg, this)
 }
 
 
@@ -22,6 +24,8 @@ class AssetUnavailableException(message :String, cause :Throwable)
 class TransactionUnavailableException(message :String, cause :Throwable) extends BaseOldSQLException(message, cause) {
 	def this(message :String) = this(message, null)
 	def this() = this("No transaction currently in progress.", null)
+
+	override def stackOn(msg :String) :OldSQLException = new TransactionUnavailableException(msg, this)
 }
 
 
@@ -32,6 +36,8 @@ class TransactionAbortedException(message :String, cause :Throwable) extends Bas
 	def this(message :String) = this(message, null)
 	def this(cause :Throwable) = this(s"Transaction rolled back on request: ${cause.getMessage}.", cause)
 	def this() = this("Transaction rolled back on request.", null)
+
+	override def stackOn(msg :String) :OldSQLException = new TransactionAbortedException(msg, this)
 }
 
 
@@ -43,12 +49,14 @@ class PreexistingTransactionException(message :String, cause :Throwable) extends
 	def this(message :String) = this(message, null)
 	def this(cause :Throwable) = this(s"Transaction already in progress: ${cause.getMessage}.", cause)
 	def this() = this("Transaction already in progress.", null)
+
+	override def stackOn(msg :String) :OldSQLException = new PreexistingTransactionException(msg, this)
 }
 
 
 /** Exception thrown by [[net.noresttherein.oldsql.TransactionAPI TransactionAPI]],
   * [[net.noresttherein.oldsql.Asset Asset]]s and [[net.noresttherein.oldsql.ManagedAsset ManagedAsset]]s
-  * when any method other than [[net.noresttherein.oldsql.TransactionAPI.close close]] is called for a closed transaction,
+  * when any method other than [[net.noresttherein.oldsql.TransactionAPI.clean clean]] is called for a closed transaction,
   * or a closed transaction is passed to [[net.noresttherein.oldsql.Asset.inTransaction inTransaction]] or
   * [[net.noresttherein.oldsql.Asset.transactional transactional]] methods.
   */
@@ -56,6 +64,8 @@ class TransactionClosedException(message :String, cause :Throwable) extends Base
 	def this(message :String) = this(message, null)
 	def this(cause :Throwable) = this(s"Transaction already closed: ${cause.getMessage}.", cause)
 	def this() = this("Transaction already closed.", null)
+
+	override def stackOn(msg :String) :OldSQLException = new TransactionClosedException(msg, this)
 }
 
 
@@ -70,4 +80,6 @@ class TransactionRolledBackException(message :String, cause :Throwable)
 	def this(message :String) = this(message, null)
 	def this(cause :Throwable) = this(s"Transaction already rolled back: ${cause.getMessage}.", cause)
 	def this() = this("Transaction already rolled back.", null)
+
+	override def stackOn(msg :String) :OldSQLException = new TransactionRolledBackException(msg, this)
 }

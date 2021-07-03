@@ -611,6 +611,8 @@ object PropertyPath {
 	{
 		def this(msg :String) = this(msg, null)
 		def this(cause :Throwable) = this(null, cause)
+
+		override def stackOn(msg :String) :OldSQLException = new PropertyReflectionException(msg, this)
 	}
 
 

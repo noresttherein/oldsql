@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.{Mapping, SQLForm, SQLReadForm, SQLWriteF
 import net.noresttherein.oldsql.schema.support.EmptyMapping
 import net.noresttherein.oldsql.schema.Mapping.Component
 import net.noresttherein.oldsql.schema.bases.RootMapping
-import net.noresttherein.oldsql.sql.RowProduct.{RowTables, SubselectFrom, TableFormula}
+import net.noresttherein.oldsql.sql.RowProduct.{RowTables, SelectedFrom, TableFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, ColumnFormula}
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.sql.MappingFormula.ComponentFormula
@@ -204,7 +204,7 @@ trait FromClause {
 	  * @param rewriter substitution for expressions depending on `Outer`, i.e. not grounded in the explicit from list
 	  *                 of this subselect.
 	  */
-	def transplant[O<:RowProduct](target :O, rewriter :SQLScribe[Outer, O]) :SubselectFrom[O]
+	def transplant[O<:RowProduct](target :O, rewriter :SQLScribe[Outer, O]) :SelectedFrom[O]
 
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[RowProduct]
@@ -225,7 +225,7 @@ object FromClause {
 	  * select queries which depend on values from the 'FROM' clause of the outer select. Note that subselects
 	  * may be nested to an arbitrary depth and only directly nested subselects of `S` conform to this type.
 	  */
-	type SubselectFrom[-S <: RowProduct] = RowProduct {
+	type SelectedFrom[-S <: RowProduct] = RowProduct {
 		type Parent >: S <: RowProduct
 	}
 
@@ -866,7 +866,7 @@ object FromClause {
 		  * @tparam H row type returned by the select
 		  * @return an SQLFormula[S, Seq[H]]
 		  */
-		def seq[R<:SubselectFrom[S], H](select :FromSelect[R, H]) :SelectFormula.SelectAsRows[S, H] =
+		def seq[R<:SelectedFrom[S], H](select :FromSelect[R, H]) :SelectFormula.SelectAsRows[S, H] =
 			select.asSubselectOf(source).rows
 
 		/** Convert a subselect of this source (a select grounded in a subsource of source S) as a formula for
@@ -877,7 +877,7 @@ object FromClause {
 		  * @tparam H row type returned by the select
 		  * @return an SQLFormula[S, H]
 		  */
-		def single[R<:SubselectFrom[S], H](select :FromSelect[R, H]) :SelectFormula.SelectAsRow[S, H] =
+		def single[R<:SelectedFrom[S], H](select :FromSelect[R, H]) :SelectFormula.SelectAsRow[S, H] =
 			select.asSubselectOf(source).single
 
 		/** Create an sql EXISTS condition for the given select. Equivalent to seq(select).exists and ExistsFormula(seq(select)).
@@ -886,7 +886,7 @@ object FromClause {
 		  * @tparam H row type returned by the select
 		  * @return an SQLFormula[S, Boolean] for EXISTS(select ...)
 		  */
-		def exists[R<:SubselectFrom[S], H](select :FromSelect[R, H]) :SQLFormula[S, Boolean] =
+		def exists[R<:SelectedFrom[S], H](select :FromSelect[R, H]) :SQLFormula[S, Boolean] =
 			select.asSubselectOf(source).exists
 	}
 

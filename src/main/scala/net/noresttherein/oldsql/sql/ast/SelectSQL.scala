@@ -2,13 +2,14 @@ package net.noresttherein.oldsql.sql.ast
 
 import net.noresttherein.oldsql.collection.Chain.{@~, ChainApplication}
 import net.noresttherein.oldsql.collection.{Chain, Listing}
+import net.noresttherein.oldsql.exceptions.Bug
 import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.{AggregateClause, ColumnSQL, ColumnSQLMapping, Dual, FromSome, IndexedMapping, ListingColumnSQLMapping, ListingSQLMapping, RowProduct, Select, SQLExpression, SQLMapping}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
-import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundFrom, NonEmptyFrom, ParamlessFrom, PartOf, SubselectOf}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, SubselectOf}
 import net.noresttherein.oldsql.sql.Select.SelectTemplate
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, LocalScope, LocalSQL}
@@ -48,7 +49,7 @@ import net.noresttherein.oldsql.slang._
   * are synthetic mappings representing the expressions in the ''group by'' clause, rather than tables of the ''from''
   * clause - see method [[net.noresttherein.oldsql.sql.Select.SelectTemplate.tables tables]] for the latter.
   * Regardless of whether this is a top select or a subselect expression, `From` never contains any
-  * [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters in its ''explicit'' section; type `F` however -
+  * [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters in its ''explicit'' section; type `F` however -
   * included also in the prefix of `From` - can contain parameters. This allows the use of subselect expressions
   * (as it follows from the above that top selects are always parameterless) inside parameterized
   * [[net.noresttherein.oldsql.sql.Select Select]] quasi expressions.
@@ -61,7 +62,9 @@ import net.noresttherein.oldsql.slang._
   * @tparam F the source of data for the ''enclosing'' select - tables from the ''from'' clause and any unbound parameters.
   * @tparam V the combined type of the whole ''select'' clause, to which every returned row maps.
   */
-sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] with SelectTemplate[V, ({ type S[X] = SelectSQL[F, X] })#S] {
+sealed trait SelectSQL[-F <: RowProduct, V]
+	extends QuerySQL[F, V] with SelectTemplate[V, ({ type S[X] = SelectSQL[F, X] })#S]
+{
 	override def readForm :SQLReadForm[Rows[V]] = rowForm.nullMap(Rows(_))
 	override def rowForm :SQLReadForm[V] = selectClause.readForm
 
@@ -72,7 +75,8 @@ sealed trait SelectSQL[-F <: RowProduct, V] extends QuerySQL[F, V] with SelectTe
 	override def isGlobal = true
 	override def asGlobal :Option[SelectSQL[F, V]] = Some(this)
 	override def isAnchored = true
-	override def anchor(from :F) :SelectSQL[F, V] = this
+	override def isAnchored(from :F) :Boolean = this.from.outer == from //todo: define _exact_ semantics of equality method(s)
+	override def anchor(from :F) :SelectSQL[F, V]
 
 	override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SelectSQL[E, V]
 
@@ -210,6 +214,8 @@ object SelectSQL {
 		extends SelectSQL[RowProduct, V] with Select[@~, V] with SelectTemplate[V, TopSelectSQL]
 	{
 		override type From <: GroundFrom
+		override def isAnchored(from :RowProduct) = true
+		override def anchor(from :RowProduct) :this.type = this
 
 		override def parameterization :Parameterization[@~, From] = Parameterization.paramless[From]
 		//conflict between QuerySQL and Query
@@ -235,16 +241,18 @@ object SelectSQL {
 		override def bind(params: @~) :TopSelectSQL[V] = this
 
 
-		protected override def defaultSpelling[P, E <: RowProduct](context :SQLContext, params :Parameterization[P, E])
-		                                                          (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		protected override def defaultSpelling[P](from :RowProduct, context :SQLContext[P],
+		                                          params :Parameterization[P, RowProduct])
+		                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
 		{
-			val fromSQL = from.spell(context)(spelling)
-			val selectSQL = spelling.inSelect(selectClause)(fromSQL.context, Parameterization.paramless)
-			val extraParams = (selectSQL.params :++ fromSQL.params) compose { _ :P => @~ }
-			val allParams = params.reset(extraParams.settersReversed:::params.settersReversed)
-			val select = SpelledSQL((spelling.SELECT + " ") +: selectSQL.sql, context, allParams) //reset the context!
-			if (fromSQL.sql.isEmpty) select
-			else select + " " + fromSQL.sql
+			val theseParams = this.from.parameterization
+			val fromSQL = this.from.spell(context.reset(), theseParams)(spelling)
+			val selectSQL = spelling.inSelect(selectClause)(this.from, fromSQL.context, Parameterization.paramless)
+			val extraParams = (selectSQL.setter + fromSQL.setter) compose { _ :P => @~ }
+			if (fromSQL.sql.isEmpty) //use the original context
+				SpelledSQL(spelling.SELECT_ +: selectSQL.sql, context, extraParams)
+			else
+				SpelledSQL(spelling.SELECT_ +: selectSQL.sql +: " " +: fromSQL.sql, context, extraParams)
 		}
 
 	}
@@ -282,21 +290,33 @@ object SelectSQL {
 			visitor.subselect(this)
 
 
-		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-			if (from.isParameterized)
-				throw new UnsupportedOperationException(
-					"Cannot spell parameterized select without parameterization: " + this + "."
+		protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+			if (from.isSubselectParameterized)
+				throw Bug(
+					"Cannot spell a dependent select with unbound parameters in its (explicit) from clause: " + this + "."
 				)
-			else { //this could use RowProduct.asParamless
-				val self = this.asInstanceOf[SelectSQL[F, V] { type From <: ParamlessFrom }]
-				val fromSQL = spelling(self.from)(context)
-				val selectSQL = spelling.inSelect(self.selectClause)(fromSQL.context, Parameterization.paramless)
-				val extraParams = (selectSQL.params :++ fromSQL.params) compose { _ :P => @~ }
-				val allParams = params.reset(extraParams.settersReversed:::params.settersReversed)
-				val select = SpelledSQL(spelling.SELECT + " " + selectSQL.sql, context, allParams) //reset the context!
-				if (fromSQL.sql.isEmpty) select
-				else select + " " + fromSQL.sql
+			else if (from == this.from.outer) {
+				val fromParams = params.subselect(this.from.self)
+				val fromSQL = spelling(this.from)(context, fromParams)
+				val selectParams = params.subselect(this.from)
+				val selectSQL = spelling.inSelect(selectClause)(this.from, fromSQL.context, selectParams)
+				val allParams = selectSQL.setter + fromSQL.setter
+				if (fromSQL.sql.isEmpty) //use the original context
+					SpelledSQL(spelling.SELECT_ + selectSQL.sql, context, allParams)
+				else
+					SpelledSQL(spelling.SELECT_ + selectSQL.sql + " " + fromSQL.sql, context, allParams)
+			} else {
+				val subselect = this.from.asSubselectOf(from)(ExpandedBy.itself[F])
+				val fromParams = params.subselect(subselect.self)
+				val fromSQL = spelling(subselect)(context, fromParams)
+				val selectParams = params.subselect(subselect)
+				val selectSQL = spelling.inSelect(selectClause)(subselect, fromSQL.context, selectParams)
+				val allParams = selectSQL.setter + fromSQL.setter
+				if (fromSQL.sql.isEmpty) //use the original context
+					SpelledSQL(spelling.SELECT_ + selectSQL.sql, context, allParams)
+				else
+					SpelledSQL(spelling.SELECT_ + selectSQL.sql + " " + fromSQL.sql, context, allParams)
 			}
 
 
@@ -347,6 +367,14 @@ object SelectSQL {
 		extends BaseSelectComponent[F, S, H, V](subselect, component)
 		   with SubselectMapping[F, S, H, V]
 	{
+		override def anchor(from :F) :SelectAs[F, H] =
+			if (this.from.outer == from) this
+			else {
+				val rebase = this.from.asSubselectOf(from.asInstanceOf[F with FromSome])(ExpandedBy.itself[F with FromSome]).asInstanceOf[S]
+				val h = selectClause.anchor(rebase)
+				if (h == selectClause) this else new SubselectComponent[F, S, H, V](rebase, h, isDistinct)
+			}
+
 		override def distinct :SubselectMapping[F, S, H, V] =
 			if (isDistinct) this else new SubselectComponent(from, selectClause, true)
 
@@ -398,6 +426,14 @@ object SelectSQL {
 	{
 		override def distinct :SubselectColumnMapping[F, S, H, V] =
 			if (isDistinct) this else new SubselectComponentColumn(from, selectClause, true)
+
+		override def anchor(from :F) :SelectColumnAs[F, H, V] =
+			if (this.from.outer == from) this
+			else {
+				val rebase = this.from.asSubselectOf(from.asInstanceOf[F with FromSome]).asInstanceOf[S]
+				val h = selectClause.anchor(rebase)
+				if (h == selectClause) this else new SubselectComponentColumn[F, S, H, V](rebase, h, isDistinct)
+			}
 
 		override def expand[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< GlobalScope)
@@ -494,6 +530,14 @@ object SelectSQL {
 		override def distinct :SubselectSQL[F, V] =
 			if (isDistinct) this else new ArbitrarySubselect(from, selectClause, true)
 
+		override def anchor(from :F) :SubselectSQL[F, V] =
+			if (this.from.outer == from) this
+			else {
+				val rebase = this.from.asSubselectOf(from.asInstanceOf[F with FromSome]).asInstanceOf[S]
+				val h = selectClause.anchor(rebase)
+				if (h == selectClause) this else new ArbitrarySubselect[F, S, V](rebase, h, isDistinct)
+			}
+
 		override def expand[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ext :U ExpandedBy E, global :GlobalScope <:< GlobalScope)
 				:SubselectSQL[E, V] =
@@ -502,7 +546,7 @@ object SelectSQL {
 					type Ext = SubselectOf[E] //RowProduct { type Implicit = G }
 					implicit val expansion = ext.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
-					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
+					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched)
 					new ArbitrarySubselect[E, Ext, V](stretched, substitute(selectClause), isDistinct)
 
 				case empty :Dual => //this shouldn't happen, but lets play it safe
@@ -549,6 +593,14 @@ object SelectSQL {
 		override def distinct :SubselectColumn[F, V] =
 			if (isDistinct) this else new ArbitrarySubselectColumn(from, selectClause, true)
 
+		override def anchor(from :F) :SubselectColumn[F, V] =
+			if (this.from.outer == from) this
+			else {
+				val rebase = this.from.asSubselectOf(from.asInstanceOf[F with FromSome]).asInstanceOf[S]
+				val h = selectClause.anchor(rebase)
+				if (h == selectClause) this else new ArbitrarySubselectColumn[F, S, V](rebase, h, isDistinct)
+			}
+
 		override def expand[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ext :U ExpandedBy E, global :GlobalScope <:< GlobalScope)
 				:SubselectColumn[E, V] =
@@ -557,7 +609,7 @@ object SelectSQL {
 					type Ext = SubselectOf[E] //RowProduct { type Implicit = G }
 					implicit val expansion = ext.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
-					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
+					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched)
 					new ArbitrarySubselectColumn[E, Ext, V](stretched, substitute(selectClause), isDistinct)
 
 				case empty :Dual => //this shouldn't happen, but lets play it safe
@@ -601,6 +653,14 @@ object SelectSQL {
 		override def distinct :SubselectAs[F, IndexedMapping.Of[V]#Projection] =
 			if (isDistinct) this else new IndexedSubselect(from, selectClause, true)
 
+		override def anchor(from :F) :SubselectAs[F, IndexedMapping.Of[V]#Projection] =
+			if (this.from.outer == from) this
+			else {
+				val rebase = this.from.asSubselectOf(from.asInstanceOf[F with FromSome]).asInstanceOf[S]
+				val h = selectClause.anchor(rebase)
+				if (h == selectClause) this else new IndexedSubselect[F, S, V](rebase, h, isDistinct)
+			}
+
 		override def expand[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ext :U ExpandedBy E, global :GlobalScope <:< GlobalScope)
 				:SubselectAs[E, IndexedMapping.Of[V]#Projection] =
@@ -609,7 +669,7 @@ object SelectSQL {
 					type Ext = SubselectOf[E] //RowProduct { type Implicit = G }
 					implicit val expansion = ext.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
-					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
+					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched)
 					val indexed = substitute(selectClause).asInstanceOf[ListingValueSQL[Ext, LocalScope, V]]
 					new IndexedSubselect[E, Ext, V](stretched, indexed, isDistinct)
 
@@ -660,6 +720,14 @@ object SelectSQL {
 		override def distinct :SubselectColumnAs[F, IndexedMapping.Of[V]#Column, V] =
 			if (isDistinct) this else new SubselectIndexedColumn(from, selectClause, true)
 
+		override def anchor(from :F) :SubselectColumnAs[F, IndexedMapping.Of[V]#Column, V] =
+			if (this.from.outer == from) this
+			else {
+				val rebase = this.from.asSubselectOf(from.asInstanceOf[F with FromSome]).asInstanceOf[S]
+				val h = selectClause.anchor(rebase)
+				if (h == selectClause) this else new SubselectIndexedColumn[F, S, A, V](rebase, h, isDistinct)
+			}
+
 		override def expand[U <: F, E <: RowProduct]
 		                   (base :E)(implicit ext :U ExpandedBy E, global :GlobalScope <:< GlobalScope)
 				:SubselectColumnAs[E, IndexedMapping.Of[V]#Column, V] =
@@ -668,7 +736,7 @@ object SelectSQL {
 					type Ext = SubselectOf[E] //RowProduct { type Implicit = G }
 					implicit val expansion = ext.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
-					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched, ext.length, some.size)
+					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched)
 					val shift = selectClause.alias @: substitute(selectClause.column) :ListingColumn[Ext, LocalScope, A, V]
 					new SubselectIndexedColumn[E, Ext, A, V](stretched, shift, isDistinct)
 
@@ -761,7 +829,7 @@ trait SelectColumn[-F <: RowProduct, V]
 	override def one :ColumnSQL[F, GlobalScope, V] = to[V]
 
 	override def asGlobal :Option[SelectColumn[F, V]] = Some(this)
-	override def anchor(from :F) :SelectColumn[F, V] = this
+	override def anchor(from :F) :SelectColumn[F, V] //= this
 
 
 	override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :PartOf[U, E]) :SelectColumn[E, V]
@@ -899,8 +967,10 @@ object SelectColumn {
 trait SelectAs[-F <: RowProduct, H[A] <: MappingAt[A]]
 	extends MappingQuerySQL[F, H] with SelectSQL[F, H[Unit]#Subject]
 {
+//	override val selectClause :ComponentSQL[From, H]
 	override def distinct :SelectAs[F, H]
 
+	override def anchor(from :F) :SelectAs[F, H]
 	override def asGlobal :Option[SelectAs[F, H]] = Some(this)
 
 	override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SelectAs[E, H]
@@ -1037,9 +1107,13 @@ object SelectAs {
 trait SelectColumnAs[-F <: RowProduct, H[A] <: ColumnMapping[V, A], V]
 	extends ColumnMappingQuery[F, H, V] with SelectAs[F, H] with SelectColumn[F, V]
 {
+//	override val selectClause :ColumnComponentSQL[From, H, V]
+
 	override def distinct :SelectColumnAs[F, H, V]
 
 	override def asGlobal :Option[SelectColumnAs[F, H, V]] = Some(this)
+
+	override def anchor(from :F) :SelectColumnAs[F, H, V] //= this
 
 	override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SelectColumnAs[E, H, V]
 

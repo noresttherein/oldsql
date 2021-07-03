@@ -3,10 +3,9 @@ package net.noresttherein.oldsql.sql.mechanics
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, FromSome, GroupBy, GroupByClause, RowProduct}
+import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, AndBy, FromSome, GroupBy, GroupByClause, RowProduct}
 import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExpandingDecorator}
 import net.noresttherein.oldsql.sql.Expanded.ExpandedDecomposition
-import net.noresttherein.oldsql.sql.GroupBy.AndBy
 
 
 

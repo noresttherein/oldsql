@@ -2,7 +2,9 @@ package net.noresttherein.oldsql.sql.mechanics
 
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
+import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.{Adjoin, ColumnSQL, RowProduct, SQLExpression}
+import net.noresttherein.oldsql.sql.RowProduct.{As, NonEmptyFrom}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 
 
@@ -18,8 +20,12 @@ sealed abstract class MappingReveal[X[O] <: MappingAt[O], Y[O] <: U[O], +U[O] <:
 
 	def apply[F[M[O] <: MappingAt[O]]](thing :F[X]) :F[Y]
 
-	@inline final def join[L <: RowProduct, J[A <: L, B[O] <: MappingAt[O]]](join :L J X) : L J Y =
+	@inline final def join[L <: RowProduct, J[A <: L, B[O] <: MappingAt[O]]](join :L J X) :L J Y =
 		apply[({ type F[M[O] <: MappingAt[O]] = L J M })#F](join)
+
+	def alias[L <: RowProduct, J[A <: L, B[O] <: MappingAt[O]] <: NonEmptyFrom, N <: Label]
+	          (join :L J X As N) :L J Y As N =
+		apply[({ type F[M[O] <: MappingAt[O]] = L J M As N })#F](join)
 
 	def expr[L <: RowProduct, J[A <: L, B[O] <: MappingAt[O]] <: A Adjoin B, S >: LocalScope <: GlobalScope, T]
 	        (e :SQLExpression[L J X, S, T]) :SQLExpression[L J Y, S, T] =

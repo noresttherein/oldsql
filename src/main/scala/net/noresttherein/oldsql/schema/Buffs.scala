@@ -73,8 +73,8 @@ import net.noresttherein.oldsql.slang._
   * @author Marcin Mościcki
   */
 trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buffs[T]] with Serializable {
-	/** A zipper over this list: a sort of an immutable, bidirectional iterator which allows applying changes
-	  * to this instance at its current position (declaration).
+	/** A zipper over this list of buff declarations: a sort of an immutable, bidirectional iterator which allows
+	  * applying changes to this instance at its current position (declaration).
 	  */
 	def zipper :BuffsZipper[T] = new BuffsZipper(this)
 
@@ -662,7 +662,7 @@ object Buffs extends ImplicitBuffs {
 		def set(buffs :Buff[T]*) :BuffsZipper[T] =
 			new BuffsZipper(prefix, stack.inherited.declare(stack.tag, buffs :_*))
 
-		/** Replaces the whole suffix (all declarations starting from the current one to the outermost one.
+		/** Replaces the whole suffix (all declarations starting from the current one to the outermost one).
 		  * After the operation `stack` will equal `buffs`, while the prefix remains unchanged. */
 		def replace(buffs :Buffs[T]) :BuffsZipper[T] = new BuffsZipper(prefix, buffs)
 	}

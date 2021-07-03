@@ -90,8 +90,10 @@ trait CompositeSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends
 	}
 	protected[sql] def checkIfAnchored :Boolean = parts.forall(_.isAnchored)
 
+	override def isAnchored(from :F) :Boolean = parts.forall(_.isAnchored(from))
+
 	override def anchor(from :F) :SQLExpression[F, S, V] =
-		if (isAnchored) this else rephrase(SQLScribe.anchor(from))
+		if (isAnchored(from)) this else rephrase(SQLScribe.anchor(from))
 
 
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ExpressionVisitor[F, Y]) :Y[S, V] =
@@ -185,6 +187,7 @@ object CompositeSQL {
 		override def isGlobal :Boolean = value.isGlobal
 
 		override def isAnchored :Boolean = value.isAnchored
+		override def isAnchored(from :F) :Boolean = value.isAnchored(from)
 
 		override def anchor(from :F) :SQLExpression[F, S, V] = value.anchor(from) match {
 			case same if same eq value => this
@@ -236,6 +239,7 @@ object CompositeSQL {
 
 		override def isGlobal :Boolean = left.isGlobal && right.isGlobal
 		override def isAnchored :Boolean = left.isAnchored && right.isAnchored
+		override def isAnchored(from :F) :Boolean = left.isAnchored(from) && right.isAnchored(from)
 
 		override def anchor(from :F) :SQLExpression[F, S, V] = (left.anchor(from), right.anchor(from)) match {
 			case (l, r) if (l eq left) && (r eq right) => this
@@ -294,9 +298,9 @@ object CompositeSQL {
 //		override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](matcher :ColumnVisitor[F, Y]) :Y[S, X] =
 //			matcher.composite(this)
 
-		override def inParens[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-		                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-			("(" +: defaultSpelling(context, params)) + ")"
+		override def inParens[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                        (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+			("(" +: defaultSpelling(from, context, params)) + ")"
 	}
 
 
@@ -316,6 +320,7 @@ object CompositeSQL {
 
 			override def isGlobal :Boolean = value.isGlobal
 			override def isAnchored :Boolean = value.isAnchored
+			override def isAnchored(from :F) :Boolean = value.isAnchored(from)
 
 			override def anchor(form :F) :ColumnSQL[F, S, V] = value.anchor(form) match {
 				case same if same eq value => this
@@ -364,6 +369,7 @@ object CompositeSQL {
 
 			override def isGlobal :Boolean = left.isGlobal && right.isGlobal
 			override def isAnchored :Boolean = left.isAnchored && right.isAnchored
+			override def isAnchored(from :F) :Boolean = left.isAnchored(from) && right.isAnchored(from)
 
 			override def anchor(from :F) :ColumnSQL[F, S, V] = (left.anchor(from), right.anchor(from)) match {
 				case (l, r) if (l eq left) && (r eq right) => this

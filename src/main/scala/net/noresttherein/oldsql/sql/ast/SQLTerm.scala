@@ -5,15 +5,18 @@ import net.noresttherein.oldsql.collection.{ConstSeq, Opt, ReversedList}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.InseparableExpressionException
 import net.noresttherein.oldsql.morsels.generic.{Fixed, Self}
+import net.noresttherein.oldsql.pixies.RecordingPreparedStatement
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, ColumnWriteForm, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.FormBasedFactory
 import net.noresttherein.oldsql.schema.SQLReadForm.ReadFormBasedFactory
-import net.noresttherein.oldsql.sql.{ColumnSQL, GlobalBoolean, RowProduct, SQLBoolean, SQLExpression}
+import net.noresttherein.oldsql.slang.IterableExtension
+import net.noresttherein.oldsql.sql.{ColumnSQL, GlobalBoolean, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
+import net.noresttherein.oldsql.sql.SQLBoolean.{False, True}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.{CaseLiteral, False, LiteralVisitor, True}
+import net.noresttherein.oldsql.sql.ast.SQLLiteral.{CaseLiteral, LiteralVisitor}
 import net.noresttherein.oldsql.sql.ast.ColumnLiteral.{CaseColumnLiteral, ColumnLiteralVisitor}
 import net.noresttherein.oldsql.sql.ast.CompositeNull.{CaseCompositeNull, CompositeNullVisitor}
 import net.noresttherein.oldsql.sql.ast.SQLNull.{CaseNull, NullVisitor}
@@ -21,8 +24,9 @@ import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.ColumnTermVisitor
 import net.noresttherein.oldsql.sql.ast.SQLTerm.NativeColumnTerm.{CaseNativeColumnTerm, NativeColumnTermVisitor}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.NativeTerm.{CaseNative, NativeVisitor}
-import net.noresttherein.oldsql.sql.ast.SQLParameter.{CaseParameter, ParameterVisitor}
-import net.noresttherein.oldsql.sql.ast.SQLParameterColumn.{CaseParameterColumn, ParameterColumnVisitor}
+import net.noresttherein.oldsql.sql.ast.BoundParam.{CaseParameter, ParameterVisitor}
+import net.noresttherein.oldsql.sql.ast.BoundParamColumn.{CaseParameterColumn, ParameterColumnVisitor}
+import net.noresttherein.oldsql.sql.jdbc.PreparedStatementProxy
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLOrdering}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
@@ -42,6 +46,7 @@ trait SQLTerm[T] extends SQLExpression[RowProduct, GlobalScope, T] {
 	override def isGlobal = true
 	override def asGlobal :Option[GlobalSQL[RowProduct, T]] = Some(this)
 	override def isAnchored = true
+	override def isAnchored(from :RowProduct) = true
 	override def anchor(from :RowProduct) :SQLTerm[T] = this
 
 	override def basedOn[U <: RowProduct, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SQLTerm[T] = this
@@ -116,9 +121,9 @@ object SQLTerm {
 //		                    (matcher :ColumnVisitor[RowProduct, Y]) :Y[GlobalScope, T] =
 //			matcher.term(this)
 
-		override def inParens[P, E <: RowProduct](context :SQLContext, params :Parameterization[P, E])
-		                                         (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-			spelling(this :ColumnSQL[E, GlobalScope, T])(context, params)
+		override def inParens[P](from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+		                        (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+			spelling(this)(from, context, params)
 	}
 
 
@@ -138,7 +143,7 @@ object SQLTerm {
 
 		trait CaseColumnTerm[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchColumnTerm[F, Y] {
 			override def literal[X](e :ColumnLiteral[X]) :Y[GlobalScope, X] = term(e)
-			override def param[X](e :SQLParameterColumn[X]) :Y[GlobalScope, X] = term(e)
+			override def param[X](e :BoundParamColumn[X]) :Y[GlobalScope, X] = term(e)
 			override def sqlNull[X](e :SQLNull[X]) :Y[GlobalScope, X] = term(e)
 			override def native[X](e :NativeColumnTerm[X]) :Y[GlobalScope, X] = term(e)
 		}
@@ -160,17 +165,17 @@ object SQLTerm {
 		override def split(implicit scope :OperationType) :Seq[ColumnSQL[RowProduct, GlobalScope, _]] =
 			throw new InseparableExpressionException("Native term " + this + " cannot be split into columns.")
 
-		protected override def defaultSpelling[P, E <: RowProduct]
-		                                      (context :SQLContext, params :Parameterization[P, E])
-		                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-			SpelledSQL(sql, context, params)
+		protected override def defaultSpelling[P]
+		                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+		                       (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+			SpelledSQL(sql, context)
 
-		protected override def inlineSpelling[P, E <: RowProduct]
-		                                     (context :SQLContext, params :Parameterization[P, E])
-		                                     (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
+		protected override def explodedSpelling[P]
+		                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+		                       (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
 			readForm.readColumns match {
 				case 0 => Nil
-				case 1 => defaultSpelling(context, params)::Nil
+				case 1 => defaultSpelling(from, context, params)::Nil
 				case n => throw new InseparableExpressionException(this)
 			}
 
@@ -265,7 +270,7 @@ object SQLTerm {
 	}
 
 	trait CaseTerm[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends MatchTerm[F, Y] {
-		def param[X](e: SQLParameter[X]): Y[GlobalScope, X] = term(e)
+		def param[X](e: BoundParam[X]): Y[GlobalScope, X] = term(e)
 
 		def literal[X](e: SQLLiteral[X]): Y[GlobalScope, X] = term(e)
 
@@ -292,20 +297,21 @@ class SQLLiteral[T](val value :T)(implicit val form :SQLForm[T]) extends SQLTerm
 	                              (visitor: ExpressionVisitor[RowProduct, Y]): Y[GlobalScope, T] =
 		visitor.literal(this)
 
-	override def split(implicit scope :OperationType) :Seq[ColumnSQL[RowProduct, GlobalScope, _]] = //fixme:
+	override def split(implicit scope :OperationType) :Seq[ColumnSQL[RowProduct, GlobalScope, _]] =
 		throw new InseparableExpressionException("Multi column SQL literal " + this + " cannot be currently split.")
 
-	protected override def defaultSpelling[P, E <: RowProduct]
-	                                      (context :SQLContext, params :Parameterization[P, E])
-	                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		SpelledSQL(form.literal(value), context, params)
+	protected override def defaultSpelling[P]
+	                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+	                       (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		SpelledSQL(form.literal(value), context)
 
-	protected override def inlineSpelling[P, E <: RowProduct]
-	                                     (context :SQLContext, params :Parameterization[P, E])
-	                                     (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
-		readForm.readColumns match { //todo: make form.inlineLiteral return a seq
-			case 1 => defaultSpelling(context, params)::Nil
-			case n => throw new InseparableExpressionException(this)
+	protected override def explodedSpelling[P]
+	                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+	                       (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
+		readForm.readColumns match { //fixme: make form.inlineLiteral return a seq
+			case 0 => Nil
+			case 1 => defaultSpelling(from, context, params)::Nil
+			case _ => throw new InseparableExpressionException(this)
 		}
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[SQLLiteral[_]]
@@ -328,46 +334,6 @@ object SQLLiteral extends FormBasedFactory[Self, SQLLiteral, ColumnLiteral] {
 
 	protected override def generalResult[T :SQLForm](arg :T) :SQLLiteral[T] = new SQLLiteral(arg)
 	protected override def specificResult[T :ColumnForm](arg :T) :ColumnLiteral[T] = new ColumnLiteral(arg)
-
-
-
-	object True extends ColumnLiteral[Boolean](true) {
-		/** This literal upcast to `GlobalBoolean[F]`, useful for better type inference in fold-like scenarios. */
-		def apply[F <: RowProduct] :GlobalBoolean[F] = this
-
-		def unapply(expression :SQLExpression[Nothing, LocalScope, _]) :Boolean = expression match {
-			case SQLLiteral(v :Boolean) => v
-			case _ => false
-		}
-
-		override def &&[E <: RowProduct, O >: LocalScope <: GlobalScope]
-		               (other :ColumnSQL[E, O, Boolean])(implicit ev :Boolean =:= Boolean) :SQLBoolean[E, O] = other
-
-		override def ||[E <: RowProduct, O >: LocalScope <: GlobalScope]
-		               (other :ColumnSQL[E, O, Boolean])(implicit ev :Boolean =:= Boolean) :SQLBoolean[E, O] = this
-
-		override def toString = "True"
-	}
-
-
-	object False extends ColumnLiteral[Boolean](false) {
-		/** This literal upcast to `GlobalBoolean[F]`, useful for better type inference in fold-like scenarios. */
-		def apply[F <: RowProduct] :GlobalBoolean[F] = this
-
-		def unapply(expression :SQLExpression[Nothing, LocalScope, _]) :Boolean = expression match {
-			case SQLLiteral(v :Boolean) => !v
-			case _ => false
-		}
-
-		override def &&[E <: RowProduct, O >: LocalScope <: GlobalScope]
-		               (other :SQLBoolean[E, O])(implicit ev :Boolean =:= Boolean) :SQLBoolean[E, O] = this
-
-		override def ||[E <: RowProduct, O >: LocalScope <: GlobalScope]
-		               (other :SQLBoolean[E, O])(implicit ev :Boolean =:= Boolean) :SQLBoolean[E, O] = other
-
-		override def toString = "False"
-	}
-
 
 
 
@@ -453,45 +419,69 @@ object ColumnLiteral {
 
 
 
-class SQLParameter[T](val value :T, val name :Option[String] = None)(implicit val form :SQLForm[T])
+class BoundParam[T](val value :T, val name :Option[String] = None)(implicit val form :SQLForm[T])
 	extends SQLTerm[T]
 {
 	private[this] val constForm = SQLWriteForm.const[T](value)(form.writer)
-	def writeForm :SQLWriteForm[Unit] = constForm
-	override def readForm :SQLReadForm[T] = form.reader
+	def writeForm            :SQLWriteForm[Unit] = constForm
+	override def readForm    :SQLReadForm[T] = form.reader
 	override def groundValue :Opt[T] = Got(value)
+
+	private lazy val columns :Seq[BoundParamColumn[_]] = {
+		val columnValues = new RecordingPreparedStatement(form.writtenColumns)
+		form.set(columnValues, 1, value)
+		form.split.mapWithIndex { (i, form) =>
+			implicit val columnForm = form match {
+				case f :ColumnForm[Any @unchecked] => f
+				case other =>
+					val readForm = ColumnReadForm.const(columnValues.parameterType(i + 1), columnValues(i + 1))
+					other.asInstanceOf[ColumnWriteForm[Any]] <> readForm
+			}
+			BoundParamColumn(columnValues(i + 1), name.map(_ + "#" + i))
+		}
+	}
 
 
 	protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 	                              (visitor: ExpressionVisitor[RowProduct, Y]): Y[GlobalScope, T] =
 		visitor.param(this)
 
-	override def split(implicit scope :OperationType) :Seq[ColumnSQL[RowProduct, GlobalScope, _]] = //fixme:
-		throw new InseparableExpressionException("Multi column parameter " + this + " cannot be currently split.")
-
-	protected override def defaultSpelling[P, E <: RowProduct]
-	                                      (context :SQLContext, params :Parameterization[P, E])
-	                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		constForm.writtenColumns match {
-			case 0 => SpelledSQL(context, params)
-			case 1 => SpelledSQL("?", context, params :+ constForm)
-			case n => SpelledSQL(Iterator.fill(n)("?").mkString("(", ", ", ")"), context, params :+ constForm)
+	override def split(implicit scope :OperationType) :Seq[ColumnSQL[RowProduct, GlobalScope, _]] =
+		try { columns } catch {
+			case e :Exception => throw new InseparableExpressionException(
+				"Failed to split multi column parameter " + this + ": " + e.getMessage + ".", e
+			)
 		}
 
-	protected override def inlineSpelling[P, E <: RowProduct]
-	                                     (context :SQLContext, params :Parameterization[P, E])
-	                                     (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
-	{
-		val resultParams = params :+ constForm
-		List.fill(constForm.writtenColumns)(SpelledSQL("?", context, resultParams))
+	protected override def defaultSpelling[P]
+	                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+	                       (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		form.writtenColumns match {
+			case 0 => SpelledSQL(context)
+			case 1 => SpelledSQL("?", context, constForm)
+			case n => SpelledSQL(form.param, context, constForm)
+		}
+
+	protected override def explodedSpelling[P]
+	                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+	                       (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
+	try {
+		constForm.split.map { SpelledSQL("?", context, _) }
+	} catch { //fixme: this will work only if we don't reorder parameter expressions; two methods? seems too much for this case only.
+		case e :UnsupportedOperationException => form.writtenColumns match {
+			case 0 => Nil
+			case n =>
+				ReversedList.fill(n - 1)(SpelledSQL("?", context, SQLWriteForm.empty)) :+
+					SpelledSQL("?", context, constForm)
+		}
 	}
 
-//		override def sameAs(that :Any) :Boolean = that.isInstanceOf[SQLParameter[_]]
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[SQLParameter[_]]
+//		override def sameAs(that :Any) :Boolean = that.isInstanceOf[BoundParam[_]]
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[BoundParam[_]]
 
 	override def equals(that :Any) :Boolean = that match {
 		case self :AnyRef if self eq this => true
-		case p :SQLParameter[_] if canEqual(p) && p.canEqual(this) =>
+		case p :BoundParam[_] if canEqual(p) && p.canEqual(this) =>
 			name == p.name && value == p.value && form == p.form
 		case _ => false
 	}
@@ -504,33 +494,34 @@ class SQLParameter[T](val value :T, val name :Option[String] = None)(implicit va
 }
 
 
-object SQLParameter extends FormBasedFactory[Self, SQLParameter, SQLParameterColumn] {
 
-	def apply[T](form :SQLForm[T])(value :T) :SQLParameter[T] = new SQLParameter(value)(form)
+object BoundParam extends FormBasedFactory[Self, BoundParam, BoundParamColumn] {
+
+	def apply[T](form :SQLForm[T])(value :T) :BoundParam[T] = new BoundParam(value)(form)
 
 	def unapply[T](e :SQLExpression[Nothing, LocalScope, T]) :Opt[(T, Option[String])] = e match {
-		case param :SQLParameter[T @unchecked] => Got((param.value, param.name))
+		case param :BoundParam[T @unchecked] => Got((param.value, param.name))
 		case _ => Lack
 	}
 
 //		/** Provider of implicit converters `ParameterFactory[X]` from any Scala literal `X`
 //		  * with an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]/[[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]
-//		  * to an [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]]`[X]`/[[net.noresttherein.oldsql.sql.ast.SQLParameterColumn SQLParameterColumn]]`[X]`
+//		  * to an [[net.noresttherein.oldsql.sql.ast.BoundParam BoundParam]]`[X]`/[[net.noresttherein.oldsql.sql.ast.BoundParamColumn BoundParamColumn]]`[X]`
 //		  */
 
-	protected override def specificResult[X :ColumnForm](value :X) :SQLParameterColumn[X] = SQLParameterColumn(value)
-	protected override def generalResult[X :SQLForm](value :X) :SQLParameter[X] = SQLParameter(value)
+	protected override def specificResult[X :ColumnForm](value :X) :BoundParamColumn[X] = BoundParamColumn(value)
+	protected override def generalResult[X :SQLForm](value :X) :BoundParam[X] = BoundParam(value)
 
-	/** A factory lifting any literal `X` into an [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]]`[X]`
-	  * or its subclass [[net.noresttherein.oldsql.sql.ast.SQLParameterColumn SQLParameterColumn]]`[X]`,
+	/** A factory lifting any literal `X` into an [[net.noresttherein.oldsql.sql.ast.BoundParam BoundParam]]`[X]`
+	  * or its subclass [[net.noresttherein.oldsql.sql.ast.BoundParamColumn BoundParamColumn]]`[X]`,
 	  * depending on whether an implicit [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]
 	  * or [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] exists.
 	  */
-	type ParameterFactory[X, P <: SQLParameter[X]] = DedicatedFactory[X, X] { type Res = P }
+	type ParameterFactory[X, P <: BoundParam[X]] = DedicatedFactory[X, X] { type Res = P }
 
 
 	trait ParameterVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] extends ParameterColumnVisitor[F, Y] {
-		def param[X](e :SQLParameter[X]) :Y[GlobalScope, X]
+		def param[X](e :BoundParam[X]) :Y[GlobalScope, X]
 	}
 
 	type MatchParameter[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = CaseParameter[F, Y]
@@ -538,7 +529,7 @@ object SQLParameter extends FormBasedFactory[Self, SQLParameter, SQLParameterCol
 	trait CaseParameter[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]]
 		extends ParameterVisitor[F, Y] with CaseParameterColumn[F, Y]
 	{
-		override def param[X](e :SQLParameterColumn[X]) :Y[GlobalScope, X] = param(e :SQLParameter[X])
+		override def param[X](e :BoundParamColumn[X]) :Y[GlobalScope, X] = param(e :BoundParam[X])
 	}
 
 }
@@ -546,8 +537,8 @@ object SQLParameter extends FormBasedFactory[Self, SQLParameter, SQLParameterCol
 
 
 
-class SQLParameterColumn[T](param :T, name :Option[String] = None)(implicit override val form :ColumnForm[T])
-	extends SQLParameter[T](param, name) with ColumnTerm[T]
+class BoundParamColumn[T](param :T, name :Option[String] = None)(implicit override val form :ColumnForm[T])
+	extends BoundParam[T](param, name) with ColumnTerm[T]
 {
 	override val writeForm :ColumnWriteForm[Unit] = ColumnWriteForm.const(value)(form.writer)
 	override def readForm :ColumnReadForm[T] = form.reader
@@ -557,18 +548,18 @@ class SQLParameterColumn[T](param :T, name :Option[String] = None)(implicit over
 }
 
 
-object SQLParameterColumn {
-	def apply[T :ColumnForm](param :T, name :Option[String] = None) :SQLParameterColumn[T] =
-		new SQLParameterColumn[T](param, name)
+object BoundParamColumn {
+	def apply[T :ColumnForm](param :T, name :Option[String] = None) :BoundParamColumn[T] =
+		new BoundParamColumn[T](param, name)
 
 	def unapply[T](e :SQLExpression[Nothing, LocalScope, T]) :Opt[(T, Option[String])] = e match {
-		case param :SQLParameterColumn[T] => Got((param.value, param.name))
+		case param :BoundParamColumn[T] => Got((param.value, param.name))
 		case _ => Lack
 	}
 
 
 	trait ParameterColumnVisitor[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] {
-		def param[X](e :SQLParameterColumn[X]) :Y[GlobalScope, X]
+		def param[X](e :BoundParamColumn[X]) :Y[GlobalScope, X]
 	}
 
 	type MatchParameterColumn[+F <: RowProduct, +Y[-_ >: LocalScope <: GlobalScope, _]] = ParameterColumnVisitor[F, Y]
@@ -587,10 +578,35 @@ class CompositeNull[T] private[ast](implicit val form :SQLForm[T]) extends SQLTe
 
 	val writeForm :SQLWriteForm[Unit] = SQLWriteForm.none[T](form.writer)
 	override def readForm :SQLReadForm[T] = form.reader
-
 	override def groundValue :Opt[T] = form.nulls.toOption
-
 	override def isNull :GlobalBoolean[RowProduct] = True
+
+	private lazy val isNullLiteralSeq = try {
+		val literal = form.inlineNullLiteral
+		val seq = ConstSeq("null", form.writtenColumns)
+		(literal equalsIgnoreCase seq.mkString(", ")) || (literal equalsIgnoreCase seq.mkString(","))
+	} catch {
+		case e :Exception => false
+	}
+
+	private lazy val columns :Seq[SQLNull[_]] = form match {
+		case col :ColumnForm[T] => SQLNull(col)::Nil
+		case _ if form.writtenColumns == 0 => Nil
+		case _ =>
+			if (!isNullLiteralSeq)
+				throw new InseparableExpressionException(
+					"Cannot split composite null expression into separate columns: form's " + form +
+						" null literal is not SQL NULL(s): " + form.inlineNullLiteral + "."
+				)
+			form.split.map { form =>
+				val columnForm = form match {
+					case f :ColumnForm[Any @unchecked] => f
+					case other => //readForm doesn't matter, it won't be used, unless someone gets a reference for some other purpose
+						other.asInstanceOf[ColumnWriteForm[Any]] <> ColumnReadForm.none()
+				}
+				SQLNull(columnForm)
+			}
+	}
 
 	//consider: overriding and simplifying comparisons
 
@@ -604,55 +620,36 @@ class CompositeNull[T] private[ast](implicit val form :SQLForm[T]) extends SQLTe
 	                              (visitor :ExpressionVisitor[RowProduct, Y]) :Y[GlobalScope, T] =
 		visitor.sqlNull(this)
 
-	override def split(implicit scope :OperationType) :Seq[ColumnSQL[RowProduct, GlobalScope, _]] = {
-		groundValue.filter(_ != null).map { v => form match {
-			case col :ColumnForm[T @unchecked] => ReversedList :+ SQLNull(col)
-			case _ if form.writtenColumns == 0 => ReversedList.empty
-//				case _ => form.split.map(SQLNull(_))
-			case n => throw new InseparableExpressionException(
-				s"Cannot render individual $n column strings for 'null' value $v :$form (${form.inlineLiteral(v)})."
-			)
-		}} getOrElse (form match {
-			case col :ColumnForm[T @unchecked] => ReversedList :+ SQLNull(col)
-			case _ if form.writtenColumns == 0 => ReversedList.empty
-			case n =>
+	override def split(implicit scope :OperationType) :Seq[ColumnSQL[RowProduct, GlobalScope, _]] =
+		try { columns } catch {
+			case e :InseparableExpressionException => throw e
+			case e :Exception =>
 				throw new InseparableExpressionException(
-					s"Cannot render individual $n column strings for null value of $form: ${form.inlineNullLiteral}."
+					s"Cannot split composite null expression into separate columns: form $form cannot be split.", e
 				)
-		})
-	}
+		}
 
 
-	protected override def defaultSpelling[P, E <: RowProduct]
-	                                      (context :SQLContext, params :Parameterization[P, E])
-	                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-	{
-		val literal = groundValue.filter(_ != null).map(v => form.literal(v)) getOrElse form.nullLiteral
-		SpelledSQL(literal, context, params)
-	}
+	protected override def defaultSpelling[P]
+	                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+	                       (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		SpelledSQL(form.nullLiteral, context)
 
-	protected override def inlineSpelling[P, E <: RowProduct]
-	                                     (context :SQLContext, params :Parameterization[P, E])
-	                                     (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
-	{
-		val literals = groundValue.filter(_ != null).map { v => form.writtenColumns match {
+	protected override def explodedSpelling[P]
+	                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+	                       (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
+		form.writtenColumns match {
 			case 0 => Nil
-			case 1 => form.inlineLiteral(v)::Nil //todo: refactor the form method to return a sequence
-			case n => throw new InseparableExpressionException(
-				s"Cannot render individual column strings for 'null' value $v :$form (${form.inlineLiteral(v)})."
-			)
-		}} getOrElse (form.writtenColumns match {
-			case 0 => Nil
-			case 1 => form.inlineNullLiteral::Nil
-			case n if form.inlineNullLiteral.toLowerCase == Iterator.fill(n)("null").reduce(_ + ", " + _) =>
-				ConstSeq("null", n)
-			case n =>
-				throw new InseparableExpressionException(
-					s"Cannot render individual column strings for null value of $form: ${form.inlineNullLiteral}."
-				)
-		})
-		literals.map(SpelledSQL(_, context, params))
-	}
+			case 1 => SpelledSQL(form.inlineNullLiteral, context)::Nil
+			case _ =>
+				if (isNullLiteralSeq)
+					ConstSeq(SpelledSQL(spelling.NULL, context), form.writtenColumns)
+				else
+					throw new InseparableExpressionException(
+						"Cannot split composite null expression into separate columns: form's " + form +
+							" null literal is not SQL NULL(s): " + form.inlineNullLiteral + "."
+					)
+		}
 
 
 	override def sameAs(that :Any) :Boolean = that.isInstanceOf[CompositeNull[_]]

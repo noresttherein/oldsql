@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.RowProduct.NonEmptyFrom
-import net.noresttherein.oldsql.sql.ast.SQLParameter
+import net.noresttherein.oldsql.sql.ast.BoundParam
 import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits
 
 
@@ -15,11 +15,11 @@ import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits
   */
 package object lowercase extends SQLLiteralImplicits {
 
-	def param[T](value :T)(implicit factory :SQLParameter.Factory[T]) :factory.Res =
+	def param[T](value :T)(implicit factory :BoundParam.Factory[T]) :factory.Res =
 		factory(value)
 
-	implicit def param_?[T](value :T)(implicit factory :SQLParameter.Factory[T]) :boundParameterSQL[T, factory.Res] =
-		boundParameterSQL[T, factory.Res](value)(factory :SQLParameter.Factory[T] { type Res = factory.Res })
+	implicit def param_?[T](value :T)(implicit factory :BoundParam.Factory[T]) :boundParameterSQL[T, factory.Res] =
+		boundParameterSQL[T, factory.Res](value)(factory :BoundParam.Factory[T] { type Res = factory.Res })
 
 
 	type dual = Dual

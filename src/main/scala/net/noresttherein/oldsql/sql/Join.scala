@@ -11,20 +11,19 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf}
 import net.noresttherein.oldsql.schema.Table.StaticTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject
-import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.{InferAliasedSubject, InferSubject}
 import net.noresttherein.oldsql.sql.AndFrom.AndFromTemplate
 import net.noresttherein.oldsql.sql.Expanded.{AbstractExpanded, ExpandedComposition, ExpandedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.Join.{AbstractJoin, JoinComposition}
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, NonEmptyFrom, NonEmptyFromTemplate, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.SQLBoolean.True
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.{RelationSQL, TableSQL}
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.ast.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{RowProductVisitor, SpelledSQL, SQLScribe}
-import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext
+import net.noresttherein.oldsql.sql.mechanics.MappingReveal.BaseMappingSubject
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -43,6 +42,7 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 	override type Generalized >: Dealiased <: (left.Generalized JoinLike R) {
 		type Generalized <: thisClause.Generalized
+//		type Dealiased   >: Self <: Generalized
 		type Explicit    <: thisClause.Explicit
 		type Implicit    <: thisClause.Implicit
 		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
@@ -50,6 +50,9 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 	type Dealiased >: Self <: (left.Self JoinLike R) {
 		type Generalized = thisClause.Generalized
+//		type Dealiased  >: Self <: Generalized
+		type ParamsOnly  = thisClause.ParamsOnly
+		type LastParam   = thisClause.LastParam
 		type Params      = thisClause.Params
 		type FullRow     = thisClause.FullRow
 		type Explicit    = thisClause.Explicit
@@ -61,6 +64,9 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 	override type Self <: (left.Self JoinLike R) {
 		type Generalized = thisClause.Generalized
+//		type Dealiased  >: Self <: Generalized
+		type ParamsOnly  = thisClause.ParamsOnly
+		type LastParam   = thisClause.LastParam
 		type Params      = thisClause.Params
 		type FullRow     = thisClause.FullRow
 		type Explicit    = thisClause.Explicit
@@ -112,11 +118,16 @@ sealed trait JoinLike[+L <: RowProduct, R[O] <: MappingAt[O]]
 	  * level variant of the other `likeJoin` method which accepts a `Relation[T]`
 	  * @param left the ''from'' clause containing all relations preceding `right` in the new clause.
 	  * @param right a `RelationSQL[RowProduct AndFrom T, T, S, RowProduct AndFrom T]` representing the last joined relation.
-	  */
+	  */ //fixme: this allows includes/excludes on right, not only the table itself. Problematic semantics, complicates spelling
 	def likeJoin[F <: FromSome, T[O] <: BaseMapping[X, O], X]
 	            (left :F, right :LastTable[T, X])
 	            (filter :GlobalBoolean[left.Generalized GeneralizedJoin T]) :F LikeJoin T =
-		likeJoin(left, right, None)(filter)
+		if (right.includes.nonEmpty || right.excludes.nonEmpty)
+			throw new IllegalArgumentException(
+				"Cannot use a JoinedTable with non empty includes/excludes within a join: " + right + "."
+			)
+		else
+			likeJoin(left, right, None)(filter)
 
 	/** Creates a join of the same kind as this one between the `left` prefix clause and `right` relation given
 	  * as parameters, using the provided `filter` as the `condition` stored in the created join.
@@ -173,9 +184,7 @@ object JoinLike {
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
 	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
 	         (left :Table[L], right :Table[R])
-	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
-	                   castR :InferSubject[From[L], InnerJoin, R, RB, B])
-			:From[L] InnerJoin R =
+	         (implicit castL :BaseMappingSubject[L, LA, A], castR :BaseMappingSubject[R, RB, B]) :From[L] InnerJoin R =
 		InnerJoin(left, right)
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
@@ -197,10 +206,10 @@ object JoinLike {
 	  *               and conversions of associated classes between instances parameterized with the more generic `R`
 	  *               and its narrowed down form of `T` with the required upper bound of `BaseMapping`.
 	  * @return an `L InnerJoin R`.
-	  */
+	  */ //todo: remove abstract type projection
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
-	         (implicit cast :InferSubject[L, InnerJoin, R, T, S]) :L InnerJoin R =
+	         (implicit cast :BaseMappingSubject[R, T, S]) :L InnerJoin R =
 		InnerJoin(left, right, filter)
 
 
@@ -305,9 +314,15 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 
 	override def bind(param :LastParam) :AppliedParam = {
 		val l = left.bind(param)
-		val unfiltered = withLeft[l.type](l)(True)
-		val substitute = SQLScribe.applyParam(self, unfiltered.generalized, param, lastParamOffset)
-		withLeft[l.type](l)(substitute(condition))
+		if (condition == True)
+			withLeft[l.type](l)(True)
+		else if (lastParamOffset < 0) //last param is in an aggregated from clause - not a relation available to condition
+			withLeft[l.type](l)(condition.asInstanceOf[GlobalBoolean[GeneralizedLeft[l.Generalized]]])
+		else {
+			val unfiltered = withLeft[l.type](l)(True)
+			val substitute = SQLScribe.applyParam(self, unfiltered.generalized, param)
+			withLeft[l.type](l)(substitute(condition))
+		}
 	}
 
 	override def bind(params :Params) :Paramless = {
@@ -322,7 +337,7 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 	override type JoinedWith[+P <: RowProduct, +J[+K <: P, T[O] <: MappingAt[O]] <: K NonParam T] =
 		WithLeft[left.JoinedWith[P, J]]
 
-	override type JoinedWithSubselect[+P <: NonEmptyFrom] = WithLeft[left.JoinedWithSubselect[P]]
+	override type SelectedFrom[+P <: NonEmptyFrom] = WithLeft[left.SelectedFrom[P]]
 
 
 	override type Explicit = left.Explicit Join R
@@ -346,16 +361,15 @@ sealed trait Join[+L <: FromSome, R[O] <: MappingAt[O]]
 		//todo: refactor joins so they take functions creating conditions and move this to the constructor
 		//  this would however introduce problem with JoinLike.as: one of the relation becoming unavailable
 		val unfiltered = withLeft[newLeft.Generalized](newLeft.generalized)(True)
-		val substitute = SQLScribe.shiftBack[Generalized, newLeft.Generalized Join R](
-			generalized, unfiltered, expansion.length, size + 1
-		)
+		val substitute = SQLScribe.shiftBack[Generalized, newLeft.Generalized Join R](generalized, unfiltered)
 		withLeft[newLeft.type](newLeft)(substitute(condition))
 	}
 
 
-	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext = alias match {
-		case "" => left.spellingContext.subselect("")
-		case name => spelling.table(right, name)(left.spellingContext, parameterization).context
+	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext[Any] = aliasOpt match {
+		case Some("") => left.spellingContext.join("") //must refer to column names directly
+		case Some(alias) => spelling.table(right, alias)(left.spellingContext, parameterization).context.reset()
+		case _ => spelling.table(right, name)(left.spellingContext, parameterization).context.reset()
 	}
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Join.*]
@@ -393,9 +407,7 @@ object Join {
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
 	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
 	         (left :Table[L], right :Table[R])
-	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
-	                   castR :InferSubject[From[L], InnerJoin, R, RB, B])
-			:From[L] InnerJoin R =
+	         (implicit castL :BaseMappingSubject[L, LA, A], castR :BaseMappingSubject[R, RB, B]) :From[L] InnerJoin R =
 		InnerJoin(left, right)
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
@@ -420,7 +432,7 @@ object Join {
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
-	         (implicit cast :InferSubject[L, InnerJoin, R, T, S]) :L InnerJoin R =
+	         (implicit cast :BaseMappingSubject[R, T, S]) :L InnerJoin R =
 		InnerJoin(left, right, filter)
 
 
@@ -488,6 +500,8 @@ object Join {
 	{ thisClause =>
 		override val last :TableSQL[FromLast, R, S, FromLast]
 		protected override def lastRelation :TableSQL[FromLast, R, S, FromLast] = last
+		override lazy val tableStack = super.tableStack.toIndexedSeq
+		override lazy val fullTableStack = super.fullTableStack.toIndexedSeq
 
 		override type WithLeft[+F <: FromSome] = F LikeJoin R As Alias
 //		override type GeneralizedRight[T[O] <: MappingAt[O]] = L GeneralizedJoin T
@@ -509,8 +523,8 @@ object Join {
 		override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) :JoinedWith[F, firstJoin.LikeJoin] =
 			withLeft(left.joinedWith(prefix, firstJoin))(condition :GlobalBoolean[left.Generalized GeneralizedJoin R])
 
-		override def joinedWithSubselect[F <: NonEmptyFrom](prefix :F) :JoinedWithSubselect[F] =
-			withLeft(left.joinedWithSubselect(prefix))(condition :GlobalBoolean[left.Generalized GeneralizedJoin R])
+		override def selectedFrom[F <: NonEmptyFrom](prefix :F) :SelectedFrom[F] =
+			withLeft(left.selectedFrom(prefix))(condition :GlobalBoolean[left.Generalized GeneralizedJoin R])
 
 		override def appendedTo[P <: FromClause](prefix :P) :JoinedWith[P, NonParam] =
 			withLeft(left.appendedTo(prefix))(condition :GlobalBoolean[left.Generalized GeneralizedJoin R])
@@ -542,9 +556,9 @@ sealed trait InnerJoin[+L <: FromSome, R[O] <: MappingAt[O]]
 		InnerJoin(left, right, alias)(filter)
 
 
-	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
-			:SpelledSQL[Params, Generalized] =
-		spelling.join(this, spelling.INNER_JOIN)(context)
+	protected override def defaultSpelling[P](context :SQLContext[P], params :Parameterization[P, Generalized])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		spelling.join(this, spelling.INNER_JOIN)(context, params)
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[InnerJoin.*]
@@ -586,10 +600,8 @@ object InnerJoin {
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
 	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
 	         (left :Table[L], right :Table[R])
-	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
-	                   castR :InferSubject[From[L], InnerJoin, R, RB, B])
-			:From[L] InnerJoin R =
-		castR(apply(From(left), LastTable[RB, B](castR(right)), None)(True))
+	         (implicit castL :BaseMappingSubject[L, LA, A], castR :BaseMappingSubject[R, RB, B]) :From[L] InnerJoin R =
+		castR.back.join(apply(From(left), LastTable[RB, B](castR(right)), None)(True))
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -613,8 +625,8 @@ object InnerJoin {
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
-	         (implicit cast :InferSubject[L, InnerJoin, R, T, S]) :L InnerJoin R =
-		cast(apply(left, LastTable[T, S](cast(right)), None)(cast(filter)))
+	         (implicit cast :BaseMappingSubject[R, T, S]) :L InnerJoin R =
+		cast.back.join(apply(left, LastTable[T, S](cast(right)), None)(cast.column(filter)))
 
 	/** Create a cross join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -637,8 +649,8 @@ object InnerJoin {
 	  */
 	def apply[L <: FromSome, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :StaticTable[N, R])
-	         (implicit cast :InferAliasedSubject[L, InnerJoin, R, T, S, N]) :L InnerJoin R As N =
-		cast(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
+	         (implicit cast :BaseMappingSubject[R, T, S]) :L InnerJoin R As N =
+		cast.back.alias(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
 
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
@@ -734,9 +746,9 @@ sealed trait OuterJoin[+L <: FromSome, R[O] <: MappingAt[O]]
 		OuterJoin(left, right, alias)(filter)
 
 
-	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
-			:SpelledSQL[Params, Generalized] =
-		spelling.join(this, spelling.OUTER_JOIN)(context)
+	protected override def defaultSpelling[P](context :SQLContext[P], params :Parameterization[P, Generalized])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		spelling.join(this, spelling.OUTER_JOIN)(context, params)
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[OuterJoin.*]
@@ -778,10 +790,8 @@ object OuterJoin {
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
 		      R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
 	         (left :Table[L], right :Table[R])
-	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
-	                   castR :InferSubject[From[L], OuterJoin, R, RB, B])
-			:From[L] OuterJoin R =
-		castR(apply(From(left), LastTable[RB, B](castR(right)), None)(True))
+	         (implicit castL :BaseMappingSubject[L, LA, A], castR :BaseMappingSubject[R, RB, B]) :From[L] OuterJoin R =
+		castR.back.join(apply(From(left), LastTable[RB, B](castR(right)), None)(True))
 
 	/** Create an outer join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -805,8 +815,8 @@ object OuterJoin {
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
-	         (implicit cast :InferSubject[L, OuterJoin, R, T, S]) :L OuterJoin R =
-		cast(apply(left, LastTable[T, S](cast(right)), None)(cast(filter)))
+	         (implicit cast :BaseMappingSubject[R, T, S]) :L OuterJoin R =
+		cast.back.join(apply(left, LastTable[T, S](cast(right)), None)(cast.column(filter)))
 
 	/** Create an outer join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -829,8 +839,8 @@ object OuterJoin {
 	  */
 	def apply[L <: FromSome, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :StaticTable[N, R])
-	         (implicit cast :InferAliasedSubject[L, OuterJoin, R, T, S, N]) :L OuterJoin R As N =
-		cast(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
+	         (implicit cast :BaseMappingSubject[R, T, S]) :L OuterJoin R As N =
+		cast.back.alias(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
 
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
@@ -928,9 +938,9 @@ sealed trait LeftJoin[+L <: FromSome, R[O] <: MappingAt[O]]
 		LeftJoin(left, right, alias)(filter)
 
 
-	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
-			:SpelledSQL[Params, Generalized] =
-		spelling.join(this, spelling.LEFT_JOIN)(context)
+	protected override def defaultSpelling[P](context :SQLContext[P], params :Parameterization[P, Generalized])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		spelling.join(this, spelling.LEFT_JOIN)(context, params)
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[LeftJoin.*]
@@ -972,10 +982,8 @@ object LeftJoin {
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
 	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
 	         (left :Table[L], right :Table[R])
-	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
-	                   castR :InferSubject[From[L], LeftJoin, R, RB, B])
-			:From[L] LeftJoin R =
-		castR(apply(From(left), LastTable[RB, B](castR(right)), None)(True))
+	         (implicit castL :BaseMappingSubject[L, LA, A], castR :BaseMappingSubject[R, RB, B]) :From[L] LeftJoin R =
+		castR.back.join(apply(From(left), LastTable[RB, B](castR(right)), None)(True))
 
 	/** Create a left outer join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -999,8 +1007,8 @@ object LeftJoin {
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
-	         (implicit cast :InferSubject[L, LeftJoin, R, T, S]) :L LeftJoin R =
-		cast(apply(left, LastTable[T, S](cast(right)), None)(cast(filter)))
+	         (implicit cast :BaseMappingSubject[R, T, S]) :L LeftJoin R =
+		cast.back.join(apply(left, LastTable[T, S](cast(right)), None)(cast.column(filter)))
 
 	/** Create a left outer join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -1023,8 +1031,8 @@ object LeftJoin {
 	  */
 	def apply[L <: FromSome, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :StaticTable[N, R])
-	         (implicit cast :InferAliasedSubject[L, LeftJoin, R, T, S, N]) :L LeftJoin R As N =
-		cast(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
+	         (implicit cast :BaseMappingSubject[R, T, S]) :L LeftJoin R As N =
+		cast.back.alias(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
 
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
@@ -1121,9 +1129,9 @@ sealed trait RightJoin[+L <: FromSome, R[O] <: MappingAt[O]]
 		RightJoin(left, right, alias)(filter)
 
 
-	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
-			:SpelledSQL[Params, Generalized] =
-		spelling.join(this, spelling.RIGHT_JOIN)(context)
+	protected override def defaultSpelling[P](context :SQLContext[P], params :Parameterization[P, Generalized])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		spelling.join(this, spelling.RIGHT_JOIN)(context, params)
 
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[RightJoin.*]
@@ -1165,10 +1173,8 @@ object RightJoin {
 	def apply[L[O] <: MappingAt[O], LA[O] <: BaseMapping[A, O], A,
 	          R[O] <: MappingAt[O], RB[O] <: BaseMapping[B, O], B]
 	         (left :Table[L], right :Table[R])
-	         (implicit castL :JoinedRelationSubject[From, L, LA, MappingOf[A]#TypedProjection],
-	                   castR :InferSubject[From[L], RightJoin, R, RB, B])
-			:From[L] RightJoin R =
-		castR(apply(From(left), LastTable[RB, B](castR(right)), None)(True))
+	         (implicit castL :BaseMappingSubject[L, LA, A], castR :BaseMappingSubject[R, RB, B]) :From[L] RightJoin R =
+		castR.back.join(apply(From(left), LastTable[RB, B](castR(right)), None)(True))
 
 	/** Create a right outer join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -1192,8 +1198,8 @@ object RightJoin {
 	  */
 	def apply[L <: FromSome, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :Table[R], filter :GlobalBoolean[L#Generalized Join R] = True)
-	         (implicit cast :InferSubject[L, RightJoin, R, T, S]) :L RightJoin R =
-		cast(apply(left, LastTable[T, S](cast(right)), None)(cast(filter)))
+	         (implicit cast :BaseMappingSubject[R, T, S]) :L RightJoin R =
+		cast.back.join(apply(left, LastTable[T, S](cast(right)), None)(cast.column(filter)))
 
 	/** Create a right outer join between the `left` side, given as a non empty clause/list of relations,
 	  * and the the `right` relation representing the last joined table, relation or some temporary surrogate mapping.
@@ -1216,8 +1222,8 @@ object RightJoin {
 	  */
 	def apply[L <: FromSome, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (left :L, right :StaticTable[N, R])
-	         (implicit cast :InferAliasedSubject[L, RightJoin, R, T, S, N]) :L RightJoin R As N =
-		cast(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
+	         (implicit cast :BaseMappingSubject[R, T, S]) :L RightJoin R As N =
+		cast.back.alias(apply(left, LastTable[T, S](cast(right)), Some(right.name))(True))
 
 
 	private[sql] def apply[L <: FromSome, R[O] <: BaseMapping[S, O], S, A <: Label]
@@ -1320,7 +1326,7 @@ object RightJoin {
   * having access to the ''from'' clause relations of the other. On the other hand, clauses without a `Subselect`
   * in their concrete definition are most often called ''outer'' clauses, after the independent,
   * 'outer' select expressions which can be based on them. All subselect clauses conform to
-  * [[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]], providing the type is instantiated at least
+  * [[net.noresttherein.oldsql.sql.RowProduct.SelectedFrom SelectedFrom]], providing the type is instantiated at least
   * to the point of the last `Subselect` and no
   * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]]/[[net.noresttherein.oldsql.sql.GroupParam GroupParam]] join
   * is present to its right. Additionally, direct subselect clauses of some outer clause `F` (that is,
@@ -1337,10 +1343,10 @@ object RightJoin {
   * a subselect clause, which will make it impossible to construct
   * a [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]] based on it.
   *
-  * @tparam F the type of outer select's ''from'' clause.
+  * @tparam F the type of outer ''select'' 's ''from'' clause.
   * @tparam T the right side of this join - the first relation of the ''from'' clause of the represented subselect.
   *
-  * @see [[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom]]
+  * @see [[net.noresttherein.oldsql.sql.RowProduct.SelectedFrom]]
   * @see [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf]]
   * @see [[net.noresttherein.oldsql.sql.RowProduct.TopFrom]]
   */ //consider: renaming to SelectFrom. Could be used as a join between With clause and first select. Then DirectSubselect can be Subselect
@@ -1374,8 +1380,8 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 	                     (left :L, right :Table[R])(filter :GlobalBoolean[left.Generalized Subselect R]) :L Subselect R =
 		Subselect(left, LastTable[R, X](right), None)(filter)
 
-	override def likeJoin[P <: NonEmptyFrom, S <: FromSome](left :P, right :S) :right.JoinedWithSubselect[P] =
-		right.joinedWithSubselect(left)
+	override def likeJoin[P <: NonEmptyFrom, S <: FromSome](left :P, right :S) :right.SelectedFrom[P] =
+		right.selectedFrom(left)
 
 
 	override type AppliedParam = WithLeft[left.AppliedParam]
@@ -1384,9 +1390,15 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 
 	override def bind(param :LastParam) :AppliedParam = {
 		val l = left.bind(param)
-		val unfiltered = withLeft[l.type](l)(True)
-		val substitute = SQLScribe.applyParam(self, unfiltered.generalized, param, lastParamOffset)
-		withLeft[l.type](l)(substitute(condition))
+		if (condition == True)
+			withLeft[l.type](l)(True)
+		else if (lastParamOffset < 0) //last param is in an aggregated from clause - not a relation available to condition
+			withLeft[l.type](l)(condition.asInstanceOf[GlobalBoolean[GeneralizedLeft[l.Generalized]]])
+		else {
+			val unfiltered = withLeft[l.type](l)(True)
+			val substitute = SQLScribe.applyParam(self, unfiltered.generalized, param)
+			withLeft[l.type](l)(substitute(condition))
+		}
 	}
 
 	override def bind(params :Params) :Paramless = {
@@ -1418,7 +1430,7 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 	override type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] =
 		WithLeft[left.JoinedWith[P, J]]
 
-	override type JoinedWithSubselect[+P <: NonEmptyFrom] = WithLeft[left.JoinedWithSubselect[P]]
+	override type SelectedFrom[+P <: NonEmptyFrom] = WithLeft[left.SelectedFrom[P]]
 
 
 
@@ -1444,7 +1456,7 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 	{
 		//todo: refactor joins so they take functions creating conditions and move this to the constructor
 		val unfiltered = withLeft[newOuter.type](newOuter)(True)
-		val substitute = SQLScribe.shiftBack(generalized, unfiltered.generalized, expansion.length, 1)
+		val substitute = SQLScribe.shiftBack(generalized, unfiltered.generalized)
 		withLeft[newOuter.type](newOuter)(substitute(condition))
 	}
 
@@ -1452,17 +1464,18 @@ sealed trait Subselect[+F <: NonEmptyFrom, T[O] <: MappingAt[O]]
 	override def withClause :WithClause = table.withClause ++ condition.withClause
 
 
-	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
-		:SpelledSQL[Params, Generalized] =
+	protected override def defaultSpelling[P](context :SQLContext[P], params :Parameterization[P, Generalized])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
 	{
-		val aliased = spelling.table(right, aliasOpt)(context.subselect, parameterization)
+		val aliased = spelling.table(right, aliasOpt)(context.subselect, params)
 		val sql = (spelling.FROM + " ") +: aliased
-		if (condition == True) sql else sql && spelling.inWhere(filter)
+		if (condition == True) sql else sql && (spelling.inWhere(filter)(self, _, params))
 	}
 
-	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext = alias match {
-		case "" => left.spellingContext.subselect("")
-		case name => spelling.table(right, name)(left.spellingContext.subselect, parameterization).context
+	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext[Any] = aliasOpt match {
+		case Some("") => left.spellingContext.subselect("") //must refer to column names directly
+		case Some(alias) => spelling.table(right, alias)(left.spellingContext.subselect, parameterization).context.reset()
+		case _ => spelling.table(right, name)(left.spellingContext.subselect, parameterization).context.reset()
 	}
 
 
@@ -1507,8 +1520,8 @@ object Subselect {
 	  */
 	def apply[L <: NonEmptyFrom, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (outer :L, first :Table[R], filter :GlobalBoolean[L#Generalized Subselect R] = True)
-	         (implicit cast :InferSubject[L, Subselect, R, T, S]) :L Subselect R =
-		cast(Subselect[L, T, S, Nothing](outer, LastTable[T, S](cast(first)), None)(cast(filter)))
+	         (implicit cast :BaseMappingSubject[R, T, S]) :L Subselect R =
+		cast.back.join(Subselect[L, T, S, Nothing](outer, LastTable[T, S](cast(first)), None)(cast.column(filter)))
 
 	/** Create a ''from'' clause of a subselect of a select with `outer` as its ''from'' clause, using the given
 	  * relation `first` as the sole member of its (actual) ''from'' clause. The string literal with the name 
@@ -1536,8 +1549,8 @@ object Subselect {
 	  */
 	def apply[L <: NonEmptyFrom, N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 	         (outer :L, first :StaticTable[N, R])
-	         (implicit cast :InferAliasedSubject[L, Subselect, R, T, S, N]) :L Subselect R As N =
-		cast(apply(outer, LastTable[T, S](cast(first)), Some(first.name))(True))
+	         (implicit cast :BaseMappingSubject[R, T, S]) :L Subselect R As N =
+		cast.back.alias(apply(outer, LastTable[T, S](cast(first)), Some(first.name))(True))
 
 
 
@@ -1578,8 +1591,8 @@ object Subselect {
 			override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) =
 				withLeft(left.joinedWith(prefix, firstJoin))(condition :GlobalBoolean[left.Generalized Subselect R])
 
-			override def joinedWithSubselect[F <: NonEmptyFrom](prefix :F) =
-				withLeft(left.joinedWithSubselect(prefix))(condition :GlobalBoolean[left.Generalized Subselect R])
+			override def selectedFrom[F <: NonEmptyFrom](prefix :F) =
+				withLeft(left.selectedFrom(prefix))(condition :GlobalBoolean[left.Generalized Subselect R])
 
 			override def appendedTo[P <: FromClause](prefix :P) =
 				withLeft(left.appendedTo(prefix))(condition :GlobalBoolean[left.Generalized Subselect R])

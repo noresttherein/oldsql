@@ -10,10 +10,10 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.FromClause.FromClauseTemplate
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, JoinedMappings, NonEmptyFrom, PartOf, PrefixOf}
+import net.noresttherein.oldsql.sql.SQLBoolean.True
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
 import net.noresttherein.oldsql.sql.ast.RelationSQL
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
 import net.noresttherein.oldsql.sql.ast.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{RowProductVisitor, SpelledSQL}
@@ -104,7 +104,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	                    (target :E)(implicit expansion :RowProduct ExpandedBy E) :ChainTuple[E, GlobalScope, @~] =
 		ChainTuple.EmptyChain
 
-	override def fullTableStack :LazyList[RelationSQL.AnyIn[RowProduct]] = LazyList.empty
+	override def fullTableStack :Seq[RelationSQL.AnyIn[RowProduct]] = Nil
 
 	override def fullTableStack[E <: RowProduct]
 	                           (target :E)(implicit expansion :RowProduct ExpandedBy E) :LazyList[RelationSQL.AnyIn[E]] =
@@ -133,10 +133,10 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 
 	override def joinedWith[F <: FromSome](prefix :F, firstJoin :Join.*) :F = prefix
 
-	override type JoinedWithSubselect[+P <: NonEmptyFrom] = Nothing
+	override type SelectedFrom[+P <: NonEmptyFrom] = Nothing
 
-	override def joinedWithSubselect[F <: NonEmptyFrom](prefix :F) :Nothing =
-		throw new UnsupportedOperationException(s"Dual.joinedWithSubselect($prefix)")
+	override def selectedFrom[F <: NonEmptyFrom](prefix :F) :Nothing =
+		throw new UnsupportedOperationException(s"Dual.selectedFrom($prefix)")
 
 	override def appendedTo[P <: FromClause](prefix :P) :P = prefix
 
@@ -171,7 +171,7 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	                (target :E)(implicit expansion :RowProduct ExpandedBy E) :ChainTuple[E, GlobalScope, @~] =
 		ChainTuple.EmptyChain
 
-	override def tableStack :LazyList[RelationSQL.AnyIn[RowProduct]] = LazyList.empty
+	override def tableStack :Seq[RelationSQL.AnyIn[RowProduct]] = Nil
 
 	override def tableStack[E <: RowProduct]
 	             (target :E)(implicit expansion :RowProduct ExpandedBy E) :LazyList[RelationSQL.AnyIn[E]] =
@@ -224,14 +224,22 @@ sealed class Dual private (override val filter :GlobalBoolean[RowProduct])
 	override def collect[X](fun :PartialFunction[SQLExpression.*, X]) :Seq[X] = filter.collect(fun)
 
 
-	protected override def defaultSpelling(context :SQLContext)
-	                                      (implicit spelling :SQLSpelling) :SpelledSQL[@~, RowProduct] =
+	protected override def defaultSpelling[P](context :SQLContext[P], params :Parameterization[P, RowProduct])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
 		if (filter == True) spelling.emptyFrom(context)
-		else spelling.emptyFrom(context) && (spelling(filter)(_, _))
+		else spelling.emptyFrom(context) && (spelling(filter)(this, _, params))
 
-	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext = spelling.newContext
+	override def spellingContext(implicit spelling :SQLSpelling) :SQLContext[Any] = spelling.newContext
 
 	override def parameterization :Parameterization[@~, Dual] = Parameterization.paramless[Dual]
+
+	protected override def groupingSpellingContext[P]
+	                       (position :Int, context :SQLContext[P], params :Parameterization[P, RowProduct])
+			:Nothing =
+		throw new IndexOutOfBoundsException(
+			"Cannot return GroupingSpellingContext for relation #" + position + " in " + this + "."
+		)
+
 
 
 	protected override def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.dual(this)

@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.Mapping.ColumnFilter.AllColumns
 import net.noresttherein.oldsql.schema.Mapping.{Component, _}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
-import net.noresttherein.oldsql.sql.RowProduct.{ParamSource, RowValues, SelectFrom, SubselectFrom, TableFormula}
+import net.noresttherein.oldsql.sql.RowProduct.{ParamSource, RowValues, SelectFrom, SelectedFrom, TableFormula}
 import net.noresttherein.oldsql.sql.SQLFormula.{BooleanFormula, CaseFormula, Formula, FormulaMatcher}
 import net.noresttherein.oldsql.sql.SQLMapper.SQLRewriter
 import net.noresttherein.oldsql.sql.SQLTuple.CaseTuple
@@ -126,20 +126,20 @@ object SelectFormula {
 
 
 
-	def subselect[F <: RowProduct, S <: SubselectFrom[F], V](parent :F, from :S, header :SQLFormula[S, V]) :SubselectFormula[F, S, V] =
+	def subselect[F <: RowProduct, S <: SelectedFrom[F], V](parent :F, from :S, header :SQLFormula[S, V]) :SubselectFormula[F, S, V] =
 		subselect[F, S, V](from, header)
 
-	def subselect[F <: RowProduct, S <: SubselectFrom[F], V](from :S, header :SQLFormula[S, V]) :SubselectFormula[F, S, V] =
+	def subselect[F <: RowProduct, S <: SelectedFrom[F], V](from :S, header :SQLFormula[S, V]) :SubselectFormula[F, S, V] =
 		header.ifSubclass[ComponentFormula[S, Mapping, Mapping[V]]] {
 			comp => subselect[F, S, Mapping[V]](from, comp)
 		} getOrElse
 			new ArbitrarySelectFormula[F, S, V](from, header)
 
-	def subselect[F <: RowProduct, S <: SubselectFrom[F], H <: Mapping]
+	def subselect[F <: RowProduct, S <: SelectedFrom[F], H <: Mapping]
 	             (from :S, header :ComponentFormula[S, _ <: Mapping, H]) :SubselectMapping[F, S, H] =
 		new SelectComponentFormula[F, S, H](from, header) with SubselectMapping[F, S, H]
 
-	def subselect[F <: RowProduct, S <: SubselectFrom[F], H <: Mapping]
+	def subselect[F <: RowProduct, S <: SelectedFrom[F], H <: Mapping]
 	             (parent :F, from :S, header :ComponentFormula[S, _ <: Mapping, H]) :SubselectMapping[F, S, H] =
 		subselect[F, S, H](from, header)
 
@@ -174,7 +174,7 @@ object SelectFormula {
 	  * @tparam O marker trait serving as a unique alias for different members of a FROM clause.
 	  * @tparam V the type of the scala value selected by this subselect.
 	  */
-	trait SubselectFormula[-F <: RowProduct, S <: SubselectFrom[F], O, V] extends SelectFormula[F, O, V] {
+	trait SubselectFormula[-F <: RowProduct, S <: SelectedFrom[F], O, V] extends SelectFormula[F, O, V] {
 		type From = S
 
 		override def applyTo[Y[+X]](matcher: FormulaMatcher[F, Y]): Y[Rows[V]] = matcher.subselect(this)
@@ -188,7 +188,7 @@ object SelectFormula {
 		override def applyTo[Y[+X]](matcher: FormulaMatcher[RowProduct, Y]): Y[Rows[V]] = matcher.select(this)
 	}
 
-	trait SubselectMapping[-F <: RowProduct, S <: SubselectFrom[F], H <: Mapping]
+	trait SubselectMapping[-F <: RowProduct, S <: SelectedFrom[F], H <: Mapping]
 		extends SelectAs[F, H] with SubselectFormula[F, S, H#Owner, H#Subject]
 
 	trait SelectMapping[F <: SelectFrom, H <: Mapping]
@@ -196,7 +196,7 @@ object SelectFormula {
 
 
 
-	private class SelectComponentFormula[-F <: RowProduct, S <: SubselectFrom[F], T <: Component[O, E], H <: Component[O, V], O, E, V]
+	private class SelectComponentFormula[-F <: RowProduct, S <: SelectedFrom[F], T <: Component[O, E], H <: Component[O, V], O, E, V]
 	                                    (val from :S, val  header :ComponentFormula[S, T, H, O, E, V])
 		extends SelectAs[F, H] with SubselectFormula[F, S, H#Owner, H#Subject]
 	{
@@ -249,7 +249,7 @@ object SelectFormula {
 	  * @tparam S
 	  * @tparam H
 	  */
-	private class ArbitrarySelectFormula[-F <: RowProduct, S <: SubselectFrom[F], O, H]
+	private class ArbitrarySelectFormula[-F <: RowProduct, S <: SelectedFrom[F], O, H]
 	                                    (val from :S, val header :SQLFormula[S, H])
 		extends SubselectFormula[F, S, O, H] with LazyMapping[O, H]
 	{ select =>

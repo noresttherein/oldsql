@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComp
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.IsomorphicProjection
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.slang.classNameMethods
-import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, Select, SQLExpression, WithClause}
+import net.noresttherein.oldsql.sql.{By, ColumnSQL, FromSome, GroupBy, GroupByClause, RowProduct, Select, SQLExpression, WithClause}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
 import net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
@@ -33,38 +33,112 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
 
 
 
+/** An SQL [[net.noresttherein.oldsql.sql.SQLExpression expression]] representing a whole, potentially multi column,
+  * component mapping of a [[net.noresttherein.oldsql.schema.Relation Relation]] from `RowProduct` clause `F`.
+  * Note that the 'relation' here might be a [[net.noresttherein.oldsql.schema.Table Table]] from a ''from'' clause,
+  * but also other constructs adapted to this interface, such as
+  * [[net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation expressions]] in a ''group by'' clause
+  * or a query [[net.noresttherein.oldsql.sql.ParamClause.ParamRelation parameter]]. The type of relation
+  * - and the wrapping relation expression [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]] -
+  * defines how this component is formatted in the rendered SQL. For tables (including derived tables of
+  * inline ''select'' expressions), this is typically a list of `s"$tableAlias.${column.name}"` expressions for
+  * all pertinent columns of the component; unbound parameters are translated to the JDBC parameter placeholders '?'
+  * in the number defined by their [[net.noresttherein.oldsql.schema.SQLForm forms]], while a component
+  * of a `GroupingRelation` (representing a usage of a subexpression of an expression used in query's ''group by''
+  * clause) will repeat all individual column expressions as they appeared in the ''group by'' clause.
+  *
+  * The expression normally translates to the list of subexpression for individual columns separated with ','
+  * and optionally surrounded by '(' and ')', depending on the context. In some circumstances however the
+  * individual column expressions may be split, for example in column-wise equality comparisons between components.
+  *
+  * Exact column set used for a component expression for mapping `M` may differ, especially in the case
+  * of table components, and depends on three factors:
+  *   1. The [[net.noresttherein.oldsql.sql.SQLDialect.SpellingScope SpellingScope]], that is the context in which
+  *      the expression is used, which corresponds to one of the four
+  *      SQL [[net.noresttherein.oldsql.OperationType operation types]] and changes depending on the fragment
+  *      of the SQL (in what type of expression and clause this expression is included).
+  *   1. Explicit requests to use certain column or subcomponents for this particular expression by calling one of
+  *      [[net.noresttherein.oldsql.sql.ast.ComponentSQL.include include]],
+  *      [[net.noresttherein.oldsql.sql.ast.ComponentSQL.exclude exclude]],
+  *      [[net.noresttherein.oldsql.sql.ast.ComponentSQL.alter alter]],
+  *      [[net.noresttherein.oldsql.sql.ast.ComponentSQL.+- +-]] on this expression;
+  *   1. Adjustments to the included columns made for the whole source `Relation` (typically before joining it
+  *      into ''from'' clause `F` (or added to it by other methods/clauses) - these changes will typically apply
+  *      to all component expressions referencing the relation within the whole ''select''.
+  *
+  * It is defined as [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling spelling]]`.`[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.scope scope]]`.`[[net.noresttherein.oldsql.sql.SQLDialect.SpellingScope.defaultColumns[o](mapping:MappingAt[O],component:MapppingAt[O])* defaultColumns]]`(this.`[[net.noresttherein.oldsql.sql.ast.ComponentSQL.origin origin]]`.`[[net.noresttherein.oldsql.sql.ast.JoinedRelation.export export]]`, this.`[[net.noresttherein.oldsql.sql.ast.ComponentSQL.mapping mapping]]`)`.
+  * Note that semantically, a component expression is a placeholder referencing a certain component of a relation
+  * declared by the statement/query in which the expression is embedded: when rendering SQL for the statement,
+  * this expression is formatted in the context of the `RowProduct` used as the ''from'' clause/domain of the whole
+  * statement. This means that any information from the `Relation` instance passed during formatting overrides
+  * any corresponding information in this component; for tables, this means that the exact column set is the sum
+  * of changes applied by the said relation and the alterations to this expression stored as
+  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation.includes includes]] and
+  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation.excludes excludes]] properties of its
+  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL.origin origin]]. For components of grouping expressions however,
+  * the whole expression in the ''group by'' clause is substituted during SQL formatting in case of a discrepancy,
+  * which is also reflected in the component's representation, as it is understood as a subset of columns added
+  * to the ''group by'' clause by its `origin` grouping expression.
+  *
+  * @tparam F a ''from'' clause - list of relations/tables which provide columns used in this expression.
+  * @tparam M a [[net.noresttherein.oldsql.schema.Mapping Mapping]] type constructor for the component, accepting its
+  *           [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type.
+  * @see [[net.noresttherein.oldsql.sql.ast.ColumnComponentSQL]]
+  * @see [[net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL]]
+  * @see [[net.noresttherein.oldsql.sql.ast.JoinedRelation]]
+  */
 trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 	extends MappingSQL[F, GlobalScope, M] with ComponentLValueSQL[F, M, M[Unit]#Subject]
 {
 	//consider: in quite a few places we create 'copies' of the expression using `table \ this.mapping`
 	// this is not very OO as it will convert any custom subclass of this trait with default implementation
-	/** The mapping type of the `SQLRelation` to which this component belongs. */
+	/** The mapping type of the `RelationSQL` to which this component belongs. */
 	type Entity[A] <: MappingAt[A]
 
-	override def readForm :SQLReadForm[M[Unit]#Subject] = export.selectForm
+	override def readForm  :SQLReadForm[M[Unit]#Subject] = export.selectForm
 	override def component :ComponentSQL[F, M] = this
+
+	val origin   :JoinedRelation[Origin, Entity]
+
+	def relation :Relation[Entity] //= origin.relation
+
+	/** The mapping for the whole row of the table of which this instance is a component expression.
+	  * It is the public interface of the mapping provided by [[net.noresttherein.oldsql.schema.Relation Relation]]
+	  * used by the [[net.noresttherein.oldsql.sql.ast.ComponentSQL.origin origin]] of this expression, and a mapping
+	  * which recognizes the mapping of this expression as its component - but not necessarily those
+	  * of `this.`[[net.noresttherein.oldsql.sql.ast.ComponentSQL.export export]].
+	  */
+	def entity   :Entity[Origin] = origin.mapping
+
+	val extract  :MappingExtract[Entity[Unit]#Subject, M[Unit]#Subject, Origin]
+	//fixme: currently export can be not a component of table.export if include/exclude is non empty;
+	//  exposing it outside may in turn mean someone creates a ComponentSQL using *it* in in non-exported mapping.
+	def export   :RefinedMapping[M[Unit]#Subject, Origin] //alternate names: avatar,actual,incarnation
 
 	/** A pseudo relation adapting this expression for use in ''group by'' clauses
 	  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] and [[net.noresttherein.oldsql.sql.By By]].
+	  */ //fixme: the column set of the expression used in the group by clause must be the superset of all other usages
+	def asGrouping :GroupingRelation[F, M]
+
+	/** Creates a view of this component with certain columns or components specifically included or excluded.
+	  * Every argument function must return either
+	  * [[net.noresttherein.oldsql.schema.Mapping.IncludedComponent IncludedComponent]] or
+	  * [[net.noresttherein.oldsql.schema.Mapping.ExcludedComponent ExcludedComponent]] wrapping a component
+	  * of mapping `M` of this expression. These can be created by methods
+	  * [[net.noresttherein.oldsql.schema.Mapping.+ +]] and [[net.noresttherein.oldsql.schema.Mapping.- -]]
+	  * defined on any mapping. The included components must be true components of `M`, rather than of the effective
+	  * mapping [[net.noresttherein.oldsql.sql.ast.ComponentSQL.export export]] of this expression.
 	  */
-	def groupingRelation :Relation[M]
-
-	def entity :Entity[Origin] = origin.mapping
-	def relation :Relation[Entity] = origin.relation
-	def origin :JoinedRelation[Origin, Entity]
-
-	def extract :MappingExtract[Entity[Origin]#Subject, M[Origin]#Subject, Origin]
-	//fixme: currently export can be not a component of table.export if include/exclude is non empty;
-	//  exposing it outside may in turn mean someone creates a ComponentSQL using *it* is the non-exported mapping.
-	def export :RefinedMapping[M[Unit]#Subject, Origin]
-
 	@throws[IllegalArgumentException]("if any of the given components is not a component of this mapping.")
 	@throws[UnsupportedOperationException]("if this component is a column and the exclude list is non empty.")
 	def alter(components :M[Origin] => ComponentSelection[_, Origin]*) :ComponentSQL[F, M]
 
+	/** Creates a view of this component with certain columns or components specifically included or excluded.
+	  * This method is exactly equivalent to [[net.noresttherein.oldsql.sql.ast.ComponentSQL.alter alter]].
+	  */
 	@throws[IllegalArgumentException]("if any of the given components is not a component of this mapping.")
 	@throws[UnsupportedOperationException]("if this component is a column and the exclude list is non empty.")
-	def +-(components :M[Origin] => ComponentSelection[_, Origin]*) :ComponentSQL[F, M]
+	def +-(components :Iterable[M[Origin] => ComponentSelection[_, Origin]]) :ComponentSQL[F, M]
 
 	def include(components :Iterable[RefinedMapping[_, Origin]]) :ComponentSQL[F, M]
 
@@ -86,12 +160,33 @@ trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 
 	def default :ComponentSQL[F, M]
 
+	/** Creates an expression for the given subcomponent of this component.
+	  * Passing a component of [[net.noresttherein.oldsql.sql.ast.ComponentSQL.export export]] mapping
+	  * rather than `this.`[[net.noresttherein.oldsql.sql.ast.ComponentSQL.mapping mapping]] will result
+	  * in a [[NoSuchElementException NoSuchElementException]] being thrown.
+	  */
 	def \[K <: MappingAt[Origin], X](component :K)(implicit project :OriginProjection[K, X])
 			:ComponentSQL[F, project.WithOrigin]
 
+	/** Creates an expression for the given subcomponent of this component. The component is given as a function
+	  * accepting the [[net.noresttherein.oldsql.sql.ast.ComponentSQL.mapping mapping]] of this instance as its
+	  * argument, and returning one of its properties. The result is always a subtype of
+	  * `ComponentSQL[F, project.WithOrigin] { type Origin = self.Origin; type Entity[O] = self.Entity[O] }`, where
+	  * `project` is an implicit [[net.noresttherein.oldsql.schema.Mapping.OriginProjection OriginProjection]]`[K, _]`.
+	  * If `K` is a [[net.noresttherein.oldsql.schema.ColumnMapping ColumnMapping]], then the result will
+	  * be the specialized subtype [[net.noresttherein.oldsql.sql.ast.ColumnComponentSQL ColumnComponentSQL]].
+	  *
+	  * Passing a component of [[net.noresttherein.oldsql.sql.ast.ComponentSQL.export export]] mapping
+	  * rather than `this.mapping` will result in a [[NoSuchElementException NoSuchElementException]] being thrown.
+	  */
 	def \[K <: MappingAt[Origin]]
 	     (component :M[Origin] => K)(implicit factory :ComponentSQL.Factory[K]) :factory.Result[F]
 
+	/** Creates an expression for the given column of this component.
+	  * Passing a column of [[net.noresttherein.oldsql.sql.ast.ComponentSQL.export export]] mapping
+	  * rather than `this.`[[net.noresttherein.oldsql.sql.ast.ComponentSQL.mapping mapping]] will result
+	  * in a [[NoSuchElementException NoSuchElementException]] being thrown.
+	  */
 	def \[K <: ColumnMapping[_, Origin], X]
 	     (column :K)(implicit project :OriginProjection[K, X] { type WithOrigin[A] <: ColumnMapping[X, A] })
 			:ColumnComponentSQL[F, project.WithOrigin, X]
@@ -101,8 +196,12 @@ trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 		else ComponentConversion(this, lift)
 
 	override def isAnchored = true
+	override def isAnchored(from :F) :Boolean = origin.isAnchored(from)
+	//fixme: anchoring should verify that the underlying Relation is the same as in Origin and, if not, recreate itself.
+	//  This however needs a method for finding the counterpart of this mapping in another instance of the Entity mapping;
+	//  We can implement this once we have Extract equality implemented through macros.
 	override def anchor(from :F) :ComponentSQL[F, M] = this
-//		override def component :ComponentSQL[F, M] = this
+
 
 
 	/** An expression for the same component, but from the first known
@@ -112,7 +211,7 @@ trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 	  * @param offset a proof that the first relation listed in ''from'' clause `P` is the same as the `origin`
 	  *               relation of this component (or, more precisely, they use the same mapping type `Entity`),
 	  *               carrying the offset of the new origin.
-	  */
+	  */ //todo: remove it or at least make protected[sql]
 	def moveTo[P <: RowProduct](offset :TableOffset[P, Entity]) :ComponentSQL[P, M]
 
 	/** An expression for the same component, but with the given relation used as its
@@ -134,13 +233,13 @@ trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 		origin.reverseCollectForwarder(fun, super.reverseCollect(fun, acc))
 
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		origin.relation.spell(origin, export)(context, params)
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		origin.spell(this :this.type)(from, context, params)
 
-	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
-		origin.relation.inline(origin, export)(context, params)
+	protected override def explodedSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                          (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
+		origin.spellExploded(this)(from, context, params)
 
 
 	override def isomorphic(expression :SQLExpression.*) :Boolean = this == expression
@@ -201,7 +300,6 @@ object ComponentSQL { //support for AlteredMapping
 		}
 
 
-	type * = ComponentSQL[_ <: RowProduct, M] forSome { type M[O] <: MappingAt[O] }
 
 
 	/** A conversion applying type promotion to a
@@ -298,9 +396,16 @@ object ComponentSQL { //support for AlteredMapping
 
 
 
+	type * = ComponentSQL[_ <: RowProduct, M] forSome { type M[O] <: MappingAt[O] }
 
 
-
+	/** Implementation interface of [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] which lists
+	  * the type arguments of the origin [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]] among
+	  * its type parameters for a more concise form and narrows the upper bound on the component mapping to
+	  * [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]] (as, in Scala 2, using
+	  * [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping]] instead causes self-type
+	  * errors in indirect subclasses due to a compiler bug).
+	  */
 	trait TypedComponentSQL[-F <: RowProduct, T[A] <: BaseMapping[R, A], R,
 	                        M[A] <: BaseMapping[V, A], V, O >: F <: RowProduct]
 		extends ComponentSQL[F, M]
@@ -308,30 +413,32 @@ object ComponentSQL { //support for AlteredMapping
 		override type Origin = O
 		override type Entity[A] = T[A]
 
+		/** A projection substituting all references to mapping's [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]]
+		  * type in `M[O]` with an arbitrary new origin type.
+		  */
 		def projection :IsomorphicProjection[M, V, O]
 
-		override def groupingRelation :Relation[M] = GroupingRelation[F, M, V, O](this)(projection)
-
-		override def origin :RelationSQL[F, T, R, O]
-		override def extract :MappingExtract[R, V, O]
+		override val origin :RelationSQL[F, T, R, O]
+		override val extract :MappingExtract[R, V, O]
 		override def export :RefinedMapping[V, O] = extract.export
 
+		override def asGrouping :GroupingRelation[F, M] = origin.asGrouping(this)
 
 		@throws[IllegalArgumentException]("if any of the given components is not a component of this mapping.")
 		@throws[UnsupportedOperationException]("if this component is a column and the exclude list is non empty.")
-		override def alter(components :M[O] => ComponentSelection[_, O]*) :TypedComponentSQL[F, T, R, M, V, O] = {
+		override def alter(components :M[O] => ComponentSelection[_, O]*) :TypedComponentSQL[F, T, R, M, V, O] =
+			this +- components
+
+		@throws[IllegalArgumentException]("if any of the given components is not a component of this mapping.")
+		@throws[UnsupportedOperationException]("if this component is a column and the exclude list is non empty.")
+		override def +-(components :Iterable[M[O] => ComponentSelection[_, O]]) :TypedComponentSQL[F, T, R, M, V, O] = {
 			val newExcludes = components.view.map(_(mapping)).collect { case ExcludedComponent(c) => c }
 			val newIncludes = components.view.map(_(mapping)).collect { case IncludedComponent(c) => c }
 			include(newIncludes).exclude(newExcludes)
 		}
 
-		@throws[IllegalArgumentException]("if any of the given components is not a component of this mapping.")
-		@throws[UnsupportedOperationException]("if this component is a column and the exclude list is non empty.")
-		override def +-(components :M[O] => ComponentSelection[_, O]*) :TypedComponentSQL[F, T, R, M, V, O] =
-			alter(components :_*)
-
 		override def include(components :Iterable[RefinedMapping[_, O]]) :TypedComponentSQL[F, T, R, M, V, O] =
-		 	components.view.collect { case c if !export.contains(c) => c }.toList match {
+		 	components.view.collect { case c if !mapping.contains(c) => c }.toList match {
 			    case Nil => origin.include(components) \ mapping
 				case comps => throw new IllegalArgumentException(
 					s"Cannot include not belonging components $comps with mapping $mapping."
@@ -341,7 +448,7 @@ object ComponentSQL { //support for AlteredMapping
 		@throws[IllegalArgumentException]("if any of the given components is not a component of this mapping.")
 		@throws[UnsupportedOperationException]("if this component is a column and the exclude list is non empty.")
 		override def exclude(components :Iterable[RefinedMapping[_, O]]) :TypedComponentSQL[F, T, R, M, V, O] =
-			components.view.collect { case c if !export.contains(c) => c }.toList match {
+			components.view.collect { case c if !mapping.contains(c) => c }.toList match {
 				case Nil => origin.exclude(components) \ mapping
 				case comps => throw new IllegalArgumentException(
 					s"Cannot exclude not belonging components $comps from mapping $mapping."
@@ -438,7 +545,7 @@ object ComponentSQL { //support for AlteredMapping
 				case column :ColumnMapping[V @unchecked, O @unchecked] =>
 					TypedColumnComponentSQL(from, column)
 						.asInstanceOf[TypedComponentSQL[F, T, R, project.WithOrigin, V, O]]
-				case _ if component == from.mapping || component == from.export =>
+				case _ if component == from.mapping || component == from.export || component == from.relation.export =>
 					from.asInstanceOf[TypedComponentSQL[F, T, R, project.WithOrigin, V, O]]
 				case _ =>
 					new ProperComponent[F, T, R, project.WithOrigin, V, O](from, project(component))(project.isomorphism)
@@ -525,11 +632,11 @@ object ComponentSQL { //support for AlteredMapping
 
 trait ColumnComponentSQL[-F <: RowProduct, M[A] <: ColumnMapping[V, A], V]
 	extends ComponentSQL[F, M] with ColumnSQL[F, GlobalScope, V] with ColumnLValueSQL[F, M, V]
-{ //consider: a fishy thing is that this column may be excluded from an operation, breaking(?) ColumnSQL contract
+{
 	override def upcast :ColumnSQL[F, GlobalScope, Subject] = this
 	override def component :ColumnComponentSQL[F, M, V] = this
 
-	override def extract :ColumnMappingExtract[Entity[Origin]#Subject, V, Origin]
+	override val extract :ColumnMappingExtract[Entity[Unit]#Subject, V, Origin]
 	override def export :ColumnMapping[V, Origin]
 
 	override def readForm :ColumnReadForm[V] = export.selectForm match { //an alternative would be for the
@@ -540,7 +647,6 @@ trait ColumnComponentSQL[-F <: RowProduct, M[A] <: ColumnMapping[V, A], V]
 	}
 	override def form :ColumnForm[V] = export.form
 
-	//fixme: should return ComponentSQL as it might be empty
 	override def include(components :Iterable[RefinedMapping[_, Origin]]) :ColumnComponentSQL[F, M, V]
 	override def include(components :M[Origin] => RefinedMapping[_, Origin]*) :ColumnComponentSQL[F, M, V]
 	override def +(component :M[Origin] => RefinedMapping[_, Origin]) :ColumnComponentSQL[F, M, V]
@@ -597,9 +703,9 @@ trait ColumnComponentSQL[-F <: RowProduct, M[A] <: ColumnMapping[V, A], V]
 		Select(from.self)[M, V](this)
 
 
-	override def inParens[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		spelling(this :ColumnSQL[E, LocalScope, V])(context, params)
+	override def inParens[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                        (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		spelling(this)(from, context, params)
 
 }
 
@@ -637,8 +743,6 @@ object ColumnComponentSQL {
 			case _ => Lack
 		}
 
-
-	type * = ColumnComponentSQL[_ <: RowProduct, M, V] forSome { type V; type M[O] <: ColumnMapping[V, O] }
 
 
 	/** A conversion applying a type promotion
@@ -688,9 +792,7 @@ object ColumnComponentSQL {
 
 
 
-
-
-
+	type * = ColumnComponentSQL[_ <: RowProduct, M, V] forSome { type V; type M[O] <: ColumnMapping[V, O] }
 
 
 	trait TypedColumnComponentSQL[-F <: RowProduct, T[A] <: BaseMapping[R, A], R,
@@ -702,7 +804,7 @@ object ColumnComponentSQL {
 		override def include(components :Iterable[RefinedMapping[_, O]]) :TypedColumnComponentSQL[F, T, R, M, V, O] =
 			this
 
-		@throws[UnsupportedOperationException]("if this component is a column and the exclude list is non empty.")
+		@throws[UnsupportedOperationException]("if the exclude list is non empty.")
 		override def exclude(components :Iterable[RefinedMapping[_, O]]) :TypedColumnComponentSQL[F, T, R, M, V, O] =
 			if (components.isEmpty) this
 			else
@@ -713,14 +815,14 @@ object ColumnComponentSQL {
 		override def include(components :M[O] => RefinedMapping[_, O]*) :TypedColumnComponentSQL[F, T, R, M, V, O] =
 			this
 
-		@throws[UnsupportedOperationException]("if this component is a column and the exclude list is non empty.")
+		@throws[UnsupportedOperationException]("if the component list is non empty.")
 		override def exclude(components :M[O] => RefinedMapping[_, O]*) :TypedColumnComponentSQL[F, T, R, M, V, O] =
 			if (components.isEmpty) this
 			else exclude(components.view.map(_(mapping)))
 
 		override def +(component :M[O] => RefinedMapping[_, O]) :TypedColumnComponentSQL[F, T, R, M, V, O] = this
 
-		@throws[UnsupportedOperationException]("if this component is a column.")
+		@throws[UnsupportedOperationException]("always.")
 		override def -(component :M[O] => RefinedMapping[_, O]) :TypedColumnComponentSQL[F, T, R, M, V, O] =
 			throw new UnsupportedOperationException(
 				s"A column expression $this cannot be excluded from itself: ${component(mapping)}."
@@ -776,8 +878,9 @@ object ColumnComponentSQL {
 				:TypedColumnComponentSQL[F, T, R, project.WithOrigin, V, O] =
 		{
 			val cast = project[O](column)
-			val export = from.export(cast).export
-			val relation = if (from.includes.contains(export)) from else from + { _ => export }
+			val relation = //consider: this is safe, but results in unnecessary redundancy in toString
+				if (from.includes.contains(cast) && from.excludes.isEmpty) from
+				else from.alter(Unique.single(cast), Unique.empty)
 			new ProperColumn[F, T, R, project.WithOrigin, V, O](relation, cast)(project.isomorphism)
 		}
 

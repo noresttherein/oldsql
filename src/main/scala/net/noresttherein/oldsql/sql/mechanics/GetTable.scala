@@ -7,13 +7,13 @@ import net.noresttherein.oldsql.morsels.abacus.{Inc, Negative, NegativeInc, Nume
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
-import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, Adjoin, DecoratedFrom, Expanded, FromSome, GroupBy, GroupByClause, GroupParam, JoinedRelation, JoinedTable, JoinParam, RowProduct, Subselect, UnboundParam}
-import net.noresttherein.oldsql.sql.mechanics.GetTable.{Delegate, EvidenceTemplate, RelationEvidence}
+import net.noresttherein.oldsql.sql.{Adjoin, Aggregated, AndBy, AndFrom, DecoratedFrom, Expanded, FromSome, GroupBy, GroupByClause, GroupParam, JoinParam, RowProduct, Subselect, ParamClause}
 import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExpandingDecorator}
 import net.noresttherein.oldsql.sql.Expanded.{ExpandedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.RowProduct.{As, RowDecomposition, NonEmptyFrom, PrefixOf}
-import net.noresttherein.oldsql.sql.GroupBy.AndBy
-import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, LabeledFromParam, ParamAt}
+import net.noresttherein.oldsql.sql.ParamClause.{UnboundParam, LabeledUnboundParam, ParamAt}
+import net.noresttherein.oldsql.sql.RowProduct.{As, NonEmptyFrom, PrefixOf, RowDecomposition}
+import net.noresttherein.oldsql.sql.ast.JoinedRelation
+import net.noresttherein.oldsql.sql.mechanics.GetTable.{Delegate, EvidenceTemplate, RelationEvidence}
 
 
 
@@ -31,8 +31,8 @@ import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, LabeledFromParam, P
   * [[net.noresttherein.oldsql.sql.RowProduct.PrefixOf prefix]]. For this reason, type `Last` is, potentially,
   * not reported as defined in clause `F`, but as its supertype. In practice, default implicit values exist for
   * all `F#Last` and bundled types `F <: RowProduct`. Introducing a new `RowProduct` using a relation expression
-  * type different than [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]] and
-  * [[net.noresttherein.oldsql.sql.JoinedTable JoinedTable]], will require declaring custom implicit instances
+  * type different than [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]] and
+  * [[net.noresttherein.oldsql.sql.ast.JoinedTable JoinedTable]], will require declaring custom implicit instances
   * in companion objects to the new clause types.
   */
 @implicitNotFound("I cannot determine the last relation of ${F}. This typically means the type is too abstract " +
@@ -134,8 +134,8 @@ abstract class GetTable {
 	  * (that is, such an implicit value exists), than its last relation `P#Last`/`P#LastMapping` is returned.
 	  * Other implementations are also possible, but may require dedicated implicit recursion.
 	  * The type of the mapping of the found relation is returned as the member type `M[O]` and
-	  * the ([[net.noresttherein.oldsql.sql.JoinedRelation relation type]] as member type `T[O]`. The type of the key
-	  * used to retrieve the relation is implementation dependent. In other words, an implicit value
+	  * the ([[net.noresttherein.oldsql.sql.ast.JoinedRelation relation type]] as member type `T[O]`. The type
+	  * of the key used to retrieve the relation is implementation dependent. In other words, an implicit value
 	  * `found :Found[F, G, X] { type I = N }` witnesses that `found.M` is the mapping of the last relation (rightmost)
 	  * in the clause `F` for which an implicit `Predicate[F, X]` exists, with `N` being the ''negative'' index
 	  * of the mapping (starting with `-1` for the last mapping and decreasing).
@@ -369,7 +369,7 @@ object GetTable {
 	  * @tparam G The [[net.noresttherein.oldsql.sql.RowProduct.Generalized Generalized]] type of `F`.
 	  *           It must be a supertype of `F` on the suffix starting with the accessed relation.
 	  *           It is provided here in order to statically bound `O` type used as `Origin` type of returned mappings
-	  *           from below, hence making [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]]`[O, M]`
+	  *           from below, hence making [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]]`[O, M]`
 	  *           a subtype of [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[G, M[()]#Subject]`,
 	  *           and thus usable in ''where'', ''select'', ''group by'' and ''having'' clauses of SQL ''selects''
 	  *           based on type `F/G`.
@@ -380,9 +380,9 @@ object GetTable {
 
 		/** The type of the table expression specific to the returned relation. It is returned as defined
 		  * by [[net.noresttherein.oldsql.sql.RowProduct.Last Last]] of the row prefix which ends with
-		  * the returned relation. In practice, it is [[net.noresttherein.oldsql.sql.JoinedTable JoinedTable]]
-		  * for 'true' tables from the ''from'' clause and [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]]
-		  * for others.
+		  * the returned relation. In practice, it is [[net.noresttherein.oldsql.sql.ast.JoinedTable JoinedTable]]
+		  * for 'true' tables from the ''from'' clause
+		  * and [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]] for others.
 		  */
 		type T[O <: RowProduct] <: JoinedRelation[O, M]
 
@@ -411,6 +411,12 @@ object GetTable {
 
 		/** Extension of the initial clause `S` with the found relation as the last one to the final clause `O`. */
 		def stretch :S PrefixOf O
+
+		/** The offset of the found table as an evidence that it is the first mapping listed by returned type
+		  * [[net.noresttherein.oldsql.sql.mechanics.GetTable.RelationEvidence.O O]].
+		  */
+		def offset :TableOffset[O, M] { type N = I } =
+			new TableOffset[O, M](stretch.lengthDiff).asInstanceOf[TableOffset[O, M]{ type N = I }]
 
 		/** Getter for the matching relation.
 		  * @return `this.table(from)(this.stretch)`.
@@ -918,7 +924,7 @@ object GetTable {
 
 
 
-	/** Implicit resolution of the `N`-th [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameter
+	/** Implicit resolution of the `N`-th [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameter
 	  * in the ''from'' clause `F`. It works both for positive numbers, indexed from zero and going
 	  * from left to right (in which case `F` must be complete or start
 	  * with a [[net.noresttherein.oldsql.sql.RowProduct.ParamlessFrom ParamlessFrom]]), and negative -
@@ -933,7 +939,7 @@ object GetTable {
 	  *
 	  * While the mapping could be also returned based on any other criteria (for example, its absolute index),
 	  * its type as provided by this class is statically narrowed down to
-	  * [[net.noresttherein.oldsql.sql.UnboundParam.ParamAt ParamAt]].
+	  * [[net.noresttherein.oldsql.sql.ParamClause.ParamAt ParamAt]].
 	  * An implicit `ByParamIndex[A, B, N]` can be converted to a `ByParamIndex[F, G, N]`
 	  * if `A `[[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]]` F`, `B ExpandedBy G`,
 	  * and the join types in `F` and `G` since `A` and `B` are known at least to their generalized super type.
@@ -953,7 +959,7 @@ object GetTable {
 
 
 	/** Provides implicit values of [[net.noresttherein.oldsql.sql.mechanics.GetTable.ByParamIndex ByParamIndex]],
-	  * accessing [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters of a `RowProduct` based on
+	  * accessing [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters of a `RowProduct` based on
 	  * their position in the [[net.noresttherein.oldsql.sql.RowProduct.Params Params]] list of the clause.
 	  * For the purpose of this implicit, all relations joined between
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
@@ -988,7 +994,7 @@ object GetTable {
 
 			implicit def satisfies[F <: NonEmptyFrom, P[O] <: ParamAt[O], N <: Numeral]
 			                      (implicit preceding :ChainLength[F#Params, N])
-					:Predicate[F UnboundParam P, N] =
+					:Predicate[F ParamClause P, N] =
 				report
 		}
 
@@ -1016,7 +1022,7 @@ object GetTable {
 			  * but not over `joinParam` and `groupParam` for `X =:= -1`.
 			  */
 			implicit def param[F <: RowProduct, P <: RowProduct, G <: L J R, L <: U, R[O] <: ParamAt[O],
-			                   J[+A <: U, B[O] <: ParamAt[O]] <: A UnboundParam B, U <: NonEmptyFrom,
+			                   J[+A <: U, B[O] <: ParamAt[O]] <: A ParamClause B, U <: NonEmptyFrom,
 			                   X <: Numeral, Y <: Numeral, V <: Numeral, W <: Numeral]
 			                  (implicit specific :RowDecomposition[F, P, _],
 			                   general :ExpandedDecomposition[G, L, R, J, U],
@@ -1053,7 +1059,7 @@ object GetTable {
 
 
 	/** Accessor for the right-most relation in `F` with a mapping conforming to
-	  * [[net.noresttherein.oldsql.sql.UnboundParam.LabeledFromParam LabeledFromParam]]`[N, _, _]`, providing
+	  * [[net.noresttherein.oldsql.sql.ParamClause.LabeledUnboundParam LabeledUnboundParam]]`[N, _, _]`, providing
 	  * it is joined using either [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] or
 	  * [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]. The parameter name in the sense of this class
 	  * is thus not the same as any [[net.noresttherein.oldsql.sql.RowProduct.As alias]] given to this relation.
@@ -1073,12 +1079,12 @@ object GetTable {
 	                  "no implicit value for GetTable.ByParamName[${F}, ${G}, ${N}].\n" +
 	                  "Note that a parameter name is a label of a Mapping, not a relation alias.")
 	sealed trait ByParamName[-F <: RowProduct, G <: RowProduct, N <: Label] extends ByParamName.Found[F, G, N] {
-		type M[O] <: LabeledFromParam[N, _, O]
+		type M[O] <: LabeledUnboundParam[N, _, O]
 	}
 
 
 	/** Provides implicit values of [[net.noresttherein.oldsql.sql.mechanics.GetTable.ByParamName ByParamName]],
-	  * accessing [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters of a `RowProduct` based on
+	  * accessing [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters of a `RowProduct` based on
 	  * a given parameter name used as their label. Note that this matches parameter mappings derived from
 	  * [[net.noresttherein.oldsql.schema.bits.LabeledMapping LabeledMapping]], and not a relation alias introduced
 	  * by [[net.noresttherein.oldsql.sql.RowProduct.As As]].
@@ -1095,14 +1101,14 @@ object GetTable {
 		override type Get[-F <: RowProduct, G <: RowProduct, N <: Label] = ByParamName[F, G, N]
 
 		implicit def byParamName[F <: RowProduct, G <: RowProduct, A <: Label]
-		                        (implicit found :Return[F, G, A] { type M[O] <: LabeledFromParam[A, _, O] })
+		                        (implicit found :Return[F, G, A] { type M[O] <: LabeledUnboundParam[A, _, O] })
 				:ByParamName[F, G, A]
 					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
 			new Delegate[F, G, A, found.O, found.I, found.M, found.T](found) with ByParamName[F, G, A]
 
-		implicit def satisfies[M[O] <: LabeledFromParam[N, _, O], N <: Label]
-				:Predicate[NonEmptyFrom UnboundParam M, N] =
-			report[NonEmptyFrom UnboundParam M, N]
+		implicit def satisfies[M[O] <: LabeledUnboundParam[N, _, O], N <: Label]
+				:Predicate[NonEmptyFrom ParamClause M, N] =
+			report[NonEmptyFrom ParamClause M, N]
 
 	}
 
@@ -1111,7 +1117,7 @@ object GetTable {
 
     /** Implicit witness accessing the last parameter in the ''from'' clause `F` with alias `A`.
 	  * It is defined as the pseudo relation for mapping `M` from the last occurrence of
-      * a pseudo join in the form of `L `[[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]]` M As A`
+      * a pseudo join in the form of `L `[[net.noresttherein.oldsql.sql.ParamClause ParamClause]]` M As A`
       * (or its subclass). As the generalized supertype of `P As A` is the same as `P`
 	  * (the alias information is lost for interoperability of SQL expressions), the check is performed only against
       * type `F`, and not its generalization `G`. For the purpose of this implicit, all relations joined between
@@ -1132,7 +1138,7 @@ object GetTable {
 	  * accessors/lenses returning parameter mappings directly followed by
 	  * [[net.noresttherein.oldsql.sql.RowProduct.As As]] subclause for a specified `String` literal.
 	  * An implicit `ByParamAlias[F, G, A]` returns the last relation joined with a
-	  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] with alias `A` in `F` (and `G`).
+	  * [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] with alias `A` in `F` (and `G`).
 	  */
 	object ByParamAlias extends GetTableByPredicate {
 		override type Key = Label
@@ -1143,7 +1149,7 @@ object GetTable {
 					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
 			new Delegate[F, G, A, found.O, found.I, found.M, found.T](found) with ByParamAlias[F, G, A]
 
-		implicit def satisfies[M[O] <: ParamAt[O], A <: Label] :Predicate[NonEmptyFrom UnboundParam M As A, A] =
+		implicit def satisfies[M[O] <: ParamAt[O], A <: Label] :Predicate[NonEmptyFrom ParamClause M As A, A] =
 			report
 	}
 
@@ -1151,12 +1157,12 @@ object GetTable {
 
 
 	/** Accessor for the right-most relation in `F` with a mapping conforming to
-	  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]`[X, _]`, providing
+	  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]]`[X, _]`, providing
 	  * it is joined using either [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] or
 	  * [[net.noresttherein.oldsql.sql.GroupParam GroupParam]]. This is similar to
 	  * [[net.noresttherein.oldsql.sql.mechanics.GetTable.BySubject BySubject]], but this evidence
 	  * takes into account only synthetic parameter relations and has a statically narrowed return type
-	  * to the dedicated parameter `Mapping` subtype [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]].
+	  * to the dedicated parameter `Mapping` subtype [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]].
 	  * For the purpose of this implicit, all relations joined between
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * and a following [[net.noresttherein.oldsql.sql.GroupBy]] (including its type aliases) are ignored.
@@ -1169,14 +1175,14 @@ object GetTable {
 	@implicitNotFound("No parameter with type ${X} in the FROM clause ${F}:\n"+
 	                  "no implicit GetTable.ByParamType[${F}, ${G}, ${X}]")
 	sealed trait ByParamType[-F <: RowProduct, G <: RowProduct, X] extends RelationEvidence[F, G, X] {
-		type M[O] <: FromParam[X, O]
+		type M[O] <: UnboundParam[X, O]
 	}
 
 
 	/** Provides implicit values of [[net.noresttherein.oldsql.sql.mechanics.GetTable.ByParamType! ByParamType]],
-	  * accessing [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters of a `RowProduct` based on
+	  * accessing [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters of a `RowProduct` based on
 	  * a given parameter type represented as the subject type of the synthetic parameter mapping
-	  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]`[X, O]`.
+	  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]]`[X, O]`.
 	  * For the purpose of this implicit, all relations joined between
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]/[[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * An implicit `ByParamType[A, B, X]` can be converted to a `ByParamType[F, G, X]`
@@ -1190,12 +1196,12 @@ object GetTable {
 		override type Get[-F <: RowProduct, G <: RowProduct, X] = ByParamType[F, G, X]
 
 		implicit def byParamType[F <: RowProduct, G <: RowProduct, X]
-		                        (implicit found :Return[F, G, X] { type M[O] <: FromParam[X, O] })
+		                        (implicit found :Return[F, G, X] { type M[O] <: UnboundParam[X, O] })
 				:ByParamType[F, G, X]
 					{ type T[O <: RowProduct] = found.T[O]; type M[O] = found.M[O]; type O = found.O; type I = found.I } =
 			new Delegate[F, G, X, found.O, found.I, found.M, found.T](found) with ByParamType[F, G, X]
 
-		implicit def satisfies[M[O] <: FromParam[X, O], X] :Predicate[NonEmptyFrom UnboundParam M, X] =
+		implicit def satisfies[M[O] <: UnboundParam[X, O], X] :Predicate[NonEmptyFrom ParamClause M, X] =
 			report
 	}
 

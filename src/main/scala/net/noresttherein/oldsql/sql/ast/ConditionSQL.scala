@@ -91,12 +91,12 @@ case class IsNull[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T](value :S
 		visitor.isNull(this)
 
 	//fixme: this should apply the condition to every column separately, but we don't have API which would expose them
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		spelling(value :SQLExpression[E, S, T])(context, params) + " " +
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		spelling(value)(from, context, params) + " " +
 			spelling.keyword("is") + " " + spelling.NULL
 
-	override def toString :String = "(" + value + "is null)"
+	override def toString :String = "(" + value + " IS NULL)"
 }
 
 
@@ -127,11 +127,11 @@ case class BetweenSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V :SQLO
 	protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, Y]) :Y[S, Boolean] =
 		visitor.between(this)
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		(value :ColumnSQL[E, S, V]).inParens(context, params) + (" " + spelling.BETWEEN + " ") +
-			(spelling(low :ColumnSQL[E, S, V])(_, _)) + (" " + spelling.AND + " ") +
-			(spelling(high :ColumnSQL[E, S, V])(_, _))
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		value.inParens(from, context, params) + spelling._BETWEEN_ +
+			(spelling(low)(from, _, params)) + spelling._AND_ +
+			(spelling(high)(from, _, params))
 
 	override def toString :String = value.toString + " BETWEEN " + low + " AND " + high
 }
@@ -161,9 +161,12 @@ case class LikeSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope]
 	protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, Y]) :Y[S, Boolean] =
 		visitor.like(this)
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		left.inParens(context, params) + (" " + spelling.LIKE + " ") + (right.inParens(_, _))
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+	{
+		val l = left.inParens(from, context, params)
+		l + spelling._LIKE_ + (right.inParens(from, l.context, params))
+	}
 
 	override def toString = s"$left LIKE $right"
 }
@@ -188,6 +191,7 @@ case class ExistsSQL[-F <: RowProduct, V](select :SQLExpression[F, GlobalScope, 
 	override def groundValue :Opt[Boolean] = select.groundValue.map(_.nonEmpty)
 
 	override def isAnchored = true
+	override def isAnchored(from :F) :Boolean = select.isAnchored(from)
 	override def anchor(from :F) :SQLBoolean[F, GlobalScope] = this
 
 	override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, GlobalScope, Boolean] =
@@ -197,10 +201,9 @@ case class ExistsSQL[-F <: RowProduct, V](select :SQLExpression[F, GlobalScope, 
 	                              (visitor :ColumnVisitor[F, Y]) :Y[GlobalScope, Boolean] =
 		visitor.exists(this)
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		(spelling.function("exists") + "(") +:
-			(spelling(select :SQLExpression[E, GlobalScope, Rows[V]])(context, params) + ")")
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		(spelling.function("exists") + "(") +: (spelling(select)(from, context, params) + ")")
 
 	override def toString :String = s"EXISTS($select)"
 }
@@ -229,6 +232,7 @@ case class InSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 		for (l <- left.groundValue; r <- right.groundValue) yield r.contains(l)
 
 	override def isAnchored :Boolean = left.isAnchored && right.isAnchored
+	override def isAnchored(from :F) = left.isAnchored(from) && right.isAnchored(from)
 
 	override def anchor(from :F) :SQLBoolean[F, S] = (left.anchor(from), right.anchor(from)) match {
 		case (l, r) if (l eq left) && (r eq right) => this
@@ -241,10 +245,12 @@ case class InSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, Y]) :Y[S, Boolean] =
 		visitor.in(this)
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		left.inParens(context, params) + (" " + spelling.keyword("IN") + " (") +
-			(spelling(right :SQLExpression[E, S, Seq[V]])(_, _)) + ")"
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+	{
+		val l = left.inParens(from, context, params)
+		l + (" " + spelling.keyword("in") + " (") + spelling(right)(from, l.context, params) + ")"
+	}
 
 	override def toString :String = s"($left IN $right)"
 }

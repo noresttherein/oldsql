@@ -7,10 +7,10 @@ import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql
-import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, ColumnSQL, From, IndexedMapping, InnerJoin, Join, JoinParam, LeftJoin, NonParam, OuterJoin, RightJoin, RowProduct, Select, SQLBoolean, Subselect, WithParam}
+import net.noresttherein.oldsql.sql.ParamClause.UnboundParam
 import net.noresttherein.oldsql.sql.Select.SelectMapping
-import net.noresttherein.oldsql.sql.UnboundParam.FromParam
+import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.{ChainSQL, ColumnComponentSQL, ComponentSQL, ConversionSQL, SelectAs, SelectColumn, SelectColumnAs, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.SelectAs.{SubselectAs, TopSelectAs}
 import net.noresttherein.oldsql.sql.ast.SelectColumn.{SubselectColumn, TopSelectColumn}
@@ -43,7 +43,7 @@ class SelectFactoryCheck {{
 
 	type P = From[A] WithParam Int OuterJoin B WithParam Long 
 	type Q = RowProduct AndFrom A WithParam Int Join B WithParam Long
-	type R = RowProduct AndFrom FromParam.Of[Int]#P Join B WithParam Long  
+	type R = RowProduct AndFrom UnboundParam.Of[Int]#P Join B WithParam Long
 	type Params = @~ ~ Int ~ Long
 	
 	val f :F = ???

@@ -15,7 +15,7 @@ import net.noresttherein.oldsql.sql.ast.ComponentSQL.ComponentConversion
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.{ColumnConversionSQL, ColumnPromotionConversion, PromotionConversion}
 import net.noresttherein.oldsql.sql.ast.LooseColumn.LooseColumnConversion
 import net.noresttherein.oldsql.sql.ast.LooseComponent.LooseComponentConversion
-import net.noresttherein.oldsql.sql.ast.SQLParameter
+import net.noresttherein.oldsql.sql.ast.BoundParam
 import net.noresttherein.oldsql.sql.mechanics.{SQLNumber, TableCount}
 
 
@@ -103,7 +103,7 @@ trait ComponentLValueSQL[-F <: RowProduct, M[O] <: MappingAt[O], V] extends SQLE
 	//todo: we *could* get rid of the form param, as we have one from the mapping. But we don't know if insert or update
 	def :=?[Y, U](rvalue :Y)(implicit promote :SQLTypeUnification[V, Y, U], form :SQLForm[Y])
 			:ComponentSetter[F, RowProduct, U] =
-		this := SQLParameter(rvalue)
+		this := BoundParam(rvalue)
 
 	override def to[Y](implicit lift :Lift[V, Y]) :ComponentLValueSQL[F, M, Y] =
 		throw new UnsupportedOperationException("This method should have been overriden by the subclass. This is a bug.")
@@ -286,11 +286,11 @@ trait ColumnLValueSQL[-F <: RowProduct, M[O] <: ColumnMapping[_, O], V]
 
 //		override def :=?[Y, U](rvalue :Y)(implicit promote :SQLTypeUnification[V, Y, U], form :SQLForm[Y])
 //				:ComponentSetter[F, RowProduct, U] =  //overriden for correct overloading
-//			this := SQLParameter(rvalue)
+//			this := BoundParam(rvalue)
 
 	def :=?[Y, U](rvalue :Y)(implicit promote :SQLTypeUnification[V, Y, U], form :ColumnForm[Y])
 			:ColumnSetter[F, RowProduct, U] =
-		this := SQLParameter(rvalue)
+		this := BoundParam(rvalue)
 
 
 	override def to[Y](implicit lift :Lift[V, Y]) :ColumnLValueSQL[F, M, Y] =

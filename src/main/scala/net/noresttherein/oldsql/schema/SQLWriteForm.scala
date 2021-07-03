@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.schema
 import java.sql.JDBCType.NULL
 import java.sql.{JDBCType, PreparedStatement}
 
-import scala.annotation.implicitNotFound
+import scala.annotation.{implicitNotFound, tailrec}
 import scala.collection.immutable.Seq
 
 import net.noresttherein.oldsql.collection.{ConstSeq, Opt}
@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.morsels.{SpecializingFactory, Stateless}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLWriteForm.{CustomNullSQLWriteForm, JoinedSQLWriteForm, NotNullSQLWriteForm, ProxyWriteForm, WriteFormNullGuard}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{CustomNullSQLWriteForm, JoinedSQLWriteForm, NotNullSQLWriteForm, ProxyWriteForm, WriteFormList, WriteFormNullGuard}
 import net.noresttherein.oldsql.schema.ColumnWriteForm.SingletonColumnWriteForm
 import net.noresttherein.oldsql.schema.forms.{SQLForms, SuperSQLForm}
 import net.noresttherein.oldsql.slang.IterableExtension
@@ -85,7 +85,7 @@ trait SQLWriteForm[-T] extends SuperSQLForm { outer =>
 	  * or a SELECT clause. For single column forms, this will be the same as `literal(values)`. Multi column forms
 	  * omit the surrounding '(' and ')' so that concatenating results of repeated calls to `inlineLiteral` of several
 	  * forms yields a flat result.
-	  */ //todo: make it return a Seq
+	  */ //fixme: make it return a Seq - without we can't properly implement SQLLiteral
 	def inlineLiteral(value :T) :String
 
 	/** The string representation of a 'null value' of type `T` (typically an SQL NULL or a tuple of NULL values),
@@ -141,6 +141,11 @@ trait SQLWriteForm[-T] extends SuperSQLForm { outer =>
 			res append '?'
 			res.toString
 	}
+
+	/** Calls `this.`[[net.noresttherein.oldsql.schema.SQLWriteForm.inlineParam inlineParam]] if `inline` is true,
+	  * or [[net.noresttherein.oldsql.schema.SQLWriteForm.param param]] otherwise.
+	  */
+	def param(inline :Boolean) :String = if (inline) inlineParam else param
 
 
 	/** Number of parameters set by this form each time its `set` or `setNull` is called. */
@@ -258,10 +263,12 @@ trait SQLWriteForm[-T] extends SuperSQLForm { outer =>
 	  * properties of the same larger entity. The string literal representation will be that of a SQL tuple.
 	  */
 	def +[S <: T](next :SQLWriteForm[S]) :SQLWriteForm[S] = next match {
+		case _ if writtenColumns == 0 => next
+		case _ if next.writtenColumns == 0 => this
 		case composite :JoinedSQLWriteForm[S @unchecked] =>
 			SQLWriteForm.join(this +: composite.forms :_*)
 		case _ =>
-			SQLWriteForm.join(this, next)
+			new WriteFormList(this, next)
 	}
 
 	/** Combine this form with a read form for the same type in order to obtain a read-write form. */
@@ -1196,6 +1203,69 @@ object SQLWriteForm {
 
 
 
+	private final case class WriteFormList[-T](preceding :SQLWriteForm[T], last :SQLWriteForm[T])
+		extends SQLWriteForm[T]
+	{
+		if (preceding.writtenColumns == 0)
+			throw new IllegalArgumentException(
+				"Cannot append form " + last + " to an empty form " + preceding + "."
+			)
+		if (last.writtenColumns == 0)
+			throw new IllegalArgumentException(
+				"I don't want to append an empty form "  + last + " to " + preceding + "."
+			)
+
+		override val writtenColumns :Int = preceding.writtenColumns + last.writtenColumns
+
+		override def set(statement :PreparedStatement, position :Int, value :T) :Unit = {
+			@tailrec def rec(form :SQLWriteForm[T]) :Unit = form match {
+				case list :WriteFormList[T] =>
+					val left = list.preceding
+					list.last.set(statement, position + left.writtenColumns, value)
+					rec(left)
+				case _ => form.set(statement, position, value)
+			}
+			rec(this)
+		}
+		override def setNull(statement :PreparedStatement, position :Int) :Unit = {
+			@tailrec def rec(form :SQLWriteForm[T]) :Unit = form match {
+				case list :WriteFormList[T] =>
+					val left = list.preceding
+					list.last.setNull(statement, position + left.writtenColumns)
+					rec(left)
+				case _ => form.setNull(statement, position)
+			}
+			rec(this)
+		}
+
+		override def literal(value :T) :String =
+			"(" + preceding.inlineLiteral(value) + ", " + last.inlineLiteral(value) + ")"
+
+		override def inlineLiteral(value :T) :String =
+			preceding.inlineLiteral(value) + ", " + last.inlineLiteral(value)
+
+		override lazy val nullLiteral :String =
+			"(" + preceding.inlineNullLiteral + ", " + last.inlineNullLiteral + ")"
+
+		override lazy val inlineNullLiteral :String =
+			preceding.inlineNullLiteral + ", " + last.inlineNullLiteral
+
+		override def split :Seq[ColumnWriteForm[T]] = preceding.split :++ last.split
+
+		override def notNull :SQLWriteForm[T] = {
+			val l = preceding.notNull; val r = last.notNull
+			if ((l eq preceding) && (r eq last)) this
+			else new WriteFormList(l, r)
+		}
+
+		override def +[S <: T](next :SQLWriteForm[S]) =
+			if (next.writtenColumns == 0) this else new WriteFormList(this, next)
+
+		override lazy val toString :String = "(" + preceding + "::" + last + ")"
+	}
+
+
+
 	private class JoinedSQLWriteForm[-T](val forms :Seq[SQLWriteForm[T]], name :String = null)
 		extends SQLWriteForm[T]
 	{
@@ -1374,7 +1444,7 @@ object SQLWriteForm {
 
 		override def notNull :SQLWriteForm[Seq[T]] = new SQLWriteFormSeq[T](forms.map(_.notNull))
 
-		private val string :String = forms.iterator.map(_.toString).mkString("::")
+		private val string :String = forms.iterator.map(_.toString).mkString("<Seq(", ",", ")")
 		override def toString :String = string
 	}
 

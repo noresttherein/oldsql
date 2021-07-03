@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.sql.RowProduct.PureParamFrom
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.StoredProcedure.ProcedureParameterization
-import net.noresttherein.oldsql.sql.ast.{FunctionSQL, SQLParameter}
+import net.noresttherein.oldsql.sql.ast.{BoundParam, FunctionSQL, JoinedRelation}
 import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumnSQL
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{ProcedureSignature, SpelledSQL}
@@ -73,12 +73,12 @@ trait SQLExecutable[Params, +Res] extends Serializable {
 	  * values, unable to conform to `StoredFunction`, or whose usage must be restricted with respect to 'normal'
 	  * functions returning distinct types.
 	  */
-	protected def paramSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Params, RowProduct] = {
+	protected def paramSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Params] = {
 		val sql = spelling.function(name) + "(" + paramForm.inlineParam + ")"
-		SpelledSQL(sql, SQLContext(), new ProcedureParameterization[Params]()(paramForm))
+		SpelledSQL(sql, SQLContext(), paramForm)
 	}
 
-	private[sql] final def paramSpellingForwarder(spelling :SQLSpelling) :SpelledSQL[Params, RowProduct] =
+	private[sql] final def paramSpellingForwarder(spelling :SQLSpelling) :SpelledSQL[Params] =
 		paramSpelling(spelling)
 
 	/** Creates SQL text of an SQL expression invoking this function with arguments listed by the tuple expression
@@ -86,14 +86,14 @@ trait SQLExecutable[Params, +Res] extends Serializable {
 	  * For that, see [[net.noresttherein.oldsql.sql.SQLExecutable.call call]]`(args)`.
 	  */
 	protected def defaultSpelling[P, F <: RowProduct](args :SQLExpression[F, LocalScope, Params])
-	                                                 (context :SQLContext, params :Parameterization[P, F])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
+	                                                 (context :SQLContext[P], params :Parameterization[P, F])
+	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P] =
 		(spelling.function(name) +  "(") +: (spelling.inline(args)(context, params) + ")")
 
 	private[sql] final def defaultSpelling[P, F <: RowProduct]
 	                                      (spelling :SQLSpelling)(args :SQLExpression[F, LocalScope, Params])
-	                                      (implicit context :SQLContext, params :Parameterization[P, F])
-			:SpelledSQL[P, F] =
+	                                      (implicit context :SQLContext[P], params :Parameterization[P, F])
+			:SpelledSQL[P] =
 		defaultSpelling(args)(context, params)(spelling)
 
 
@@ -727,7 +727,7 @@ object ColumnFunction {
 
 	implicit class ColumnFunction1Extension[A, Y](self :ColumnFunction1[A, Y]) extends ColumnFunctionExtension(self) {
 		def apply(a :A) :FunctionColumnSQL[RowProduct, GlobalScope, @~ ~A, Y] =
-			function(SQLParameter[A, A](a)(function.paramForm.last))
+			function(BoundParam[A, A](a)(function.paramForm.last))
 
 		def apply[X <: RowProduct, Sc >: LocalScope <: GlobalScope](a :SQLExpression[X, Sc, A])
 				:FunctionColumnSQL[X, Sc, @~ ~A, Y] =

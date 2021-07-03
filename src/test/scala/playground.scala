@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.schema.forms.SQLForms
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.sql.{AndFrom, ColumnFunction, From, InnerJoin, Join, JoinParam, LeftJoin, RightJoin, RowProduct, StoredFunction, StoredProcedure, Subselect}
 import net.noresttherein.oldsql.sql.RowProduct.As
-import net.noresttherein.oldsql.sql.UnboundParam.FromParam
+import net.noresttherein.oldsql.sql.ParamClause.UnboundParam
 import net.noresttherein.oldsql.slang
 
 //implicits
@@ -82,7 +82,7 @@ object playground extends App {
 
 //	def ?:[X] = ???
 //	def ?:[String :ValueOf, Int] = ???
-	import net.noresttherein.oldsql.sql.UnboundParam.?:
+	import net.noresttherein.oldsql.sql.ParamClause.?:
 	?:[Int]
 	"param".?:[Int]
 	?:["p1", Int]
@@ -93,9 +93,9 @@ object playground extends App {
 //	val p1 = params ? 0; val p2 = params ? 1; val p3 = params ? 2
 //	val p1 = params ? -3; val p2 = params ? -2; val p3 = params ? -1
 
-	p1 :FromParam[Int, RowProduct AndFrom FromParam.Of[Int]#P Join B JoinParam FromParam.Of[Long]#P Join C JoinParam FromParam.Of[String]#P]
-	p2 :FromParam[Long, RowProduct AndFrom FromParam.Of[Long]#P Join C JoinParam FromParam.Of[String]#P]
-	p3 :FromParam[String, RowProduct AndFrom FromParam.Of[String]#P]
+	p1 :UnboundParam[Int, RowProduct AndFrom UnboundParam.Of[Int]#P Join B JoinParam UnboundParam.Of[Long]#P Join C JoinParam UnboundParam.Of[String]#P]
+	p2 :UnboundParam[Long, RowProduct AndFrom UnboundParam.Of[Long]#P Join C JoinParam UnboundParam.Of[String]#P]
+	p3 :UnboundParam[String, RowProduct AndFrom UnboundParam.Of[String]#P]
 
 
 	println(scala.reflect.runtime.universe.reify {

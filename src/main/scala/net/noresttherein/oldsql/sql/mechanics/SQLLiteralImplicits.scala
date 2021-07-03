@@ -4,10 +4,10 @@ import scala.annotation.implicitAmbiguous
 
 import net.noresttherein.oldsql.schema.{ColumnForm, SQLForm}
 import net.noresttherein.oldsql.sql.{GlobalBoolean, RowProduct}
-import net.noresttherein.oldsql.sql.ast.{SQLNull, SQLParameter, SQLTerm}
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
+import net.noresttherein.oldsql.sql.SQLBoolean.{False, True}
+import net.noresttherein.oldsql.sql.ast.{SQLNull, BoundParam, SQLTerm}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm
-import net.noresttherein.oldsql.sql.ast.SQLParameter.ParameterFactory
+import net.noresttherein.oldsql.sql.ast.BoundParam.ParameterFactory
 import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.nullSQL
 
 
@@ -36,7 +36,7 @@ sealed trait LowPrioritySQLLiteralImplicits {
 
 /** A trait grouping definitions of implicit conversions from Scala literals to
   * [[net.noresttherein.oldsql.sql.ast.SQLLiteral SQLLiteral]] expressions as well as extension factory
-  * methods for [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]]s
+  * methods for [[net.noresttherein.oldsql.sql.ast.BoundParam BoundParam]]s
   * ([[net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.boundParameterSQL.? _.?]]) and
   * [[net.noresttherein.oldsql.sql.ast.CompositeNull nulls]]
   * ([[net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.nullSQL.apply null]]`[T]`).
@@ -66,21 +66,21 @@ trait SQLLiteralImplicits extends LowPrioritySQLLiteralImplicits {
 
 	/** Enriches any Scala type for which a [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]
 	  * or an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] exists with a `?` method creating
-	  * an [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]] expression representing a JDBC parameter
+	  * an [[net.noresttherein.oldsql.sql.ast.BoundParam BoundParam]] expression representing a JDBC parameter
 	  * together with its value.
 	  */ //todo: move it someplace better than mechanics and make it AnyVal
-	implicit class boundParameterSQL[T, P <: SQLParameter[T]](value :T)(implicit factory :ParameterFactory[T, P]) {
+	implicit class boundParameterSQL[T, P <: BoundParam[T]](value :T)(implicit factory :ParameterFactory[T, P]) {
 		/** Creates a ''bound'' parameter of an SQL statement represented as an
 		  * [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]. The value of the parameter
 		  * is set at this point to `this`, but any SQL ''selects'' using this expression will be translated
 		  * to a [[java.sql.PreparedStatement PreparedStatement]] with a parameter placeholder for this expression.
 		  * @return an expression of type `P`, being a subtype of
-		  *         [[net.noresttherein.oldsql.sql.ast.SQLParameter SQLParameter]] defined by the available implicit
-		  *         [[net.noresttherein.oldsql.sql.ast.SQLParameter.ParameterFactory ParameterFactory]]
+		  *         [[net.noresttherein.oldsql.sql.ast.BoundParam BoundParam]] defined by the available implicit
+		  *         [[net.noresttherein.oldsql.sql.ast.BoundParam.ParameterFactory ParameterFactory]]
 		  *         for the type `T`. If an implicit [[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]`[T]`
 		  *         is available, the result
-		  *         will be a [[net.noresttherein.oldsql.sql.ast.SQLParameterColumn SQLParameterColumn]].
-		  *         Otherwise it will be a `SQLParameter[T]` (using an implicit
+		  *         will be a [[net.noresttherein.oldsql.sql.ast.BoundParamColumn BoundParamColumn]].
+		  *         Otherwise it will be a `BoundParam[T]` (using an implicit
 		  *         [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[T]` provided by the factory).
 		  */
 		@inline def ? :P = factory(value)

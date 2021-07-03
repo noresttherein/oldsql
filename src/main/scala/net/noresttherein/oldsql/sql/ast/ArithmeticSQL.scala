@@ -47,9 +47,9 @@ object ArithmeticSQL {
 		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, Y]) :Y[S, V] =
 			visitor.unaryArithmetic(this)
 
-		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-			operation.symbol +: value.inParens(context, params)
+		protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+			spelling.operator(operation.symbol) +: value.inParens(from, context, params)
 
 
 		override def canEqual(that :Any) :Boolean = that match {
@@ -122,9 +122,9 @@ object ArithmeticSQL {
 			visitor.unaryPostfix(this)
 
 
-		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-			value.inParens(context, params) + operation.symbol
+		protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+			value.inParens(from, context, params) + spelling.operator(operation.symbol)
 
 
 		override def canEqual(that :Any) :Boolean = that match {
@@ -206,22 +206,22 @@ object ArithmeticSQL {
 			visitor.binaryArithmetic(this)
 
 
-		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
 		{
 			val l = left match {
-				case BinaryOperationSQL(_, op, _) if op != operation =>
-					("(" +: spelling(left :ColumnSQL[E, S, V])(context, params)) + ")"
+				case BinaryOperationSQL(_, op, _) if op != operation || op != Plus && op != Times =>
+					("(" +: spelling(left)(from, context, params)) + ")"
 				case _ =>
-					spelling(left :ColumnSQL[E, S, V])(context, params)
+					spelling(left)(from, context, params)
 			}
 			val r = right match {
-				case BinaryOperationSQL(_, op, _) if op != operation =>
-					("(" +: spelling(right :ColumnSQL[E, S, V])(l.context, l.params)) + ")"
+				case BinaryOperationSQL(_, op, _) if op != operation || op != Plus && op != Times =>
+					("(" +: spelling(right)(from, l.context, params)) + ")"
 				case _ =>
-					spelling(right :ColumnSQL[E, S, V])(l.context, l.params)
+					spelling(right)(from, l.context, params)
 			}
-			l.sql +: (" " + operation.symbol + " ") +: r
+			l +: (" " + spelling.operator(operation.symbol) + " ") +: r
 		}
 
 

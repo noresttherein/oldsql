@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.collection.Chain.~
 import net.noresttherein.oldsql.schema.{Mapping, SQLWriteForm}
-import net.noresttherein.oldsql.sql.RowProduct.{SubselectFrom, TableFormula, WithParam}
+import net.noresttherein.oldsql.sql.RowProduct.{SelectedFrom, TableFormula, WithParam}
 import net.noresttherein.oldsql.slang._
 import net.noresttherein.oldsql.slang.SaferCasts._
 import net.noresttherein.oldsql.sql.SQLFormula.BooleanFormula

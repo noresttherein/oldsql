@@ -37,6 +37,7 @@ trait FunctionSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X <: Chain,
 
 	override def isGlobal :Boolean = args.isGlobal
 	override def isAnchored :Boolean = args.isAnchored
+	override def isAnchored(from :F) :Boolean = args.isAnchored(from)
 
 	override def anchor(from :F) :SQLExpression[F, S, Y] = args.anchor(from) match {
 		case tuple :ChainTuple[F @unchecked, S @unchecked, X @unchecked] =>
@@ -63,15 +64,15 @@ trait FunctionSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X <: Chain,
 
 	override def columnCount(implicit spelling :SQLSpelling) :Int = readForm.readColumns
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		spelling(function)(this.args :ChainTuple[E, S, X])(context, params)
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		spelling(function)(this.args)(from, context, params)
 
-	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
+	protected override def explodedSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                          (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
 		readForm.readColumns match {
 			case 0 => Nil
-			case 1 => defaultSpelling(context, params)::Nil
+			case 1 => defaultSpelling(from, context, params)::Nil
 			case n =>
 				throw new InseparableExpressionException(
 					s"Cannot split a multi($n) column function call '$this' into individual columns."
@@ -182,9 +183,9 @@ object FunctionSQL {
 		protected override def applyTo[R[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, R]) :R[S, Y] =
 			visitor.function(this)
 
-		override def inParens[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-		                                (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-			defaultSpelling(context, params)
+		override def inParens[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                        (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+			defaultSpelling(from, context, params)
 	}
 
 

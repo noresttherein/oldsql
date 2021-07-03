@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.collection.{Chain, Opt}
-import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainGet}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.{ChunkedString, InferTypeParams}
@@ -11,19 +11,19 @@ import net.noresttherein.oldsql.schema.{ColumnMapping, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
 import net.noresttherein.oldsql.schema.Table.StaticTable
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.bits.ConstantMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.DecoratedFrom.ExpandingDecorator
-import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, NonEmptyFrom, ParamlessFrom, PartOf, PrefixOf, RowProductTemplate, TopFrom}
 import net.noresttherein.oldsql.sql.Expanded.NonSubselect
 import net.noresttherein.oldsql.sql.FromSome.GroundFromSome
+import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundFrom, NonEmptyFrom, ParamlessFrom, PartOf, PrefixOf, RowProductTemplate}
+import net.noresttherein.oldsql.sql.SQLBoolean.True
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.GroupingSpellingContext
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope, LocalSQL}
-import net.noresttherein.oldsql.sql.ast.{ColumnComponentSQL, ComponentSQL, RelationSQL, SelectAs, SelectColumn, SelectColumnAs, SelectSQL, TableSQL}
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
+import net.noresttherein.oldsql.sql.ast.{ColumnComponentSQL, ComponentSQL, JoinedRelation, RelationSQL, SelectAs, SelectColumn, SelectColumnAs, SelectSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
-import net.noresttherein.oldsql.sql.mechanics.{GroupedUnder, LastTableOf, OuterClauseOf, RowProductVisitor, SelectFactory, SpelledSQL, TableCount}
+import net.noresttherein.oldsql.sql.mechanics.{GroupedUnder, LastTableOf, OuterClauseOf, RowProductVisitor, SelectFactory, SpelledSQL, TableCount, TableOffset}
 import net.noresttherein.oldsql.sql.mechanics.GetTable.{ByAlias, ByIndex, ByLabel, ByParamIndex, ByParamName, ByParamType, BySubject, ByType}
 import net.noresttherein.oldsql.sql.mechanics.LastTableOf.LastBound
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
@@ -141,7 +141,7 @@ import net.noresttherein.oldsql.slang._
   *     Aside from the above extensions, associated implicits and other helper classes, the companion object
   *     defines some base types serving as common upper bounds and several useful type aliases which enforce
   *     certain features on `RowProduct` instances, such as [[net.noresttherein.oldsql.sql.RowProduct.TopFrom TopFrom]],
-  *     [[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]],
+  *     [[net.noresttherein.oldsql.sql.RowProduct.SelectedFrom SelectedFrom]],
   *     [[net.noresttherein.oldsql.sql.RowProduct.As As]] and others.
   *
   * @see [[net.noresttherein.oldsql.sql.FromSome]] the base trait for all non-empty clauses
@@ -161,7 +161,7 @@ import net.noresttherein.oldsql.slang._
   *      of a ''from'' clause, introducing the first grouping expression.
   *
   * @author Marcin Mościcki
-  */ //consider: renaming simply to Relations
+  */ //consider: renaming simply to Relations or Clause
 trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { thisClause =>
 
 	/** Type of the last `Mapping` in this join (the rightmost one) if not empty. `Dual` defines it as `Nothing`. */
@@ -241,6 +241,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 		//  The alternative however would make Self volatile, so no member types of self could be used.
 		type FromLast    <: thisClause.FromLast
 		type Generalized <: thisClause.Generalized //these can't be =:= because Dual.Generalized =:= RowProduct
+//		type Dealiased   >: Self <: Generalized
 		type Explicit    <: thisClause.Explicit
 		type Implicit    <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = RowProduct
 		type Base        <: thisClause.Base
@@ -267,6 +268,9 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 //		type Last[O <: RowProduct] = thisClause.Last[O] //lets leave some flexibility for unforseen implementations
 		type FromLast    = thisClause.FromLast
 		type Generalized = thisClause.Generalized
+//		type Dealiased  >: Self <: Generalized
+		type ParamsOnly  = thisClause.ParamsOnly
+		type LastParam   = thisClause.LastParam
 		type Params      = thisClause.Params
 		type FullRow     = thisClause.FullRow
 		type Explicit    = thisClause.Explicit
@@ -298,9 +302,12 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  */
 	type Self <: RowProduct {
 		type LastMapping[O] = thisClause.LastMapping[O]
-//		type Last[O <: RowProduct] = thisClause.Last[O] //lets leave some flexibility for unforseen implementations
+//		type Last[O <: RowProduct] = thisClause.Last[O] //lets leave some flexibility for unforeseen implementations
 		type FromLast    = thisClause.FromLast
 		type Generalized = thisClause.Generalized
+//		type Dealiased  >: Self <: Generalized
+		type ParamsOnly  = thisClause.ParamsOnly
+		type LastParam   = thisClause.LastParam
 		type Params      = thisClause.Params
 		type FullRow     = thisClause.FullRow
 		type Explicit    = thisClause.Explicit
@@ -365,7 +372,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 
 
 	/** A flag type which specifies if the clause contains any relations ''other'' than
-	  * [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation unbound]] parameters. `true` for
+	  * [[net.noresttherein.oldsql.sql.ParamClause.ParamRelation unbound]] parameters. `true` for
 	  * [[net.noresttherein.oldsql.sql.Dual Dual]] and set to false (literal type) by all joins except for
 	  * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]], which defines it as equal to that of its left side.
 	  * Together with [[net.noresttherein.oldsql.sql.RowProduct.PureParamFrom PureParamFrom]] type alias it can be used
@@ -374,7 +381,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  */
 	type ParamsOnly <: Boolean
 
-	/** The type of the last [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameter among these relations.
+	/** The type of the last [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameter among these relations.
 	  * It is the last element of the type of chain [[net.noresttherein.oldsql.sql.RowProduct.Params Params]].
 	  */
 	type LastParam
@@ -387,7 +394,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  */
 	type Params <: Chain
 
-	/** The type of this clause with the last [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo join
+	/** The type of this clause with the last [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] pseudo join
 	  * removed. It is the result type of method [[net.noresttherein.oldsql.sql.RowProduct.bind(param:LastParam) bind]]
 	  * used to provide the value for the last parameter.
 	  */
@@ -395,14 +402,14 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 
 	/** The [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form of this instance's
 	  * [[net.noresttherein.oldsql.sql.RowProduct.Paramless Paramless]] type - the type of the `RowProduct` resulting
-	  * from removing all [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo joins from this `RowProduct`.
+	  * from removing all [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] pseudo joins from this `RowProduct`.
 	  */
 	type GeneralizedParamless >: Paramless <: RowProduct
 
-	/** The type of this clause with all [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] expansions
+	/** The type of this clause with all [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] expansions
 	  * removed. It is the result type of method
 	  * [[net.noresttherein.oldsql.sql.RowProduct.bind(params:Params) bind]]`(`[[net.noresttherein.oldsql.sql.RowProduct.Params Params]]`)`,
-	  * which replaces all references to unbound parameters with [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]]
+	  * which replaces all references to unbound parameters with [[net.noresttherein.oldsql.sql.ast.BoundParam bound]]
 	  * parameter expressions.
 	  */
 	type Paramless <: ParamlessFrom
@@ -417,7 +424,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	type BoundParamless >: Paramless <: ParamlessFrom
 	//todo: DecoratedGeneralizedParamless
 	/** A helper type used in the definitions of [[net.noresttherein.oldsql.sql.RowProduct.Paramless Paramless]]:
-	  * [[net.noresttherein.oldsql.sql.UnboundParam Unbound]] parameters define it as their `Paramless`
+	  * [[net.noresttherein.oldsql.sql.ParamClause Unbound]] parameters define it as their `Paramless`
 	  * (ignoring the argument), while other types define it as the argument type `D`. This gives the option
 	  * to `RowProduct` implementations which are closely tied to the preceding relation/join
 	  * (in particular [[net.noresttherein.oldsql.sql.DecoratedFrom decorators]]) to remove themselves
@@ -426,8 +433,8 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	type DecoratedParamless[D <: BoundParamless] <: BoundParamless
 	//consider: both bind methods should probably only bind parameters from the most nested subselect
 	/** Applies this clause to its last parameter, removing the last
-	  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] and substituting all references to its parameter
-	  * components with [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions
+	  * [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] and substituting all references to its parameter
+	  * components with [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameter expressions
 	  * with values derived from `param`. Parameters in aggregated sections (for example, under
 	  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] are treated the same way as all others
 	  * @param param the value for the last parameter pseudo relation joined with `UnboundParam`
@@ -436,9 +443,9 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  */
 	def bind(param :LastParam) :AppliedParam
 
-	/** Applies this clause to its parameters: removes all [[net.noresttherein.oldsql.sql.UnboundParam unbound]]
+	/** Applies this clause to its parameters: removes all [[net.noresttherein.oldsql.sql.ParamClause unbound]]
 	  * parameters from this clause and substitutes all references to parameter components with
-	  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions with values derived
+	  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameter expressions with values derived
 	  * from the corresponding chain elements. This method will include ''all'' parameters in their order of appearance
 	  * in `F`, including those in the grouped, 'discrete' section, which aren't available for use in SQL expressions.
 	  * @param params a chain consisting of subject types of all parameter mappings of all `UnboundParam` joins
@@ -459,7 +466,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	/** Implementation target of [[net.noresttherein.oldsql.sql.RowProduct.bind bind]] for
 	  * [[net.noresttherein.oldsql.sql.DecoratedFrom decorator]] clauses which should be removed from the
 	  * [[net.noresttherein.oldsql.sql.RowProduct.Paramless Paramless]] result together with a decorated
-	  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]]. `UnboundParam` returns simply their `Paramless`
+	  * [[net.noresttherein.oldsql.sql.ParamClause ParamClause]]. `UnboundParam` returns simply their `Paramless`
 	  * form, while other implementations apply the `decorate` function to their `Paramless` form, reapplying
 	  * the decorator in the process.
 	  */
@@ -470,32 +477,32 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 //	def asParamless :Option[Self <:< ParamlessFrom] = //todo: maybe implement it the halal way?
 //		if (isParameterized) None else Some(implicitly[Self <:< Self].asInstanceOf[Self <:< ParamlessFrom])
 
-	/** The total number of [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters in this clause,
-	  * i.e. the length of the [[net.noresttherein.oldsql.sql.RowProduct.Params Params]] chain.
-	  */
-	def paramCount :Int
-
-	/** The index of the rightmost [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] in this clause.
-	  * Counting goes from right to left and starts with zero;
-	  * [[net.noresttherein.oldsql.sql.RowProduct.fullTableStack fullTableStack]]`(lastParamOffset)` will return
-	  * the [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]] representing the parameter.
-	  * @throws UnsupportedOperationException if `!this.isParameterized`.
-	  */
-	def lastParamOffset :Int
-
-	/** Does this clause contain any [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] 'joins'
+	/** Does this clause contain any [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] 'joins'
 	  * (or its subtypes)?
 	  * @return `false` ''iff'' `this.paramCount =:= 0`.
 	  */
 	def isParameterized :Boolean = paramCount == 0
 
-	/** Does this clause contain any [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] 'joins'
+	/** Does this clause contain any [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] 'joins'
 	  * (or its subtypes) in its [[net.noresttherein.oldsql.sql.RowProduct.Explicit explicit]] section?
 	  * Such clauses cannot be used to create SQL ''select'' statements.
 	  * @return true ''iff'' `this.Base =:= Nothing`.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.Base]]
 	  */
 	def isSubselectParameterized :Boolean
+
+	/** The total number of [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters in this clause,
+	  * i.e. the length of the [[net.noresttherein.oldsql.sql.RowProduct.Params Params]] chain.
+	  */
+	def paramCount :Int
+
+	/** The index of the rightmost [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] in this clause.
+	  * Counting goes from right to left and starts with zero;
+	  * [[net.noresttherein.oldsql.sql.RowProduct.fullTableStack fullTableStack]]`(lastParamOffset)` will return
+	  * the [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]] representing the parameter.
+	  * @throws UnsupportedOperationException if `!this.isParameterized`.
+	  */
+	def lastParamOffset :Int
 
 
 	/** Does this clause contain no relations, being a base for a select without a ''from'' clause? */
@@ -536,7 +543,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 
 
 	/** Subject types of the mappings of all relations in this clause, excluding unbound parameters (synthetic relations
-	  * joined using [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo joins), concatenated into
+	  * joined using [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] pseudo joins), concatenated into
 	  * a heterogeneous list. The [[net.noresttherein.oldsql.collection.Chain chain]] contains the mapped types
 	  * in the same order as their mappings appear in this type's definition and is,
 	  * like [[net.noresttherein.oldsql.sql.Adjoin Adjoin]] (and all [[net.noresttherein.oldsql.sql.Join Join]]
@@ -551,13 +558,13 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 
 	/** Create an SQL tuple expression containing `JoinedRelation` expressions for all relations available
 	  * in this clause in their order of appearance, excluding unbound parameters
-	  * (synthetic relations joined using [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo joins).
+	  * (synthetic relations joined using [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] pseudo joins).
 	  * All mappings occurring between a [[net.noresttherein.oldsql.sql.Subselect Subselect]]
 	  * (or [[net.noresttherein.oldsql.sql.Dual Dual]]/[[net.noresttherein.oldsql.sql.From From]]) until the next
 	  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]], if present, are considered unavailable. The omitted
 	  * segment constitutes the ''from'' clause of a single select expression with a ''group by'' clause, meaning
 	  * the values of individual rows cannot be accessed.
-	  */
+	  */ //todo: subclass with only RelationSQL elements - replace tableStack/fullTableStack
 	def fullRow :ChainTuple[Generalized, GlobalScope, FullRow] = fullRow(generalized)
 
 	/** Create an SQL tuple expression, based on some expanding clause `E`, containing `JoinedRelation` expressions
@@ -575,7 +582,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * Any relations in the scope of a [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] clause are excluded.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.fullRow]]
 	  */
-	def fullTableStack :LazyList[RelationSQL.AnyIn[Generalized]] = fullTableStack(generalized)
+	def fullTableStack :Seq[RelationSQL.AnyIn[Generalized]] = fullTableStack(generalized)
 
 	/** All relations in this clause as generic, untyped mappings, in the reverse order of their appearance.
 	  * The `JoinedRelation`s are based on some expanding clause `E`, so that the stack for a prefix clause
@@ -592,7 +599,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * in order to `P`, using the same join kinds. The join type `J` is used as the join between the last relation
 	  * in `P` and the first relation in `this`, unless this clause starts with a `JoinParam` join.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.joinedWith]]
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.JoinedWithSubselect]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.SelectedFrom]]
 	  */
 	type JoinedWith[+P <: RowProduct, +J[+L <: P, R[O] <: MappingAt[O]] <: L NonParam R] <: Generalized
 
@@ -618,9 +625,9 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * and those from this clause. It is the result of substituting the initial
 	  * [[net.noresttherein.oldsql.sql.From From]]`[T]` clause in this type's definition with `P Subselect T`.
 	  * The join kinds of both clauses are preserved.
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.joinedWithSubselect]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.selectedFrom]]
 	  */
-	type JoinedWithSubselect[+P <: NonEmptyFrom] <: JoinedWith[P, Subselect] {
+	type SelectedFrom[+P <: NonEmptyFrom] <: JoinedWith[P, Subselect] {
 		type Row = thisClause.Row
 		type Explicit = thisClause.Explicit
 	}
@@ -630,14 +637,16 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * is the result of appending the first relation from `this` to the `prefix` clause using the `Subselect` join,
 	  * and then all the following relations using the same joins as in this clause. All join conditions are copied,
 	  * but any additional condition narrowing the resulting cross join must be added manually. Note that the result
-	  * is not necessarily a subselect of this clause (in terms of `DirectSubselect` and `SubselectOf`), as there may be other
-	  * intermediate `Subselect` joins present in `prefix`. This method is the delegate target
-	  * of the [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]]
+	  * is not necessarily a subselect of this clause (in terms of
+	  * [[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect DirectSubselect]] and
+	  * [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]]), as there may be other intermediate
+	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] joins present in `prefix`. This method
+	  * is the delegate target of the [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.subselect subselect]]
 	  * method available through an implicit conversion, which should be used instead by the client code.
 	  * @throws UnsupportedOperationException if this clause is empty or the first join in this clause is a `JoinParam`.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.asSubselectOf]]
 	  */
-	def joinedWithSubselect[F <: NonEmptyFrom](prefix :F) :JoinedWithSubselect[F]
+	def selectedFrom[F <: NonEmptyFrom](prefix :F) :SelectedFrom[F]
 
 	/** Joins the clause given as the parameter with this clause. The type of the resulting clause is the result
 	  * of replacing the empty clause `Dual` in this clause's type with `P` and upcasting the join between `Dual`
@@ -662,7 +671,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 
 	/** Is this ''from'' clause a legal subselect ''from'' clause, that is does it have a
 	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] 'join' somewhere in its complete (dynamic) type
-	  * and no [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters in the most nested subselect clause?
+	  * and no [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters in the most nested subselect clause?
 	  * @return `isSubselect && !isSubselectParameterized`
 	  */
 	def isValidSubselect :Boolean
@@ -687,7 +696,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * As a member type, it is able to define the [[net.noresttherein.oldsql.sql.RowProduct.Implicit Implicit]] and
 	  * [[net.noresttherein.oldsql.sql.RowProduct.Base Base]] types of this refinement as `this.Generalized`, allowing
 	  * it to work for abstract types: `f :f.outer.DirectSubselect`
-	  * for any `f :`[[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]]. Similarly,
+	  * for any `f :`[[net.noresttherein.oldsql.sql.RowProduct.SelectedFrom SelectedFrom]]. Similarly,
 	  * `s :f.DirectSubselect` for any clause `s = f subselect t ...` (where '...' denote any sequence of join / group by
 	  * methods other than [[net.noresttherein.oldsql.sql.FromSome.TopFromSomeExtension.param param]] and `subselect`
 	  * (or any other method creating a [[net.noresttherein.oldsql.sql.Subselect Subselect]] join).
@@ -777,7 +786,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * with fully instantiated parameters (the clause is ''concrete'', that is the concrete types of all joins in it
 	  * are known), value `(s :S) subselect t1 join t2 ... join t3` conforms to `s.DirectSubselect`
 	  * and `RowProduct { type Outer = s.Self }` if none of the joins following the subselect element are
-	  * an [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]]. This way one can statically express a dependency
+	  * an [[net.noresttherein.oldsql.sql.ParamClause ParamClause]]. This way one can statically express a dependency
 	  * relationship between ''from'' clauses without resorting to implicit evidence.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.outer]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.Implicit]]
@@ -804,14 +813,14 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 
 	/** The `RowProduct` type used as the type parameter of [[net.noresttherein.oldsql.sql.ast.SelectSQL select]] SQL
 	  * expressions created from this instance. It is equal to `Implicit`, unless
-	  * an [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] is present in the explicit portion of
+	  * an [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] is present in the explicit portion of
 	  * this clause, in which case it equals `Nothing` (making the expression unusable).
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.Implicit]]
-	  */ //not defined as DefineBase[Implicit] here because of a clash with SubselectOf refinement caused by a scala bug
+	  */ //todo: not defined as DefineBase[Implicit] here because of a clash with SubselectOf refinement caused by a scala bug
 	type Base <: DefineBase[Implicit] //consider: renaming to Closure, Dependencies or Floor
 
 	/** A helper type used to define the type `Base`. Always parameterized with `Implicit`, all `Expanded` subclasses
-	  * define it as equals to the argument `I`, except of `UnboundParam`, which defines it as `Nothing`.
+	  * define it as equal to the argument `I`, except of `UnboundParam`, which defines it as `Nothing`.
 	  * This is better than defining `Base` directly, as it allows to propagate behavior of the explicit portion
 	  * (which determines whether `Base` will equal `Implicit` or `Nothing`) when rebasing it onto another
 	  * clause (and hence changing the actual `Implicit` type).
@@ -822,7 +831,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] join, or [[net.noresttherein.oldsql.sql.Dual Dual]]
 	  * for non subselect clauses.
 	  * @return `this.outer`
-	  * @throws UnsupportedOperationException if there is an [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]]
+	  * @throws UnsupportedOperationException if there is an [[net.noresttherein.oldsql.sql.ParamClause ParamClause]]
 	  *                                       join after the last `Subselect` in this clause.
 	  */
 	def base :Base
@@ -929,7 +938,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 
 	/** Subject types of all mappings in this clause, following
 	  * the [[net.noresttherein.oldsql.sql.RowProduct.outer implicit]] prefix and excluding unbound parameters
-	  * (synthetic relations joined using [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo joins),
+	  * (synthetic relations joined using [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] pseudo joins),
 	  * concatenated into a [[net.noresttherein.oldsql.collection.Chain Chain]]. This amounts to the list of mappings
 	  * from all the relations from the ''from'' clause of the most deeply nested subselect or, if this is a ''group by''
 	  * clause, all mappings to the right of the last grouping expression appended
@@ -945,9 +954,9 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  */
 	type Row <: Chain
 
-	/** Create an SQL tuple expression containing [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]]
+	/** Create an SQL tuple expression containing [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]]
 	  * expressions for all joined relations in the most deeply nested subselect, excluding unbound parameters
-	  * (synthetic relations joined using [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo joins),
+	  * (synthetic relations joined using [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] pseudo joins),
 	  * in their order of appearance. This includes all relations in this clause following the most recent
 	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] or
 	  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]]/[[net.noresttherein.oldsql.sql.By By]] 'join',
@@ -960,9 +969,9 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  */
 	def row :ChainTuple[Generalized, GlobalScope, Row] = row(generalized)
 
-	/** Create an SQL tuple expression containing [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]]
+	/** Create an SQL tuple expression containing [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]]
 	  * expressions for all joined relations in the most deeply nested subselect, excluding unbound parameters
-	  * (synthetic relations joined using [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] pseudo joins),
+	  * (synthetic relations joined using [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] pseudo joins),
 	  * in their order of appearance. This includes all relations in this clause following the most recent
 	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] or
 	  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]]/[[net.noresttherein.oldsql.sql.By By]] 'join',
@@ -986,7 +995,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * and `Implicit =:= RowProduct`), all not grouped relations are included.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.row]]
 	  */
-	def tableStack :LazyList[RelationSQL.AnyIn[Generalized]] = tableStack(generalized)
+	def tableStack :Seq[RelationSQL.AnyIn[Generalized]] = tableStack(generalized)
 
 	/** All relations in the ''explicit'' section of this instance as generic, untyped mappings, in the reverse order
 	  * of their appearance, ending with the first not grouped relation following
@@ -1063,7 +1072,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * clause. All join conditions are preserved. As the argument clause is an expansion of the outer clause of
 	  * this instance, this has the effect of inserting the relations appended to the outer clause between it and
 	  * the inner clause. For outer clauses, this should produce the same result as
-	  * [[net.noresttherein.oldsql.sql.RowProduct.joinedWithSubselect joinedWithSubselect]], though the exact types
+	  * [[net.noresttherein.oldsql.sql.RowProduct.selectedFrom selectedFrom]], though the exact types
 	  * may be different when called for abstract types.
 	  * @return a ''from'' clause which, assuming this instance doesn't contain any `UnboundParam` parameters
 	  *         in its outer section, conforms to `newOuter.DirectSubselect` and, if this type is instantiated at least to
@@ -1199,10 +1208,10 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 			:FromSubselect[F] { type DefineBase[+I <: RowProduct] = subselect.DefineBase[I] }
 
 
-	/** The collection of all [[net.noresttherein.oldsql.sql.CommonTableExpression CommonTableExpression]] named derived tables used by any
-	  * dependent ''select'' expressions used by any SQL ''select'' based on this clause - in ''where''/''having''
-	  * (i.e, in [[net.noresttherein.oldsql.sql.RowProduct.filter filter]] and `this.fromClause.filter`),
-	  * or in ''from''/''group by'' (i.e, by any relations
+	/** The collection of all [[net.noresttherein.oldsql.sql.CommonTableExpression CommonTableExpression]]
+	  * named derived tables used by any dependent ''select'' expressions used by any SQL ''select''
+	  * based on this clause - in ''where''/''having'' (i.e, in [[net.noresttherein.oldsql.sql.RowProduct.filter filter]]
+	  * and `this.fromClause.filter`), or in ''from''/''group by'' (i.e, by any relations
 	  * in [[net.noresttherein.oldsql.sql.RowProduct.tableStack tableStack]] or
 	  * `this.`[[net.noresttherein.oldsql.sql.RowProduct.fromClause fromClause]]`.tableStack`) clauses of this instance.
 	  * These named ''selects'' are collected together to form a single ''with'' clause of the generated
@@ -1216,13 +1225,14 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 
 	def collect[X](fun :PartialFunction[SQLExpression.*, X]) :Seq[X]
 
-	/** Creates SQL for the full ''from'' and ''where'' clauses of this instance (as well as a ''group by''
+	/** Creates SQL for the full ''from'' and ''where'' clauses of this instance (as well as ''group by''
 	  * and ''having'', if present). The returned SQL fragment can be than used to create the SQL for a full ''select''
 	  * expression based on this clause. It is implemented on a high level by abstract `RowProduct` subtypes
 	  * and concrete implementations will typically define only
 	  * [[net.noresttherein.oldsql.sql.RowProduct.defaultSpelling defaultSpelling]].
 	  */
-	def spell(context :SQLContext)(implicit spelling :SQLSpelling) :SpelledSQL[Params, Generalized]
+	def spell[P](context :SQLContext[P], params :Parameterization[P, Generalized])
+	            (implicit spelling :SQLSpelling) :SpelledSQL[P]
 
 	/** A fallback method creating full, standard SQL for this instance invoked by
 	  * [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]] (and the higher-level
@@ -1252,10 +1262,13 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  *         the context given as the argument here, while ''top'' clauses (without
 	  *         a [[net.noresttherein.oldsql.sql.Subselect Subselect]] subcomponent) will build up on a fresh instance.
 	  */
-	protected def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling) :SpelledSQL[Params, Generalized]
+	protected def defaultSpelling[P](context :SQLContext[P], params :Parameterization[P, Generalized])
+	                                (implicit spelling :SQLSpelling) :SpelledSQL[P]
 
-	private[sql] def defaultSpelling(spelling :SQLSpelling)(implicit context :SQLContext) :SpelledSQL[Params, Generalized] =
-		defaultSpelling(context)(spelling)
+	private[sql] final def defaultSpelling[P](spelling :SQLSpelling)
+	                                         (context :SQLContext[P], params :Parameterization[P, Generalized])
+			:SpelledSQL[P] =
+		defaultSpelling(context, params)(spelling)
 
 	/** The spelling context with the aliases of all referencable relations in this instance which is included
 	  * in the [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL SpelledSQL]] returned by method
@@ -1269,13 +1282,13 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * are available as if no ''group by'' clause was present, with only the total number of grouping 'relations'
 	  * introduced by [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] and [[net.noresttherein.oldsql.sql.By By]]
 	  * is provided.
-	  */
-	def spellingContext(implicit spelling :SQLSpelling) :SQLContext
+	  *///currently this is inefficient for FromClause subtypes as it spells the whole table (possibly as select) just for the alias
+	def spellingContext(implicit spelling :SQLSpelling) :SQLContext[Any]
 
 	/** A provider of accessor functions returning the values of the appropriate parameter in
 	  * [[net.noresttherein.oldsql.sql.RowProduct.Params this.Params]] chain based on
 	  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]] expressions of the associated
-	  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] clause. It is used to provide write
+	  * [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] clause. It is used to provide write
 	  * [[net.noresttherein.oldsql.schema.SQLWriteForm forms]] setting the values of the parameters of SQL
 	  * [[net.noresttherein.oldsql.sql.Incantation commands]] based on this ''from'' clause.
 	  * It is used in the process of [[net.noresttherein.oldsql.sql.RowProduct.spell spelling]] the SQL
@@ -1285,16 +1298,45 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  */
 	def parameterization :Parameterization[Params, Self]
 
+	/** Drops the last `position` relations (counting as with their indices) from this instance and
+	  * returns the prefix clause - which must be a [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] or
+	  * [[net.noresttherein.oldsql.sql.By By]] clause - together with its
+	  * [[net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation GroupingRelation]] and
+	  * `context` and `params` adjusted by similarly dropping the suffix of this clause.
+	  * The result thus combines type-compatible argument set to pass to one of grouping relation's spelling methods.
+	  */
+	protected def groupingSpellingContext[P]
+	              (position :Int, context :SQLContext[P], params :Parameterization[P, Generalized])
+			:GroupingSpellingContext[P]
 
-	private[sql] final def applyToForwarder[Y](matcher :RowProductVisitor[Y]) :Y = applyTo(matcher)
+	/** A forwarder to `from.groupingSpellingContext(position, context, params)`. */
+	protected final def groupingSpellingContext[P](from :RowProduct)
+	                                              (position :Int, context :SQLContext[P],
+	                                               params :Parameterization[P, from.Generalized])
+			:GroupingSpellingContext[P] =
+		if (position < 0)
+			throw new IndexOutOfBoundsException(
+				"Cannot return GroupingSpellingContext for relation #" + position + " in " + from + "."
+			)
+		else
+			from.groupingSpellingContext(position, context, params)
+
+	private[sql] final def groupingSpellingContextForwarder[P]
+	                       (position :Int, context :SQLContext[P], params :Parameterization[P, Generalized])
+	        :GroupingSpellingContext[P] =
+		groupingSpellingContext(this)(position, context, params)
+
+
 
 	protected def applyTo[Y](matcher :RowProductVisitor[Y]) :Y = matcher.rowProduct(this)
+
+	private[sql] final def applyToForwarder[Y](matcher :RowProductVisitor[Y]) :Y = applyTo(matcher)
 
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[RowProduct]
 
 
-	/** The implementation for `toString` avoiding O(n^2) `String` concatenation cost by using a list-like buffer. */
+	/** The implementation for `toString` avoiding O(n^2^) `String` concatenation cost by using a list-like buffer. */
 	def chunkedString :ChunkedString
 
 	override def toString :String = chunkedString.toString
@@ -1469,7 +1511,7 @@ object RowProduct {
 	  * Additionally, it splits the 'self' upper bound into two types: non-aliased `U` (such as `L InnerJoin R)`) and,
 	  * for `F `[[net.noresttherein.oldsql.sql.RowProduct.As As]]` A`, its aliased form (such as `L InnerJoin R As A`).
 	  * For ''from'' clauses without an alias for their last relation/grouping expression, both these types are equal.
-	  * @tparam U the unaliased supertype of this clause (typically `this.Self`).
+	  * @tparam U the non aliased supertype of this clause (typically `this.Self`).
 	  * @tparam F the self type of this clause produced by various copy methods. It is always either `U`, or `U As A`.
 	  */
 	trait NonEmptyFromTemplate[+U <: NonEmptyFrom, +F <: U] extends RowProductTemplate[F] {
@@ -1639,8 +1681,9 @@ object RowProduct {
 
 		override type Generalized >: Dealiased <: NonEmptyFrom {
 //			type LastMapping[O] = thisClause.LastMapping[O]
-			type FromLast = thisClause.FromLast
+			type FromLast     = thisClause.FromLast
 			type Generalized <: thisClause.Generalized //all these below must be <: because of From
+//			type Dealiased   >: Self <: Generalized
 			type Explicit    <: thisClause.Explicit
 			type Implicit    <: thisClause.Implicit //for Dual it's either lack of this, or Generalized/FromLast = RowProduct
 			type Base        <: thisClause.Base
@@ -1652,6 +1695,9 @@ object RowProduct {
 //			type Last[O <: RowProduct] = thisClause.Last[O]
 			type FromLast    = thisClause.FromLast
 			type Generalized = thisClause.Generalized
+//			type Dealiased  >: Self <: Generalized
+			type ParamsOnly  = thisClause.ParamsOnly
+			type LastParam   = thisClause.LastParam
 			type Params      = thisClause.Params
 			type FullRow     = thisClause.FullRow
 			type Explicit    = thisClause.Explicit
@@ -1667,6 +1713,9 @@ object RowProduct {
 //			type Last[O <: RowProduct] = thisClause.Last[O]
 			type FromLast    = thisClause.FromLast
 			type Generalized = thisClause.Generalized
+//			type Dealiased  >: Self <: Generalized
+			type ParamsOnly  = thisClause.ParamsOnly
+			type LastParam   = thisClause.LastParam
 			type Params      = thisClause.Params
 			type FullRow     = thisClause.FullRow
 			type Explicit    = thisClause.Explicit
@@ -1836,6 +1885,7 @@ object RowProduct {
 	}
 
 
+
 	type GeneralizedTyped[F] = F { type Generalized >: Self <: F; type Self <: F }
 	type SelfTyped[F] = F { type Self <: F }
 
@@ -1860,8 +1910,6 @@ object RowProduct {
 	  * [[net.noresttherein.oldsql.sql.GroupByClause.TopGroupByClause TopGroupByClause]]; they all conform to this type.
 	  */ //we opt for a minimalistic definition so that more abstract method results conform to it, rather than have more info
 	type TopFrom = RowProduct { //consider: rename to TopRow/RootRow/RootRelations
-		//type FromLast >: this.type <: RowProduct //these properties would hold for static types, but are not preserved
-		//type Generalized >: this.type <: FromLast// on generalization
 		type Implicit = RowProduct  //everything down to Dual is explicit
 	}
 
@@ -1929,13 +1977,15 @@ object RowProduct {
 	  * two, treating all join kinds as equivalent for this purpose. Note that subselects may be nested to an arbitrary
 	  * depth and only directly nested subselects of `F` conform to this type.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.SubclauseOf]]
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.SelectedFrom]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  */
 	type SubselectOf[-F <: RowProduct] = RowProduct {
-		type Base >: F <: RowProduct //F may still have an abstract prefix
-		type DefineBase[+I <: RowProduct] = I //it would be nice to conform to SubselectFrom, but the signatures of implicits
+		type Implicit = Base
+		type Base >: F <: RowProduct          //F may still have an abstract prefix
+//		type Implicit >: F <: RowProduct      //this assures the existence of required tables
+		type DefineBase[+I <: RowProduct] = I //this assures that Base=Implicit, i.e. there are no UnboundParam joins in Explicit
 	}
 
 	/** A version of [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]], which is a refinement of `F`
@@ -1951,7 +2001,7 @@ object RowProduct {
 
 	/** An upper bound for all ''from'' clauses of subselect clauses, that is `RowProduct` subtypes with a
 	  * `Subselect` join in the type definition: `S <: F Subselect T1 ... TN . ` for some type `F <: RowProduct`
-	  * and mapping type constructors `T1 ... TN`. For a type to conform to `SubselectFrom`, the join kinds in
+	  * and mapping type constructors `T1 ... TN`. For a type to conform to `SelectedFrom`, the join kinds in
 	  * the explicit part of the clause (after the last subselect) must be statically known to be `Join` subtypes
 	  * or ''group by'' elements.
 	  * Note that ''outer'' clauses (without any `Subselect` joins) are considered subselect clauses of any other
@@ -1959,7 +2009,7 @@ object RowProduct {
 	  * to this type.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf]]
 	  */
-	type SubselectFrom = RowProduct { //consider: renaming to SubselectRow/SubselectProduct/SubselectRelations
+	type SelectedFrom = RowProduct { //consider: renaming to SubselectRow/SubselectProduct/SubselectRelations
 		type Implicit <: NonEmptyFrom //this holds only if there is a Subselect involved (meaning clear way to the Subselect)
 		type Base = Implicit //this excludes clauses with an UnboundParam in the explicit portion
 		type DefineBase[+I <: RowProduct] = I //only to preserve the validity on rebasing and to conform to DirectSubselect
@@ -1968,7 +2018,7 @@ object RowProduct {
 
 
 	/** An upper bound for all ''from'' clauses which do not contain any
-	  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] 'joins' in their concrete type.
+	  * [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] 'joins' in their concrete type.
 	  * In order to prove this conformity the clause type must be complete and cannot contain
 	  * [[net.noresttherein.oldsql.sql.AndFrom AndFrom]] joins (all joins in its static type must be at least
 	  * as specific as their [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form).
@@ -1979,7 +2029,7 @@ object RowProduct {
 	  * Analogical narrowing type aliases are defined also for most common subclasses of `RowProduct` in their
 	  * companion objects, such as `FromClause` and `FromSome`.
 	  */ //consider :renaming to ParamlessRow/ParamlessProduct/ParamlessRelations
-	type ParamlessFrom = RowProduct {
+	type ParamlessFrom = RowProduct { //consider: can we make a type 'has no params in the instantiated portion (that we know of)'?
 		type Params = @~
 //		type Paramless = Self
 	}
@@ -2031,13 +2081,15 @@ object RowProduct {
 	  *      an expression valid for use in the ''select'' and ''having'' clauses of this type.
 	  *
 	  * This type is defined as a refinement
-	  * of the [[net.noresttherein.oldsql.sql.GroupByClause.GeneralizedDiscrete GeneralizedDiscrete]] type,
+	  * of the [[net.noresttherein.oldsql.sql.AggregateClause.GeneralizedDiscrete GeneralizedDiscrete]] type,
 	  * which is defined as `this.from.`[[net.noresttherein.oldsql.sql.RowProduct.Generalized Generalized]],
 	  * that is the type of the longest prefix conforming to [[net.noresttherein.oldsql.sql.FromSome FromSome]].
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.GroupingOf]]
-	  */
-	type GeneralizedAggregateOf[+F <: RowProduct] = AggregateClause {
+	  */ //this type is covariant as it used by covariant Parameterization to ungroup itself to its GeneralizedDiscrete
+	type  AggregateOfGeneralized[+F <: RowProduct] = AggregateClause {
 		type GeneralizedDiscrete <: F
+//		type GeneralizedDiscrete >: Discrete <: F
+//		type Discrete <: F
 	}
 
 	/** An upper bound on all clauses containing all the relations listed in `F`, joined with the same
@@ -2066,7 +2118,8 @@ object RowProduct {
 	  * that is the type of the longest prefix conforming to [[net.noresttherein.oldsql.sql.FromSome FromSome]].
 	  */
 	type GroupingOfGeneralized[+F <: RowProduct] = GroupByClause {
-		type GeneralizedDiscrete <: F
+		type GeneralizedDiscrete >: Discrete <: F
+		type Discrete <: F
 	}
 
 	/** An upper bound of all ''group by'' clauses featuring all relations (and their respective joins)
@@ -2120,7 +2173,7 @@ object RowProduct {
 
 
 //		def apply(param :thisClause.LastParam) :thisClause.AppliedParam = thisClause.bind(param)
-		/** Checks if this clause conforms to [[net.noresttherein.oldsql.sql.RowProduct.SubselectFrom SubselectFrom]]
+		/** Checks if this clause conforms to [[net.noresttherein.oldsql.sql.RowProduct.SelectedFrom SelectedFrom]]
 		  * (meaning it is a valid ''from'' clause for a subselect of its `Implicit` clause) and, if so, casts `this`
 		  * to `outer.`[[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect DirectSubselect]] and passes it to the given function.
 		  * @return result of executing the given function in `Some` if this clause is a subselect clause, or `None` otherwise.
@@ -2142,7 +2195,7 @@ object RowProduct {
 
 		/** Checks if this clause conforms to [[net.noresttherein.oldsql.sql.RowProduct.GroundFrom GroundFrom]]
 		  * (meaning it is a valid ''from'' clause for a ''free'' select - its ''implicit'' portion is empty and
-		  * it contains no [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters) and, if so,
+		  * it contains no [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters) and, if so,
 		  * casts `this` to `F with GroundFrom` and passes it to the given function.
 		  * @return result of executing the given function in `Some` if this clause is a ''free'' clause, or `None` otherwise.
 		  */
@@ -2152,7 +2205,7 @@ object RowProduct {
 			else None
 
 		/** Checks if this clause conforms to [[net.noresttherein.oldsql.sql.RowProduct.ParamlessFrom ParamlessFrom]]
-		  * (meaning it has no [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters in its definition) and,
+		  * (meaning it has no [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters in its definition) and,
 		  * if so, casts `this` to `F with ParamlessFrom` and passes it to the given function.
 		  * @return result of executing the given function in `Some` if this clause is a paramterless clause, or `None` otherwise.
 		  */
@@ -2358,7 +2411,7 @@ object RowProduct {
 		  * a directly aggregated clause [[net.noresttherein.oldsql.sql.Aggregated Aggregated]]`[D]` for selecting
 		  * an aggregate expression over all its rows.
 		  */
-		@inline def grouped[D <: FromSome](implicit grouped :D GroupedUnder F) :JoinedMappings[D] =
+		@inline def ungrouped[D <: FromSome](implicit grouped :D GroupedUnder F) :JoinedMappings[D] =
 			new JoinedMappings[D](grouped(thisClause))
 
 
@@ -2408,6 +2461,20 @@ object RowProduct {
 		  */
 		def apply[N <: Numeral](n :N)(implicit get :ByIndex[F, thisClause.Generalized, N]) :get.M[get.O] =
 			get(thisClause.generalized).mapping
+
+		/** Returns the `Mapping` instance for the relation at the specified position in this clause.
+		  * The index is a zero-based integer given as an (implicit) evidence class attesting to the existence
+		  * of a table/relation with the stated mapping type at described position in `F`.
+		  * An instance of `TableOffset` can be summoned by providing both the correct mapping type `M`
+		  * and super type `O` of this clause ([[net.noresttherein.oldsql.sql.RowProduct.FromLast FromLast]] type
+		  * of the join with the specific relation, used as its `Origin` type). Alternatively,
+		  * each relation carries a `TableOffset` describing its position as its
+		  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation.position position]] property. This makes this method
+		  * the most versatile table accessor, as it doesn't require any actual information about `F` and
+		  * is the easiest to use from generic code.
+		  */
+		def apply[O >: F <: RowProduct, M[A] <: MappingAt[A]](position :TableOffset[O, M]) :M[O] =
+			thisClause.fullTableStack(position.tables).mapping.asInstanceOf[M[O]]
 
 
 		/** Returns the `Mapping` instance for the last relation in this clause (counting from the right). */
@@ -2591,7 +2658,7 @@ object RowProduct {
 		  * a directly aggregated clause [[net.noresttherein.oldsql.sql.Aggregated Aggregated]]`[D]` for selecting
 		  * an aggregate expression over all its rows.
 		  */
-		@inline def grouped[D <: FromSome](implicit grouped :D GroupedUnder F) :JoinedRelations[D] =
+		@inline def ungrouped[D <: FromSome](implicit grouped :D GroupedUnder F) :JoinedRelations[D] =
 			new JoinedRelations[D](grouped(thisClause))
 
 
@@ -2641,6 +2708,21 @@ object RowProduct {
 		  */
 		def apply[N <: Numeral](n :N)(implicit get :ByIndex[F, thisClause.Generalized, N]) :get.T[get.O] =
 			get(thisClause.generalized)
+
+
+		/** Returns the `JoinedRelation` instance for the relation at the specified position in this clause.
+		  * The index is a zero-based integer given as an (implicit) evidence class attesting to the existence
+		  * of a table/relation with the stated mapping type at the described position in `F`.
+		  * An instance of `TableOffset` can be summoned by providing both the correct mapping type `M`
+		  * and super type `O` of this clause ([[net.noresttherein.oldsql.sql.RowProduct.FromLast FromLast]] type
+		  * of the join with the specific relation, used as its `Origin` type). Alternatively,
+		  * each relation carries a `TableOffset` describing its position as its
+		  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation.position position]] property. This makes this method
+		  * the most versatile table accessor, as it doesn't require any actual information about `F` and
+		  * is the easiest to use from generic code.
+		  */
+		def apply[O >: F <: RowProduct, M[A] <: MappingAt[A]](position :TableOffset[O, M]) :position.Rel =
+			thisClause.fullTableStack(position.tables).asInstanceOf[position.Rel]
 
 
 		/** Returns the `JoinedRelation` instance for the last relation in this clause (counting from the right). */
@@ -2870,7 +2952,7 @@ object RowProduct {
 	/** A proof that the ''from'' clause `F` is a part of the ''from'' clause `E` and represents the 'same'
 	  * SQL ''select''. This holds if `F ExpandedBy E` and there is no `Subselect` join present
 	  * in the expansion. The implication is that `E` contains all the relations listed in `F`, with a possible addition
-	  * of extra relations appended to (by joining) it or 'prepended' to it (by substituting a wildcard prefix type
+	  * of extra relations appended (by joining) or 'prepended' to it (by substituting a wildcard prefix type
 	  * of `F` with its subtype), while at the same time not being a subselect expression of `F`.
 	  * Note that subtypes of [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]] are not considered
 	  * 'the same select' here as their [[net.noresttherein.oldsql.sql.GroupByClause.fromClause fromClause]],
@@ -2878,13 +2960,14 @@ object RowProduct {
 	  * based on the ''group by'' clause.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PrefixOf]]
-	  */ //consider: moving the bunch to mechanics
+	  */ //consider: renaming to PartOf; moving the bunch to mechanics
 	@implicitNotFound("The FROM clause ${F} is not a part of the same SELECT as the clause ${E}.")
 	class PartOf[+F <: RowProduct, -E <: RowProduct] private[RowProduct](val lengthDiff :Int) extends AnyVal {
 		//todo: casting ourselves to types such as (F with NonEmptyFrom) ExpandedBy (E with NonEmptyFrom)
 		/** An `F` [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]] `E` instance representing the
 		  * same expansion of the clause `F`. */
 		implicit def asExpandedBy :F ExpandedBy E = new ExpandedBy(lengthDiff)
+
 
 		/** A transitive proof that a clause expanding `E` with a single relation (mapping) also extends `F`. */
 		@inline def expand[R[O] <: MappingAt[O]] :F PartOf (E NonSubselect R) = new PartOf(lengthDiff + 1)
@@ -2913,7 +2996,6 @@ object RowProduct {
 		@inline def unwrapFront[C <: FromSome](implicit front :F <:< ExpandingDecorator[C]) :C PartOf E =
 			new PartOf(lengthDiff)
 
-		//todo: aggregates
 
 		override def toString :String = lengthDiff.toString + " tables"
 	}

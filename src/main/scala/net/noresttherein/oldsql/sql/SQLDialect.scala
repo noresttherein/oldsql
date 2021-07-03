@@ -1,26 +1,29 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE}
+import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, SELECT, UPDATE, WriteOperationType}
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.exceptions.InseparableExpressionException
 import net.noresttherein.oldsql.morsels.TextCase
 import net.noresttherein.oldsql.morsels.TextCase.LowerCase
-import net.noresttherein.oldsql.schema.{ColumnMapping, RelVar, Table}
-import net.noresttherein.oldsql.schema.Mapping.MappingAt
+import net.noresttherein.oldsql.schema.{ColumnMapping, SQLWriteForm, Table}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.Relation.NamedRelation
 import net.noresttherein.oldsql.schema.Table.Aliased
 import net.noresttherein.oldsql.slang.OptionGuardExtension
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult
 import net.noresttherein.oldsql.sql.Incantation.Cantrip
 import net.noresttherein.oldsql.sql.Select.{Intersect, Minus, SetOperator, Union, UnionAll}
+import net.noresttherein.oldsql.sql.SQLBoolean.True
 import net.noresttherein.oldsql.sql.SQLDialect.{DefaultSpelling, SQLSpelling}
 import net.noresttherein.oldsql.sql.SQLDialect.SpellingScope.{FromScope, GroupByScope, HavingScope, InsertScope, SelectScope, UpdateScope, WhereScope, WithScope}
 import net.noresttherein.oldsql.sql.SQLExpression.{CaseExpression, ExpressionMapper, GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.QuerySQL
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
+import net.noresttherein.oldsql.sql.ast.{JoinedRelation, JoinedTable, QuerySQL}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
+import net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.{GroupingSpellingContext, SpellingRedactor}
 
 
 
@@ -87,12 +90,30 @@ object SQLDialect {
 		  */
 		def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]]
 
+		/** Export, from the point of view of `mapping`, columns of `component`, which are applicable to this
+		  *  operation type. These are all columns from its [[net.noresttherein.oldsql.schema.Mapping.columns columns]]
+		  *  list ''without'' the [[net.noresttherein.oldsql.OperationType.Prohibited Prohibited]] buff after exporting.
+		  * @see [[net.noresttherein.oldsql.OperationType.defaultColumns]]
+		  */
+		def columns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]]
+
 		/** Columns, both direct and indirect, of the given mapping which are used by default in this operation type.
 		  * These are all columns from its [[net.noresttherein.oldsql.schema.Mapping.columns columns]] list ''without''
 		  * the [[net.noresttherein.oldsql.OperationType.NonDefault NonDefault]] buff.
 		  * @see [[net.noresttherein.oldsql.OperationType.columns]]
 		  */
 		def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]]
+
+		/** Export, from the point of view of `mapping`, columns of `component`, which are used by default in this
+		  * operation type. These are all columns from `component.`[[net.noresttherein.oldsql.schema.Mapping.columns columns]]
+		  * list ''without'' the [[net.noresttherein.oldsql.OperationType.NonDefault NonDefault]] buff after exporting.
+		  * @see [[net.noresttherein.oldsql.OperationType.columns]]
+		  */
+		def defaultColumns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]]
+
+		def writeForm[S, O](mapping :RefinedMapping[S, O]) :SQLWriteForm[S]
+		def writeForm[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLWriteForm[S]
+		def writeForm[S, O](mapping :MappingAt[O], component :RefinedMapping[S, O]) :SQLWriteForm[S]
 	}
 
 
@@ -100,9 +121,35 @@ object SQLDialect {
 
 		private class OperationTypeScope(op :OperationType, override val toString :String) extends SpellingScope {
 			override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = op.columns(mapping)
+			override def columns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]] =
+				op.columns(mapping, component)
 
 			override def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] =
 				op.defaultColumns(mapping)
+
+			override def defaultColumns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]] =
+				op.defaultColumns(mapping, component)
+
+			override def writeForm[S, O](mapping :RefinedMapping[S, O]) :SQLWriteForm[S] = SQLWriteForm.empty
+
+			override def writeForm[S, O](mapping :MappingAt[O], component :RefinedMapping[S, O]) :SQLWriteForm[S] =
+				SQLWriteForm.empty
+
+			override def writeForm[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]])
+					:SQLWriteForm[S] =
+				SQLWriteForm.empty
+		}
+
+		private class WriteOperationScope(op :WriteOperationType, override val toString :String)
+			extends OperationTypeScope(op, toString)
+		{
+			override def writeForm[S, O](mapping :RefinedMapping[S, O]) = op.form(mapping)
+
+			override def writeForm[S, O](mapping :MappingAt[O], component :RefinedMapping[S, O]) =
+				op.form(mapping, component)
+
+			override def writeForm[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) =
+				op.form(mapping, components)
 		}
 
 		val WithScope    :SpellingScope = new OperationTypeScope(SELECT, "WITH")
@@ -137,7 +184,7 @@ object SQLDialect {
 	  * subexpressions, formatting them in a mostly sequential, left-to-right manner, and concatenating the results.
 	  * The devil is in the context passing and combining of the meta data of the concatenated `SpelledSQL` fragments:
 	  * expressions refer to table [[net.noresttherein.oldsql.sql.ast.ComponentSQL components]]
-	  * and [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters, which must be properly resolved into,
+	  * and [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters, which must be properly resolved into,
 	  * respectively, their actual aliases in the SQL and getter functions of the parameter(s) of the complete,
 	  * final query/statement. The scope with visible symbols changes neither in a top-down, nor left-to-right fashion,
 	  * requiring a look-ahead and look-aside (in particular ''select'' clauses depend on the tables
@@ -177,7 +224,7 @@ object SQLDialect {
 		  * @return a formatted DML string with an [[net.noresttherein.oldsql.schema.SQLWriteForm form]] setting
 		  *         all bound and unbound parameters present in the statement.
 		  */
-		def spell[P, V](statement :DMLStatement[P, V]) :SpelledSQL[P, RowProduct] =
+		def spell[P, V](statement :DMLStatement[P, V]) :SpelledSQL[P] =
 			defaultSpelling(statement)
 
 		/** Renders as a stand alone SQL query a parameterized query. Defaults to `this(query)(newContext)`
@@ -191,8 +238,16 @@ object SQLDialect {
 		  * @return a formatted SQL string with a [[net.noresttherein.oldsql.schema.SQLWriteForm form]] setting
 		  *         all bound and unbound parameters present in the query.
 		  */
-		def spell[P, V](query :Query[P, V]) :SpelledSQL[P, RowProduct] =
-			apply(query)(newContext)
+		def spell[P, V](query :Query[P, V]) :SpelledSQL[P] = {
+			val prefix = apply[@~](query.withClause)(newContext, Parameterization.paramless)
+			if (prefix.isEmpty)
+				apply(query)(prefix.context.reset())
+			else {
+				val ctx = prefix.context.reset[P]()
+				val adapted = SpelledSQL(prefix.sql, ctx, prefix.setter compose { _ :P => @~ })
+				adapted +: " " +: apply(query)(ctx)
+			}
+		}
 
 		/** Renders as a stand alone SQL query a top-level, parameterless ''select'' expression. Defaults to
 		  * [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.paramless paramless]]`(query)(`[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.newContext newContext]]`)`.
@@ -201,21 +256,33 @@ object SQLDialect {
 		  * @return a formatted SQL string with a [[net.noresttherein.oldsql.schema.SQLWriteForm form]] setting
 		  *         all bound and unbound parameters present in the query.
 		  */
-		def spell[V](query :QuerySQL[RowProduct, V]) :SpelledSQL[@~, RowProduct] = query.withClause.toSeq match {
-			case Seq() => paramless(query)(newContext)
-			case ctes =>
-				val ctx = newContext
-				val withClause = "WITH " +: ctes.map { cte =>
-					(cte.name + " " + AS + " (") +: (paramless(cte.query)(ctx).sql + ")")
-				}.reduce(_ + ", " + _)
-				withClause +: paramless(query)(ctx)
+		def spell[V](query :QuerySQL[RowProduct, V]) :SpelledSQL[@~] = {
+			val prefix = apply[@~](query.withClause)(newContext, Parameterization.paramless)
+			if (prefix.isEmpty)
+				paramless(query)(prefix.context)
+			else
+				prefix +: " " +: paramless(query)(prefix.context)
 		}
 
+		/** Renders as SQL an optional ''with'' clause preceding a query or a statement. If the passed clause
+		  * does not contain any [[net.noresttherein.oldsql.sql.CommonTableExpression common table expressions]],
+		  * an empty string will be returned.
+		  */
+		def apply[P](ctes :WithClause)(context :SQLContext[P], params :Parameterization[P, RowProduct]) :SpelledSQL[P] =
+			if (ctes.isEmpty)
+				SpelledSQL(context)
+			else {
+				val ctx = context.reset[@~]() //todo: WithParam (new, not the JoinParam)
+				val res = WITH_ +: ctes.map { cte =>
+					(cte.name + _AS_ + "(") +: (paramless(cte.query)(ctx) + ")")
+				}.reduce(_ + ", " + _)
+				SpelledSQL(res.sql, context, res.setter compose { _:P => @~ })
+			}
 
 		/** Renders as SQL a parameterless, [[net.noresttherein.oldsql.sql.ast.QuerySQL.GroundQuery ground]] ''select''
 		  * expression for use as a part of a larger SQL/DML expression, either as a dependent select
 		  * or in a compound ''select''.
-		  * Defaults to `query.`[[net.noresttherein.oldsql.sql.ast.QuerySQL.paramlessSpelling paramlessSpelling]].
+		  * Defaults to `query.`[[net.noresttherein.oldsql.sql.ast.QuerySQL.topSpelling topSpelling]].
 		  * This is currently completely equivalent to
 		  * [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.apply[P,F<:RowProduct,V](e:SQLExpression[F,LocalScope,V])* apply(query)]]
 		  * (the general path for any [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]) and exists
@@ -232,13 +299,14 @@ object SQLDialect {
 		  *                of this method; it will however be included unchanged in the returned `SpelledSQL`.
 		  *                The parameter is declared for consistency with other methods and to facilitate uniform
 		  *                passing of the context when formatting subsequent fragments of a larger query.
-		  * @return        a formatted SQL string with a [[net.noresttherein.oldsql.schema.SQLWriteForm form]] setting
-		  *                all potential [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters
-		  *                present in the query.
-		  */ //consider: removing context parameter, as we do not require Parameterization any way
+		  * @return a formatted SQL string with a [[net.noresttherein.oldsql.schema.SQLWriteForm form]] setting
+		  *         all potential [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters
+		  *         present in the query.
+		  */ //consider: removing context parameter, as we do not require Parameterization anyway
 		//this cannot be apply, as then Query[F, V] doesn't overload to the method for generic SQLExpression
-		def paramless[V](query :QuerySQL[RowProduct, V])(context :SQLContext) :SpelledSQL[@~, RowProduct] =
-			query.paramlessSpelling(this, context)
+		def paramless[V](query :QuerySQL[RowProduct, V])(context :SQLContext[@~]) :SpelledSQL[@~] =
+			apply(query)(Dual, context, Parameterization.paramless)
+//			query.topSpelling(this, context)
 
 		/** Renders as SQL a parameterized query expression for use as a part of a larger SQL/DML expression -
 		  * either as a dependent (nested) ''select'' or in a compound ''select''. This is analogous to main
@@ -262,7 +330,7 @@ object SQLDialect {
 		  * @return        a formatted SQL string with a [[net.noresttherein.oldsql.schema.SQLWriteForm form]]
 		  *                setting all bound and unbound parameters present in the query.
 		  */ //consider: removing context parameter
-		def apply[P, V](query :Query[P, V])(context :SQLContext) :SpelledSQL[P, RowProduct] =
+		def apply[P, V](query :Query[P, V])(context :SQLContext[P]) :SpelledSQL[P] =
 			defaultSpelling(query)(context)
 
 		/** Renders as SQL an abstract representation of any SQL expression, for use within a larger SQL/DML expression.
@@ -283,33 +351,33 @@ object SQLDialect {
 		  *                consistent with their appearance in `F`. It is purely an 'in' parameter, included unchanged
 		  *                in the returned `SpelledSQL`, as only [[net.noresttherein.oldsql.sql.FromClause FromClause]]
 		  *                (including synthetic unbound parameters) can introduce new table aliases to scope.
-		  * @param params  ''in/out'' parameter carrying necessary information about all (relevant)
-		  *                [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] and
-		  *                [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters of the formatted SQL.
-		  *                In its main role, it is a list of
-		  *                [[net.noresttherein.oldsql.schema.SQLWriteForm write forms]] setting the parameters
-		  *                on a [[java.sql.PreparedStatement PreparedStatement]]: it is assumed to contain forms
-		  *                for the whole prefix preceding the fragment represented by `e` in the complete,
-		  *                yet-to-be-formatted SQL expression. While this list is unusable by this method,
-		  *                forms for all parameters in `e` should be appended to it and returned as the parameterization
-		  *                included in `SpelledSQL`. As its second function, it provides getter functions `P => X`
-		  *                for all ''unbound'' parameters `X` in the scope of the formatted expression, given
-		  *                the [[net.noresttherein.oldsql.sql.ast.JoinedTable JoinedTable]]
-		  *                of the [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expression
-		  *                representing them. These getters are in turn necessary to adapt the forms of individual
-		  *                expression to the type `P` of the parameter(s) of the final SQL.
-		  *                Note that this means that rendering of a ''select'' clause requires the parameterization
-		  *                created by the rendering of its ''from'' clause, creating non-linear concatenation
-		  *                (possible because ''from'' clauses are completely independent of the ''select'' clauses).
-		  *                Callers may 'cheat' and omit information about parameters proven to be unused by `e`
-		  *                and combine them later with `SpelledSQL` returned by this method.
+		  * @param params ''in/out'' parameter carrying necessary information about all (relevant)
+		  *               [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] and
+		  *               [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters of the formatted SQL.
+		  *               In its main role, it is a list of
+		  *               [[net.noresttherein.oldsql.schema.SQLWriteForm write forms]] setting the parameters
+		  *               on a [[java.sql.PreparedStatement PreparedStatement]]: it is assumed to contain forms
+		  *               for the whole prefix preceding the fragment represented by `e` in the complete,
+		  *               yet-to-be-formatted SQL expression. While this list is unusable by this method,
+		  *               forms for all parameters in `e` should be appended to it and returned as the parameterization
+		  *               included in `SpelledSQL`. As its second function, it provides getter functions `P => X`
+		  *               for all ''unbound'' parameters `X` in the scope of the formatted expression, given
+		  *               the [[net.noresttherein.oldsql.sql.ast.JoinedTable JoinedTable]]
+		  *               of the [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expression
+		  *               representing them. These getters are in turn necessary to adapt the forms of individual
+		  *               expression to the type `P` of the parameter(s) of the final SQL.
+		  *               Note that this means that rendering of a ''select'' clause requires the parameterization
+		  *               created by the rendering of its ''from'' clause, creating non-linear concatenation
+		  *               (possible because ''from'' clauses are completely independent of the ''select'' clauses).
+		  *               Callers may 'cheat' and omit information about parameters proven to be unused by `e`
+		  *               and combine them later with `SpelledSQL` returned by this method.
 		  * @return        a formatted SQL string with a [[net.noresttherein.oldsql.schema.SQLWriteForm form]] setting
 		  *                all bound and unbound parameters present in the query.
 		  */
 		def apply[P, F <: RowProduct, V]
                  (e :SQLExpression[F, LocalScope, V])
-                 (context :SQLContext, params: Parameterization[P, F]) :SpelledSQL[P, F] =
-			defaultSpelling(e)(context, params)
+                 (from :F, context :SQLContext[P], params: Parameterization[P, F]) :SpelledSQL[P] =
+			defaultSpelling(e)(from, context, params)
 
 		/** Recursively splits an expression into its constituting columns, to be rendered as a part
 		  * of a comma-separated list, for example when inlining a complex Scala type to individual parameters
@@ -332,41 +400,94 @@ object SQLDialect {
 		  *                consistent with their appearance in `F`. It is purely an 'in' parameter, included unchanged
 		  *                in the returned `SpelledSQL`, as only [[net.noresttherein.oldsql.sql.FromClause FromClause]]
 		  *                (including synthetic unbound parameters) can introduce new table aliases to scope.
-		  * @param params  ''in/out'' parameter carrying necessary information about all (relevant)
-		  *                [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] and
-		  *                [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters of the formatted SQL.
-		  *                In its main role, it is a list of
-		  *                [[net.noresttherein.oldsql.schema.SQLWriteForm write forms]] setting the parameters
-		  *                on a [[java.sql.PreparedStatement PreparedStatement]]: it is assumed to contain forms
-		  *                for the whole prefix preceding the fragment represented by `e` in the complete,
-		  *                yet-to-be-formatted SQL expression. While this list is unusable by this method,
-		  *                forms for all parameters in `e` should be appended to it and returned as the parameterization
-		  *                included in `SpelledSQL`. As its second function, it provides getter functions `P => X`
-		  *                for all ''unbound'' parameters `X` in the scope of the formatted expression, given
-		  *                the [[net.noresttherein.oldsql.sql.ast.JoinedTable JoinedTable]]
-		  *                of the [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expression
-		  *                representing them. These getters are in turn necessary to adapt the forms of individual
-		  *                expression to the type `P` of the parameter(s) of the final SQL.
-		  *                Note that this means that rendering of a ''select'' clause requires the parameterization
-		  *                created by the rendering of its ''from'' clause, creating non-linear concatenation
-		  *                (possible because ''from'' clauses are completely independent of the ''select'' clauses).
-		  *                Callers may 'cheat' and omit information about parameters proven to be unused by `e`
-		  *                and combine them later with `SpelledSQL` returned by this method.
+		  * @param params ''in/out'' parameter carrying necessary information about all (relevant)
+		  *               [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] and
+		  *               [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters of the formatted SQL.
+		  *               In its main role, it is a list of
+		  *               [[net.noresttherein.oldsql.schema.SQLWriteForm write forms]] setting the parameters
+		  *               on a [[java.sql.PreparedStatement PreparedStatement]]: it is assumed to contain forms
+		  *               for the whole prefix preceding the fragment represented by `e` in the complete,
+		  *               yet-to-be-formatted SQL expression. While this list is unusable by this method,
+		  *               forms for all parameters in `e` should be appended to it and returned as the parameterization
+		  *               included in `SpelledSQL`. As its second function, it provides getter functions `P => X`
+		  *               for all ''unbound'' parameters `X` in the scope of the formatted expression, given
+		  *               the [[net.noresttherein.oldsql.sql.ast.JoinedTable JoinedTable]]
+		  *               of the [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expression
+		  *               representing them. These getters are in turn necessary to adapt the forms of individual
+		  *               expression to the type `P` of the parameter(s) of the final SQL.
+		  *               Note that this means that rendering of a ''select'' clause requires the parameterization
+		  *               created by the rendering of its ''from'' clause, creating non-linear concatenation
+		  *               (possible because ''from'' clauses are completely independent of the ''select'' clauses).
+		  *               Callers may 'cheat' and omit information about parameters proven to be unused by `e`
+		  *               and combine them later with `SpelledSQL` returned by this method.
 		  * @return        a list of formatted SQL strings for every column in this expression in the exact same order.
-		  *                [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.context context]] and
-		  *                [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.params parameterization]]
+		  *                [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.context context]]
 		  *                included in the last `SpelledSQL` of the list represent the complete state,
 		  *                taking into account all previous columns and is the same as if the expression was formatted
 		  *                using [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.apply[P,F<:RowProduct,V](e:SQLExpression[F,LocalScope,V])* apply]]
-		  *                method. The instances in chunks for all preceding columns are undefined
-		  *                and should not be used.
+		  *                method.
 		  */
 		@throws[InseparableExpressionException]("if the expression cannot be separated into individual column strings, " +
 		                                        "for example a multi-column SQL select.")
 		def explode[P, F <: RowProduct, V]
 		           (e :SQLExpression[F, LocalScope, V])
-		           (context :SQLContext, params :Parameterization[P, F]) :Seq[SpelledSQL[P, F]] =
-			e.inlineSpelling(this)(context, params)
+		           (from :F, context :SQLContext[P], params :Parameterization[P, F]) :Seq[SpelledSQL[P]] =
+			explodedSpelling(e)(from, context, params)
+
+		/** Renders as SQL a call to an aggregate function (including any modifying clauses such as ''distinct'').
+		  * This method is called from
+		  * [[net.noresttherein.oldsql.sql.ast.AggregateSQL.defaultSpelling AggregateSQL.defaultSpelling]] and
+		  * immediately dispatches to [[net.noresttherein.oldsql.sql.AggregateFunction.defaultSpelling AggregateFunction.defaultSpelling]].
+		  * @tparam P       the type of the parameter or parameters of the complete query expression containing
+		  *                 the enclosing expression; typically, it will be
+		  *                 `F#`[[net.noresttherein.oldsql.sql.RowProduct.Params]], but on the top level such constraints
+		  *                 do not exist.
+		  * @tparam F       the 'ungrouped' `FromClause` representing the namespace available
+		  *                 to the aggregated expression (rather than the one on which the containing
+		  *                 [[net.noresttherein.oldsql.sql.ast.AggregateSQL AggregateSQL]] is based).
+		  * @param function the aggregate function invoked for a group of rows.
+		  * @param arg      the expression in the scope of a single row passed as the argument to the function.
+		  * @param context  the spelling context with table aliases indexed consistently with `F`.
+		  * @param params   the parameterization context of [[net.noresttherein.oldsql.sql.ParamClause unbound]]
+		  *                 parameters of `F`, but ''not'' including any write forms.
+		  * @return         the formatted SQL for `function(arg)` (pseudocode), with the same
+		  *                 [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.context context]]
+		  *                 (or at least an instance with unmodified relation indexing) and
+		  *                 [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.setter write form]]
+		  *                 for all parameters used by `arg`.
+		  */ //consider: removing it and short wiring from AggregateSQL to AggregateFunction - seems like an exception made for no reason
+		def apply[P, F <: RowProduct](function :AggregateFunction, distinct :Boolean)
+		                             (arg :ColumnSQL[F, LocalScope, _])
+		                             (from :F, context :SQLContext[P], params :Parameterization[P, F]) :SpelledSQL[P] =
+			function.defaultSpelling(this)(arg, distinct)(from, context, params)
+
+		/** Renders as SQL a call to a standard SQL function (or a custom stored function). This method is called from
+		  * [[net.noresttherein.oldsql.sql.ast.FunctionSQL.defaultSpelling FunctionSQL.defaultSpelling]] and
+		  * immediately dispatches to [[net.noresttherein.oldsql.sql.StoredFunction.defaultSpelling StoredFunction.defaultSpelling]].
+		  * @tparam P       the type of the parameter or parameters of the complete query expression containing the
+		  *                 enclosing expression; typically, it will be
+		  *                 `F#`[[net.noresttherein.oldsql.sql.RowProduct.Params]], but on the top level such constraints
+		  *                 do not exist.
+		  * @tparam F       the `RowProduct` on which `args` is based, listing all tables in the ''from'' clause
+		  *                 of the containing expression as well as columns in its ''group by'' clause (if present).
+		  * @tparam X       a chain listing the types of all formal parameters of `function`.
+		  * @tparam Y       the return type of the function and the value type of the whole formatted SQL expression.
+		  * @param function the called function.
+		  * @param args     a tuple expression containing expressions for all arguments of `function` as elements.
+		  * @param context  the spelling context with table aliases indexed consistently with `F`.
+		  * @param params   the parameterization context of [[net.noresttherein.oldsql.sql.ParamClause unbound]]
+		  *                 parameters of `F`, but ''not'' including any write forms.
+		  * @return         the formatted SQL for `function(args)` (pseudocode), with the same
+		  *                 [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.context context]]
+		  *                 (or at least an instance with unmodified relation indexing) and
+		  *                 [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.setter write form]]
+		  *                 setting all parameters used by `args` by the use of `params`.
+		  */
+		def apply[P, F <: RowProduct, X, Y](function :SQLExecutable[X, Y])(args :SQLExpression[F, LocalScope, X])
+		                                   (from :F, context :SQLContext[P], params :Parameterization[P, F])
+				:SpelledSQL[P] =
+			function.defaultSpelling(this)(args)(context, params)
+
 
 		/** Renders as SQL the 'outermost' component of the passed relation product - generally corresponding to
 		  * the right-most join or a join-like class, which recursively formats any preceding components by
@@ -395,112 +516,85 @@ object SQLDialect {
 		  *         The [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.context spelling context]] included
 		  *         appends to `context` argument the aliases for all tables present in the ''from'' clause,
 		  *         as well as empty placeholders for [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters.
-		  *         The [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.params parameterization]] included
-		  *         Reflects the full namespace made available to the ''select'' and ''order by'' clauses and contains
-		  *         [[net.noresttherein.oldsql.schema.SQLWriteForm write forms]] for all formatted expressions
+		  *         The [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.setter write form]] included contains
+		  *         a [[net.noresttherein.oldsql.schema.SQLWriteForm write form]] for all formatted expressions
 		  *         (but not necessarily for all ''join/where/having'' conditions present in the instance).
 		  * @see [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.fromWhere]]
 		  * @see [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.groupByHaving]]
 		  * @see [[net.noresttherein.oldsql.sql.RowProduct.spell]]
 		  */
-		def apply(from :RowProduct)(context :SQLContext) :SpelledSQL[from.Params, from.Generalized] =
-			from.defaultSpelling(this)(context)
+		def apply[P](from :RowProduct)
+		            (context :SQLContext[P], params :Parameterization[P, from.Generalized]) :SpelledSQL[P] =
+			defaultSpelling(from)(context, params)
 
-		/** Renders as SQL a call to an aggregate function (including any modifying clauses such as ''distinct'').
-		  * This method is called from
-		  * [[net.noresttherein.oldsql.sql.ast.AggregateSQL.defaultSpelling AggregateSQL.defaultSpelling]] and
-		  * immediately dispatches to [[net.noresttherein.oldsql.sql.AggregateFunction.defaultSpelling AggregateFunction.defaultSpelling]].
-		  * @tparam P       the type of the parameter or parameters of the complete query expression containing
-		  *                 the enclosing expression; typically, it will be
-		  *                 `F#`[[net.noresttherein.oldsql.sql.RowProduct.Params]], but on the top level such constraints
-		  *                 do not exist.
-		  * @tparam F       the 'ungrouped' `FromClause` representing the namespace available
-		  *                 to the aggregated expression (rather than the one on which the containing
-		  *                 [[net.noresttherein.oldsql.sql.ast.AggregateSQL AggregateSQL]] is based).
-		  * @param function the aggregate function invoked for a group of rows.
-		  * @param arg      the expression in the scope of a single row passed as the argument to the function.
-		  * @param context  the spelling context with table aliases indexed consistently with `F`.
-		  * @param params   the parameterization context of [[net.noresttherein.oldsql.sql.UnboundParam unbound]]
-		  *                 parameters of `F`, but ''not'' including any write forms.
-		  * @return         the formatted SQL for `function(arg)` (pseudocode), with the same
-		  *                 [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.context context]]
-		  *                 (or at least an instance with unmodified relation indexing) and
-		  *                 [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.params parameterization]]
-		  *                 containing write forms for all parameters used by `arg` (and being otherwise unchanged
-		  *                 from `params`).
-		  */
-		def apply[P, F <: RowProduct](function :AggregateFunction, distinct :Boolean)
-		                             (arg :ColumnSQL[F, LocalScope, _])
-		                             (context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
-			function.defaultSpelling(this)(arg, distinct)(context, params)
-
-		/** Renders as SQL a call to a standard SQL function (or a custom stored function). This method is called from
-		  * [[net.noresttherein.oldsql.sql.ast.FunctionSQL.defaultSpelling FunctionSQL.defaultSpelling]] and
-		  * immediately dispatches to [[net.noresttherein.oldsql.sql.StoredFunction.defaultSpelling StoredFunction.defaultSpelling]].
-		  * @tparam P       the type of the parameter or parameters of the complete query expression containing the
-		  *                 enclosing expression; typically, it will be
-		  *                 `F#`[[net.noresttherein.oldsql.sql.RowProduct.Params]], but on the top level such constraints
-		  *                 do not exist.
-		  * @tparam F       the `RowProduct` on which `args` is based, listing all tables in the ''from'' clause
-		  *                 of the containing expression as well as columns in its ''group by'' clause (if present).
-		  * @tparam X       a chain listing the types of all formal parameters of `function`.
-		  * @tparam Y       the return type of the function and the value type of the whole formatted SQL expression.
-		  * @param function the called function.
-		  * @param args     a tuple expression containing expressions for all arguments of `function` as elements.
-		  * @param context  the spelling context with table aliases indexed consistently with `F`.
-		  * @param params   the parameterization context of [[net.noresttherein.oldsql.sql.UnboundParam unbound]]
-		  *                 parameters of `F`, but ''not'' including any write forms.
-		  * @return         the formatted SQL for `function(args)` (pseudocode), with the same
-		  *                 [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.context context]]
-		  *                 (or at least an instance with unmodified relation indexing) and
-		  *                 [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.params parameterization]]
-		  *                 appending write forms for all parameters used by `args` to `params`.
-		  */
-		def apply[P, F <: RowProduct, X, Y](function :SQLExecutable[X, Y])(args :SQLExpression[F, LocalScope, X])
-		                                   (context :SQLContext, params :Parameterization[P, F])
-				:SpelledSQL[P, F] =
-			function.defaultSpelling(this)(args)(context, params)
-
-
-		def groupByHaving(from :GroupByClause)(context :SQLContext) :SpelledSQL[from.Params, from.Generalized] = {
-			val groupBySQL = inGroupBy(from)(context)
-			if (from.filter == True) groupBySQL
-			else groupBySQL + (" " + HAVING + " ") + (inHaving(from.filter)(_, _))
-		}
-
-		/** Renders as an SQL fragment full ''from'' and ''where'' clauses of a ''select''. The process recursively
-		  * calls [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.apply(from:RowProduct)* apply(from)(context)]]
+		/** Renders as an SQL fragment full ''from'' and ''where'' clauses of a ''select''. The process recursively calls
+		  * [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.apply(from:RowProduct)* apply(from)(context, params)]]
 		  * (which by default will delegate to
 		  * [[net.noresttherein.oldsql.sql.RowProduct.defaultSpelling RowProduct.defaultSpelling]]) and simultaneously
-		  * appends ''join'' clauses (or simply lists the tables) and builds `SQLContext`
-		  * and [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization Parameterization]] for the rest
+		  * appends ''join'' clauses (or simply lists the tables) and builds
+		  * [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext SQLContext]] for the rest
 		  * of the SQL ''select'' to which `from` belongs. Recursion stops and backtracks when either
 		  * [[net.noresttherein.oldsql.sql.Dual Dual]] or [[net.noresttherein.oldsql.sql.Subselect Subselect]]
 		  * is encountered, marking the start of the ''from'' clause of the most nested ''select''. From that point,
 		  * table aliases and join conditions are added to `context`.
 		  * This method is invoked from [[net.noresttherein.oldsql.sql.RowProduct.spell RowProduct.spell]]
 		  * and the latter should be preferred as the entry point.
-		  * @param from    the ''from'' clause to format
+		  * @param from    the ''from'' clause to format.
 		  * @param context the namespace containing the aliases of all tables in scope of `from` due to belonging
 		  *                to an outer ''select'', or a fresh instance if the formatted ''select'' is the top-level
 		  *                expression is a top select.
+		  * @param params  a facade to the type of parameters of the whole statement/query, returning an accessor
+		  *                `P => X` for any [[net.noresttherein.oldsql.sql.ast.JoinedGrouping JoinedGrouping]]
+		  *                of value type `X`, allowing the expressions for unbound parameters to be translated
+		  *                into [[net.noresttherein.oldsql.schema.SQLWriteForm forms]].
 		  * @see [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.groupByHaving]]
 		  */
-		def fromWhere(from :FromClause)(context :SQLContext) :SpelledSQL[from.Params, from.Generalized] = {
-			val fromSQL = inFrom(from)(context)
-			val resultContext = fromSQL.context.copy(whereReversed = Nil)
-			if (fromSQL.context.whereReversed.isEmpty)
-				SpelledSQL(fromSQL.sql, resultContext, fromSQL.params)
-			else {
-				val whereSQL = fromSQL.context.whereReversed.reduceLeft((_1, _2) => _2 + ", " + _1)
-				fromSQL + (" " + WHERE + " ") + whereSQL
+		def fromWhere[P](from :FromClause)
+		                (context :SQLContext[P], params :Parameterization[P, from.Generalized]) :SpelledSQL[P] =
+		{
+			val spelledFrom = inFrom(from)(context, params)
+			if (spelledFrom.context.whereReversed.isEmpty)
+				spelledFrom
+			else {//the forms for the where clause are already included by `from`
+				val whereSQL = spelledFrom.context.whereReversed.reduceLeft((_1, _2) => _2 +: _AND_ +: _1)
+				val sql = spelledFrom.sql + _WHERE_ + whereSQL.sql
+				SpelledSQL(sql, spelledFrom.context.reset(), spelledFrom.setter + whereSQL.setter)
 			}
+		}
+
+		/** Renders as an SQL fragment full ''from'', ''where'', ''group by'' and ''having'' clauses of a ''select''.
+		  * This method is invoked from [[net.noresttherein.oldsql.sql.RowProduct.spell RowProduct.spell]]
+		  * and the latter should be preferred as the entry point. The process recursively calls
+		  * [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.apply(from:RowProduct)* apply(from)(context, params)]]
+		  * (which by default will delegate to
+		  * [[net.noresttherein.oldsql.sql.RowProduct.defaultSpelling RowProduct.defaultSpelling]]) and simultaneously
+		  * appends ''join'' clauses (or simply lists the tables) and builds `SQLContext` for the rest
+		  * of the SQL ''select'' to which `from` belongs. When the recursion encounters the
+		  * [[net.noresttherein.oldsql.sql.GroupBy GroupBy]] instance, its `defaultSpelling` calls
+		  * [[net.noresttherein.oldsql.sql.FromClause.spell spell]] again on the grouped clause, which forwards the call
+		  * to [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.fromWhere fromWhere]] method of this instance.
+		  * @param from    the ''from'' clause with a ''group by'' clause to format.
+		  * @param context the namespace containing the aliases of all tables in scope of `from` due to belonging
+		  *                to an outer ''select'', or a fresh instance if the formatted ''select'' is the top-level
+		  *                expression is a top select.
+		  * @param params  a facade to the type of parameters of the whole statement/query, returning an accessor
+		  *                `P => X` for any [[net.noresttherein.oldsql.sql.ast.JoinedGrouping JoinedGrouping]]
+		  *                of value type `X`, allowing the expressions for unbound parameters to be translated
+		  *                into [[net.noresttherein.oldsql.schema.SQLWriteForm forms]].
+		  * @see [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.fromWhere]]
+		  */
+		def groupByHaving[P](from :GroupByClause)
+		                    (context :SQLContext[P], params :Parameterization[P, from.Generalized]) :SpelledSQL[P] =
+		{
+			val spelledGroupBy = inGroupBy(from)(context, params)
+			if (from.filter == True) spelledGroupBy
+			else spelledGroupBy + _HAVING_ + inHaving(from.filter)(from.generalized, spelledGroupBy.context, params)
 		}
 
 		/** SQL fragment for an empty ''from'' clause. Defaults to an empty string, leading to rendering a ''select''
 		  * without a ''from'' clause.
 		  */
-		def emptyFrom(context :SQLContext) :SpelledSQL[@~, Dual] = SpelledSQL(context)
+		def emptyFrom[P](context :SQLContext[P]) :SpelledSQL[P] = SpelledSQL(context)
 
 		/** Creates an SQL fragment adding a single table to a non-empty ''from'' clause.
 		  * This can happen both using a ''join'' clause (and optionally an accompanying ''on'' clause),
@@ -510,8 +604,9 @@ object SQLDialect {
 		  * [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.SQLContext.whereReversed where]] clause
 		  * in the `SQLContext` included in the returned SQL.
 		  */
-		def join[L <: FromSome, R[O] <: MappingAt[O]]
-		        (join :L Join R, clause :String)(context :SQLContext) :SpelledSQL[join.Params, join.Generalized]
+		def join[P, L <: FromSome, R[O] <: MappingAt[O]]
+		        (join :L Join R, clause :String)(context :SQLContext[P], params :Parameterization[P, join.Generalized])
+					:SpelledSQL[P]
 
 		/** Formats a single table (including ''derived tables'', that is ''select'' expressions) included in a ''from''
 		  * clause of a ''select''. This overloaded method variant is called when no alias for the table
@@ -521,8 +616,6 @@ object SQLDialect {
 		  *                the formatted ''from'' clause; typically, it will be
 		  *                `F#`[[net.noresttherein.oldsql.sql.RowProduct.Params]], but on the top level such constraints
 		  *                do not exist.
-		  * @tparam F      the `RowProduct` listing all preceding tables in the ''from'' clause as well as tables
-		  *                inherited from enclosing ''select''(s) and remaining in the scope of the formatted ''select''.
 		  * @tparam M      the type constructor of the [[net.noresttherein.oldsql.schema.Mapping Mapping]]
 		  *                used to map individual rows of `table`.
 		  * @param table   a relation permissible in the ''from'' clause.
@@ -532,15 +625,17 @@ object SQLDialect {
 		  * @param params  parameterization providing access to the individual parameters in `P`
 		  *                of the whole formatted query which can be used by the expressions.
 		  * @return        in the most common cases of actual tables and stored views
-		  *                ([[net.noresttherein.oldsql.schema.Relation.RelVar RelVar]] instances), a string containing
+		  *                ([[net.noresttherein.oldsql.schema.RelVar RelVar]] instances), a string containing
 		  *                the table/view name together with an optional alias. Included
 		  *                [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.context context]] contains
 		  *                an additional entry in respect to `context`, while
-		  *                [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.params parameterization]] remains
-		  *                the same as `params`.
+		  *                the [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.setter write form]] sets any
+		  *                bound and unbound parameters used by the table if it is
+		  *                a [[net.noresttherein.oldsql.schema.Table.TableExpression TableExpression]],
+		  *                and is empty for base tables.
 		  */
-		def table[P, F <: RowProduct, M[O] <: MappingAt[O]]
-		         (table :Table[M])(context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F]
+		def table[P, M[O] <: MappingAt[O]]
+		         (table :Table[M])(context :SQLContext[P], params :Parameterization[P, RowProduct]) :SpelledSQL[P]
 
 		/** Formats a single table (including ''derived tables'', that is ''select'' expressions) included in a ''from''
 		  * clause of a ''select''. This overloaded method variant is called when an alias for the table
@@ -552,8 +647,6 @@ object SQLDialect {
 		  *                the formatted ''from'' clause; typically, it will be
 		  *                `F#`[[net.noresttherein.oldsql.sql.RowProduct.Params]], but on the top level such constraints
 		  *                do not exist.
-		  * @tparam F      the `RowProduct` listing all preceding tables in the ''from'' clause as well as tables
-		  *                inherited from enclosing ''select''(s) and remaining in the scope of the formatted ''select''.
 		  * @tparam M      the type constructor of the [[net.noresttherein.oldsql.schema.Mapping Mapping]]
 		  *                used to map individual rows of `table`.
 		  * @param table   a relation permissible in the ''from'' clause.
@@ -564,15 +657,18 @@ object SQLDialect {
 		  * @param params  parameterization providing access to the individual parameters in `P`
 		  *                of the whole formatted query which can be used by the expressions.
 		  * @return        in the most common cases of actual tables and stored views
-		  *                ([[net.noresttherein.oldsql.schema.Relation.RelVar RelVar]] instances), a string containing
+		  *                ([[net.noresttherein.oldsql.schema.RelVar RelVar]] instances), a string containing
 		  *                the table/view name together with an optional alias. Included
 		  *                [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.context context]] contains
 		  *                an additional entry in respect to `context`, while
-		  *                [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.params parameterization]] remains
-		  *                the same as `params`.
+		  *                the [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.setter write form]] sets any
+		  *                bound and unbound parameters used by the table if it is
+		  *                a [[net.noresttherein.oldsql.schema.Table.TableExpression TableExpression]],
+		  *                and is empty for base tables.
 		  */
-		def table[P, F <: RowProduct, M[O] <: MappingAt[O]]
-		         (table :Table[M], alias :String)(context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F]
+		def table[P, M[O] <: MappingAt[O]]
+		         (table :Table[M], alias :String)
+		         (context :SQLContext[P], params :Parameterization[P, RowProduct]) :SpelledSQL[P]
 
 		/** Formats a single table (including ''derived tables'', that is ''select'' expressions) included in a ''from''
 		  * clause of a ''select''. This overloaded method variant is equivalent
@@ -584,8 +680,6 @@ object SQLDialect {
 		  *                the formatted ''from'' clause; typically, it will be
 		  *                `F#`[[net.noresttherein.oldsql.sql.RowProduct.Params]], but on the top level such constraints
 		  *                do not exist.
-		  * @tparam F      the `RowProduct` listing all preceding tables in the ''from'' clause as well as tables
-		  *                inherited from enclosing ''select''(s) and remaining in the scope of the formatted ''select''.
 		  * @tparam M      the type constructor of the [[net.noresttherein.oldsql.schema.Mapping Mapping]]
 		  *                used to map individual rows of `table`.
 		  * @param table   a relation permissible in the ''from'' clause.
@@ -596,17 +690,33 @@ object SQLDialect {
 		  * @param params  parameterization providing access to the individual parameters in `P`
 		  *                of the whole formatted query which can be used by the expressions.
 		  * @return        in the most common cases of actual tables and stored views
-		  *                ([[net.noresttherein.oldsql.schema.Relation.RelVar RelVar]] instances), a string containing
+		  *                ([[net.noresttherein.oldsql.schema.RelVar RelVar]] instances), a string containing
 		  *                the table/view name together with an optional alias. Included
 		  *                [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.context context]] contains
 		  *                an additional entry in respect to `context`, while
-		  *                [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.params parameterization]] remains
-		  *                the same as `params`.
+		  *                the [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL.setter write form]] sets any
+		  *                bound and unbound parameters used by the table if it is
+		  *                a [[net.noresttherein.oldsql.schema.Table.TableExpression TableExpression]],
+		  *                and is empty for base tables.
 		  */
-		def table[P, F <: RowProduct, M[O] <: MappingAt[O]]
-		         (table :Table[M], alias :Option[String])(context :SQLContext, params :Parameterization[P, F])
-				:SpelledSQL[P, F] =
+		def table[P, M[O] <: MappingAt[O]]
+		         (table :Table[M], alias :Option[String])
+		         (context :SQLContext[P], params :Parameterization[P, RowProduct]) :SpelledSQL[P] =
 			alias.mapOrElse(this.table(table, _)(context, params), this.table(table)(context, params))
+
+		/** Spells a grouping expression from a ''group by'' clause exposed as a pseudo relation.
+		  * @tparam P      the type of the parameter or parameters of the complete query expression containing
+		  *                the formatted ''from'' clause; typically, it will be
+		  *                `F#`[[net.noresttherein.oldsql.sql.RowProduct.Params]], but on the top level such constraints
+		  *                do not exist.
+		  * @tparam F      the `RowProduct` listing all preceding tables in the ''from'' clause as well as tables
+		  *                inherited from enclosing ''select''(s) and remaining in the scope of the formatted ''select''.
+		  */
+		def grouping[P, F <: RowProduct, M[O] <: MappingAt[O]]
+		            (grouping :GroupingRelation[F, M])
+		            (from :F, context :SQLContext[P], params :Parameterization[P, F]) :SpelledSQL[P] =
+			grouping.defaultSpelling(this)(from, context, params)
+
 
 		/** Renders as SQL a reference to column `column` of the relation `table` in the ''from'' clause
 		  * of the formatted expression. This method terminates the recursion and simply returns the column name
@@ -616,16 +726,18 @@ object SQLDialect {
 		  * terminology this includes ''stored views'' and ''select'' expressions as well as ''base tables'') -
 		  * if it is some kind of synthetic pseudo relation existing only in the framework, an exception will be thrown.
 		  *///context must correspond to RowProduct the table is based on (same number of tables)
+		@throws[IllegalArgumentException]("if the relation at the given index is synthetic and does not correspond " +
+		                                  "to an actual table in the FROM clause.")
+		@throws[IndexOutOfBoundsException]("if the context doesn't correspond to from clause F.")
 		def column[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A]]
-		          (table :JoinedRelation[O, T], column :ColumnMapping[_, O])
-		          (context :SQLContext, params: Parameterization[P, F]) :SpelledSQL[P, F] =
-		{
-			val tableAlias = context(table)
-			val columnAlias = if (tableAlias.length == 0) column.name else context(table) + "." + column.name
-			SpelledSQL(columnAlias, context, params)
-		}
+		          (table :JoinedTable[O, T], column :ColumnMapping[_, O])
+		          (from :F, context :SQLContext[P], params: Parameterization[P, F]) :SpelledSQL[P] =
+			table.table.spell(this)(table, table.export.export(column))(from, context, params)
 
 
+		/** Dedicated names for operators combining two queries
+		  * into a [[net.noresttherein.oldsql.sql.ast.CompoundSelectSQL compound select]].
+		  */
 		def apply(operator :SetOperator) :String = operator match {
 			case Union => UNION
 			case UnionAll => UNION_ALL
@@ -671,19 +783,27 @@ object SQLDialect {
 		  * but as comma-separated columns (distinct expressions) without any delimiters. It is used when formatting
 		  * tuple expressions of ''select'' clauses and function call arguments, but possibly also others.
 		  * An ''inline'' speller should delegate to
-		  * [[net.noresttherein.oldsql.sql.SQLExpression.inlineSpelling inlineSpelling]] rather than
+		  * [[net.noresttherein.oldsql.sql.SQLExpression.explodedSpelling explodedSpelling]] rather than
 		  * [[net.noresttherein.oldsql.sql.SQLExpression.defaultSpelling defaultSpelling]] methods and be equivalent
 		  * to using [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.explode this.explode]].
 		  */
 		def inline    :SQLSpelling
 
+		/** Spelling instance to use for rendering ''with'' clauses. */
 		def inWith    :SQLSpelling
+		/** Spelling instance to use for rendering ''select'' clauses. */
 		def inSelect  :SQLSpelling //= in(SelectScope)
+		/** Spelling instance to use for rendering (proper) ''from'' clauses. */
 		def inFrom    :SQLSpelling //= in(FromScope)
+		/** Spelling instance to use for rendering ''where'' clauses. */
 		def inWhere   :SQLSpelling //= in(WhereScope)
+		/** Spelling instance to use for rendering ''group by'' clauses. */
 		def inGroupBy :SQLSpelling //= in(GroupByScope)
+		/** Spelling instance to use for rendering ''having'' clauses. */
 		def inHaving  :SQLSpelling //= in(HavingScope)
+		/** Spelling instance to use for rendering ''values'', ''set'' and other dedicated clauses of ''insert'' statements. */
 		def inInsert  :SQLSpelling //= in(InsertScope)
+		/** Spelling instance to use for rendering ''set'' clauses of SQL ''update'' statements.*/
 		def inUpdate  :SQLSpelling //= in(UpdateScope)
 
 		def in(scope :SpellingScope) :SQLSpelling = scope match {
@@ -701,84 +821,156 @@ object SQLDialect {
 				)
 		}
 
-		def NULL       :String = literal("null")
-		def TRUE       :String = literal("true")
-		def FALSE      :String = literal("false")
-		def CONCAT     :String = operator("+")
-		def LIKE       :String = operator("like")
-		def BETWEEN    :String = operator("between")
-		def NOT        :String = operator("not")
-		def AND        :String = operator("and")
-		def OR         :String = operator("or")
-		def UNION      :String = operator("union")
-		def UNION_ALL  :String = operator("union all")
-		def INTERSECT  :String = operator("intersect")
-		def MINUS      :String = operator("minus")
-		def WITH       :String = keyword("with")
-		def SELECT     :String = keyword("select")
-		def FROM       :String = keyword("from")
-		def WHERE      :String = keyword("where")
-		def GROUP_BY   :String = keyword("group by")
-		def HAVING     :String = keyword("having")
-		def AS         :String = keyword("as")
-		def INNER_JOIN :String = keyword("join")
-		def OUTER_JOIN :String = keyword("outer join")
-		def LEFT_JOIN  :String = keyword("left join")
-		def RIGHT_JOIN :String = keyword("right join")
-		def ON         :String = keyword("on")
-		def INSERT     :String = keyword("insert")
-		def INTO       :String = keyword("into")
-		def VALUES     :String = keyword("values")
-		def UPDATE     :String = keyword("update")
-		def SET        :String = keyword("set")
-		def MERGE      :String = keyword("merge")
-		def DELETE     :String = keyword("delete")
+		def NULL         :String = literal("null")
+		def TRUE         :String = literal("true")
+		def FALSE        :String = literal("false")
+		def CONCAT       :String = operator("+")
+		def LIKE         :String = operator("like")
+		def BETWEEN      :String = operator("between")
+		def NOT          :String = operator("not")
+		def AND          :String = operator("and")
+		def OR           :String = operator("or")
+		def UNION        :String = operator("union")
+		def UNION_ALL    :String = operator("union all")
+		def INTERSECT    :String = operator("intersect")
+		def MINUS        :String = operator("minus")
+		def WITH         :String = keyword("with")
+		def SELECT       :String = keyword("select")
+		def DISTINCT     :String = keyword("distinct")
+		def FROM         :String = keyword("from")
+		def WHERE        :String = keyword("where")
+		def GROUP_BY     :String = keyword("group by")
+		def HAVING       :String = keyword("having")
+		def AS           :String = keyword("as")
+		def INNER_JOIN   :String = keyword("join")
+		def OUTER_JOIN   :String = keyword("outer join")
+		def LEFT_JOIN    :String = keyword("left join")
+		def RIGHT_JOIN   :String = keyword("right join")
+		def ON           :String = keyword("on")
+		def INSERT       :String = keyword("insert")
+		def INTO         :String = keyword("into")
+		def VALUES       :String = keyword("values")
+		def UPDATE       :String = keyword("update")
+		def SET          :String = keyword("set")
+		def MERGE        :String = keyword("merge")
+		def DELETE       :String = keyword("delete")
+
+		def _NULL_       :String = " " + NULL + " "
+		def _TRUE_       :String = " " + TRUE + " "
+		def _FALSE_      :String = " " + FALSE + " "
+		def _CONCAT_     :String = " " + CONCAT + " "
+		def _LIKE_       :String = " " + LIKE + " "
+		def _BETWEEN_    :String = " " + BETWEEN + " "
+		def _NOT_        :String = " " + NOT + " "
+		def _AND_        :String = " " + AND + " "
+		def _OR_         :String = " " + OR + " "
+		def _UNION_      :String = " " + UNION + " "
+		def _UNION_ALL_  :String = " " + UNION_ALL + " "
+		def _INTERSECT_  :String = " " + INTERSECT + " "
+		def _MINUS_      :String = " " + MINUS + " "
+		def _SELECT_     :String = " " + SELECT + " "
+		def _FROM_       :String = " " + FROM + " "
+		def _WHERE_      :String = " " + WHERE + " "
+		def _GROUP_BY_   :String = " " + GROUP_BY + " "
+		def _HAVING_     :String = " " + HAVING + " "
+		def _AS_         :String = " " + AS + " "
+		def _INNER_JOIN_ :String = " " + INNER_JOIN + " "
+		def _OUTER_JOIN_ :String = " " + OUTER_JOIN + " "
+		def _LEFT_JOIN_  :String = " " + LEFT_JOIN + " "
+		def _RIGHT_JOIN_ :String = " " + RIGHT_JOIN + " "
+		def _ON_         :String = " " + ON + " "
+		def _INTO_       :String = " " + INTO + " "
+		def _VALUES_     :String = " " + VALUES + " "
+		def _SET_        :String = " " + SET + " "
+		def WITH_        :String = WITH + " "
+		def SELECT_      :String = SELECT + " "
+		def INSERT_      :String = INSERT + " "
+		def UPDATE_      :String = UPDATE + " "
+		def MERGE_       :String = MERGE + " "
+		def DELETE_      :String = DELETE + " "
 
 		/** A hot spot allowing subclasses to inject specialized `SQLContext` implementations. */
-		def newContext :SQLContext = SQLContext()
+		def newContext :SQLContext[Any] = SQLContext()
 
 
 		//forwarding methods.
 
-		protected final def defaultSpelling[P, V](statement :DMLStatement[P, V]) :SpelledSQL[P, RowProduct] =
+		/** A forwarder method to
+		  * [[net.noresttherein.oldsql.sql.RowProduct.groupingSpellingContext RowProduct.groupingSpellingContext]].
+		  */
+		@inline protected final def groupingSpellingContext[P]
+		                            (from :RowProduct)
+		                            (position :Int, context :SQLContext[P], params :Parameterization[P, from.Generalized])
+				:GroupingSpellingContext[P] =
+			from.groupingSpellingContextForwarder(position, context, params)
+
+		/** A forwarder method to [[net.noresttherein.oldsql.sql.DMLStatement.defaultSpelling defaultSpelling]]. */
+		@inline protected final def defaultSpelling[P, V](statement :DMLStatement[P, V]) :SpelledSQL[P] =
 			statement.defaultSpellingForwarder(this)
 
-		protected final def defaultSpelling[P](e :Query[P, _])(implicit context :SQLContext) :SpelledSQL[P, RowProduct] =
-			e.defaultSpelling(this, context)
+		/** A forwarder method to [[net.noresttherein.oldsql.sql.Query.defaultSpelling defaultSpelling]]. */
+		@inline protected final def defaultSpelling[P](e :Query[P, _])(context :SQLContext[P]) :SpelledSQL[P] =
+			e.defaultSpelling(this)(context)
 
-		protected final def defaultSpelling[P, F <: RowProduct, X, Y]
-		                                   (f :SQLExecutable[X, Y])(args :SQLExpression[F, LocalScope, X])
-		                                   (implicit context :SQLContext, params :Parameterization[P, F])
-				:SpelledSQL[P, F] =
+		/** A forwarder method to [[net.noresttherein.oldsql.sql.SQLExecutable.defaultSpelling defaultSpelling]]. */
+		@inline protected final def defaultSpelling[P, F <: RowProduct, X, Y]
+		                                           (f :SQLExecutable[X, Y])(args :SQLExpression[F, LocalScope, X])
+		                                           (implicit context :SQLContext[P], params :Parameterization[P, F])
+				:SpelledSQL[P] =
 			f.defaultSpelling(this)(args)
 
-		protected final def paramSpelling[X, Y](f :SQLExecutable[X, Y]) :SpelledSQL[X, RowProduct] =
+		/** A forwarder method to [[net.noresttherein.oldsql.sql.SQLExecutable.paramSpelling paramSpelling]]. */
+		@inline protected final def paramSpelling[X, Y](f :SQLExecutable[X, Y]) :SpelledSQL[X] =
 			f.paramSpellingForwarder(this)
 
-		protected final def defaultSpelling[P, F <: RowProduct]
-		                    (f :AggregateFunction)(arg :ColumnSQL[F, LocalScope, _], distinct :Boolean = false)
-		                    (implicit context :SQLContext, params :Parameterization[P, F])
-				:SpelledSQL[P, F] =
-			f.defaultSpelling(this)(arg, distinct)
+		/** A forwarder method to [[net.noresttherein.oldsql.sql.AggregateFunction.defaultSpelling defaultSpelling]]. */
+		@inline protected final def defaultSpelling[P, F <: RowProduct]
+		                            (f :AggregateFunction)(arg :ColumnSQL[F, LocalScope, _], distinct :Boolean = false)
+		                            (from :F, context :SQLContext[P], params :Parameterization[P, F])
+				:SpelledSQL[P] =
+			f.defaultSpelling(this)(arg, distinct)(from, context, params)
 
-		protected final def defaultSpelling[P, F <: RowProduct]
-		                                   (e :SQLExpression[F, LocalScope, _])
-		                                   (implicit context :SQLContext, params :Parameterization[P, F])
-				:SpelledSQL[P, F] =
-			e.defaultSpelling(this)
+		/** A forwarder method to [[net.noresttherein.oldsql.sql.SQLExpression.defaultSpelling defaultSpelling]]. */
+		@inline protected final def defaultSpelling[P, F <: RowProduct]
+		                                           (e :SQLExpression[F, LocalScope, _])
+		                                           (from :F, context :SQLContext[P], params :Parameterization[P, F])
+				:SpelledSQL[P] =
+			e.defaultSpelling(this)(from, context, params)
 
+		/** A forwarder method to [[net.noresttherein.oldsql.sql.SQLExpression.explodedSpelling explodedSpelling]]. */
 		protected final def inlineSpelling[P, F <: RowProduct]
 		                                  (e :SQLExpression[F, LocalScope, _])
-		                                  (implicit context :SQLContext, params :Parameterization[P, F])
-				:SpelledSQL[P, F] =
-			e.inlineSpelling(this) match {
-				case Seq() => SpelledSQL("", context, params)
-				case columns => columns.reduce(_.sql +: ", " +: _)
+		                                  (from :F, context :SQLContext[P], params :Parameterization[P, F])
+				:SpelledSQL[P] =
+			e.explodedSpelling(this)(from, context, params) match {
+				case Seq() => SpelledSQL(context)
+				case columns => columns.reduce(_ + ", " + _)
 			}
 
-		protected final def defaultSpelling(from :RowProduct)(context :SQLContext)
-				:SpelledSQL[from.Params, from.Generalized] =
-			from.defaultSpelling(this)(context)
+		@inline protected final def explodedSpelling[P, F <: RowProduct]
+		                                            (e :SQLExpression[F, LocalScope, _])
+		                                            (from :F, context :SQLContext[P], params :Parameterization[P, F])
+				:Seq[SpelledSQL[P]] =
+			e.explodedSpelling(this)(from, context, params)
+
+		/** A forwarder method to [[net.noresttherein.oldsql.sql.RowProduct.defaultSpelling defaultSpelling]]. */
+		@inline protected final def defaultSpelling[P](from :RowProduct)
+		                                              (context :SQLContext[P],
+		                                               params :Parameterization[P, from.Generalized])
+				:SpelledSQL[P] =
+			from.defaultSpelling(this)(context, params)
+
+		@inline protected final def defaultSpelling[P, M[O] <: MappingAt[O]]
+		                                           (table :Table[M])
+		                                           (context :SQLContext[P], params :Parameterization[P, RowProduct])
+				:SpelledSQL[P] =
+			table.defaultSpelling(this)(context, params)
+
+		@inline protected final def defaultSpelling[P, F <: RowProduct, M[O] <: MappingAt[O]]
+		                                           (grouping :GroupingRelation[F, M])
+		                                           (from :F, context :SQLContext[P], params :Parameterization[P, F])
+				:SpelledSQL[P] =
+			grouping.defaultSpelling(this)(from, context, params)
 	}
 
 
@@ -800,73 +992,88 @@ object SQLDialect {
 		  * to the proxy target.
 		  */
 		class SpellingRedactor(val author :SQLSpelling) extends SQLSpelling {
-			override def spell[P, V](statement :DMLStatement[P, V]) :SpelledSQL[P, RowProduct] = author.spell(statement)
-			override def spell[P, V](query :Query[P, V]) :SpelledSQL[P, RowProduct] = author.spell(query)
-			override def spell[V](query :QuerySQL[RowProduct, V]) :SpelledSQL[@~, RowProduct] = author.spell(query)
+			override def spell[P, V](statement :DMLStatement[P, V]) :SpelledSQL[P] = author.spell(statement)
+			override def spell[P, V](query :Query[P, V]) :SpelledSQL[P] = author.spell(query)
+			override def spell[V](query :QuerySQL[RowProduct, V]) :SpelledSQL[@~] = author.spell(query)
 
-			override def paramless[V](query :QuerySQL[RowProduct, V])(context :SQLContext) :SpelledSQL[@~, RowProduct] =
+			override def paramless[V](query :QuerySQL[RowProduct, V])(context :SQLContext[@~]) :SpelledSQL[@~] =
 				author.paramless(query)(context)
 
-//			override def apply[P, V](statement :DMLStatement[P, V]) :SpelledSQL[P, RowProduct] = author(statement)
 
-			override def apply[P, V](query :Query[P, V])(context :SQLContext) :SpelledSQL[P, RowProduct] =
+			override def apply[P](ctes :WithClause)
+			                     (context :SQLContext[P], params :Parameterization[P, RowProduct]) :SpelledSQL[P] =
+				author.apply(ctes)(context, params)
+
+			override def apply[P, V](query :Query[P, V])(context :SQLContext[P]) :SpelledSQL[P] =
 				author.apply(query)(context)
 
 			override def apply[P, F <: RowProduct, V]
 			                  (e :SQLExpression[F, LocalScope, V])
-			                  (context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
-				author.apply(e)(context, params)
+			                  (from :F, context :SQLContext[P], params :Parameterization[P, F]) :SpelledSQL[P] =
+				author.apply(e)(from, context, params)
 
 			override def explode[P, F <: RowProduct, V]
 			                    (e :SQLExpression[F, LocalScope, V])
-			                    (context :SQLContext, params :Parameterization[P, F]) :Seq[SpelledSQL[P, F]] =
-				author.explode(e)(context, params)
+			                    (from :F, context :SQLContext[P], params :Parameterization[P, F]) :Seq[SpelledSQL[P]] =
+				author.explode(e)(from, context, params)
 
-			override def apply(from :RowProduct)(context :SQLContext) :SpelledSQL[from.Params, from.Generalized] =
-				author.apply(from)(context)
+			override def apply[P](from :RowProduct)(context :SQLContext[P], params :Parameterization[P, from.Generalized])
+					:SpelledSQL[P] =
+				author.apply(from)(context, params)
 
 			override def apply[P, F <: RowProduct]
 			                  (function :AggregateFunction, distinct :Boolean)(arg :ColumnSQL[F, LocalScope, _])
-			                  (context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
-				author.apply(function, distinct)(arg)(context, params)
+			                  (from :F, context :SQLContext[P], params :Parameterization[P, F]) :SpelledSQL[P] =
+				author.apply(function, distinct)(arg)(from, context, params)
 
 			override def apply[P, F <: RowProduct, X, Y]
 			                  (function :SQLExecutable[X, Y])(args :SQLExpression[F, LocalScope, X])
-			                  (context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
-				author.apply(function)(args)(context, params)
+			                  (from :F, context :SQLContext[P], params :Parameterization[P, F]) :SpelledSQL[P] =
+				author.apply(function)(args)(from, context, params)
 
 
-			override def table[P, F <: RowProduct, M[A] <: MappingAt[A]]
-			                  (table :Table[M])(context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
+			override def table[P, M[A] <: MappingAt[A]]
+			                  (table :Table[M])
+			                  (context :SQLContext[P], params :Parameterization[P, RowProduct]) :SpelledSQL[P] =
 				author.table(table)(context, params)
 
-			override def table[P, F <: RowProduct, M[A] <: MappingAt[A]]
+			override def table[P, M[A] <: MappingAt[A]]
 			                  (table :Table[M], alias :String)
-			                  (context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
+			                  (context :SQLContext[P], params :Parameterization[P, RowProduct]) :SpelledSQL[P] =
 				author.table(table, alias)(context, params)
 
-			override def table[P, F <: RowProduct, M[A] <: MappingAt[A]]
+			override def table[P, M[A] <: MappingAt[A]]
 			                  (table :Table[M], alias :Option[String])
-			                  (context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
+			                  (context :SQLContext[P], params :Parameterization[P, RowProduct]) :SpelledSQL[P] =
 				author.table(table, alias)(context, params)
+
+			override def grouping[P, F <: RowProduct, M[O] <: MappingAt[O]]
+			                     (grouping :GroupingRelation[F, M])
+			                     (from :F, context :SQLContext[P], params :Parameterization[P, F]) :SpelledSQL[P] =
+				author.grouping(grouping)(from, context, params)
 
 			override def column[P, O <: RowProduct, F <: O, T[A] <: MappingAt[A]]
-			                   (table :JoinedRelation[O, T], column :ColumnMapping[_, O])
-			                   (context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
-				author.column(table, column)(context, params)
+			                   (table :JoinedTable[O, T], column :ColumnMapping[_, O])
+			                   (from :F, context :SQLContext[P], params :Parameterization[P, F]) :SpelledSQL[P] =
+				author.column(table, column)(from, context, params)
 
-			override def fromWhere(from :FromClause)(context :SQLContext) :SpelledSQL[from.Params, from.Generalized] =
-				author.fromWhere(from)(context)
+			override def fromWhere[P](from :FromClause)
+			                         (context :SQLContext[P], params :Parameterization[P, from.Generalized])
+					:SpelledSQL[P] =
+				author.fromWhere(from)(context, params)
 
-			override def emptyFrom(context :SQLContext) :SpelledSQL[@~, Dual] = author.emptyFrom(context)
+			override def groupByHaving[P](from :GroupByClause)
+			                             (context :SQLContext[P], params :Parameterization[P, from.Generalized])
+					:SpelledSQL[P] =
+				author.groupByHaving(from)(context, params)
 
-			override def join[L <: FromSome, R[A] <: MappingAt[A]](join :Join[L, R], clause :String)(context :SQLContext)
-					:SpelledSQL[join.Params, join.Generalized] =
-				author.join(join, clause)(context)
+			override def emptyFrom[P](context :SQLContext[P]) :SpelledSQL[P] = author.emptyFrom(context)
 
-			override def groupByHaving(from :GroupByClause)
-			                          (context :SQLContext) :SpelledSQL[from.Params, from.Generalized] =
-				author.groupByHaving(from)(context)
+			override def join[P, L <: FromSome, R[A] <: MappingAt[A]]
+			                 (join :L Join R, clause :String)
+			                 (context :SQLContext[P], params :Parameterization[P, join.Generalized]) :SpelledSQL[P] =
+				author.join(join, clause)(context, params)
+
 
 			override def apply(operator :SetOperator) :String = author.apply(operator)
 
@@ -902,6 +1109,7 @@ object SQLDialect {
 			override def MINUS       :String = author.MINUS
 			override def WITH        :String = author.WITH
 			override def SELECT      :String = author.SELECT
+			override def DISTINCT    :String = author.DISTINCT
 			override def FROM        :String = author.FROM
 			override def WHERE       :String = author.WHERE
 			override def GROUP_BY    :String = author.GROUP_BY
@@ -920,7 +1128,41 @@ object SQLDialect {
 			override def MERGE       :String = author.MERGE
 			override def DELETE      :String = author.DELETE
 
-			override def newContext :SQLContext = author.newContext
+			override def _NULL_       :String = author._NULL_
+			override def _TRUE_       :String = author._TRUE_
+			override def _FALSE_      :String = author._FALSE_
+			override def _CONCAT_     :String = author._CONCAT_
+			override def _LIKE_       :String = author._LIKE_
+			override def _BETWEEN_    :String = author._BETWEEN_
+			override def _NOT_        :String = author._NOT_
+			override def _AND_        :String = author._AND_
+			override def _OR_         :String = author._OR_
+			override def _UNION_      :String = author._UNION_
+			override def _UNION_ALL_  :String = author._UNION_ALL_
+			override def _INTERSECT_  :String = author._INTERSECT_
+			override def _MINUS_      :String = author._MINUS_
+			override def _SELECT_     :String = author._SELECT_
+			override def _FROM_       :String = author._FROM_
+			override def _WHERE_      :String = author._WHERE_
+			override def _GROUP_BY_   :String = author._GROUP_BY_
+			override def _HAVING_     :String = author._HAVING_
+			override def _AS_         :String = author._AS_
+			override def _INNER_JOIN_ :String = author._INNER_JOIN_
+			override def _OUTER_JOIN_ :String = author._OUTER_JOIN_
+			override def _LEFT_JOIN_  :String = author._LEFT_JOIN_
+			override def _RIGHT_JOIN_ :String = author._RIGHT_JOIN_
+			override def _ON_         :String = author._ON_
+			override def _INTO_       :String = author._INTO_
+			override def _VALUES_     :String = author._VALUES_
+			override def _SET_        :String = author._SET_
+			override def WITH_        :String = author.WITH_
+			override def SELECT_      :String = author.SELECT_
+			override def INSERT_      :String = author.INSERT_
+			override def UPDATE_      :String = author.UPDATE_
+			override def MERGE_       :String = author.MERGE_
+			override def DELETE_      :String = author.DELETE_
+
+			override def newContext :SQLContext[Any] = author.newContext
 
 			override def toString :String = "Redactor(" + author + ")"
 		}
@@ -929,29 +1171,56 @@ object SQLDialect {
 
 
 		type ExpressionSpelling[P, F <: RowProduct] =
-			ExpressionMapper[F, ({type T[-S >: LocalScope <: GlobalScope, V] = SpelledSQL[P, F] })#T]
+			ExpressionMapper[F, ({type T[-S >: LocalScope <: GlobalScope, V] = SpelledSQL[P] })#T]
 
 		class ExpressionSpellingBase[P, F <: RowProduct](spelling :SQLSpelling, inline :Boolean = false)
-		                                                (context :SQLContext)
+		                                                (from :F, context :SQLContext[P])
 		                                                (implicit params :Parameterization[P, F])
-			extends CaseExpression[F, ({type T[-S >: LocalScope <: GlobalScope, V] = SpelledSQL[P, F] })#T]
+			extends CaseExpression[F, ({type T[-S >: LocalScope <: GlobalScope, V] = SpelledSQL[P] })#T]
 		{
-			override def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) :SpelledSQL[P, F] =
+			override def expression[S >: LocalScope <: GlobalScope, X](e :SQLExpression[F, S, X]) :SpelledSQL[P] =
 				if (inline) inlineSpelling(e)(context) else defaultSpelling(e)(context)
 
-			protected def defaultSpelling(e :SQLExpression[F, LocalScope, _])(context :SQLContext) :SpelledSQL[P, F] =
-				e.defaultSpelling(spelling)(context, params)
+			protected def defaultSpelling(e :SQLExpression[F, LocalScope, _])(context :SQLContext[P]) :SpelledSQL[P] =
+				e.defaultSpelling(spelling)(from, context, params)
 
-			protected def inlineSpelling(e :SQLExpression[F, LocalScope, _])(context :SQLContext) :SpelledSQL[P, F] =
-				inline(e)(context) match {
-					case Seq() => SpelledSQL("", context, params)
-					case columns => columns.reduce(_.sql +: ", " +: _)
+			protected def inlineSpelling(e :SQLExpression[F, LocalScope, _])(context :SQLContext[P]) :SpelledSQL[P] =
+				explodedSpelling(e)(context) match {
+					case Seq() => SpelledSQL("", context)
+					case columns => columns.reduce(_ +: ", " +: _)
 				}
 
-			protected def inline(e :SQLExpression[F, LocalScope, _])(context :SQLContext) :Seq[SpelledSQL[P, F]] =
-				e.inlineSpelling(spelling)(context, params)
+			protected def explodedSpelling(e :SQLExpression[F, LocalScope, _])(context :SQLContext[P]) :Seq[SpelledSQL[P]] =
+				e.explodedSpelling(spelling)(from, context, params)
 		}
 
+
+
+		trait GroupingSpellingContext[P] {
+			type Ungrouped <: FromSome
+			type Grouping[O] <: MappingAt[O]
+
+			val grouping :GroupingRelation[Ungrouped, Grouping]
+			val from     :Ungrouped
+			val context  :SQLContext[P]
+			val params   :Parameterization[P, Ungrouped]
+		}
+
+		object GroupingSpellingContext {
+			def apply[P, F <: FromSome, M[O] <: MappingAt[O]]
+			         (grouping :GroupingRelation[F, M])(from :F, context :SQLContext[P], params :Parameterization[P, F])
+					:GroupingSpellingContext[P] =
+				new Impl(grouping)(from, context, params)
+
+			private class Impl[P, F <: FromSome, M[O] <: MappingAt[O]]
+			                  (val grouping :GroupingRelation[F, M])
+			                  (val from :F, val context :SQLContext[P], val params :Parameterization[P, F])
+				extends GroupingSpellingContext[P]
+			{
+				type Ungrouped = F
+				type Grouping[O] = M[O]
+			}
+		}
 	}
 
 
@@ -1019,14 +1288,14 @@ object SQLDialect {
 
 		override def apply[P, F <: RowProduct, V]
                           (e :SQLExpression[F, LocalScope, V])
-                          (context :SQLContext, params: Parameterization[P, F]) :SpelledSQL[P, F] =
-			if (isInline) inlineSpelling(e)(context, params) else defaultSpelling(e)(context, params)
+                          (from :F, context :SQLContext[P], params: Parameterization[P, F]) :SpelledSQL[P] =
+			if (isInline) inlineSpelling(e)(from, context, params) else defaultSpelling(e)(from, context, params)
 
 
 		protected val tableAliasRoot :String = aliases("table")
 		protected val selectAliasRoot :String = aliases("select")
 
-		protected def alias(root :String)(context :SQLContext) :String = {
+		protected def alias(root :String)(context :SQLContext[_]) :String = {
 			var i = 1; var alias = root + i
 			while (context.tablesReversed.contains(alias)) {
 				i += 1; alias = root + i
@@ -1034,11 +1303,12 @@ object SQLDialect {
 			alias
 		}
 
-		override def table[P, F <: RowProduct, M[O] <: MappingAt[O]]
-		                  (table :Table[M])(context :SQLContext, params :Parameterization[P, F]) :SpelledSQL[P, F] =
+		override def table[P, M[O] <: MappingAt[O]]
+		                  (table :Table[M])(context :SQLContext[P], params :Parameterization[P, RowProduct])
+				:SpelledSQL[P] =
 			table match {
 				case Aliased(t :Table.*, alias) => this.table(t, alias)(context, params)
-				case t :RelVar[M] => this.table(t, t.name)(context, params)
+				case t :NamedRelation[M] => this.table(table, t.name)(context, params)
 				case _ =>
 					//we could try to check if the select returns a single entity to provide a more informative alias
 					val default = tableAliasRoot + context.tablesReversed.length
@@ -1046,41 +1316,44 @@ object SQLDialect {
 					else this.table(table, selectAliasRoot)(context, params)
 			}
 
-		override def table[P, F <: RowProduct, M[O] <: MappingAt[O]]
-		                  (table :Table[M], alias :String)(context :SQLContext, params :Parameterization[P, F])
-				:SpelledSQL[P, F] =
+		override def table[P, M[O] <: MappingAt[O]]
+		                  (table :Table[M], alias :String)
+		                  (context :SQLContext[P], params :Parameterization[P, RowProduct]) :SpelledSQL[P] =
 		{
 			val sql = table.defaultSpelling(this)(context, params)
 			if (alias.length == 0)
-				SpelledSQL(sql.sql, context.join(""), sql.params)
+				SpelledSQL(sql.sql, context.join(""), sql.setter)
 			else {
 				val unique =
 					if (!context.tablesReversed.contains(alias)) alias
 					else this.alias(alias)(context)
-				SpelledSQL(sql.sql + (" " + AS + " " + unique), context.join(unique), sql.params)
+				SpelledSQL(sql.sql + (_AS_ + unique), context.join(unique), sql.setter)
 			}
 		}
 		//overriden due to Scala's stupid overloading rules
-		override def table[P, F <: RowProduct, M[O] <: MappingAt[O]]
+		override def table[P, M[O] <: MappingAt[O]]
 		                  (table :Table[M], alias :Option[String])
-		                  (context :SQLContext, params :Parameterization[P, F])
-				:SpelledSQL[P, F] =
+		                  (context :SQLContext[P], params :Parameterization[P, RowProduct])
+				:SpelledSQL[P] =
 			alias.mapOrElse(this.table(table, _)(context, params), this.table(table)(context, params))
 
 
-		override def join[L <: FromSome, R[O] <: MappingAt[O]]
-		                 (join :L Join R, clause :String)(context :SQLContext) :SpelledSQL[join.Params, join.Generalized] =
+		override def join[P, L <: FromSome, R[O] <: MappingAt[O]]
+		                 (join :L Join R, clause :String)
+		                 (context :SQLContext[P], params :Parameterization[P, join.Generalized]) :SpelledSQL[P] =
 		{
-			val left = apply(join.left :join.left.type)(context)
-			val right = table(join.right, join.aliasOpt)(left.context, left.params)
+			val left = apply(join.left :join.left.type)(context, params.left)
+			val right = join.last.spell(join, left.context, params)(this)// table(join.right, join.aliasOpt)(left.context, params)
 			val sql = left.sql + (" " + clause + " ") + right.sql
-			val joined = SpelledSQL(sql, right.context, right.params.join[join.Generalized, join.left.Generalized, R])
+			val joined = SpelledSQL(sql, right.context, left.setter + right.setter)
 			if (join.condition == True)
 				joined
 			else if (useJoinOnClause)
-				joined + (" " + ON + " ") + (inWhere(join.condition)(_, _))
-			else
-				joined && (inWhere(join.condition)(_, _))
+				joined + _ON_ + inWhere(join.condition :GlobalBoolean[join.Self])(joined.context, params)
+			else {
+				val context = joined && inWhere(join.condition)(join.self, joined.context, params)
+				SpelledSQL(joined.sql, context, joined.setter)
+			}
 		}
 
 		protected def useJoinOnClause :Boolean = true
@@ -1091,38 +1364,74 @@ object SQLDialect {
 		override def function(sql :String) :String = functions(sql)
 		override def keyword(sql :String) :String = keyword(sql)
 
-		override val NULL       :String = literals("null")
-		override val TRUE       :String = literals("true")
-		override val FALSE      :String = literals("false")
-		override val CONCAT     :String = operators("+")
-		override val LIKE       :String = operators("like")
-		override val BETWEEN    :String = operators("between")
-		override val NOT        :String = operators("not")
-		override val AND        :String = operators("and")
-		override val OR         :String = operators("or")
-		override val UNION      :String = operators("union")
-		override val UNION_ALL  :String = operators("union all")
-		override val INTERSECT  :String = operators("intersect")
-		override val MINUS      :String = operators("minus")
-		override val WITH       :String = keywords("with")
-		override val SELECT     :String = keywords("select")
-		override val FROM       :String = keywords("from")
-		override val WHERE      :String = keywords("where")
-		override val GROUP_BY   :String = keywords("group by")
-		override val HAVING     :String = keywords("having")
-		override val AS         :String = keywords("as")
-		override val INNER_JOIN :String = keywords("join")
-		override val OUTER_JOIN :String = keywords("outer join")
-		override val LEFT_JOIN  :String = keywords("left join")
-		override val RIGHT_JOIN :String = keywords("right join")
-		override val ON         :String = keywords("on")
-		override val INSERT     :String = keywords("insert")
-		override val INTO       :String = keywords("into")
-		override val VALUES     :String = keywords("values")
-		override val UPDATE     :String = keywords("update")
-		override val SET        :String = keywords("set")
-		override val MERGE      :String = keywords("merge")
-		override val DELETE     :String = keywords("delete")
+		override val NULL         :String = literals("null")
+		override val TRUE         :String = literals("true")
+		override val FALSE        :String = literals("false")
+		override val CONCAT       :String = operators("+")
+		override val LIKE         :String = operators("like")
+		override val BETWEEN      :String = operators("between")
+		override val NOT          :String = operators("not")
+		override val AND          :String = operators("and")
+		override val OR           :String = operators("or")
+		override val UNION        :String = operators("union")
+		override val UNION_ALL    :String = operators("union all")
+		override val INTERSECT    :String = operators("intersect")
+		override val MINUS        :String = operators("minus")
+		override val WITH         :String = keywords("with")
+		override val SELECT       :String = keywords("select")
+		override val DISTINCT     :String = keywords("distinct")
+		override val FROM         :String = keywords("from")
+		override val WHERE        :String = keywords("where")
+		override val GROUP_BY     :String = keywords("group by")
+		override val HAVING       :String = keywords("having")
+		override val AS           :String = keywords("as")
+		override val INNER_JOIN   :String = keywords("join")
+		override val OUTER_JOIN   :String = keywords("outer join")
+		override val LEFT_JOIN    :String = keywords("left join")
+		override val RIGHT_JOIN   :String = keywords("right join")
+		override val ON           :String = keywords("on")
+		override val INSERT       :String = keywords("insert")
+		override val INTO         :String = keywords("into")
+		override val VALUES       :String = keywords("values")
+		override val UPDATE       :String = keywords("update")
+		override val SET          :String = keywords("set")
+		override val MERGE        :String = keywords("merge")
+		override val DELETE       :String = keywords("delete")
+
+
+		override val _NULL_       :String = " " + NULL + " "
+		override val _TRUE_       :String = " " + TRUE + " "
+		override val _FALSE_      :String = " " + FALSE + " "
+		override val _CONCAT_     :String = " " + CONCAT + " "
+		override val _LIKE_       :String = " " + LIKE + " "
+		override val _BETWEEN_    :String = " " + BETWEEN + " "
+		override val _NOT_        :String = " " + NOT + " "
+		override val _AND_        :String = " " + AND + " "
+		override val _OR_         :String = " " + OR + " "
+		override val _UNION_      :String = " " + UNION + " "
+		override val _UNION_ALL_  :String = " " + UNION_ALL + " "
+		override val _INTERSECT_  :String = " " + INTERSECT + " "
+		override val _MINUS_      :String = " " + MINUS + " "
+		override val _SELECT_     :String = " " + SELECT + " "
+		override val _FROM_       :String = " " + FROM + " "
+		override val _WHERE_      :String = " " + WHERE + " "
+		override val _GROUP_BY_   :String = " " + GROUP_BY + " "
+		override val _HAVING_     :String = " " + HAVING + " "
+		override val _AS_         :String = " " + AS + " "
+		override val _INNER_JOIN_ :String = " " + INNER_JOIN + " "
+		override val _OUTER_JOIN_ :String = " " + OUTER_JOIN + " "
+		override val _LEFT_JOIN_  :String = " " + LEFT_JOIN + " "
+		override val _RIGHT_JOIN_ :String = " " + RIGHT_JOIN + " "
+		override val _ON_         :String = " " + ON + " "
+		override val _INTO_       :String = " " + INTO + " "
+		override val _VALUES_     :String = " " + VALUES + " "
+		override val _SET_        :String = " " + SET + " "
+		override val WITH_        :String = WITH + " "
+		override val SELECT_      :String = SELECT + " "
+		override val INSERT_      :String = INSERT + " "
+		override val UPDATE_      :String = UPDATE + " "
+		override val MERGE_       :String = MERGE + " "
+		override val DELETE_      :String = DELETE + " "
 	}
 
 }
@@ -1154,7 +1463,7 @@ class StandardSQL extends SQLDialect {
 	def spelling :SQLSpelling = defaultSpelling
 
 	override def apply[R, Y](query :QuerySQL[RowProduct, R])(implicit result :StatementResult[R, Y]) :Cantrip[Y] =
-		chant(spelling.spell(query).compose { _ :Any => @~ }, result)
+		chant(spelling.spell(query).adapt { _ :Any => @~ }, result)
 
 	override def apply[X, R, Y](query :Query[X, R])(implicit result :StatementResult[R, Y]) :Incantation[X, Y] =
 		chant(spelling.spell(query), result)
@@ -1167,7 +1476,7 @@ class StandardSQL extends SQLDialect {
 
 	override def apply[X, Y](statement :Call[X, Y]) :Incantation[X, Y] = {
 		val sql = spelling.spell(statement)
-		Incantation.call(sql.sql.toString)(sql.params.setter, statement.result)
+		Incantation.call(sql.sql.toString)(sql.setter, statement.result)
 	}
 
 	/** The default factory method creating incantations from complete SQL/DML of the translated statement
@@ -1177,8 +1486,8 @@ class StandardSQL extends SQLDialect {
 	  * creating a [[java.sql.CallableStatement CallableStatement]] instead of regular `PreparedStatement`
 	  * in order to read (optional) ''OUT'' parameters.
 	  */
-	protected def chant[X, Y](sql :SpelledSQL[X, RowProduct], result :StatementResult[Nothing, Y]) :Incantation[X, Y] =
-		Incantation(sql.sql.toString)(sql.params.setter, result)
+	protected def chant[X, Y](sql :SpelledSQL[X], result :StatementResult[Nothing, Y]) :Incantation[X, Y] =
+		Incantation(sql.sql.toString)(sql.setter, result)
 
 //	private[this] val action = new StatementVisitor[Incantation] with CaseStatement[Incantation] {
 //		override def statement[X, Y](stmt :DMLStatement[X, Y]) = StandardSQL.this(stmt)

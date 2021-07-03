@@ -1,14 +1,13 @@
 package net.noresttherein
 
+import net.noresttherein.oldsql.collection.Chain.@~
+
+
+
 
 
 
 package object oldsql {
-
-//	type ?[+T] = Kin[T]
-
-
-	private[oldsql] def publishMutable() :Unit = java.lang.invoke.VarHandle.releaseFence()
 
 	/** Library version; standard three level versioning, every level having three digits.
 	  * Version 1.14.27 would be 1_014_027.
@@ -20,4 +19,10 @@ package object oldsql {
 	                                  "Use one of its subclasses instead."
 
 	final val DeprecatedAlways = "initial release"
+
+
+
+	private[oldsql] def publishMutable() :Unit = java.lang.invoke.VarHandle.releaseFence()
+
+	private[oldsql] val anyArg = { _ :Any => @~ }
 }

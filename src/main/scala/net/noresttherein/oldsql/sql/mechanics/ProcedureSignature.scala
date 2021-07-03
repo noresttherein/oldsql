@@ -3,7 +3,6 @@ package net.noresttherein.oldsql.sql.mechanics
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{SQLForm, Table}
-import net.noresttherein.oldsql.schema.Mapping.MappingOf
 import net.noresttherein.oldsql.schema.bits.ConstantMapping
 import net.noresttherein.oldsql.schema.forms.ChainForm
 import net.noresttherein.oldsql.sql.{Call, Dual, From, JoinParam, RowProduct, SQLExpression, StoredFunction, StoredProcedure, WithParam}
@@ -15,13 +14,14 @@ import net.noresttherein.oldsql.sql.Call.InOutCallProcedure.ParamInOutCallProced
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult.NoResult
 import net.noresttherein.oldsql.sql.FromSome.TopFromSome
-import net.noresttherein.oldsql.sql.RowProduct.{ParameterizedFrom, PartOf, PureParamFrom, SelfTyped}
+import net.noresttherein.oldsql.sql.ParamClause.ParamRelation
+import net.noresttherein.oldsql.sql.RowProduct.{PartOf, PureParamFrom, SelfTyped}
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.StoredProcedure.Out
 import net.noresttherein.oldsql.sql.StoredProcedure.Out.OutForm
-import net.noresttherein.oldsql.sql.UnboundParam.ParamRelation
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.ProcedureSignature.{ProcedureInOutSignature, ProcedureInSignature}
+import net.noresttherein.oldsql.sql.JoinParam.FromParam.EmptyClause
 
 
 
@@ -294,18 +294,15 @@ object ProcedureSignature extends ProcedureInOutSignatureDefaultImplicit {
 
 	//Extracted so that the Domain type returned by def domain is erased, as type Domain is impossible to define due to recursiveness
 	private abstract class NoParams extends ProcedureInOutSignature[@~, @~] {
-		override def domain(form :ChainForm[@~]) :Domain = emptyDomain
-
-		private val emptyDomain = From(
-			Table("InParams", new ConstantMapping[@~, ""](@~))
-		).asInstanceOf[Domain]
+		override type Domain = EmptyClause
+		override def domain(form :ChainForm[@~]) :Domain = EmptyClause
 	}
 
 	private object NoParams extends NoParams {
 		override type Out = @~
 		override type ProcedureResult = @~
 		override type FunctionResult[Y] = @~ ~ Y
-		override type Domain = Nothing //PureParamFrom[@~] { type Implicit = RowProduct; type Self <: NoParams.Domain }
+//		override type Domain = Nothing //PureParamFrom[@~] { type Implicit = RowProduct; type Self <: NoParams.Domain }
 		override type CallParams = @~
 
 		override def reverseOutParams(inOut :ChainForm[@~], offset :Int) :List[Int] = Nil

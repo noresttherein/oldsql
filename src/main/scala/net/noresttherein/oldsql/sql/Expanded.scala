@@ -9,10 +9,14 @@ import net.noresttherein.oldsql.schema.{Relation, Table}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, ExpandingClause, NonEmptyFrom, NonEmptyFromTemplate, PrefixOf, RowComposition, RowDecomposition}
+import net.noresttherein.oldsql.sql.SQLBoolean.True
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.GroupingSpellingContext
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.ast.RelationSQL
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
+import net.noresttherein.oldsql.sql.ast.{ComponentSQL, JoinedRelation, RelationSQL}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
 
 
@@ -63,7 +67,7 @@ trait Adjoin[+L <: RowProduct, R[O] <: MappingAt[O]]
 	  * `Adjoin` subclasses use dedicated implementations which are ''not'' cross-compatible and can't be
 	  * used as arguments for any 'join' methods, as it will cause an error at the time this clause is processed.
 	  * In these cases, a 'relation' can represent a query parameter
-	  * ([[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]]) or a grouping expression
+	  * ([[net.noresttherein.oldsql.sql.ParamClause ParamClause]]) or a grouping expression
 	  * ([[net.noresttherein.oldsql.sql.GroupBy GroupBy]]/[[net.noresttherein.oldsql.sql.By By]])
 	  * and is of no use to client code. Additionally, it can possibly serve as a placeholder value,
 	  * with a `RowProduct` depending on a relation with `Mapping` for a component not representing any single
@@ -98,7 +102,7 @@ trait Adjoin[+L <: RowProduct, R[O] <: MappingAt[O]]
 	  * Note however that specialized `Adjoin` implementations can use dedicated implementations
 	  * of [[net.noresttherein.oldsql.schema.Relation Relation]] or its [[net.noresttherein.oldsql.schema.Mapping Mapping]],
 	  * tied not only to this particular implementation, but also to this instance: for example,
-	  * the relation of an [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] cannot be reused in the same
+	  * the relation of a [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] cannot be reused in the same
 	  * clause, and cannot be joined the same way as relations for tables.
 	  *
 	  * All instances created internally (rather than provided by the application as an argument to a factory method)
@@ -120,38 +124,45 @@ trait Adjoin[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 
 	override type Generalized >: Dealiased <: (left.Generalized Adjoin R) {
-		type FromLast = thisClause.FromLast
+		type FromLast     = thisClause.FromLast
 		type Generalized <: thisClause.Generalized
-		type Explicit <: thisClause.Explicit
-		type Implicit <: thisClause.Implicit
+//		type Dealiased   >: Self <: Generalized
+		type Explicit    <: thisClause.Explicit
+		type Implicit    <: thisClause.Implicit
 		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
 	}
 
 	type Dealiased >: Self <: (left.Self Adjoin R) {
 		type Last[O <: RowProduct] = thisClause.Last[O]
-		type FromLast = thisClause.FromLast
+		type FromLast    = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Implicit = thisClause.Implicit
+//		type Dealiased  >: Self <: Generalized
+		type ParamsOnly  = thisClause.ParamsOnly
+		type LastParam   = thisClause.LastParam
+		type Params      = thisClause.Params
+		type FullRow     = thisClause.FullRow
+		type Explicit    = thisClause.Explicit
+		type Implicit    = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+		type Row         = thisClause.Row
+		type OuterRow    = thisClause.OuterRow
 	}
 
 	override type Self <: (left.Self Adjoin R) {
 		type Last[O <: RowProduct] = thisClause.Last[O]
-		type FromLast = thisClause.FromLast
+		type FromLast    = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
+//		type Dealiased  >: Self <: Generalized
+		type ParamsOnly  = thisClause.ParamsOnly
+		type LastParam   = thisClause.LastParam
+		type Params      = thisClause.Params
+		type FullRow     = thisClause.FullRow
+		type Explicit    = thisClause.Explicit
+		type Inner       = thisClause.Inner
+		type Implicit    = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+		type Row         = thisClause.Row
+		type OuterRow    = thisClause.OuterRow
 	}
 
 
@@ -163,10 +174,13 @@ trait Adjoin[+L <: RowProduct, R[O] <: MappingAt[O]]
 
 	override def fullSize :Int = left.fullSize + 1
 
-	override def paramCount :Int = left.paramCount
-	override def lastParamOffset :Int = left.lastParamOffset + 1
-	override def isParameterized :Boolean = left.isParameterized
+	override def isParameterized  :Boolean = left.isParameterized
 	override def isValidSubselect :Boolean = left.isValidSubselect
+	override def paramCount       :Int = left.paramCount
+	override def lastParamOffset  :Int = left.lastParamOffset match {
+		case n if n < 0 => n
+		case n => n + 1
+	}
 
 	override type Base = DefineBase[Implicit]
 
@@ -197,10 +211,6 @@ trait Adjoin[+L <: RowProduct, R[O] <: MappingAt[O]]
 			res = res + " on " + condition.toString
 		res
 	}
-
-//	override def toString :String = chunkedString.toString
-//		left.toString + " " + name + " " + right +
-//			(if (aliasOpt.isEmpty) "" else " as " + alias) + (if (condition == True) "" else " on " + condition)
 
 }
 
@@ -499,38 +509,41 @@ trait Expanded[+L <: RowProduct, R[O] <: MappingAt[O]]
 	override type FromLast >: Generalized <: RowProduct Expanded R
 
 	override type Generalized >: Dealiased <: (left.Generalized Expanded R) {
-		type FromLast = thisClause.FromLast
+		type FromLast     = thisClause.FromLast
 		type Generalized <: thisClause.Generalized
-		type Explicit <: thisClause.Explicit
-		type Implicit <: thisClause.Implicit
+//		type Dealiased   >: Self <: Generalized
+		type Explicit    <: thisClause.Explicit
+		type Implicit    <: thisClause.Implicit
 		type DefineBase[+I <: RowProduct] <: thisClause.DefineBase[I]
 	}
 
 	type Dealiased >: Self <: (left.Self Expanded R) {
 		type Last[O <: RowProduct] = thisClause.Last[O]
-		type FromLast = thisClause.FromLast
+		type FromLast    = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Implicit = thisClause.Implicit
+//		type Dealiased   >: Self <: Generalized
+		type Params      = thisClause.Params
+		type FullRow     = thisClause.FullRow
+		type Explicit    = thisClause.Explicit
+		type Implicit    = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+		type Row         = thisClause.Row
+		type OuterRow    = thisClause.OuterRow
 	}
 
 	override type Self <: (left.Self Expanded R) {
 		type Last[O <: RowProduct] = thisClause.Last[O]
-		type FromLast = thisClause.FromLast
+		type FromLast    = thisClause.FromLast
 		type Generalized = thisClause.Generalized
-		type Params = thisClause.Params
-		type FullRow = thisClause.FullRow
-		type Explicit = thisClause.Explicit
-		type Inner = thisClause.Inner
-		type Implicit = thisClause.Implicit
+//		type Dealiased  >: Self <: Generalized
+		type Params      = thisClause.Params
+		type FullRow     = thisClause.FullRow
+		type Explicit    = thisClause.Explicit
+		type Inner       = thisClause.Inner
+		type Implicit    = thisClause.Implicit
 		type DefineBase[+I <: RowProduct] = thisClause.DefineBase[I]
-		type Row = thisClause.Row
-		type OuterRow = thisClause.OuterRow
+		type Row         = thisClause.Row
+		type OuterRow    = thisClause.OuterRow
 	}
 
 
@@ -540,12 +553,22 @@ trait Expanded[+L <: RowProduct, R[O] <: MappingAt[O]]
 	def narrow :left.type Expanded R
 
 
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Expanded.*]
+	protected override def groupingSpellingContext[P]
+	                       (position :Int, context :SQLContext[P], params :Parameterization[P, Generalized])
+			:GroupingSpellingContext[P] =
+		if (position == 0)
+			throw new IllegalArgumentException(
+				"Cannot return GroupingSpellingContext for the last relation in " + this +
+				" because it is not a GroupByClause (or " + getClass + " does not override groupingSpellingContext)."
+			)
+		else
+			groupingSpellingContext(left)(position - 1, context.shrink(), params.left)
 
+
+	override def canEqual(that :Any) :Boolean = that.isInstanceOf[Expanded.*]
 
 	private[sql] override def concrete_ExpandingClause_subclass_must_extend_Expanded_or_ExpandedDecorator :Nothing =
 		throw new UnsupportedOperationException
-
 }
 
 
@@ -578,7 +601,7 @@ object Expanded {
 	/** A base trait for implementations of [[net.noresttherein.oldsql.sql.Expanded Expanded]] which narrows
 	  * down the mapping type to the actually required `BaseMapping` (due to some scala bug preventing
 	  * the use of `RefinedMapping` in the `TypedComponentSQL` instead).
-	  */
+	  */ //todo: remove this and move implementation to Expanded
 	trait AbstractExpanded[+L <: RowProduct, R[O] <: BaseMapping[S, O], S] extends Expanded[L, R] { thisClause =>
 
 		protected def lastRelation :RelationSQL[FromLast, R, S, FromLast]

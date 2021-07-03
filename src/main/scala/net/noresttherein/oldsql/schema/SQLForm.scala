@@ -467,7 +467,7 @@ object SQLForm {
 
 		/** Returns the `value` inside a `Some` unless it would throw an exception, in which case `None` is returned. */
 		def toOption :Option[T] = opt
-		private[this] val opt = Option(value)
+		private[this] val opt = Some(value)
 
 		/** Adapt this null value to some other type `U`. In most cases, this will simply apply the function to
 		  * the wrapped value, but special instances may propagate themselves instead. If the function throws

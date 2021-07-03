@@ -8,6 +8,7 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, ColumnVisitor}
 import net.noresttherein.oldsql.sql.RowProduct.{ExactSubselectOf, ExpandedBy, GroundFrom, NonEmptyFrom, PartOf, TopFrom}
+import net.noresttherein.oldsql.sql.SQLBoolean.{False, True}
 import net.noresttherein.oldsql.sql.SQLDialect.SpellingScope.SelectScope
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, Lift, LocalScope, SQLTypeUnification}
@@ -23,7 +24,6 @@ import net.noresttherein.oldsql.sql.ast.MappingSQL.MappingColumnVisitor
 import net.noresttherein.oldsql.sql.ast.LooseColumn.CaseLooseColumn
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{CaseColumnQuery, ColumnQuery, ColumnQueryVisitor, Rows}
 import net.noresttherein.oldsql.sql.ast.SelectColumn.{SubselectColumn, TopSelectColumn}
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm
 import net.noresttherein.oldsql.sql.ast.SQLTerm.ColumnTerm.{CaseColumnTerm, ColumnTermVisitor}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.SeqTuple
@@ -364,9 +364,9 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 
 	override def columnCount(implicit spelling :SQLSpelling) :Int = 1
 
-	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
-		defaultSpelling(context, params)::Nil
+	protected override def explodedSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                          (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
+		defaultSpelling(from, context, params)::Nil
 
 	/** Translates this expression into an SQL string according to the given format/dialect, adding parenthesis
 	  * around the expression if necessary (the expression is not atomic and could be potentially split by operators
@@ -374,11 +374,11 @@ trait ColumnSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V] extends SQ
 	  * unless the SQL returned by `spelling` already contains a pair; several subclasses override it simply
 	  * to `spelling(this)(context, params)`.
 	  */
-	def inParens[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                       (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+	def inParens[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	               (implicit spelling :SQLSpelling) :SpelledSQL[P] =
 	{
-		val sql = spelling(this :ColumnSQL[E, S, V])(context, params)
-		if (sql.sql.length >= 2 && sql.sql.head == '(' && sql.sql.last == ')') sql
+		val sql = spelling(this)(from, context, params)
+		if (sql.sql.sizeIs >= 2 && sql.sql.head == '(' && sql.sql.indexOf(')') == sql.sql.length - 1) sql
 		else "(" +: (sql + ")")
 	}
 
@@ -560,19 +560,21 @@ object ColumnSQL {
 			case anchored => new AliasedColumn(anchored, alias)
 		}
 
-		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, V] =
-			new AliasedColumn(mapper(column), alias)
+		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ColumnSQL[E, S, V] = mapper(column) match {
+			case same if same eq column => this.asInstanceOf[ColumnSQL[E, S, V]]
+			case anchored => new AliasedColumn(anchored, alias)
+		}
 
 		protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, Y]) :Y[S, V] =
 			visitor.alias(this)
 
 
 		//this could conceivably be wrong if select returns it as a part of a composite column, but we are not there yet
-		protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-		                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+		protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
 		{
-			val columnSQL = spelling(column :ColumnSQL[E, S, V])(context, params)
-			if (spelling.scope == SelectScope) columnSQL else columnSQL + (" as " + alias)
+			val columnSQL = spelling(column)(from, context, params)
+			if (spelling.scope == SelectScope) columnSQL else columnSQL + (spelling._AS_ + alias)
 		}
 
 	}

@@ -19,6 +19,13 @@ import scala.collection.mutable
   */
 trait OldSQLException extends Throwable {
 
+	/** Returns an exception of the same type as this one, with the given message and this exception as its cause.
+	  * This is useful when we want to preserve the original reason in case someone higher on the stack would want
+	  * to handle it, but also to add additional contextual information about the failed operation, such as
+	  * original parameters.
+	  */
+	def stackOn(msg :String) :OldSQLException
+
 	/** Standard [[Throwable.getSuppressed getSuppressed]] array as a scala [[Seq]]. */
 	def suppressed :Seq[Throwable] = ArraySeq.unsafeWrapArray(getSuppressed)
 
@@ -26,7 +33,7 @@ trait OldSQLException extends Throwable {
 	  * The first exception of the returned list is the original cause (one without a cause), while this exception
 	  * closes the list.
 	  */
-	def causeQueue :Seq[Throwable] = {
+	lazy val causeQueue :Seq[Throwable] = {
 		val dejaVu = mutable.Set[Throwable]()
 		@tailrec def push(e :Throwable, result :List[Throwable]) :Seq[Throwable] = e.getCause match {
 			case null => e::result
@@ -68,6 +75,14 @@ class BaseOldSQLException protected (val msg :String, init :Throwable,
 	def this(cause :Throwable) = this(cause.toString, cause)
 	def this(message :String) = this(message, null)
 	def this() = this(null, null)
+
+	override def stackOn(msg :String) :OldSQLException = new BaseOldSQLException(msg, this)
+
+//	override def toString :String = {
+//		val msg = getLocalizedMessage
+//		if (msg == null) classOf[OldSQLException].getName
+//		else classOf[OldSQLException].getName + ": " + msg
+//	}
 }
 
 
@@ -90,5 +105,8 @@ object Bug {
 
 	private class BugException(msg :String, cause :Throwable = null)
 		extends BaseOldSQLException(msg, cause) with Bug
+	{
+		override def stackOn(msg :String) :OldSQLException = new BugException(msg, this)
+	}
 }
 

@@ -38,7 +38,7 @@ class DeleteTest {
 	Delete from Monsters
 	Delete all Monsters
 
-//	implicitly[FromParam[String, RowProduct]]
+//	implicitly[UnboundParam[String, RowProduct]]
 	Delete(Monsters) where (_.level > 20.?) and (_.name === _(_.name))
 	Delete(Monsters).using[String] where (_.race === _) //fixme: in Scala 3 apply should work
 	Delete(Monsters).using[Monster] where (_.name === _(_.name))

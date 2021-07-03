@@ -76,12 +76,29 @@ sealed trait OperationType {
 	  */
 	def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]]
 
+	/** All export columns of `component`, direct or indirect, which are applicable to this operation type
+	  * from the point of view of the containing mapping `mapping`.
+	  * These are all columns from `component.`[[net.noresttherein.oldsql.schema.Mapping.columns columns]] list
+	  * ''without'' the [[net.noresttherein.oldsql.OperationType.Prohibited Prohibited]] buff after exporting
+	  * by `mapping`.
+	  * @see [[net.noresttherein.oldsql.OperationType.defaultColumns]]
+	  */
+	def columns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]]
+
 	/** Columns, both direct and indirect, of the given mapping which are used by default in this operation type.
 	  * These are all columns from its [[net.noresttherein.oldsql.schema.Mapping.columns columns]] list ''without''
 	  * the [[net.noresttherein.oldsql.OperationType.NonDefault NonDefault]] buff.
 	  * @see [[net.noresttherein.oldsql.OperationType.columns]]
 	  */
 	def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]]
+
+	/** Export - from the point of view of `mapping` - columns of `component`, both direct and indirect,
+	  * which are used by default in this operation type. These are all columns from
+	  * `component.`[[net.noresttherein.oldsql.schema.Mapping.columns columns]] list ''without''
+	  * the [[net.noresttherein.oldsql.OperationType.NonDefault NonDefault]] buff after exporting by `mapping`.
+	  * @see [[net.noresttherein.oldsql.OperationType.columns]]
+	  */
+	def defaultColumns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]]
 
 	/** Creates a version of the given mapping with buffs manipulated in such a way that the specified components
 	  * are included or excluded from this operation type by default. It can only include components which are
@@ -106,12 +123,16 @@ object OperationType {
 
 		def form[S](mapping :MappingOf[S]) :SQLReadForm[S]
 		def form[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLReadForm[S]
+		def form[S, O](mapping :MappingAt[O], component :RefinedMapping[S, O]) :SQLReadForm[S]
+//		def form[S, O](mapping :MappingAt[O], component :RefinedMapping[S, O], subcomponents :Unique[RefinedMapping[_, O]])
+//				:SQLReadForm[S]
 	}
 
 
 	sealed trait WriteOperationType extends OperationType {
 		def form[S](mapping :MappingOf[S]) :SQLWriteForm[S]
 		def form[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLWriteForm[S]
+		def form[S, O](mapping :MappingAt[O], component :RefinedMapping[S, O]) :SQLWriteForm[S]
 
 		def writtenValues[S, T, O](mapping :RefinedMapping[S, O], subject :S) :ComponentValues[S, O]
 		def writtenValues[S, T, O](mapping :RefinedMapping[S, O], subject :S, collector :ComponentValuesBuilder[T, O]) :Unit
@@ -131,7 +152,13 @@ object OperationType {
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.selectable
 
+		override def columns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]] =
+			mapping.selectable(component.refine)
+
 		override def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.selectedByDefault
+
+		override def defaultColumns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]] =
+			mapping.selectedByDefault(component.refine)
 
 		override def alter[S, O](mapping :RefinedMapping[S, O],
 		                         include :Iterable[RefinedMapping[_, O]],
@@ -142,6 +169,13 @@ object OperationType {
 
 		override def form[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLReadForm[S] =
 			mapping.selectForm(components)
+
+		override def form[S, O](mapping :MappingAt[O], component :RefinedMapping[S, O]) :SQLReadForm[S] =
+			mapping.selectForm(component)
+
+//		override def form[S, O](mapping :MappingAt[O], component :RefinedMapping[S, O],
+//		                        subcomponents :Unique[RefinedMapping[_, O]]) :SQLReadForm[S] =
+//			mapping.selectForm()
 	}
 
 	implicit case object SELECT extends SELECT
@@ -160,7 +194,13 @@ object OperationType {
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.filterable
 
+		override def columns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]] =
+			mapping.filterable(component.refine)
+
 		override def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.filteredByDefault
+
+		override def defaultColumns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]] =
+			mapping.filteredByDefault(component.refine)
 
 		override def alter[S, O](mapping :RefinedMapping[S, O],
 		                         include :Iterable[RefinedMapping[_, O]],
@@ -178,6 +218,9 @@ object OperationType {
 
 		override def form[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLWriteForm[S] =
 			mapping.filterForm(components)
+
+		override def form[S, O](mapping :MappingAt[O], component :RefinedMapping[S, O]) :SQLWriteForm[S] =
+			mapping.filterForm(component)
 	}
 
 	implicit case object FILTER extends FILTER
@@ -196,7 +239,13 @@ object OperationType {
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.insertable
 
+		override def columns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]] =
+			mapping.insertable(component.refine)
+
 		override def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.insertedByDefault
+
+		override def defaultColumns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]] =
+			mapping.insertedByDefault(component.refine)
 
 		override def alter[S, O](mapping :RefinedMapping[S, O],
 		                         include :Iterable[RefinedMapping[_, O]],
@@ -214,6 +263,9 @@ object OperationType {
 
 		override def form[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLWriteForm[S] =
 			mapping.insertForm(components)
+
+		override def form[S, O](mapping :MappingAt[O], component :RefinedMapping[S, O]) :SQLWriteForm[S] =
+			mapping.insertForm(component)
 	}
 
 	implicit case object INSERT extends INSERT
@@ -232,7 +284,13 @@ object OperationType {
 
 		override def columns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.updatable
 
+		override def columns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]] =
+			mapping.updatable(component.refine)
+
 		override def defaultColumns[O](mapping :MappingAt[O]) :Unique[ColumnMapping[_, O]] = mapping.updatedByDefault
+
+		override def defaultColumns[O](mapping :MappingAt[O], component :MappingAt[O]) :Unique[ColumnMapping[_, O]] =
+			mapping.updatedByDefault(component.refine)
 
 		override def alter[S, O](mapping :RefinedMapping[S, O],
 		                         include :Iterable[RefinedMapping[_, O]],
@@ -250,6 +308,9 @@ object OperationType {
 
 		override def form[S, O](mapping :RefinedMapping[S, O], components :Unique[RefinedMapping[_, O]]) :SQLWriteForm[S] =
 			mapping.updateForm(components)
+
+		override def form[S, O](mapping :MappingAt[O], component :RefinedMapping[S, O]) :SQLWriteForm[S] =
+			mapping.updateForm(component)
 	}
 
 	implicit case object UPDATE extends UPDATE

@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 
 
 /** A type class for type `E`, allowing it to be used when creating ''group by'' clause elements
-  * using the [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.groupBy groupBy]] and
+  * using [[net.noresttherein.oldsql.sql.FromSome.FromSomeExtension.groupBy groupBy]] and
   * [[net.noresttherein.oldsql.sql.GroupByClause.GroupByClauseExtension.by by]] methods.
   * @tparam F the actual ''from'' clause `<: `[[net.noresttherein.oldsql.sql.FromSome FromSome]]
   *           in the [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] form,
@@ -30,9 +30,9 @@ import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
   *           a [[net.noresttherein.oldsql.sql.GroupByClause GroupByClause]], in which case it will be expanded
   *           with a [[net.noresttherein.oldsql.sql.By By]] class.
   * @tparam E the type of the expression which can be turned into a grouping expansion. Predefined implicit values
-  *           of this type exist in the companion [[net.noresttherein.oldsql.sql.mechanics.GroupingExpression$ object]]
+  *           of this type exist in the companion [[net.noresttherein.oldsql.sql.mechanics.CanGroup$ object]]
   *           for:
-  *             - [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`V, O]` subtypes,
+  *             - [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[V, O]` subtypes,
   *               where `O >: F <: RowProduct`,
   *             - [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] and
   *               [[net.noresttherein.oldsql.sql.ast.ColumnComponentSQL ColumnComponentSQL]],
@@ -40,8 +40,8 @@ import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
   *               and [[net.noresttherein.oldsql.sql.ColumnSQL ColumnSQL]]`[F, GlobalScope, V]`.
   */
 @implicitNotFound("Type ${E} cannot be used as a grouping expression in ${G}:\n" +
-                  "Missing implicit GroupingExpression[${F}, ${G}, ${E}]")
-trait GroupingExpression[-F <: RowProduct, -G <: RowProduct, -E] {
+                  "Missing implicit CanGroup[${F}, ${G}, ${E}]")
+trait CanGroup[-F <: RowProduct, -G <: RowProduct, -E] {
 	type Result <: GroupByClause
 	def apply(clause :G, expr :E) :Result
 }
@@ -49,11 +49,11 @@ trait GroupingExpression[-F <: RowProduct, -G <: RowProduct, -E] {
 
 
 
-sealed abstract class ArbitraryGroupingExpressionImplicits {
+sealed abstract class ArbitraryCanGroupImplicits {
 
 	implicit def groupByVal[O <: FromSome, F <: FromSome { type Generalized <: O }, V]
-			:GroupingExpression[O, F, GlobalSQL[O, V]] { type Result = F GroupByVal V } =
-		new GroupingExpression[O, F, GlobalSQL[O, V]] {
+			:CanGroup[O, F, GlobalSQL[O, V]] { type Result = F GroupByVal V } =
+		new CanGroup[O, F, GlobalSQL[O, V]] {
 			override type Result = F GroupByVal V
 
 			override def apply(clause :F, expr :GlobalSQL[O, V]) =
@@ -61,8 +61,8 @@ sealed abstract class ArbitraryGroupingExpressionImplicits {
 		}
 
 	implicit def byVal[F <: RowProduct, G <: GroupingOfGeneralized[F], V]
-			:GroupingExpression[F, G, GlobalSQL[F, V]] { type Result = G ByVal V } =
-		new GroupingExpression[F, G, GlobalSQL[F, V]] {
+			:CanGroup[F, G, GlobalSQL[F, V]] { type Result = G ByVal V } =
+		new CanGroup[F, G, GlobalSQL[F, V]] {
 			override type Result = G ByVal V
 
 			override def apply(clause :G, expr :GlobalSQL[F, V]) =
@@ -71,11 +71,11 @@ sealed abstract class ArbitraryGroupingExpressionImplicits {
 }
 
 
-sealed abstract class GroupingColumnExpressionImplicits extends ArbitraryGroupingExpressionImplicits {
+sealed abstract class CanGroupColumnImplicits extends ArbitraryCanGroupImplicits {
 
 	implicit def groupByOne[O <: RowProduct, F <: FromSome { type Generalized <: O }, V]
-			:GroupingExpression[O, F, ColumnSQL[O, GlobalScope, V]] { type Result = F GroupByOne V } =
-		new GroupingExpression[O, F, ColumnSQL[O, GlobalScope, V]] {
+			:CanGroup[O, F, ColumnSQL[O, GlobalScope, V]] { type Result = F GroupByOne V } =
+		new CanGroup[O, F, ColumnSQL[O, GlobalScope, V]] {
 			override type Result = F GroupByOne V
 
 			override def apply(clause :F, expr :ColumnSQL[O, GlobalScope, V]) =
@@ -83,8 +83,8 @@ sealed abstract class GroupingColumnExpressionImplicits extends ArbitraryGroupin
 		}
 
 	implicit def byOne[F <: RowProduct, G <: GroupingOfGeneralized[F], V]
-			:GroupingExpression[F, G, ColumnSQL[F, GlobalScope, V]] { type Result = G ByOne V } =
-		new GroupingExpression[F, G, ColumnSQL[F, GlobalScope, V]] {
+			:CanGroup[F, G, ColumnSQL[F, GlobalScope, V]] { type Result = G ByOne V } =
+		new CanGroup[F, G, ColumnSQL[F, GlobalScope, V]] {
 			override type Result = G ByOne V
 
 			override def apply(clause :G, expr :ColumnSQL[F, GlobalScope, V]) =
@@ -93,13 +93,13 @@ sealed abstract class GroupingColumnExpressionImplicits extends ArbitraryGroupin
 }
 
 
-object GroupingExpression extends GroupingColumnExpressionImplicits {
+object CanGroup extends CanGroupColumnImplicits {
 
 	implicit def groupByMapping[U <: FromSome, F <: FromSome { type Generalized = U }, O <: RowProduct, C <: Mapping, S]
 	                           (implicit origin :C <:< MappingAt[O], belongs :U <:< O,
 	                                     shift :TableCount[O, _ <: Numeral], projection :OriginProjection[C, S])
-			:GroupingExpression[U, F, C] { type Result = F GroupBy projection.WithOrigin } =
-		new GroupingExpression[U, F, C] {
+			:CanGroup[U, F, C] { type Result = F GroupBy projection.WithOrigin } =
+		new CanGroup[U, F, C] {
 			override type Result = F GroupBy projection.WithOrigin
 
 			override def apply(clause :F, expr :C) = { //todo: clause groupBy expr <- requires Generalized <: O
@@ -114,12 +114,11 @@ object GroupingExpression extends GroupingColumnExpressionImplicits {
 	implicit def groupByComponent[O <: RowProduct, F <: FromSome { type Generalized <: O },
 	                              M[A] <: BaseMapping[S, A], S]
 	                             (implicit subject :M[O] <:< BaseMapping[S, O])
-			:GroupingExpression[O, F, ComponentSQL[O, M]] { type Result = F GroupBy M } =
-		new GroupingExpression[O, F, ComponentSQL[O, M]] {
+			:CanGroup[O, F, ComponentSQL[O, M]] { type Result = F GroupBy M } =
+		new CanGroup[O, F, ComponentSQL[O, M]] {
 			override type Result = F GroupBy M
 
-			override def apply(clause :F, expr :ComponentSQL[O, M]) =
-				GroupBy(clause, expr)
+			override def apply(clause :F, expr :ComponentSQL[O, M]) = GroupBy(clause, expr)
 		}
 
 
@@ -127,22 +126,20 @@ object GroupingExpression extends GroupingColumnExpressionImplicits {
 	implicit def byMapping[F <: RowProduct, G <: GroupingOfGeneralized[F], O <: RowProduct, C <: Mapping, S]
 	                      (implicit origin :C <:< MappingAt[O], belongs :F <:< O,
 	                                shift :TableCount[O, _ <: Numeral], projection :OriginProjection[C, S])
-			:GroupingExpression[F, G, C] { type Result = G By projection.WithOrigin } =
-		new GroupingExpression[F, G, C] {
+			:CanGroup[F, G, C] { type Result = G By projection.WithOrigin } =
+		new CanGroup[F, G, C] {
 			override type Result = G By projection.WithOrigin
 
-			override def apply(clause :G, expr :C) =
-				clause by[C, S, O] expr //(origin, shift, projection)
+			override def apply(clause :G, expr :C) = clause by[C, S, O] expr //(origin, shift, projection)
 		}
 
 	implicit def byComponent[F <: RowProduct, G <: GroupingOfGeneralized[F], M[O] <: BaseMapping[S, O], S]
 	                        (implicit subject :M[F] <:< BaseMapping[S, F])
-			:GroupingExpression[F, G, ComponentSQL[F, M]] { type Result = G By M } =
-		new GroupingExpression[F, G, ComponentSQL[F, M]] {
+			:CanGroup[F, G, ComponentSQL[F, M]] { type Result = G By M } =
+		new CanGroup[F, G, ComponentSQL[F, M]] {
 			override type Result = G By M
 
-			override def apply(clause :G, expr :ComponentSQL[F, M]) =
-				By(clause, expr)
+			override def apply(clause :G, expr :ComponentSQL[F, M]) = By(clause, expr)
 		}
 
 }

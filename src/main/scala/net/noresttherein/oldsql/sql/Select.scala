@@ -34,6 +34,10 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
 /** An SQL statement returning a row cursor. It is the common base type for
   * the [[net.noresttherein.oldsql.sql.Select Select]] type hierarchy and
   * set operations on them (such as `UNION`): [[net.noresttherein.oldsql.sql.Query.CompoundSelect CompoundSelect]].
+  * All instances are top-level queries: they may be a part
+  * of [[net.noresttherein.oldsql.sql.Query.CompoundSelect CompoundSelect]], but cannot exist as dependent ''selects''
+  * (subselects of other queries). The latter function is performed by
+  * [[net.noresttherein.oldsql.sql.ast.QuerySQL QuerySQL]].
   */ //todo: batching; common supertype with DMLStatement
 trait Query[P, V] extends QueryTemplate[V, ({ type Q[X] = Query[P, X] })#Q] with Serializable {
 	def rowForm :SQLReadForm[V]
@@ -51,8 +55,8 @@ trait Query[P, V] extends QueryTemplate[V, ({ type Q[X] = Query[P, X] })#Q] with
 	def minus(other :Query[P, V]) :Query[P, V] = Select.Minus(this, other)
 	def intersect(other :Query[P, V]) :Query[P, V] = Select.Intersect(this, other)
 
-	/** Replaces all [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters in this instance with
-	  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters of values taken from the argument,
+	/** Replaces all [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters in this instance with
+	  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters of values taken from the argument,
 	  * turning this parameterized query statement
 	  * into a ground [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]].
 	  */
@@ -73,7 +77,7 @@ trait Query[P, V] extends QueryTemplate[V, ({ type Q[X] = Query[P, X] })#Q] with
 	                                        "for example a multi-column SQL select.")
 	@throws[IllegalSQLException]("if the expression is dedicated to a particular DMBS and requires a more specific " +
 		                         "SQLSpelling implementation than the provided implicit spelling argument.")
-	def spell(implicit spelling :SQLSpelling = StandardSQL.spelling) :SpelledSQL[P, RowProduct] =
+	def spell(implicit spelling :SQLSpelling = StandardSQL.spelling) :SpelledSQL[P] =
 		cachedSpelling match {
 			case null =>
 				val sql = spelling.spell(this)
@@ -84,7 +88,7 @@ trait Query[P, V] extends QueryTemplate[V, ({ type Q[X] = Query[P, X] })#Q] with
 			case _ => spelling.spell(this)
 		}
 
-	@volatile private var cachedSQL :SpelledSQL[P, RowProduct] = _
+	@volatile private var cachedSQL :SpelledSQL[P] = _
 	@volatile private var cachedSpelling :SQLSpelling = _
 
 
@@ -97,10 +101,9 @@ trait Query[P, V] extends QueryTemplate[V, ({ type Q[X] = Query[P, X] })#Q] with
 	                                        "for example a multi-column SQL select.")
 	@throws[IllegalSQLException]("if the expression is dedicated to a particular DBMS and requires a more specific " +
 	                             "SQLSpelling implementation than the provided implicit spelling argument.")
-	protected def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling) :SpelledSQL[P, RowProduct]
+	protected def defaultSpelling(context :SQLContext[P])(implicit spelling :SQLSpelling) :SpelledSQL[P]
 
-	private[oldsql] final def defaultSpelling(spelling :SQLSpelling, context :SQLContext)
-			:SpelledSQL[P, RowProduct] =
+	private[oldsql] final def defaultSpelling(spelling :SQLSpelling)(context :SQLContext[P]) :SpelledSQL[P] =
 		defaultSpelling(context)(spelling)
 
 
@@ -216,9 +219,7 @@ object Query {
 
 		override def bind(params :P) :QuerySQL[RowProduct, V] = operator(left.bind(params), right.bind(params))
 
-		protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
-				:SpelledSQL[P, RowProduct] =
-		{
+		protected override def defaultSpelling(context :SQLContext[P])(implicit spelling :SQLSpelling) :SpelledSQL[P] = {
 			val l = left match {
 				case CompoundSelect(_, op, _) if op != operator =>
 					"(" +: (spelling(left)(context) + ")")
@@ -231,7 +232,7 @@ object Query {
 				case _ =>
 					spelling(right)(context)
 			}
-			SpelledSQL(l.sql + (" " + spelling(operator) +" ") + r.sql, context, l.params :++ r.params)
+			SpelledSQL(l.sql + (" " + spelling(operator) +" ") + r.sql, context, l.setter + r.setter)
 		}
 
 
@@ -367,17 +368,16 @@ trait Select[P, V] extends Query[P, V] with SelectTemplate[V, ({ type S[X] = Sel
 	def bind(params :P) :TopSelectSQL[V]
 
 
-	protected override def defaultSpelling(context :SQLContext)(implicit spelling :SQLSpelling)
-			:SpelledSQL[P, RowProduct] =
-	{
-		val fromSQL = spelling(from)(context)
+	protected override def defaultSpelling(context :SQLContext[P])(implicit spelling :SQLSpelling) :SpelledSQL[P] = {
+		val fromSQL = spelling(from)(context, from.parameterization)
 		val selectSQL = spelling.inSelect(selectClause)(fromSQL.context, parameterization)
-		val allParams = fromSQL.params :++ selectSQL.params
-		val select = SpelledSQL(spelling.SELECT + " " + selectSQL.sql, context, allParams)
 		if (fromSQL.sql.isEmpty)
-			select
-		else
-			select + " " + fromSQL.sql
+			SpelledSQL(spelling.SELECT_ +: selectSQL.sql, context, selectSQL.setter)
+		else {
+			val allParams = selectSQL.setter + fromSQL.setter
+			val sql = spelling.SELECT_ +: selectSQL.sql +: " " +: fromSQL.sql
+			SpelledSQL(sql, context, allParams)
+		}
 	}
 
 
@@ -525,7 +525,7 @@ object Select {
 
 		//caution: in group by queries this returns the elements of the group by clause, not the actual from clause
 		def relations :Seq[RelationSQL.AnyIn[from.Generalized]] = from.tableStack.reverse
-		def tables :Seq[Relation.*] = from.fromClause.tableStack.reverse.map(_.relation :Relation[MappingAt]).toList
+		def tables :Seq[Relation.*] = (from.fromClause.tableStack :Iterable[RelationSQL.*]).reverseMap(_.relation :Relation[MappingAt])
 
 		def isDistinct :Boolean
 		def distinct :S[V]

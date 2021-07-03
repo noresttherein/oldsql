@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL
 import net.noresttherein.oldsql.sql.RowProduct.NonEmptyFrom
-import net.noresttherein.oldsql.sql.ast.{ColumnLiteral, ConditionSQL, LogicalSQL, SQLLiteral, SQLNull, SQLParameter, SQLTerm}
+import net.noresttherein.oldsql.sql.ast.{ColumnLiteral, ConditionSQL, LogicalSQL, SQLLiteral, SQLNull, BoundParam, SQLTerm}
 import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits
 
 
@@ -19,14 +19,14 @@ package object uppercase extends SQLLiteralImplicits {
 	type NULL[V] = SQLNull[V]
 
 	val NULL = SQLNull
-	val TRUE :ColumnLiteral[Boolean] = SQLLiteral.True
-	val FALSE :ColumnLiteral[Boolean] = SQLLiteral.False
+	val TRUE :ColumnLiteral[Boolean] = SQLBoolean.True
+	val FALSE :ColumnLiteral[Boolean] = SQLBoolean.False
 
-	def PARAM[T](value :T)(implicit factory :SQLParameter.Factory[T]) :factory.Res =
+	def PARAM[T](value :T)(implicit factory :BoundParam.Factory[T]) :factory.Res =
 		factory(value)
 
-	implicit def PARAM_?[T](value :T)(implicit factory :SQLParameter.Factory[T]) :boundParameterSQL[T, factory.Res] =
-		boundParameterSQL[T, factory.Res](value)(factory :SQLParameter.Factory[T] { type Res = factory.Res })
+	implicit def PARAM_?[T](value :T)(implicit factory :BoundParam.Factory[T]) :boundParameterSQL[T, factory.Res] =
+		boundParameterSQL[T, factory.Res](value)(factory :BoundParam.Factory[T] { type Res = factory.Res })
 
 
 

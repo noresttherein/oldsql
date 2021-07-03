@@ -22,12 +22,11 @@ import net.noresttherein.oldsql.schema.bits.LabelPath
 import net.noresttherein.oldsql.schema.bits.LabelPath./
 import net.noresttherein.oldsql.sql.ColumnSQL.{AliasedColumn, CaseColumn}
 import net.noresttherein.oldsql.sql.ListingSQLMapping.GetListingComponent
+import net.noresttherein.oldsql.sql.ParamClause.UnboundParamSQL
 import net.noresttherein.oldsql.sql.SQLExpression.{BaseExpressionVisitor, CaseExpression, ExpressionVisitor, GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.UnboundParam.UnboundParamSQL
-import net.noresttherein.oldsql.sql.ast.{ChainSQL, ComponentSQL, ConversionSQL}
+import net.noresttherein.oldsql.sql.ast.{BoundParam, ChainSQL, ComponentSQL, ConversionSQL}
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.PromotionConversion
-import net.noresttherein.oldsql.sql.ast.SQLParameter
 import net.noresttherein.oldsql.sql.ast.TupleSQL.{ChainTuple, ListingSQL, SeqTuple}
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple.MatchChainTuple
 import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, ListingValueSQL, MatchListing}
@@ -60,7 +59,7 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, List
   *   - component expressions are treated as tuples of their columns and their columns are adapted to columns
   *     of this expression,
   *
-  * This mapping doesn't contain any non-column components.
+  * The standard implementation of this mapping created by its companion object doesn't contain any non-column components.
   *
   * @tparam F the ''from'' clause serving as the basis of the adapted expression;
   * @tparam S the scope of the expression: [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope local]] for
@@ -74,28 +73,35 @@ import net.noresttherein.oldsql.sql.ast.TupleSQL.ListingSQL.{ListingColumn, List
   * @author Marcin Mościcki
   */
 trait SQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V, O] extends BaseMapping[V, O] {
-
-	val expr :SQLExpression[F, S, V] //consider: renaming to expression for consistency with SelectedColumn
+	type From >: F <: RowProduct
+	val expr :SQLExpression[F, S, V]
 	override val buffs :Buffs[V] = Buffs(this, SQLMapping.buffList.asInstanceOf[Seq[Buff[V]]]:_*)
 
 	override def writtenValues[T](op :WriteOperationType, subject :V) :ComponentValues[V, O] = ColumnValues.empty
 	override def writtenValues[T](op :WriteOperationType, subject :V, collector :ComponentValuesBuilder[T, O]) :Unit =
 		()
 
-	//todo: make export return SQLMapping - it will be very helpful in GroupingRelation
-//	protected def extract[T](component :Column[T]) :GenericExtract[ColumnSQLMapping[F, S, T, O], V, T, O]
-//
-//	override def apply[T](component :Component[T]) :GenericExtract[ColumnSQLMapping[F, S, T, O], V, T, O] =
-//		extract(component)
-//
-//	override def apply[T](column :Column[T]) :GenericExtract[ColumnSQLMapping[F, S, T, O], V, T, O] =
-//		extract(column)
-//
-//	override def export[T](component :Component[T]) :SQLMapping[F, S, V, O] =
-//		if (component eq this) this.asInstanceOf[SQLMapping[F, S, V, O]] else extract(component).export
-//
-//	override def export[T](column :Column[T]) :ColumnSQLMapping[F, S, V, O] =
-//		extract(column)
+	def indexOf(column :Column[_]) :Int = columns.indexOf(column)
+
+	def apply(column :Int) :ColumnSQLMapping[F, S, _, O] = columns(column)
+
+	override def apply[T](component :Component[T]) :GenericExtract[SQLMapping[F, S, T, O], V, T, O] =
+		extracts(component)
+
+	override def apply[T](column :Column[T]) :GenericExtract[ColumnSQLMapping[F, S, T, O], V, T, O] =
+		columnExtracts(column)
+
+	override def export[T](component :Component[T]) :SQLMapping[F, S, T, O] =
+		if (component eq this) this.asInstanceOf[SQLMapping[F, S, T, O]]
+		else extracts(component).export
+
+	override def export[T](column :Column[T]) :ColumnSQLMapping[F, S, T, O] =
+		columnExtracts(column).export
+
+//	type SQLExtract[T] = GenericExtract[SQLMapping[F, S, T, O], V, T, O] //problem with variance of F
+//	type ColumnSQLExtract[T] = GenericExtract[ColumnSQLMapping[F, S, T, O], V, T, O]
+	override def extracts :NaturalMap[Component, ({ type E[X] = GenericExtract[SQLMapping[F, S, X, O], V, X, O] })#E]
+	override def columnExtracts :NaturalMap[Column, ({ type E[X] = GenericExtract[ColumnSQLMapping[F, S, X, O], V, X, O] })#E]
 
 	override def components :Unique[SQLMapping[F, S, _, O]]
 	override def subcomponents :Unique[SQLMapping[F, S, _, O]]
@@ -143,7 +149,7 @@ trait SQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V, O] extend
 
 
 object SQLMapping {
-	private val buffList = ReadOnly::NoFilter::Nil
+	private val buffList = ReadOnly::Nil
 
 	def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, X, O]
 	         (expression :SQLExpression[F, S, X]) :SQLMapping[F, S, X, O] =
@@ -175,9 +181,10 @@ object SQLMapping {
 
 
 
+
 	class NonColumnSQLMapping[F <: RowProduct, S >: LocalScope <: GlobalScope, X, O]
 	                         (override val expr :SQLExpression[F, S, X])
-		extends SQLMapping[F, S, X, O] with LazyMapping[X, O]
+		extends LazyMapping[X, O] with SQLMapping[F, S, X, O]
 	{ outer =>
 		protected type ExpressionColumn[V] = ColumnSQLMapping[F, S, V, O]
 
@@ -187,6 +194,8 @@ object SQLMapping {
 		}
 		private type Extractors[-_ >: LocalScope <: GlobalScope, V] =
 			Seq[Assoc[ExpressionColumn, ExpressionExtract[V]#E, _]]
+		private[this] type SQLExtract[T] = GenericExtract[SQLMapping[F, S, T, O], X, T, O]
+		private[this] type ColumnSQLExtract[T] = GenericExtract[ColumnSQLMapping[F, S, T, O], X, T, O]
 
 
 		/** Traverses the `expr` AST, stopping recursion when a `ColumnSQL` is encountered.
@@ -222,8 +231,10 @@ object SQLMapping {
 					val selectExtract = GenericExtract(selected)(componentExtract)
 					Assoc[ExpressionColumn, ExpressionExtract[V]#E, C](selected, selectExtract)
 				}
-				mapping.columns.view.map(relation.export(_).export).filter(NoSelectByDefault.inactive)
-					.map(extractAssoc(_)).toList
+				//fixme: we should use *all* columns, but copy the buffs and determine the exact set during rendering;
+				//  not only the problem of using this in other scopes, but also any alterations made
+				//  to the origin Relation will not be applied
+				relation.export.selectedByDefault(mapping).view.map(extractAssoc(_)).toList
 			}
 
 			override def conversion[C >: LocalScope <: GlobalScope, T, U](e :ConversionSQL[F, C, T, U]) = {
@@ -287,7 +298,7 @@ object SQLMapping {
 						}
 						if (!names(name)) name else name + "_" + columns.size
 
-					case SQLParameter(_, Some(name)) => //unlikely to appear in this position
+					case BoundParam(_, Some(name)) => //unlikely to appear in this position
 						if (!names(name)) name else name + "_" + columns.size
 
 					case _ => "_" + columns.size
@@ -321,8 +332,8 @@ object SQLMapping {
 			                      (e :TypedComponentSQL[F, T, E, M, V, A]) =
 			{
 				val table = e.entity
-				val component = e.export
-				val exported = component.columns.view.map(table.export(_)).filter(NoSelectByDefault.inactive).toList
+				val component = e.export //fixme: we should include all columns, but copying buffs.
+				val exported = table.selectedByDefault(component).toList //both SelectScope and GroupByScope use SELECT
 				val count = exported.length
 				val (selected, tail) = columnStack.splitAt(count)
 				columnStack = tail
@@ -397,13 +408,29 @@ object SQLMapping {
 
 		}
 
+		override def export[T](component :Component[T]) :SQLMapping[F, S, T, O] = component match {
+			case comp :SQLMapping[F @unchecked, S @unchecked, T @unchecked, O @unchecked] => comp
+			case _ =>
+				throw new IllegalArgumentException(
+					s"Mapping $component passed as a component of $this is not an SQLMapping!"
+				)
+		}
+
+		override def export[T](column :Column[T]) :ColumnSQLMapping[F, S, T, O] = column match {
+			case comp :ColumnSQLMapping[F @unchecked, S @unchecked, T @unchecked, O @unchecked] => comp
+			case _ =>
+				throw new IllegalArgumentException(
+					s"Mapping $column passed as a component of $this is not a ColumnSQLMapping!"
+				)
+		}
 
 		override val (columnExtracts, columns) = {
 			val extracts = (new ExtractsCollector)(expr)
-			NaturalMap((extracts :Seq[Assoc[Column, ExpressionExtract[X]#E, _]]) :_*) -> Unique(extracts.map(_._1) :_*)
+			NaturalMap((extracts :Seq[Assoc[Column, ColumnSQLExtract, _]]) :_*) -> Unique(extracts.map(_._1) :_*)
 		}
 
-		override val extracts :ExtractMap = columnExtracts.asInstanceOf[ExtractMap]
+		override val extracts :NaturalMap[Component, ({ type E[T] = GenericExtract[SQLMapping[F, S, T, O], X, T, O] })#E] =
+			columnExtracts.asInstanceOf[NaturalMap[Component, SQLExtract]]
 
 		override def components :Unique[SQLMapping[F, S, _, O]] = columns
 		override def subcomponents :Unique[SQLMapping[F, S, _, O]] = columns
@@ -477,14 +504,43 @@ trait ColumnSQLMapping[-F <: RowProduct, -S >: LocalScope <: GlobalScope, X, O]
 			component match {
 				case column :ColumnMapping[_, _] => column.name
 				case label @: _ => label
-				case _ => "result"
+				case _ => ""
 			}
 
-		case SQLParameter(_, Some(name)) => name //unlikely to appear in this position
+		case BoundParam(_, Some(name)) => name //unlikely to appear in this position
 
 		case _ => ""
 	}
 
+
+	override def indexOf(column :Column[_]) :Int =
+		if (column == this) 0
+		else throw new NoSuchComponentException("Column " + column + " is not a part of column " + this + ".")
+
+	override def apply(column :Int) :ColumnSQLMapping[F, S, _, O] =
+		if (column != 0)
+			throw new IndexOutOfBoundsException(
+				column + ": mapping for column expression " + this + " has only a single column."
+			)
+		else this
+
+	override def export[T](column :Column[T]) :ColumnSQLMapping[F, S, T, O] = export(column :Component[T])
+
+	override def export[T](component :Component[T]) :ColumnSQLMapping[F, S, T, O] =
+		if (component == this) this.asInstanceOf[ColumnSQLMapping[F, S, T, O]]
+		else
+			throw new IllegalArgumentException(s"Component $component is not a subcolumn of column $this.")
+
+
+	override def columnExtracts =
+		NaturalMap.single[Column, ({ type E[T] = GenericExtract[ColumnSQLMapping[F, S, T, O], X, T, O] })#E, X](
+			this, GenericExtract.ident(this)
+		)
+
+	override def extracts =
+		NaturalMap.single[Component, ({ type E[T] = GenericExtract[ColumnSQLMapping[F, S, T, O], X, T, O] })#E, X](
+			this, GenericExtract.ident(this)
+		)
 
 	override def components :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
 	override def subcomponents :Unique[ColumnSQLMapping[F, S, X, O]] = Unique.empty
@@ -526,6 +582,8 @@ object ColumnSQLMapping {
 			override val name :String = if (alias != null) alias else super.name
 			override val form = super.form
 			override val selectForm :ColumnReadForm[X] = expr.readForm
+			override val extracts = super.extracts
+			override val columnExtracts = super.columnExtracts
 		}
 
 	def unapply[X, O](mapping :MappingOf[X]) :Opt[(ColumnSQL[_, LocalScope, X], String)] =
@@ -545,6 +603,7 @@ object ColumnSQLMapping {
 
 
 //todo: move to schema; this trait defines nothing new; we could just as well define future indexing as extension methods
+//fixme: this should return expressions rather than mappings, or we might create a ComponentSQL for it - which would change Scope potentially
 sealed trait IndexedMapping[S, O] extends BaseMapping[S, O] {
 	def apply[N <: Label](label :N)(implicit get :GetListingComponent[S, N]) :IndexedMapping[get.Value, O]
 
@@ -695,6 +754,8 @@ object ListingSQLMapping {
 		private type Expression[V] = SQLExpression[F, LocalScope, V]
 		private type ColumnExpression[N <: Label, V] = ListingColumnSQLMapping[F, S, N, V, O]
 		private type Subcomponent[V] = ListingSQLMapping[F, S, V, O]
+		type SQLExtract[T] = GenericExtract[SQLMapping[F, S, T, O], X, T, O]
+		type ColumnSQLExtract[T] = GenericExtract[ColumnSQLMapping[F, S, T, O], X, T, O]
 
 		private def subcomponent[T](e :ListingValueSQL[F, S, T]) :Assoc[Expression, Subcomponent, T] =
 			Assoc[Expression, Subcomponent, T](e, e.mapping[O])
@@ -717,6 +778,18 @@ object ListingSQLMapping {
 			at(path.toSeq).asInstanceOf[ListingSQLMapping[F, S, get.Value, O]]
 
 
+		override def export[T](component :Component[T]) :ListingSQLMapping[F, S, T, O] = component match {
+			case indexed :ListingSQLMapping[_, _, _, _] => indexed.asInstanceOf[ListingSQLMapping[F, S, T, O]]
+			case _ =>
+				throw new IllegalArgumentException(s"Component $component is not a ListingSQLMapping and subcomponent of $this.")
+		}
+
+		override def export[T](column :Column[T]) :ListingColumnSQLMapping[F, S, _, T, O] = column match {
+			case indexed :ListingColumnSQLMapping[_, _, _, _, _] =>
+				indexed.asInstanceOf[ListingColumnSQLMapping[F, S, _, T, O]]
+			case _ =>
+				throw new IllegalArgumentException(s"Column $column is not a ListingColumnSQLMapping and column of $this.")
+		}
 
 		private type Extracts[-C >: LocalScope <: GlobalScope, V] = List[ListingSQLExtract[F, C, V, _, O]]
 
@@ -738,16 +811,28 @@ object ListingSQLMapping {
 		override val (components, subcomponents, extracts) = {
 			val collected = (new ComponentsCollector)(expr)
 			def assoc[V](extract :ListingSQLExtract[F, S, X, V, O]) =
-				Assoc[Component, Extract, V](extract.export, extract)
+				Assoc[Component, SQLExtract, V](extract.export, extract)
+
+			type SubExtract[T] = { type E[V] = GenericExtract[SQLMapping[F, S, V, O], T, V, O] }
+			def compose[T, V](extract :SQLExtract[T])
+			                 (assoc :Assoc[Component, SubExtract[T]#E, V]) =
+				Assoc[Component, SQLExtract, V](assoc._1, assoc._2 compose extract)
+			def composeExtracts[V](extract :ListingSQLExtract[F, S, X, V, O]) =
+				extract.export.extracts.map(compose(extract)(_))
+
 			val all = collected.flatMap { composeExtracts(_) } ++ collected.map(assoc(_))
-			val map = NaturalMap((all :Seq[Assoc[Component, Extract, _]]) :_*)
+			val map = NaturalMap((all :Seq[Assoc[Component, SQLExtract, _]]) :_*)
 			val comps = Unique(collected.map(_.export):_*)
 			val subs = Unique(collected.flatMap { e => e.export +: e.export.subcomponents } :_*)
 			(comps, subs, map)
 		}
 
 		override val columns = components.flatMap(_.columns)
-		override val columnExtracts = filterColumnExtracts(this)(extracts)
+		override val columnExtracts = extracts.flatMap { assoc =>
+			if (assoc._1.isInstanceOf[ColumnMapping[_, _]])
+				Some(assoc.asInstanceOf[Assoc[Column, ColumnSQLExtract, _]])
+			else None
+		} //filterColumnExtracts(this)(extracts)
 
 		override def selectable :Unique[ColumnExpression[_ <: Label, _]] = columns
 		override def filterable :Unique[ColumnExpression[_ <: Label, _]] = columns
@@ -784,7 +869,6 @@ object ListingSQLMapping {
 		private[this] val assembler = (new AssemblerComposer)(expr)
 
 		override def assemble(pieces :Pieces) = assembler(pieces)
-
 
 	}
 

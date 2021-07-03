@@ -34,7 +34,7 @@ libraryDependencies ++= Seq(
 
 scalacOptions ++= Seq(
 //	"-Ylog-classpath",
-//	"-Xlog-implicits",
+	"-Xlog-implicits",
 //	"-Xlint",
 //	"-W",
 //	"-verbose",

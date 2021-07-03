@@ -135,7 +135,7 @@ object MappingExtract {
   */
 trait GenericExtract[+M <: RefinedMapping[T, O], -S, T, O] extends Extractor[S, T] {
 
-	val export :M
+	val export :M //todo: rename to actual
 
 	@inline final def apply[L <: S](pieces :ComponentValues[L, O]) :T = pieces(this)
 

@@ -25,11 +25,12 @@ import net.noresttherein.oldsql.sql.DML.{BoundDML, ComposedDML, DMLAdapter, DMLA
 import net.noresttherein.oldsql.sql.DMLStatement.{AlteredResultStatement, BoundStatement, ComposedStatement, DMLStatementAPI, StatementResult, StatementVisitor}
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult.{BatchResult, LargeUpdateCount, MappedResult, RepeatedResult, UpdateCount}
 import net.noresttherein.oldsql.sql.Insert.implementation.{CaseInsert, InsertVisitor}
+import net.noresttherein.oldsql.sql.ParamClause.{ParamRelation, UnboundParam}
 import net.noresttherein.oldsql.sql.Returning.implementation.{CaseReturning, ReturningVisitor}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamRelation}
 import net.noresttherein.oldsql.sql.Update.implementation.{CaseUpdate, UpdateVisitor}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.MappingReveal.BaseMappingSubject
 
 //implicits
 import net.noresttherein.oldsql.slang._
@@ -392,7 +393,7 @@ object DML {
   * [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameter(s).  A lack of parameters on this class doesn't mean
   * that the resulting `PreparedStatement` will be parameterless;
   * if the SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] used contain
-  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters, they will be translated to JDBC
+  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters, they will be translated to JDBC
   * parameters which will always be assigned the embedded values.
   *
   * A single invocation of this instance is expected to result in a single database round-trip, unless the returned
@@ -417,7 +418,7 @@ object DML {
   *         by [[net.noresttherein.oldsql.sql.DMLStatement.StatementVisitor StatementVisitor]] implementing the ''visitor''
   *         pattern for this class hierarchy.
   *
-  * @tparam Args the parameter(s) of this statement, represented as [[net.noresttherein.oldsql.sql.UnboundParam unbound]]
+  * @tparam Args the parameter(s) of this statement, represented as [[net.noresttherein.oldsql.sql.ParamClause unbound]]
   *              parameters of SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] within the statement.
   *              Translates to the parameters of created `Incantation`.
   * @tparam Res  the type of the returned value. It can represent a single value, some collection type, or simply
@@ -563,9 +564,9 @@ object DMLStatement {
 		  * if no specific formatting is needed for this statement type. It should format this statement
 		  * in standard SQL.
 		  */
-		protected def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct]
+		protected def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args]
 
-		private[sql] final def defaultSpellingForwarder(spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
+		private[sql] final def defaultSpellingForwarder(spelling :SQLSpelling) :SpelledSQL[Args] =
 			defaultSpelling(spelling)
 
 		protected def doChant(implicit dialect :SQLDialect) :Incantation[Args, Res]
@@ -589,7 +590,7 @@ object DMLStatement {
 		protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
 			visitor.result(this)
 
-		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
+		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] =
 			spelling.spell(dml)
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[AlteredResultStatement[_, _]]
@@ -661,8 +662,8 @@ object DMLStatement {
 		protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
 			visitor.composed(this)
 
-		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
-			spelling.spell(dml).compose(argmap)
+		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] =
+			spelling.spell(dml).adapt(argmap)
 
 		protected override def doChant(implicit dialect :SQLDialect) :Incantation[Args, Res] =
 			dml.chant.compose(argmap)
@@ -713,7 +714,7 @@ object DMLStatement {
 	/** Combines a parameterized DML statement with a single value of its parameter(s), turning it into
 	  * a parameterless statement which will always ignore its arguments and use the preset value instead.
 	  * This allows late binding of previously created, reusable statements to obtain effectively the same result
-	  * as if the statement was defined using SQL [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]]
+	  * as if the statement was defined using SQL [[net.noresttherein.oldsql.sql.ast.BoundParam bound]]
 	  * parameters, reducing the overhead. This is the public interface that can be used in pattern matching
 	  * by the application; extending classes typically also mix-in
 	  * [[net.noresttherein.oldsql.sql.DMLStatement.BoundStatement.Impl BoundStatement.Impl]].
@@ -726,8 +727,8 @@ object DMLStatement {
 		protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Any, Res] =
 			visitor.bound(this)
 
-		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any, RowProduct] =
-			spelling.spell(dml).compose { _ => args }
+		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any] =
+			spelling.spell(dml).adapt { _ => args }
 
 		protected override def doChant(implicit dialect :SQLDialect) :Incantation[Any, Res] =
 			dml.chant.bind(args).compose { _ => () }
@@ -869,12 +870,12 @@ object DMLStatement {
 		  */
 		val current :M[RowProduct AndFrom M WithParam X] = domain.prev
 
-		/** A [[net.noresttherein.oldsql.sql.UnboundParam.FromParam mapping]] for the statement parameter,
+		/** A [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam mapping]] for the statement parameter,
 		  * implicitly convertible to a placeholder SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]]
 		  * representing the parameter. It can be also used to create pseudo 'components' representing parameter values
 		  * derivable from `X`.
 		  */
-		val param :FromParam[X, RowProduct AndFrom ParamRelation[X]#Param] = domain.last.mapping
+		val param :UnboundParam[X, RowProduct AndFrom ParamRelation[X]#Param] = domain.last.mapping
 
 		/** Initiates the creation of a dependent ''select'' having access to both the modified table and the statement
 		  * parameter.
@@ -883,8 +884,7 @@ object DMLStatement {
 		  *         `select` extension methods.
 		  */
 		def from[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		        (table :Table[R])(implicit cast :InferSubject[From[M] WithParam X, Subselect, R, T, S])
-				:From[M] WithParam X Subselect R =
+		        (table :Table[R])(implicit cast :BaseMappingSubject[R, T, S]) :From[M] WithParam X Subselect R =
 			domain subselect table
 	}
 

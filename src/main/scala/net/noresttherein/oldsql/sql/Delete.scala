@@ -6,19 +6,21 @@ import scala.reflect.ClassTag
 
 import net.noresttherein.oldsql.{DeprecatedAlways, SharedImplDeprecation}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
+import net.noresttherein.oldsql.morsels.ChunkedString
 import net.noresttherein.oldsql.schema.{RelVar, SQLForm}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.Delete.implementation.{GroundDelete, ParamDelete}
-import net.noresttherein.oldsql.sql.Delete.syntax.{DeleteAll, DeleteMany, DeleteOne, GroundMultiDeleteFactory, GroundDeleteOneFactory, DeleteParam, DeleteFacade}
+import net.noresttherein.oldsql.sql.Delete.syntax.{DeleteAll, DeleteFacade, DeleteMany, DeleteOne, DeleteParam, GroundDeleteOneFactory, GroundMultiDeleteFactory}
 import net.noresttherein.oldsql.sql.DML.{BoundDML, ComposedDML, DMLAPI, GroundDML, RepeatedDML}
-import net.noresttherein.oldsql.sql.DMLStatement.{BoundStatement, ComposedStatement, DMLStatementAPI, StatementResult, AlteredResultStatement, StatementVisitor}
+import net.noresttherein.oldsql.sql.DMLStatement.{AlteredResultStatement, BoundStatement, ComposedStatement, DMLStatementAPI, StatementResult, StatementVisitor}
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult.UpdateCount
+import net.noresttherein.oldsql.sql.ParamClause.UnboundParam
+import net.noresttherein.oldsql.sql.SQLBoolean.{False, True}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.TableStatement.{GroundWhereClauseFactory, WhereAllClauseFactory, WhereClauseFactory, WhereAnyClauseFactory}
-import net.noresttherein.oldsql.sql.UnboundParam.FromParam
+import net.noresttherein.oldsql.sql.TableStatement.{seqAt, GroundWhereClauseFactory, WhereAllClauseFactory, WhereAnyClauseFactory, WhereClauseFactory}
 import net.noresttherein.oldsql.sql.ast.OrSQL
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
 import net.noresttherein.oldsql.sql.mechanics.MappingReveal.MappingSubject
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
@@ -125,7 +127,7 @@ trait Delete[-Args, M[O] <: MappingAt[O], +Res]
   *   1. parameterless statements extending
   *      [[net.noresttherein.oldsql.sql.Delete.implementation.GroundDelete GroundDelete]],
   *      which carry all required information for their execution
-  *      (possibly as [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters)
+  *      (possibly as [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters)
   *   1. statements parameterized with arbitrary types
   *      extending [[net.noresttherein.oldsql.sql.Delete.implementation.ParamDelete ParamDelete]],
   *   1. statements dedicated to removing individual entities, specified either at their creation (parameterless),
@@ -135,7 +137,7 @@ trait Delete[-Args, M[O] <: MappingAt[O], +Res]
   * The main methods of this object are:
   *   1. `Delete `[[net.noresttherein.oldsql.sql.Delete.from from]]` table` - constructs parameterless statements,
   *      with the ''where'' clause defined solely in terms of available values - literals
-  *      or [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters.
+  *      or [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters.
   *   1. `Delete `[[net.noresttherein.oldsql.sql.Delete.one one]]` table` - statements parameterized with
   *      the entity type mapped to `table`.
   *   1. `Delete `[[net.noresttherein.oldsql.sql.Delete.many many]]` table` - batches parameterized with
@@ -243,7 +245,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 	  * All statements created starting with this method are parameterless:
 	  * the filter expression must not depend on [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters,
 	  * but use only [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] and
-	  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound parameters]].
+	  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound parameters]].
 	  * See `Delete.`[[net.noresttherein.oldsql.sql.Delete.by by]]`[X] `[[net.noresttherein.oldsql.sql.Delete.syntax.DeleteParam.from from]]` table`
 	  * and `Delete`[[net.noresttherein.oldsql.sql.Delete.apply[M[O* (table)]]
 	  * for a generic way to create statements with parameters to be specified at execution time.
@@ -316,7 +318,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 	  * }}}
 	  * In the above expression, the first placeholder parameter `_` refers to
 	  * `Dragons.`[[net.noresttherein.oldsql.schema.Relation.row row]] mapping, while the second to
-	  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]`[Dragon, _]` synthetic mapping for
+	  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]]`[Dragon, _]` synthetic mapping for
 	  * the statement parameter. The latter allows to use any properties of the parameter as virtual 'components'
 	  * of the mapping by providing the getter function. Hence, the first `_.name` here refers to a column
 	  * of the table mapping `Dragons`, while the second to a property of mapped entity `Dragon`
@@ -467,18 +469,18 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 	  * }
 	  * }}}
 	  * The argument function of the methods above is of type
-	  * `(M[F], `[[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]`[S, F]) => `[[net.noresttherein.oldsql.sql.GlobalBoolean GlobalBoolean]]`[S]`,
+	  * `(M[F], `[[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]]`[S, F]) => `[[net.noresttherein.oldsql.sql.GlobalBoolean GlobalBoolean]]`[S]`,
 	  * providing access to both the components of the table (the first argument) and the statement parameter
 	  * (the second argument) - in the examples, `Dragon` -
-	  * as an [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameter expression. In the example, it is used
+	  * as a [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameter expression. In the example, it is used
 	  * to create SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] for its various properties
 	  * by providing their getter function
-	  * to its [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.apply[T](pick:P=>T)* apply]] method.
+	  * to its [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.apply[T](pick:P=>T)* apply]] method.
 	  *
 	  * The ''where'' clause - and the created ''delete'' statement - can also be parameterized by providing
 	  * a type parameter ''before'' `where`:
 	  * {{{
-	  * Delete(Dragons)[String] where { _.name === _ } //a function of (Dragons[_], FromParam[String, _])
+	  * Delete(Dragons)[String] where { _.name === _ } //a function of (Dragons[_], UnboundParam[String, _])
 	  * Delete(Dragons)[String] where { (t, p) => t.name === p.name || t.race === p.race }
 	  * Delete(Dragons)[Int] where (_.level > _) or (_.level > 20)
 	  * }}}
@@ -717,7 +719,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 			protected override def where(condition :GlobalBoolean[From[M] WithParam Arg]) :DeleteWhereAll[Arg, S, M] =
 				new DeleteWhereAll(table, condition, whereDomain)
 
-			override def where(condition :(M[From[M] WithParam Arg], FromParam.Last[Arg])
+			override def where(condition :(M[From[M] WithParam Arg], UnboundParam.Last[Arg])
 			                              => GlobalBoolean[From[M] WithParam Arg]) :DeleteWhereAll[Arg, S, M] =
 				where(condition(table.row[From[M] WithParam Arg], whereDomain.last.mapping).anchor(whereDomain))
 
@@ -913,19 +915,15 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 			override lazy val condition :GlobalBoolean[From[M] WithParam Seq[Arg]] =
 				TableStatement.repeatedWhere[Arg, S, M](domain, whereDomain, single, max)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Seq[Arg], RowProduct] =
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Seq[Arg]] =
 				if (max == 0)
-					Delete.spell(this)(False)(Parameterization.paramless)
+					Delete.spell(this)(False)(domain, Parameterization.paramless)
 				else {
-					val part = Delete.spell(this)(single)(whereDomain.parameterization)
-					//todo: apply guard - requires Parameterization.apply to return an extractor
-					val parts = (0 until max).view.flatMap {
-						i => part.params.compose { args :Seq[Arg] => @~ ~ args(i) }.settersReversed
-					}.toList
-					val params = Parameterization[@~ ~ Seq[Arg], From[M] WithParam Seq[Arg]](domain).compose {
-						args :Seq[Arg] => @~ ~ args
-					}
-					SpelledSQL(part.sql * max, part.context, params :++ parts)
+					val part = Delete.spell(this)(single)(whereDomain, whereDomain.parameterization)
+					val form = (0 until max).view.map {
+						i => part.setter.compose(seqAt[Arg](i))
+					}.toList.reduce(_ + _)
+					SpelledSQL(part.sql * max, part.context.reset(), form)
 				}
 
 			override def equals(that :Any) :Boolean = that match {
@@ -1161,7 +1159,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 		  * }}}
 		  * In the above expression, the first placeholder parameter `_` refers to
 		  * `Dragons.`[[net.noresttherein.oldsql.schema.Relation.row row]] mapping, while the second to
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]`[Dragon, _]` synthetic mapping for
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]]`[Dragon, _]` synthetic mapping for
 		  * the statement parameter. The latter allows to use any properties of the parameter as virtual 'components'
 		  * of the mapping by providing the getter function. Hence, the first `_.name` here refers to a column
 		  * of the table mapping `Dragons`, while the second to a property of mapped entity `Dragon`
@@ -1256,7 +1254,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 		  *          Delete(Dragons)[String] * 6 where (_.name === _)
 		  *      }}}
 		  *      Note the use of `_` placeholders: first for the table mapping `M[_]`, and second for
-		  *      the [[net.noresttherein.oldsql.sql.UnboundParam.FromParam parameter mapping]]. The statements returned
+		  *      the [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam parameter mapping]]. The statements returned
 		  *      by all `where` allow appending additional conditions in the same way, joining them with either ''and''
 		  *      or ''or'', as specified, to allow repeated use of this shortened syntax.3
 		  */
@@ -1339,7 +1337,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 			  * [[net.noresttherein.oldsql.sql.GlobalBoolean Boolean]] expressions as filter conditions.
 			  * The returned factory provides the same
 			  * [[net.noresttherein.oldsql.sql.Delete.syntax.DeleteWhereFactory.where where]] methods as
-			  * this instance, but using `X` as the [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameter
+			  * this instance, but using `X` as the [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameter
 			  * including in the
 			  * [[net.noresttherein.oldsql.sql.From From]]`[M] `[[net.noresttherein.oldsql.sql.WithParam WithParam ]]` X`
 			  * domain of the used [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]].
@@ -1350,7 +1348,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 			  * [[net.noresttherein.oldsql.sql.GlobalBoolean Boolean]] expressions as filter conditions.
 			  * The returned factory provides the same
 			  * [[net.noresttherein.oldsql.sql.Delete.syntax.DeleteWhereFactory.where where]] methods as
-			  * this instance, but using `X` as the [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameter
+			  * this instance, but using `X` as the [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameter
 			  * including in the
 			  * [[net.noresttherein.oldsql.sql.From From]]`[M] `[[net.noresttherein.oldsql.sql.WithParam WithParam ]]` X`
 			  * domain of the used [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]].
@@ -1389,7 +1387,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 			protected override def where(condition :GlobalBoolean[From[M] WithParam Arg]) :DeleteManyWhereAll[Arg, S, M] =
 				new DeleteManyWhereAll(new DeleteWhereAll(table, condition, whereDomain))
 
-			override def where(condition :(M[From[M] WithParam Arg], FromParam.Last[Arg])
+			override def where(condition :(M[From[M] WithParam Arg], UnboundParam.Last[Arg])
 			                              => GlobalBoolean[From[M] WithParam Arg]) :DeleteManyWhereAll[Arg, S, M] =
 				where(condition(table.row, whereDomain.last.mapping).anchor(whereDomain))
 
@@ -1461,7 +1459,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 //			/** Creates a ''delete'' DML batch deleting rows matching given entities `S`, using the provided
 //			  * condition for its ''where'' clause in place of the default one of this instance.
 //			  * The argument function is a constructor of the ''where'' clause, accepting the mappings `M` of the rows
-//			  * in the affected table and [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]
+//			  * in the affected table and [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]]
 //			  * exposing the parameter `S`. Both mappings are implicitly convertible to SQL expressions representing
 //			  * all columns of the selected components. The conversion will happen if one
 //			  * of the methods of [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] is called on a mapping,
@@ -1475,14 +1473,14 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 //			  * which will translate to pair-wise comparisons of individual columns (those without buff
 //			  * [[net.noresttherein.oldsql.schema.Buff.NoFilterByDefault NoFilterByDefault]]) of the component.
 //			  *
-//			  * The mapping type `FromParam` does not define any components or columns as properties and is treated
+//			  * The mapping type `UnboundParam` does not define any components or columns as properties and is treated
 //			  * as a composite type based on an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[S]` obtained from
 //			  * the table's mapping. Its properties can be accessed by exposing them as components or columns
 //			  * of the parameter mapping, using methods
-//			  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.apply[X<:P=>T,T](pick:X)* apply]],
-//			  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.opt[T:SQLForm](pick:P=>Option[T])* opt]],
-//			  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.col[T:ColumnForm](pick:P=>T)* col]] and
-//			  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.optcol[T:ColumnForm](pick:P=>Option[T])* optcol]],
+//			  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.apply[X<:P=>T,T](pick:X)* apply]],
+//			  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.opt[T:SQLForm](pick:P=>Option[T])* opt]],
+//			  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.col[T:ColumnForm](pick:P=>T)* col]] and
+//			  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.optcol[T:ColumnForm](pick:P=>Option[T])* optcol]],
 //			  * which create a synthetic [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]]
 //			  * expression for the parameter property, the usages of which will translate to additional JDBC parameters
 //			  * initialized with values derived from `S`:
@@ -1493,7 +1491,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 //			  *         the given condition, parameterized with subsequent elements of the sequence.
 //			  *         The batch returns the number of deleted rows for every entity in the input.
 //			  */
-//			def where(condition :(M[From[M] WithParam S], FromParam[S, RowProduct AndFrom ParamRelation[S]#Param])
+//			def where(condition :(M[From[M] WithParam S], UnboundParam[S, RowProduct AndFrom ParamRelation[S]#Param])
 //			                     => GlobalBoolean[From[M] WithParam S]) :DeleteDML[Seq[S], M, Seq[Int]] =
 //				dml.where(condition).batch
 //
@@ -1688,12 +1686,12 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 //			  * As the created expression doesn't declare [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters,
 //			  * values of all expressions other than those referring to the affected table must be known - either
 //			  * [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] or
-//			  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters. The latter can be created
+//			  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters. The latter can be created
 //			  * using extension method [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL.? ?]]
 //			  * available after importing [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL]]
 //			  * (it is also present in packages [[net.noresttherein.oldsql.sql.lowercase sql.lowercase]]
 //			  * and [[net.noresttherein.oldsql.sql.uppercase]]). Alternatively, any argument of type `V`
-//			  * given to a comparison operator method ending with `?` is automatically promoted to a `SQLParameter[V]`
+//			  * given to a comparison operator method ending with `?` is automatically promoted to a `BoundParam[V]`
 //			  * internally.
 //			  *
 //			  * In order to avoid the hassle of providing the argument function in its full literal syntax with
@@ -1940,7 +1938,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 		/** A parameterless ''delete'' statement without a ''where'' clause, deleting all rows from a table.
 		  * As a `GroundDelete` subclass, it is completely equivalent
 		  * to a [[net.noresttherein.oldsql.sql.Delete.implementation.GroundDelete GroundDelete]] statement
-		  * with [[net.noresttherein.oldsql.sql.ast.SQLLiteral.True True]]
+		  * with [[net.noresttherein.oldsql.sql.SQLBoolean.True True]]
 		  * as its [[net.noresttherein.oldsql.sql.Delete.implementation.GroundDelete.condition condition]].
 		  * It provides however methods for narrowing the set of deleted rows by specifying
 		  * an SQL Boolean [[net.noresttherein.oldsql.sql.GlobalBoolean expression]] for the ''where'' clause.
@@ -1969,7 +1967,8 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 			override def where(condition :GlobalBoolean[From[M]]) :Delete[Unit, M, Int] =
 				new GroundDeleteWhere[S, M](table, condition)
 
-			/** Equals [[net.noresttherein.oldsql.sql.ast.SQLLiteral.True True]]. **/
+			protected def domain :From[M] = From(table)
+			/** Equals [[net.noresttherein.oldsql.sql.SQLBoolean.True True]]. **/
 			override val condition :GlobalBoolean[From[M]] = True
 
 			protected override def initToString :String = "Delete " + table
@@ -1977,7 +1976,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 
 
 		/** Standard implementation of arbitrary ''delete'' statements which have the values
-		  * of any [[net.noresttherein.oldsql.sql.ast.SQLParameter parameters]] embedded, not needing
+		  * of any [[net.noresttherein.oldsql.sql.ast.BoundParam parameters]] embedded, not needing
 		  * any external data to create and execute a [[java.sql.PreparedStatement PreparedStatement]]
 		  * for the DML they represent. The [[net.noresttherein.oldsql.sql.Incantation Incantation]]`[(), Int]`
 		  * created by this statement will return the number of deleted rows.
@@ -1990,6 +1989,9 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 		private final class GroundDeleteWhere[S, M[O] <: BaseMapping[S, O]] private[Delete]
 		                    (override val table :RelVar[M], override val condition :GlobalBoolean[From[M]])
 			extends GroundDelete[M] with GroundDML.Impl[Int]
+		{
+			protected override def domain :From[M] = From(table)
+		}
 
 
 
@@ -2093,7 +2095,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 		                                     (override val table :RelVar[M], val values :Seq[S])
 			extends GroundDelete[M] with GroundDML.Impl[Int]
 		{
-			private val domain = From(table)
+			protected override val domain = From(table)
 			override val condition :GlobalBoolean[From[M]] =
 				OrSQL(values.map(TableStatement.whereEntity(domain, _)) :_*)
 
@@ -2156,6 +2158,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 		                                   (override val table :RelVar[M], val value :S)
 			extends GroundDelete[M] with GroundDML.Impl[Int]
 		{
+			override val domain :From[M] = From(table)
 			override val condition :GlobalBoolean[From[M]] = TableStatement.whereEntity(table, value)
 
 			override def equals(that :Any) :Boolean = that match {
@@ -2239,7 +2242,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 	//				override val condition = outer.condition.bind(outer.domain, @~ ~ args)
 	//			}
 			@inline final protected[Delete]
-			def eval(condition :(M[From[M] WithParam Args], FromParam[Args, JoinParam.Last[Args]])
+			def eval(condition :(M[From[M] WithParam Args], UnboundParam[Args, JoinParam.Last[Args]])
 			                    => GlobalBoolean[From[M] WithParam Args]) :GlobalBoolean[From[M] WithParam Args] =
 				condition(table.row[From[M] WithParam Args], domain.last.mapping).anchor(domain)
 
@@ -2251,8 +2254,8 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Int] =
 				visitor.paramDelete(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
-				Delete.spell(this)(condition)(domain.parameterization) compose { @~ ~ _ }
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] =
+				Delete.spell(this)(condition)(domain, domain.parameterization) adapt { @~ ~ _ }
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamDelete[_, MappingAt @unchecked]]
 
@@ -2278,7 +2281,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 		  * only on the table with deleted rows (parameterized with [[net.noresttherein.oldsql.sql.From From]]`[M]`) -
 		  * all terms must either be [[net.noresttherein.oldsql.sql.ast.ComponentSQL components]]
 		  * of its mapping `M` (in particular table columns), [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]],
-		  * or [[net.noresttherein.oldsql.sql.ast.SQLParameter parameters]] with already provided values.
+		  * or [[net.noresttherein.oldsql.sql.ast.BoundParam parameters]] with already provided values.
 		  *
 		  * Aside from a different [[net.noresttherein.oldsql.sql.Delete.implementation.GroundDelete.Domain Domain]] type
 		  * of the condition, the implementation is otherwise very similar
@@ -2301,6 +2304,7 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 			  * of the ''where'' clause of this statement.
 			  */
 			protected type Domain = From[M]
+			protected def domain :From[M] //= From(table)
 
 			/** The ''where'' clause of this statement. **/
 			val condition :GlobalBoolean[From[M]]
@@ -2311,8 +2315,8 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Any, Int] =
 				visitor.groundDelete(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any, RowProduct] =
-				Delete.spell(this)(condition)(Parameterization.paramless) compose { _ :Any => @~ }
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any] =
+				Delete.spell(this)(condition)(domain, Parameterization.paramless) adapt { _ :Any => @~ }
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroundDelete[MappingAt @unchecked]]
 
@@ -2396,12 +2400,13 @@ object Delete { //todo: multiple unbound parameters with aliases, growing base F
 
 	private[sql] def spell[X, M[O] <: MappingAt[O], F <: RowProduct]
 	                      (self :Delete[Nothing, M, Any])(condition :GlobalBoolean[F])
-	                      (params :Parameterization[X, F])(implicit spelling :SQLSpelling) :SpelledSQL[X, RowProduct] =
+	                      (domain :F, params :Parameterization[X, F])(implicit spelling :SQLSpelling) :SpelledSQL[X] =
 	{
 		val table = self.table
-		val delete = SpelledSQL(spelling.DELETE + " ", SQLContext(), params) + (spelling.table(table, "")(_, _))
+		val context = SQLContext()
+		val delete = (spelling.DELETE + " ") +: (spelling.table(table, "")(context, params))
 		if (condition == True) delete
-		else delete + (" " + spelling.WHERE + " ") + (spelling(condition)(_, _))
+		else delete + (" " + spelling.WHERE + " ") + (spelling(condition)(domain, _, params))
 	}
 
 }

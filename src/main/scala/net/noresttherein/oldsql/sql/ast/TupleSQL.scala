@@ -54,19 +54,19 @@ trait TupleSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T] extends Com
 
 	override def columnCount(implicit spelling :SQLSpelling) :Int = (0 /: parts)(_ + _.columnCount)
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		inlineSpelling(context, params) match {
-			case Seq() => SpelledSQL("()", context, params)
-			case columns => ( "(" +: columns.reduce(_.sql +: ", " +: _)) + ")"
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		explodedSpelling(from, context, params) match {
+			case Seq() => SpelledSQL("()", context)
+			case columns => ( "(" +: columns.reduce(_ +: ", " +: _)) + ")"
 		}
 
-	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
-		inOrder.foldLeft(List.empty[SpelledSQL[P, E]]) {
+	protected override def explodedSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                          (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
+		inOrder.foldLeft(List.empty[SpelledSQL[P]]) {
 			(parts, item) => //we must assemble left to right for params, but the result is reversed due to prepending
-				val (ctx, ps) = if (parts.isEmpty) (context, params) else (parts.head.context, parts.head.params)
-				spelling.explode(item :SQLExpression[E, S, _])(ctx, ps).toList reverse_::: parts
+				val ctx = if (parts.isEmpty) context else parts.head.context
+				spelling.explode(item)(from, ctx, parts).toList reverse_::: parts
 		}.reverse
 
 
@@ -261,6 +261,7 @@ object TupleSQL {
 			override def isGlobal = true
 			override def asGlobal :Option[EmptyChain.type] = Some(this)
 			override def isAnchored = true
+			override def isAnchored(from :RowProduct) = true
 			override def anchor(from :RowProduct) :this.type = this
 
 			override def rephrase[E <: RowProduct](mapper :SQLScribe[RowProduct, E]) :this.type = this
@@ -274,14 +275,14 @@ object TupleSQL {
 			override def split(implicit scope :OperationType) :Seq[ColumnSQL[RowProduct, GlobalScope, _]] =
 				ReversedList.empty
 
-			protected override def defaultSpelling[P, E <: RowProduct]
-			                                      (context :SQLContext, params :Parameterization[P, E])
-			                                      (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-				SpelledSQL(context, params)
+			protected override def defaultSpelling[P]
+			                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+			                       (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+				SpelledSQL(context)
 
-			protected override def inlineSpelling[P, E <: RowProduct]
-			                                     (context :SQLContext, params :Parameterization[P, E])
-			                                     (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
+			protected override def explodedSpelling[P]
+			                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+			                       (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
 				Nil
 		}
 
@@ -550,6 +551,7 @@ object TupleSQL {
 
 			override def isGlobal :Boolean = last.isGlobal && init.isGlobal
 			override def isAnchored :Boolean = last.isAnchored && init.isAnchored
+			override def isAnchored(from :F) :Boolean = last.isAnchored(from) && init.isAnchored(from)
 
 			override def anchor(from :F) :ListingSQL[F, S, T |~ (K :~ H)] =
 				(init.anchor(from), last.anchor(from)) match {

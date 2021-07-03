@@ -188,10 +188,10 @@ object DecoratedFrom {
 		override def joinedWith[P <: FromSome](prefix :P, firstJoin :Join.*) :JoinedWith[P, firstJoin.LikeJoin] =
 			withClause(clause.joinedWith(prefix, firstJoin))
 
-		override type JoinedWithSubselect[+P <:  NonEmptyFrom] = WithClause[clause.JoinedWithSubselect[P]]
+		override type SelectedFrom[+P <:  NonEmptyFrom] = WithClause[clause.SelectedFrom[P]]
 
-		override def joinedWithSubselect[P <: NonEmptyFrom](prefix :P) :JoinedWithSubselect[P] =
-			withClause(clause.joinedWithSubselect(prefix))
+		override def selectedFrom[P <: NonEmptyFrom](prefix :P) :SelectedFrom[P] =
+			withClause(clause.selectedFrom(prefix))
 
 		override def appendedTo[P <: FromClause](prefix :P) :WithClause[clause.JoinedWith[P, NonParam]] =
 			withClause(clause.appendedTo(prefix))

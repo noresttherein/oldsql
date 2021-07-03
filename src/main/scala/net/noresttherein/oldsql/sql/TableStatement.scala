@@ -3,19 +3,20 @@ package net.noresttherein.oldsql.sql
 import scala.annotation.nowarn
 
 import net.noresttherein.oldsql.{DeprecatedAlways, OperationType, SharedImplDeprecation}
+import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.ReversedList
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.Bug
-import net.noresttherein.oldsql.morsels.Extractor.Optional
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional}
 import net.noresttherein.oldsql.schema.{ColumnMapping, RelVar}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.ComponentSetter.:=
 import net.noresttherein.oldsql.sql.DML.{BoundDML, ComposedDML, DMLAPI, RepeatedDML}
 import net.noresttherein.oldsql.sql.DMLStatement.{AlteredResultStatement, BoundStatement, ComposedStatement, DMLStatementAPI, StatementResult}
-import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamRelation}
-import net.noresttherein.oldsql.sql.ast.SQLParameter
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
+import net.noresttherein.oldsql.sql.ParamClause.{ParamRelation, UnboundParam}
+import net.noresttherein.oldsql.sql.SQLBoolean.{False, True}
+import net.noresttherein.oldsql.sql.ast.BoundParam
 import net.noresttherein.oldsql.sql.mechanics.SQLScribe
 
 //here be implicits
@@ -165,14 +166,14 @@ object TableStatement {
 
 		protected def setAll(setters :Seq[From[M] := R]) :Res
 
-//		def setAll(setters :(M[From[M]], FromParam.Last[Arg]) => Seq[From[M] := R]) :Res = {
+//		def setAll(setters :(M[From[M]], UnboundParam.Last[Arg]) => Seq[From[M] := R]) :Res = {
 //			val base = setDomain
 //			setAll(setters(table.row, base.last.mapping).map(_.anchor(base.left, base)))
 //		}
 //
 		protected def set(setter :From[M] := R) :Res = setAll(ReversedList :+ setter)
 
-		def set(setters :Seq[(M[From[M]], FromParam.Last[Arg]) => From[M] := R]) :Res = {
+		def set(setters :Seq[(M[From[M]], UnboundParam.Last[Arg]) => From[M] := R]) :Res = {
 			val base = setDomain
 			val row = table.row[From[M]]
 			val param = base.last.mapping
@@ -184,7 +185,7 @@ object TableStatement {
 			set(setter(table.row).anchor(base.left, base))
 		}
 
-		def set(setter :(M[From[M]], FromParam.Last[Arg]) => From[M] := R) :Res = {
+		def set(setter :(M[From[M]], UnboundParam.Last[Arg]) => From[M] := R) :Res = {
 			val base = setDomain
 			set(setter(table.row, base.last.mapping).anchor(base.left, base))
 		}
@@ -205,7 +206,7 @@ object TableStatement {
 
 		protected def supplant(setter :From[M] := R) :Res = supplantAll(ReversedList :+ setter)
 
-		def supplant(setters :Seq[(M[From[M]], FromParam.Last[Arg]) => From[M] := R]) :Res = {
+		def supplant(setters :Seq[(M[From[M]], UnboundParam.Last[Arg]) => From[M] := R]) :Res = {
 			val base = setDomain
 			val row = table.row[From[M]]
 			val param = base.last.mapping
@@ -217,7 +218,7 @@ object TableStatement {
 			supplant(setter(table.row).anchor(base.left, base))
 		}
 
-		def supplant(setter :(M[From[M]], FromParam.Last[Arg]) => From[M] := R) :Res = {
+		def supplant(setter :(M[From[M]], UnboundParam.Last[Arg]) => From[M] := R) :Res = {
 			val base = setDomain
 			supplant(setter(table.row, base.last.mapping).anchor(base.left, base))
 		}
@@ -252,21 +253,21 @@ object TableStatement {
 	  * @define DelLink               [[net.noresttherein.oldsql.sql.Delete Delete]]`[Arg, M, Int]`
 	  * @define delResult             deleting all rows in the table for which `condition` evaluates to `true`,
 	  *                               returning their number (mind `null` values in ternary logic).
-	  * @define methodsInfo           The arguments of those methods take the form of
-	  *                               constructor functions accepting either the two mappings `M` of the table and
-	  *                               [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]
-	  *                               of the statement parameter `Arg`, or only the table mapping `M`
-	  *                               for constant-based filters, and returning an SQL Boolean
-	  *                               [[net.noresttherein.oldsql.sql.GlobalBoolean expression]].
-	  *                               The former functions are accepted by
-	  *                               [[net.noresttherein.oldsql.sql.TableStatement.WhereClauseFactory.where(condition:M[* where]]
-	  *                               method, while the latter by overloaded `whereSelf`, which accept a number
-	  *                               of arguments varying from 1 to 5, all set to the same `M` instance.
-	  *                               This repetition allows repeated reference to the table mapping
-	  *                               in the expression using `_` placeholders for subsequent arguments.
-	  *                               It worKeys the same way as
-	  *                               [[net.noresttherein.oldsql.sql.Delete.syntax.GroundDeleteWhereFactory.where where]]
-	  *                               for parameterless statements.
+	  * @define methodsInfo          The arguments of those methods take the form of
+	  *                              constructor functions accepting either the two mappings `M` of the table and
+	  *                              [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]]
+	  *                              of the statement parameter `Arg`, or only the table mapping `M`
+	  *                              for constant-based filters, and returning an SQL Boolean
+	  *                              [[net.noresttherein.oldsql.sql.GlobalBoolean expression]].
+	  *                              The former functions are accepted by
+	  *                              [[net.noresttherein.oldsql.sql.TableStatement.WhereClauseFactory.where(condition:M[* where]]
+	  *                              method, while the latter by overloaded `whereSelf`, which accept a number
+	  *                              of arguments varying from 1 to 5, all set to the same `M` instance.
+	  *                              This repetition allows repeated reference to the table mapping
+	  *                              in the expression using `_` placeholders for subsequent arguments.
+	  *                              It worKeys the same way as
+	  *                              [[net.noresttherein.oldsql.sql.Delete.syntax.GroundDeleteWhereFactory.where where]]
+	  *                              for parameterless statements.
 	  * @define mappingConversionInfo are implicitly convertible to SQL expressions of their
 	  *                               [[net.noresttherein.oldsql.schema.Mapping.Subject subject]] type,
 	  *                               representing all columns of the selected components. The conversion
@@ -283,31 +284,31 @@ object TableStatement {
 	  *                               to pair-wise comparisons of individual columns (those without buff
 	  *                               [[net.noresttherein.oldsql.schema.Buff.NoFilterByDefault NoFilterByDefault]])
 	  *                               of the component.
-	  * @define whereSelfInfo         The function does not accept
-	  *                               a [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] mapping
-	  *                               for the parameter type $Arg as an argument, which makes this method
-	  *                               more convenient for creating filter conditions based on constants
-	  *                               (either [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] or
-	  *                               [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters),
-	  *                               as only a single placeholder `_` is expected. Any Scala value of type `X`
-	  *                               is implicitly convertible to a literal expression in the presence
-	  *                               of an implicit [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[X]`,
-	  *                               and the latter can be created using extension method
-	  *                               [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL.? ?]]
-	  *                               available after importing
-	  *                               [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL]]
-	  *                               Alternatively, any argument of type `X` given to a comparison operator method
-	  *                               ending with `?`, such as [[net.noresttherein.oldsql.sql.SQLExpression.==? ==?]],
-	  *                               is automatically promoted to a `SQLParameter[X]` internally,
-	  *                               if an implicit form for `X` is present.
+	  * @define whereSelfInfo The function does not accept
+	  *                              a [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]] mapping
+	  *                              for the parameter type $Arg as an argument, which makes this method
+	  *                              more convenient for creating filter conditions based on constants
+	  *                              (either [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] or
+	  *                              [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters),
+	  *                              as only a single placeholder `_` is expected. Any Scala value of type `X`
+	  *                              is implicitly convertible to a literal expression in the presence
+	  *                              of an implicit [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[X]`,
+	  *                              and the latter can be created using extension method
+	  *                              [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL.? ?]]
+	  *                              available after importing
+	  *                              [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL]]
+	  *                              Alternatively, any argument of type `X` given to a comparison operator method
+	  *                              ending with `?`, such as [[net.noresttherein.oldsql.sql.SQLExpression.==? ==?]],
+	  *                              is automatically promoted to a `BoundParam[X]` internally,
+	  *                              if an implicit form for `X` is present.
 	  *
-	  *                               The result of this method is not particularly useful itself,
-	  *                               as it is a parameterized statement not using its parameter. However,
-	  *                               it defines [[net.noresttherein.oldsql.sql.Delete.syntax.DeleteWhere.or or]]
-	  *                               and [[net.noresttherein.oldsql.sql.Delete.syntax.DeleteWhereAll.and and]]
-	  *                               with signatures mirroring `where` methods of this instance; they allow
-	  *                               to provide additional conditions, combined with the one given to this method,
-	  *                               which may make use of the statement parameter.
+	  *                              The result of this method is not particularly useful itself,
+	  *                              as it is a parameterized statement not using its parameter. However,
+	  *                              it defines [[net.noresttherein.oldsql.sql.Delete.syntax.DeleteWhere.or or]]
+	  *                              and [[net.noresttherein.oldsql.sql.Delete.syntax.DeleteWhereAll.and and]]
+	  *                              with signatures mirroring `where` methods of this instance; they allow
+	  *                              to provide additional conditions, combined with the one given to this method,
+	  *                              which may make use of the statement parameter.
 	  * @define whereSelfOverloadInfo In order to avoid the hassle of providing the argument function
 	  *                               in its full literal syntax with an explicit argument, overloaded variants
 	  *                               of this method exist which accept the same argument mapping various number
@@ -333,26 +334,26 @@ object TableStatement {
 		  * [[net.noresttherein.oldsql.sql.SQLExpression.anchor anchoring]] it to the used domain
 		  * `From[M] WithParam Arg` instance. This is a delegation target of other overloaded `where`
 		  * and `whereSelf` methods. It is currently protected as all parts of the expression must currently use
-		  * the exact same [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation ParamRelation]] instance.
+		  * the exact same [[net.noresttherein.oldsql.sql.ParamClause.ParamRelation ParamRelation]] instance.
 		  * @return a $DelLink $delResult
 		  */ //todo: update docs that it assumes condition is anchored
 		protected def where(condition :GlobalBoolean[From[M] WithParam Arg]) :Res
 
 		/** Creates a ''delete'' SQL statement parameterized with $Args and with a new ''where'' clause.
 		  * The argument function is a constructor of the ''where'' clause, accepting the mappings `M` of the rows
-		  * in the affected table and [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]
+		  * in the affected table and [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]]
 		  * exposing the parameter $Arg. Both mappings and their components $mappingConversionInfo
 		  *
-		  * The parameter mapping [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] for $Arg
+		  * The parameter mapping [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]] for $Arg
 		  * can be similarly converted to an `SQLExpression`. It does not define any components or columns
 		  * as properties and is treated as a composite type based on a previously provided
 		  * [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] type class for $Arg.
 		  * If $Arg is a complex type, its properties can be accessed by exposing them as components or columns
 		  * of the parameter mapping, using methods
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.apply[X<:P=>T,T](pick:X)* apply]],
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.opt[T:SQLForm](pick:P=>Option[T])* opt]],
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.col[T:ColumnForm](pick:P=>T)* col]] and
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.optcol[T:ColumnForm](pick:P=>Option[T])* optcol]],
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.apply[X<:P=>T,T](pick:X)* apply]],
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.opt[T:SQLForm](pick:P=>Option[T])* opt]],
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.col[T:ColumnForm](pick:P=>T)* col]] and
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.optcol[T:ColumnForm](pick:P=>Option[T])* optcol]],
 		  * which create a synthetic [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]]
 		  * expression for the parameter property, the usages of which will translate to additional JDBC parameters
 		  * initialized with values derived from $Arg:
@@ -361,7 +362,7 @@ object TableStatement {
 		  * }}}
 		  * @return a $DelLink $delResult
 		  */
-		def where(condition :(M[From[M] WithParam Arg], FromParam[Arg, RowProduct AndFrom ParamRelation[Arg]#Param])
+		def where(condition :(M[From[M] WithParam Arg], UnboundParam[Arg, RowProduct AndFrom ParamRelation[Arg]#Param])
 		                     => GlobalBoolean[From[M] WithParam Arg]) :Res =
 			where(condition(table.row[From[M] WithParam Arg], whereDomain.last.mapping).anchor(whereDomain))
 
@@ -491,20 +492,20 @@ object TableStatement {
 	  * @define DelLink                                      [[net.noresttherein.oldsql.sql.Delete Delete]]`[Arg, M, Int]`
 	  * @define delResult                                    deleting all rows in the table for which `condition` evaluates to `true`,
 	  *                                                      returning their number (mind `null` values in ternary logic).
-	  * @define methodsInfo                                  These methods take as their parameter a constructor function accepting either
-	  *                                                      the two mappings `M` of the table and
-	  *                                                      [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]
-	  *                                                      of the parameter $Arg, or only the table mapping `M`
-	  *                                                      for constant-based filters, and returning
-	  *                                                      an SQL Boolean [[net.noresttherein.oldsql.sql.GlobalBoolean expression]].
-	  *                                                      The former functions are accepted by
-	  *                                                      [[net.noresttherein.oldsql.sql.TableStatement.WhereAnyClauseFactory.or(condition:M[* or]]
-	  *                                                      method, while the latter by overloaded `orSelf`, which accept a number
-	  *                                                      of arguments varying from 1 to 5, all set to the same `M` instance.
-	  *                                                      This repetition allows multiple references to the table mapping
-	  *                                                      in the expression using `_` placeholders for subsequent arguments.
-	  *                                                      The most basic variant of `or`, accepting just a Boolean SQL expression and
-	  *                                                      to which all other delegate, is left for subclasses to implement.
+	  * @define methodsInfo                 These methods take as their parameter a constructor function accepting either
+	  *                                     the two mappings `M` of the table and
+	  *                                     [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]]
+	  *                                     of the parameter $Arg, or only the table mapping `M`
+	  *                                     for constant-based filters, and returning
+	  *                                     an SQL Boolean [[net.noresttherein.oldsql.sql.GlobalBoolean expression]].
+	  *                                     The former functions are accepted by
+	  *                                     [[net.noresttherein.oldsql.sql.TableStatement.WhereAnyClauseFactory.or(condition:M[* or]]
+	  *                                     method, while the latter by overloaded `orSelf`, which accept a number
+	  *                                     of arguments varying from 1 to 5, all set to the same `M` instance.
+	  *                                     This repetition allows multiple references to the table mapping
+	  *                                     in the expression using `_` placeholders for subsequent arguments.
+	  *                                     The most basic variant of `or`, accepting just a Boolean SQL expression and
+	  *                                     to which all other delegate, is left for subclasses to implement.
 	  * @define sharedImplInfo                               This allows any number of chained
 	  *                                                      [[net.noresttherein.oldsql.sql.TableStatement.WhereAllClauseFactory.and and]]
 	  *                                                      method calls, following by any number of chained
@@ -547,30 +548,30 @@ object TableStatement {
 	  *                               [[net.noresttherein.oldsql.schema.Buff.NoFilterByDefault NoFilterByDefault]])
 	  *                               of the component.
 	  * @define whereSelfInfo The function does not accept
-	  *                                       a [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] mapping
-	  *                                       for the parameter type $Arg as an argument, which makes this method
-	  *                                       more convenient for creating filter conditions based on constants
-	  *                                       (either [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] or
-	  *                                       [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters),
-	  *                                       as only a single placeholder `_` is expected. Any Scala value of type `X`
-	  *                                       is implicitly convertible to a literal expression in the presence
-	  *                                       of an implicit [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[X]`,
-	  *                                       and the latter can be created using extension method
-	  *                                       [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL.? ?]]
-	  *                                       available after importing
-	  *                                       [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL]]
-	  *                                       Alternatively, any argument of type `X` given to a comparison operator method
-	  *                                       ending with `?`, such as [[net.noresttherein.oldsql.sql.SQLExpression.==? ==?]],
-	  *                                       is automatically promoted to a `SQLParameter[X]` internally,
-	  *                                       if an implicit form for `X` is present.
+	  *                                     a [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]] mapping
+	  *                                     for the parameter type $Arg as an argument, which makes this method
+	  *                                     more convenient for creating filter conditions based on constants
+	  *                                     (either [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] or
+	  *                                     [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters),
+	  *                                     as only a single placeholder `_` is expected. Any Scala value of type `X`
+	  *                                     is implicitly convertible to a literal expression in the presence
+	  *                                     of an implicit [[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[X]`,
+	  *                                     and the latter can be created using extension method
+	  *                                     [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL.? ?]]
+	  *                                     available after importing
+	  *                                     [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL]]
+	  *                                     Alternatively, any argument of type `X` given to a comparison operator method
+	  *                                     ending with `?`, such as [[net.noresttherein.oldsql.sql.SQLExpression.==? ==?]],
+	  *                                     is automatically promoted to a `BoundParam[X]` internally,
+	  *                                     if an implicit form for `X` is present.
 	  *
-	  *                                       While the result of this method doesn't use the parameter $Arg,
-	  *                                       it can be expanded by chaining further
-	  *                                       [[net.noresttherein.oldsql.sql.Delete.syntax.DeleteWhere.or or]] and
-	  *                                       [[net.noresttherein.oldsql.sql.Delete.syntax.DeleteWhereAll.and and]] calls;
-	  *                                       they allow to provide additional conditions, combined with the one given
-	  *                                       to this method and and any preceding since the call of
-	  *                                       [[net.noresttherein.oldsql.sql.TableStatement.WhereClauseFactory.where where]].
+	  *                                     While the result of this method doesn't use the parameter $Arg,
+	  *                                     it can be expanded by chaining further
+	  *                                     [[net.noresttherein.oldsql.sql.Delete.syntax.DeleteWhere.or or]] and
+	  *                                     [[net.noresttherein.oldsql.sql.Delete.syntax.DeleteWhereAll.and and]] calls;
+	  *                                     they allow to provide additional conditions, combined with the one given
+	  *                                     to this method and and any preceding since the call of
+	  *                                     [[net.noresttherein.oldsql.sql.TableStatement.WhereClauseFactory.where where]].
 	  * @define whereSelfOverloadInfo In order to avoid the hassle of providing the argument function
 	  *                                                      in its full literal syntax with an explicit argument, overloaded variants
 	  *                                                      of this method exist which accept the same argument mapping various number
@@ -600,7 +601,7 @@ object TableStatement {
 		  * [[net.noresttherein.oldsql.sql.SQLExpression.anchor anchoring]] it to the used domain
 		  * `From[M] WithParam Arg` instance. This is a delegation target of other overloaded `or` and `orSelf`
 		  * methods. It is currently protected as all parts of the expression must currently used the exact same
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation ParamRelation]] instance.
+		  * [[net.noresttherein.oldsql.sql.ParamClause.ParamRelation ParamRelation]] instance.
 		  * @return a $DelLink $delResult
 		  */
 		protected def or(condition :GlobalBoolean[From[M] WithParam Arg]) :Or
@@ -609,19 +610,19 @@ object TableStatement {
 		  * combining the ''where'' clause of this instance and the given condition with ''or''.
 		  * The argument function is a constructor of an alternative condition for the ''where'' clause,
 		  * accepting the mappings `M` of the rows in the affected table and
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] exposing the parameter $Arg.
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]] exposing the parameter $Arg.
 		  * Both mappings and their components $mappingConversionInfo
 		  *
-		  * The parameter mapping [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] for $Arg
+		  * The parameter mapping [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]] for $Arg
 		  * can be similarly converted to an `SQLExpression`. It does not define any components or columns
 		  * as properties and is treated as a composite type based on a previously provided
 		  * [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] type class for $Arg. If $Arg is a complex type,
 		  * its properties can be accessed by exposing them as components or columns of the parameter mapping,
 		  * using methods
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.apply[X<:P=>T,T](pick:X)* apply]],
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.opt[T:SQLForm](pick:P=>Option[T])* opt]],
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.col[T:ColumnForm](pick:P=>T)* col]] and
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.optcol[T:ColumnForm](pick:P=>Option[T])* optcol]],
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.apply[X<:P=>T,T](pick:X)* apply]],
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.opt[T:SQLForm](pick:P=>Option[T])* opt]],
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.col[T:ColumnForm](pick:P=>T)* col]] and
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.optcol[T:ColumnForm](pick:P=>Option[T])* optcol]],
 		  * which create a synthetic [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]]
 		  * expression for the parameter property, the usages of which will translate to additional JDBC parameters
 		  * initialized with values derived from $Arg:
@@ -630,7 +631,7 @@ object TableStatement {
 		  * }}}
 		  * @return a $DelLink $delResult
 		  */
-		def or(condition :(M[From[M] WithParam Arg], FromParam[Arg, RowProduct AndFrom ParamRelation[Arg]#Param])
+		def or(condition :(M[From[M] WithParam Arg], UnboundParam[Arg, RowProduct AndFrom ParamRelation[Arg]#Param])
 		                  => GlobalBoolean[From[M] WithParam Arg]) :Or =
 			or(condition(table.row[From[M] WithParam Arg], whereDomain.last.mapping).anchor(whereDomain))
 
@@ -764,7 +765,7 @@ object TableStatement {
 	  * @define And          `And`
 	  * @define methodsInfo  These methods take as their parameter a constructor function accepting either
 	  *                      the two mappings `M` of the table and
-	  *                      [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]]
+	  *                      [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]]
 	  *                      of the parameter $Arg, or only the table mapping `M` for constant-based filters,
 	  *                      and returning an SQL Boolean [[net.noresttherein.oldsql.sql.GlobalBoolean expression]].
 	  *                      The former functions are accepted by
@@ -793,7 +794,7 @@ object TableStatement {
 		  * [[net.noresttherein.oldsql.sql.SQLExpression.anchor anchoring]] it to the used domain
 		  * `From[M] WithParam Arg` instance. This is a delegation target of other overloaded `and` and `andSelf`
 		  * methods. It is currently protected as all parts of the expression must currently used the exact same
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.ParamRelation ParamRelation]] instance.
+		  * [[net.noresttherein.oldsql.sql.ParamClause.ParamRelation ParamRelation]] instance.
 		  * @return a $DelLink $delResult
 		  */
 		protected def and(condition :GlobalBoolean[From[M] WithParam Arg]) :And
@@ -802,19 +803,19 @@ object TableStatement {
 		  * combining the ''where'' clause of this instance and the given condition with ''and''.
 		  * The argument function is a constructor of an additional condition for the ''where'' clause,
 		  * accepting the mappings `M` of the rows in the affected table and
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] exposing the parameter $Arg.
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]] exposing the parameter $Arg.
 		  * Both mappings and their components $mappingConversionInfo
 		  *
-		  * The parameter mapping [[net.noresttherein.oldsql.sql.UnboundParam.FromParam FromParam]] for $Arg
+		  * The parameter mapping [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]] for $Arg
 		  * can be similarly converted to an `SQLExpression`. It does not define any components or columns
 		  * as properties and is treated as a composite type based on a previously provided
 		  * [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] type class for $Arg. If $Arg is a complex type,
 		  * its properties can be accessed by exposing them as components or columns of the parameter mapping,
 		  * using methods
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.apply[X<:P=>T,T](pick:X)* apply]],
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.opt[T:SQLForm](pick:P=>Option[T])* opt]],
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.col[T:ColumnForm](pick:P=>T)* col]] and
-		  * [[net.noresttherein.oldsql.sql.UnboundParam.FromParam.optcol[T:ColumnForm](pick:P=>Option[T])* optcol]],
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.apply[X<:P=>T,T](pick:X)* apply]],
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.opt[T:SQLForm](pick:P=>Option[T])* opt]],
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.col[T:ColumnForm](pick:P=>T)* col]] and
+		  * [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam.optcol[T:ColumnForm](pick:P=>Option[T])* optcol]],
 		  * which create a synthetic [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]]
 		  * expression for the parameter property, the usages of which will translate to additional JDBC parameters
 		  * initialized with values derived from $Arg:
@@ -823,7 +824,7 @@ object TableStatement {
 		  * }}}
 		  * @return a $DelLink $delResult
 		  */
-		def and(condition :(M[From[M] WithParam Arg], FromParam[Arg, RowProduct AndFrom ParamRelation[Arg]#Param])
+		def and(condition :(M[From[M] WithParam Arg], UnboundParam[Arg, RowProduct AndFrom ParamRelation[Arg]#Param])
 		                   => GlobalBoolean[From[M] WithParam Arg]) :And =
 			and(condition(table.row[From[M] WithParam Arg], whereDomain.last.mapping).anchor(whereDomain))
 
@@ -1154,12 +1155,12 @@ object TableStatement {
 		  * As the created expression doesn't declare [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters,
 		  * values of all expressions other than those referring to the affected table must be known - either
 		  * [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]] or
-		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters. The latter can be created
+		  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters. The latter can be created
 		  * using extension method [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL.? ?]]
 		  * available after importing [[net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameterSQL]]
 		  * (it is also present in packages [[net.noresttherein.oldsql.sql.lowercase sql.lowercase]]
 		  * and [[net.noresttherein.oldsql.sql.uppercase]]). Alternatively, any argument of type `V`
-		  * given to a comparison operator method ending with `?` is automatically promoted to a `SQLParameter[V]`
+		  * given to a comparison operator method ending with `?` is automatically promoted to a `BoundParam[V]`
 		  * internally.
 		  *
 		  * In order to avoid the hassle of providing the argument function in its full literal syntax with
@@ -1417,7 +1418,7 @@ object TableStatement {
 		var iter = overrides.view.flatMap(_.split(op)).to(ReversedList).reverseIterator
 		while (iter.hasNext) {
 			val setter = iter.next()
-			val column = setter.lvalue.component.mapping.castTo[ColumnMapping[_, _], ColumnMapping[_, From[M]]]
+			val column = setter.lvalue.component.mapping.castFrom[ColumnMapping[_, _], ColumnMapping[_, From[M]]]
 			val left = indexed.size
 			indexed = indexed - column
 			if (indexed.size != left)
@@ -1426,7 +1427,7 @@ object TableStatement {
 		iter = defaults.reverseIterator
 		while (iter.hasNext) {
 			val setter = iter.next()
-			val column = setter.lvalue.component.mapping.castTo[ColumnMapping[_, _], ColumnMapping[_, From[M]]]
+			val column = setter.lvalue.component.mapping.castFrom[ColumnMapping[_, _], ColumnMapping[_, From[M]]]
 			if (indexed.contains(column))
 				result = setter :: result
 		}
@@ -1467,7 +1468,7 @@ object TableStatement {
 			def filter[T](column :ColumnMapping[T, F]) :GlobalBoolean[F] =
 				mapping(column).opt(value) match {
 					case Got(columnValue) =>
-						domain.last \ column === SQLParameter(column.form)(columnValue)
+						domain.last \ column === BoundParam(column.form)(columnValue)
 					case _ => True
 				}
 			cond && filter(col)
@@ -1487,6 +1488,9 @@ object TableStatement {
 			)(condition)
 		}.foldLeft(False[From[M] WithParam Seq[Arg]])(_ || _)
 
+
+	private[sql] def seqAt[E](i :Int) :Seq[E] =?> (@~ ~ E) =
+		Optional { seq :Seq[E] => if (seq.sizeIs > i) Got(@~ ~ seq(i)) else Lack }
 }
 
 

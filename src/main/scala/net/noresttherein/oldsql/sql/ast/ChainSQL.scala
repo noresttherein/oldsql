@@ -44,6 +44,7 @@ case class ChainSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, I <: Chai
 
 	override def isGlobal :Boolean = last.isGlobal && init.isGlobal
 	override def isAnchored :Boolean = last.isAnchored && init.isAnchored
+	override def isAnchored(from :F) :Boolean = last.isAnchored(from) && init.isAnchored(from)
 
 	override def anchor(from :F) :ChainSQL[F, S, I, L] =
 		(init.anchor(from), last.anchor(from)) match {
@@ -72,22 +73,22 @@ case class ChainSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, I <: Chai
 
 	override def columnCount(implicit spelling :SQLSpelling) :Int = init.columnCount + last.columnCount
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		( "(" +: inlineSpelling(context, params).reduce(_.sql +: ", " +: _)) + ")"
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		( "(" +: explodedSpelling(from, context, params).reduce(_ +: ", " +: _)) + ")"
 
-	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
+	protected override def explodedSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                          (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
 	{
-		val first = spelling.explode(init :SQLExpression[E, LocalScope, I])(context, params)
+		val first = spelling.explode(init)(from, context, params)
 		val second = first match {
-			case Seq() => spelling.explode(last :SQLExpression[E, LocalScope, L])(context, params)
+			case Seq() => spelling.explode(last)(from, context, params)
 			case columns =>
 				val prev = columns.last
-				spelling.explode(last :SQLExpression[E, LocalScope, L])(prev.context, prev.params)
+				spelling.explode(last)(from, prev.context, params)
 		}
 		//this is not ideal, as most likely these concatenations will take O(n^2) if first and second are lists
-		first ++: second
+		first :++ second
 	}
 
 

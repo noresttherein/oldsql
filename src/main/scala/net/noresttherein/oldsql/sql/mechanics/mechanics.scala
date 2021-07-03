@@ -10,4 +10,9 @@ package net.noresttherein.oldsql.sql
   * rendering of all SQL objects and features, and [[net.noresttherein.oldsql.sql.mechanics.SQLScribe SQLScribe]]
   * visitor providing a global framework for converting SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]].
   *///consider: renaming the package to familiars
-package object mechanics
+package object mechanics {
+//	/** A type used by [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] class hierarchy (and potentially others)
+//	  * to signify that a given member type is illegal/does not exist/has no values. Any methods returning this type
+//	  * will always throw an exception, methods accepting it, or other and any type figuring it in its signature is almost certainly also i*/
+//	type Invalid
+}

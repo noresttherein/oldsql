@@ -224,6 +224,9 @@ object ColumnWriteForm {
 	/** A column form which always writes `null` values. */
 	def nulls[T] :ColumnWriteForm[T] = ColumnForm.nulls
 
+	/** A column form which does not set any statement parameters and has the literal of "null".
+	  * Useful for ''OUT''-only stored procedure parameters.
+	  */
 	val gap :ColumnWriteForm[Any] =
 		new GapSQLWriteForm(1) with IgnoringColumnWriteForm {
 			override def sqlType = JDBCType.NULL

@@ -2,9 +2,11 @@ package net.noresttherein.oldsql.sql.ast
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
+import net.noresttherein.oldsql.exceptions.Bug
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLBoolean, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
+import net.noresttherein.oldsql.sql.SQLBoolean.{False, True}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
 import net.noresttherein.oldsql.sql.ast.AndSQL.{AndVisitor, CaseAnd}
@@ -12,7 +14,6 @@ import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.CompositeColumnSQL.UnaryColumnOperator
 import net.noresttherein.oldsql.sql.ast.NotSQL.{CaseNot, NotVisitor}
 import net.noresttherein.oldsql.sql.ast.OrSQL.{CaseOr, OrVisitor}
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.{False, True}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
@@ -75,9 +76,9 @@ final case class NotSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope](value
 	protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ColumnVisitor[F, Y]) :Y[S, Boolean] =
 		visitor.not(this)
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-				(spelling.NOT + " ") +: value.inParens(context, params)
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+				(spelling.NOT + " ") +: value.inParens(from, context, params)
 
 	override def toString :String = "NOT " + value
 }
@@ -139,14 +140,14 @@ sealed class AndSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope] private
 		visitor.and(this)
 
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		parts.scanLeft(SpelledSQL(spelling.TRUE, context, params)) {
-			(sql, bool) => bool.inParens(sql.context, sql.params)
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		parts.scanLeft(SpelledSQL(spelling.TRUE, context)) {
+			(sql, bool) => bool.inParens(from, sql.context, params)
 		} match {
 			case Seq(empty) => empty
-			case Seq(_, t @ _*) => t.reduce { (_2, _1) => _1.sql +: (" " + spelling.AND + " ") +: _2 }
-			case _ => throw new IllegalStateException("empty scanLeft result")
+			case Seq(_, t @ _*) => t.reduce { (_2, _1) => _1 +: spelling._AND_ +: _2 }
+			case _ => throw Bug("empty scanLeft result for " + parts + ".")
 		}
 
 
@@ -233,13 +234,13 @@ sealed class OrSQL[-F <: RowProduct, S >: LocalScope <: GlobalScope] private
 		visitor.or(this)
 
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		parts.scanLeft(SpelledSQL(spelling.TRUE, context, params)) {
-			(sql, bool) => bool.inParens(sql.context, sql.params)
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		parts.scanLeft(SpelledSQL(spelling.FALSE, context)) {
+			(sql, bool) => bool.inParens(from, sql.context, params)
 		} match {
 			case Seq(empty) => empty
-			case Seq(_, t @ _*) => t.reduce { (_2, _1) => _1.sql +: (" " + spelling.OR + " ") +: _2 }
+			case Seq(_, t @ _*) => t.reduce { (_2, _1) => _1 +: spelling._OR_ +: _2 }
 			case _ => throw new IllegalStateException("empty scanLeft result")
 		}
 

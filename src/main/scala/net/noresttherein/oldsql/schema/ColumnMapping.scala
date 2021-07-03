@@ -168,7 +168,7 @@ trait ColumnMapping[S, O]
 
 	/** Returns `Unique(this)`. */
 	override def columns :Unique[Column[_]] = Unique.single(this)
-
+	//consider: maybe these should always returns the column, with the semantic that the buffs on the component itself are ignored?
 	override def selectable :Unique[Column[_]] = selfUnless(NoSelect)
 	override def filterable :Unique[Column[_]] = selfUnless(NoFilter)
  	override def insertable :Unique[Column[_]] = selfUnless(NoInsert)

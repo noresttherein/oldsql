@@ -212,10 +212,11 @@ class LooseComponent[F <: RowProduct, M[A] <: BaseMapping[V, A], V] private[ast]
 		else LooseComponentConversion(this, lift)
 
 	override def isAnchored = false
+	override def isAnchored(from :F) = false
 
 	override def anchor(from :F) :ComponentSQL[F, M] = {
 		val relation = from.fullTableStack(offset).asInstanceOf[RelationSQL[F, MappingOf[Any]#TypedProjection, Any, F]]
-		relation.include(includes).exclude(excludes) \ mapping
+		relation.alter(includes, excludes) \ mapping
 	}
 
 
@@ -265,15 +266,15 @@ class LooseComponent[F <: RowProduct, M[A] <: BaseMapping[V, A], V] private[ast]
 			"Not anchored component " + this + " has an undetermined number of effective columns."
 		)
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
 		throw new UnsupportedOperationException(
 			"Not anchored component " + this + " cannot be spelled. This is likely a bug."
 		)
 
-	protected override def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]] =
-		defaultSpelling(context, params)::Nil
+	protected override def explodedSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                          (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
+		defaultSpelling(from, context, params)::Nil
 
 
 	override def isomorphic(expression :SQLExpression.*) :Boolean = equals(expression)

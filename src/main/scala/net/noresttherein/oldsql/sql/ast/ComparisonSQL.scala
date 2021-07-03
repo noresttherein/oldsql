@@ -41,10 +41,12 @@ trait ComparisonSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope, T]
 //			matcher.comparison(this)
 	//fixme: column-based comparisons. Need to override === in ComponentSQL at least for literals
 	//  this will be hard because the order of params can be changed if there are params in left and right
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		spelling(left :SQLExpression[E, S, T])(context, params) + (" " + symbol + " ") +
-			(spelling(right :SQLExpression[E, S, T])(_, _))
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+	{
+		val l = spelling(left)(from, context, params) + (" " + spelling.operator(symbol) + " ")
+		l + spelling(right)(from, l.context, params)
+	}
 
 
 	override def sameAs(that :CompositeSQL.*) :Boolean = that match {

@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.collection.{Chain, Opt}
 import net.noresttherein.oldsql.exceptions.InseparableExpressionException
 import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.Extractor.{Optional, Requisite}
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, SQLForm, SQLReadForm}
+import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, Relation, SQLForm, SQLReadForm}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, RefinedMapping}
 import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.{slang, OperationType}
@@ -18,7 +18,7 @@ import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ExpressionVisitor, GlobalScope, GlobalSQL, Lift, LocalScope, SQLTypeUnification}
 import net.noresttherein.oldsql.sql.SQLExpression.Lift.ComposedLift
 import net.noresttherein.oldsql.sql.StoredProcedure.Out
-import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, ChainSQL, ComparisonSQL, CompositeSQL, EqualitySQL, InequalitySQL, IsNull, LooseComponent, MappingSQL, QuerySQL, SelectSQL, SQLNull, SQLParameter, SQLTerm}
+import net.noresttherein.oldsql.sql.ast.{denullify, AggregateSQL, BoundParam, ChainSQL, ComparisonSQL, CompositeSQL, EqualitySQL, GroupingSQL, InequalitySQL, IsNull, LooseComponent, MappingSQL, QuerySQL, SelectSQL, SQLNull, SQLTerm}
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.{CaseComposite, CompositeVisitor}
 import net.noresttherein.oldsql.sql.ast.ConversionSQL.{MappedSQL, PromotionConversion}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.{CaseMapping, MappingVisitor}
@@ -44,7 +44,7 @@ import slang._
   * [[net.noresttherein.oldsql.sql.ColumnSQL column]] expression, or multiple columns, including some
   * abstract expressions with flexible numbers of columns. Some subclasses may represent higher-level concepts
   * and be represented by more complex expressions in SQL; for example,
-  * [[net.noresttherein.oldsql.sql.JoinedRelation JoinedRelation]] is an expression representing a whole
+  * [[net.noresttherein.oldsql.sql.ast.JoinedRelation JoinedRelation]] is an expression representing a whole
   * table from a ''select's'' ''from'' clause. Some expressions do not translate to unique final SQL for two reasons:
   *   1. How it is rendered may depend on the context, for example
   *      [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expressions can include different
@@ -60,7 +60,7 @@ import slang._
   * Every expression can depend on non-constant identifiers: columns of tables from its ''from'' clause
   * (as well as components of the corresponding mappings), columns and components of tables in ''from'' clauses of
   * any ''select'' expressions in which this expression is designed to be embedded, as well as
-  * [[net.noresttherein.oldsql.sql.UnboundParam unbound]] query parameters. Their are represented jointly
+  * [[net.noresttherein.oldsql.sql.ParamClause unbound]] query parameters. Their are represented jointly
   * by a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] (typically referred to simply as a ''from'' clause
   * for simplicity) called the ''domain'' of the expression. An expression is ''based'' on a ''from'' clause `F`,
   * if `F` is its domain - a subtype of its first parameter. This class is contravariant in `F`, meaning
@@ -162,9 +162,9 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  *             [[net.noresttherein.oldsql.sql.SQLExpression.Lift Lift]] evidence for `V -> U` and `X -> U`.
 	  * @param form an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] used to set the value of the parameter
 	  *             in the `PreparedStatement` using this expression.
-	  * @see [[net.noresttherein.oldsql.sql.ast.SQLParameter]] the expression for ''bound'' SQL parameters.
-	  * @see [[net.noresttherein.oldsql.sql.UnboundParam]] an ''unbound'' parameter introduced to the underlying `RowProduct`.
-	  */ //we need SQLForm, not SQLReadForm because SQLParameter requires it, in case it's used in the select clause.
+	  * @see [[net.noresttherein.oldsql.sql.ast.BoundParam]] the expression for ''bound'' SQL parameters.
+	  * @see [[net.noresttherein.oldsql.sql.ParamClause]] an ''unbound'' parameter introduced to the underlying `RowProduct`.
+	  */ //we need SQLForm, not SQLReadForm because BoundParam requires it, in case it's used in the select clause.
 	def ==?[X, U](value :X)(implicit lift :SQLTypeUnification[V, X, U], form :SQLForm[X]) :ColumnSQL[F, S, Boolean] =
 		this === value.? //todo: try to get rid of the form parameter
 
@@ -201,7 +201,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  * The argument value will be rendered as a ''literal'' constant in the created
 	  * [[java.sql.PreparedStatement PreparedStatement]], so this method should be used only if the built statement
 	  * do not vary in this subexpression. Use [[net.noresttherein.oldsql.sql.SQLExpression.==? ==?]] if `that` should
-	  * become a [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter instead.
+	  * become a [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameter instead.
 	  * @param that a scala value of a type which can be promoted to the same type `U` as the value type
 	  *             of this expression. It will translate to an SQL literal.
 	  * @param lift a witness to the fact that the values of the two expressions can be automatically promoted
@@ -523,6 +523,9 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  */
 	def out :SQLExpression[F, S, Out[V]] = to[Out[V]]
 
+	/** An SQL expression for singleton [[net.noresttherein.oldsql.collection.Chain Chain]] (tuple)
+	  * containing this expression
+	  */
 	def chain :ChainTuple[F, S, @~ ~ V] = EmptyChain ~ this
 
 	/** Maps the read (selected) scala value of this expression, without any effect on the actual generated SQL. */
@@ -540,7 +543,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  * [[net.noresttherein.oldsql.sql.Subselect Subselect]] 'joins' can occur in `E` after `F`.
 	  * This method is thus applicable to a strictly smaller set of ''from'' clauses than
 	  * [[net.noresttherein.oldsql.sql.SQLExpression.expand expand]], but is available for all expressions.
-	  */
+	  */ //todo: return this if ext.length == 0
 	def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :SQLExpression[E, S, V]
 
 	/** Treat this expression as an expression based on a ''from'' clause expanding (i.e. containing additional tables)
@@ -567,14 +570,29 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 
 	def groundValue :Opt[V]
 
-	/** True, if this expression does not contain any
-	  * [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]] subexpression. Loose components
+	/** An expression is ''anchored'' if this it does not contain any
+	  * [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]] as a subexpression. Loose components
 	  * are placeholder expression adapters of [[net.noresttherein.oldsql.schema.Mapping Mapping]] instances
 	  * with a `RowProduct` subtype as their `Origin` type. They are not tied to any particular relation in `F`,
 	  * which makes converting any enclosing expression into valid SQL impossible.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.anchor]]
+	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.isAnchored(from:F)*]]
 	  */
 	def isAnchored :Boolean
+
+	/** An expression is ''anchored in `clause :F`'' if it doesn't contain any
+	  * [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]] as a subexpression (`this.isAnchored`)
+	  * and all [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] subexpressions have as their
+	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL.relation relations]] instances equal to those
+	  * present in `clause` at the corresponding positions. While any expression anchored in some clause
+	  * could be translated to SQL based on their carried information, an expression used in
+	  * a [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]] is always rendered in the context of relations
+	  * listed by its ''from'' clause, rather than the one the expression is anchored in. While the types
+	  * will always match, different relations can possibly use the same mapping, and any table can have
+	  * its column set altered - such differences are not reflected in the type of the expression, but
+	  * affect the form of the generated SQL.
+	  */
+	def isAnchored(from :F) :Boolean
 
 	/** Replaces all occurrences of [[net.noresttherein.oldsql.sql.ast.LooseComponent LooseComponent]]
 	  * with a [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] using the relation at
@@ -582,10 +600,10 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  */
 	def anchor(from :F) :SQLExpression[F, S, V]
 
-	/** Binds all occurrences of [[net.noresttherein.oldsql.sql.UnboundParam unbound]] parameters to the apprpriate
-	  * value extracted from `args`, replacing them with [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]]
+	/** Binds all occurrences of [[net.noresttherein.oldsql.sql.ParamClause unbound]] parameters to the apprpriate
+	  * value extracted from `args`, replacing them with [[net.noresttherein.oldsql.sql.ast.BoundParam bound]]
 	  * parameters. The resulting expression is based on a `RowProduct` resulting from this expression's base by
-	  * removing all occurrences of `UnboundParam` pseudo joins.
+	  * removing all occurrences of `ParamClause` pseudo joins.
 	  */ //todo: make this a virtual method
 	def bind[E <: F { type Params = Args }, Args](base :E, args :Args) :SQLExpression[base.GeneralizedParamless, S, V] =
 		SQLScribe.applyParams(base, base.bind(args) :base.GeneralizedParamless)(args)(this)
@@ -618,7 +636,7 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  *             containing all the relations listed in `F` in its suffix.
 	  * @return a `SelectSQL` based on this instance's `Implicit` type (that is, embeddable only as an expression
 	  *         in instances of this `this.Implicit`), using the given arbitrary expression as the ''select'' clause.
-	  * @throws IllegalArgumentException if the `from` clause is parameterized (contains any `UnboundParam` joins).
+	  * @throws IllegalArgumentException if the `from` clause is parameterized (contains any `ParamClause` joins).
 	  * @throws UnsupportedOperationException if this expression cannot be used for a ''select'' clause.
 	  */
 	def selectFrom(from :F) :SelectSQL[from.Base, V] =
@@ -682,6 +700,11 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 		)
 
 
+	/** Splits this SQL expression into individual [[net.noresttherein.oldsql.sql.ColumnSQL column]] expressions
+	  * (of ''distinct'' types).
+	  * @param scope the type of a database operation (''insert'', ''select'', etc.) which defines the exact column set
+	  *              of this expression.
+	  */
 	@throws[InseparableExpressionException]("if the expression cannot be separated into individual columns, " +
 	                                        "for example a multi-column SQL select.")
 	def split(implicit scope :OperationType) :Seq[ColumnSQL[F, S, _]]
@@ -693,13 +716,18 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	protected[sql] def applyToForwarder[Y[-_ >: LocalScope <: GlobalScope, _]](visitor :ExpressionVisitor[F, Y]) :Y[S, V] =
 		applyTo(visitor)
 
+	//todo: after Scala 3 expression refactor make this a method of all expressions, not only ComponentSQL
+//	def asGrouping :Relation[MappingOf[V]#Projection]
 
+	/** A collection of all [[net.noresttherein.oldsql.sql.CommonTableExpression common table expressions]] referenced
+	  * by this expression (within a ''from'' clause of some nested ''select'' subexpression).
+	  */
 	def withClause :WithClause = WithClause.empty
 
-	/** List of [[net.noresttherein.oldsql.sql.ast.SQLParameter ''bound'']] parameters used by this expression,
+	/** List of [[net.noresttherein.oldsql.sql.ast.BoundParam ''bound'']] parameters used by this expression,
 	  * in the order in which they would appear in the rendered SQL.
 	  */
-	def parameters :Seq[SQLParameter[_]] = collect { case x :SQLParameter[_] => x }
+	def parameters :Seq[BoundParam[_]] = collect { case x :BoundParam[_] => x }
 
 	/** Applies the given partial function recursively to all subexpressions of this expression (in the preorder). */
 	def collect[X](fun :PartialFunction[SQLExpression.*, X]) :Seq[X] = reverseCollect(fun, Nil).reverse
@@ -722,13 +750,6 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 
 
 
-//	private[sql] final def spell[P](spelling :SQLSpelling, inline :Boolean = false)(context :SQLContext[P])
-//	                               (implicit params :Parameterization[P, F]) :SpelledSQL[P] =
-//		if (inline) inlineSpelling(context)(params, spelling) else defaultSpelling(context)(params, spelling)
-//
-//	protected def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E], inline :Boolean = false)
-//	                                        (implicit spelling :SQLSpelling) :SpelledSQL[P, E]
-
 	/** Total number of columns in this expression, after inlining, as would be rendered in SQL in the given
 	  * SQL dialect.
 	  */
@@ -739,30 +760,32 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 	  * is required by the used DBMS. This method should not be exposed, as the clients of this class should
 	  * always use the `apply` method of `SQLSpelling` as the SQL formatter.
 	  */
-	protected def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                        (implicit spelling :SQLSpelling) :SpelledSQL[P, E]
+	protected def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                (implicit spelling :SQLSpelling) :SpelledSQL[P]
 
 	/** Translates this expression object into an annotated SQL string `SpelledSQL[P, E]`. This is the fallback method
 	  * used by [[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]] if no non-standard representation
 	  * is required for the used DBMS. This is similar to
-	  * [[net.noresttherein.oldsql.sql.SQLExpression.defaultSpelling defaultSpelling]], but multi-column expressions,
-	  * such as tuples and mapping components, are not surrounded in a pair of parenthesis (and all their subexpressions
-	  * are likewise inlined to the same level).
-	  */
+	  * [[net.noresttherein.oldsql.sql.SQLExpression.defaultSpelling defaultSpelling]], but returns SQL individually
+	  * for all member columns (including, recursively, all columns of subexpressions). Apart from the use cases
+	  * which require inserting specific SQL between the columns (for example, column-wise comparisons of components),
+	  * it is also used for expressions used in locations which require flat structure - in particular
+	  * ''select'' and ''group by'' clauses.
+	  */ //todo: rename to columnSpelling
 	@throws[InseparableExpressionException]("if the expression cannot be separated into individual column strings, " +
 	                                        "for example a multi-column SQL select.")
-	protected def inlineSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                       (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P, E]]
+	protected def explodedSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                 (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]]
 
-	private[sql] final def defaultSpelling[P, E <: F]
-	                       (spelling :SQLSpelling)(implicit context :SQLContext, params :Parameterization[P, E])
-			:SpelledSQL[P, E] =
-		defaultSpelling(context, params)(spelling)
+	private[sql] final def defaultSpelling[P](spelling :SQLSpelling)
+	                                         (from :F, context :SQLContext[P], params :Parameterization[P, F])
+			:SpelledSQL[P] =
+		defaultSpelling(from, context, params)(spelling)
 
-	private[sql] final def inlineSpelling[P, E <: F]
-	                       (spelling :SQLSpelling)(implicit context :SQLContext, params :Parameterization[P, E])
-			:Seq[SpelledSQL[P, E]] =
-		inlineSpelling(context, params)(spelling)
+	private[sql] final def explodedSpelling[P](spelling :SQLSpelling)
+	                                          (from :F, context :SQLContext[P], params :Parameterization[P, F])
+			:Seq[SpelledSQL[P]] =
+		explodedSpelling(from, context, params)(spelling)
 
 
 	/** Tests if this expression and the other expression are equal. It functions the same way as `equals`,
@@ -786,6 +809,43 @@ trait SQLExpression[-F <: RowProduct, -S >: LocalScope <: GlobalScope, V]
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[SQLExpression.*]
 
+	/** '''Throws `UnsupportedOperationException`'''. The intent of writing `expr1 == expr2` is unclear:
+	  * did the programmer mean to compare the two scala objects, or to create an SQL expression comparing
+	  * the two expressions? Use explicitly `equals` for the former and `===` (or `nulleq`) for the latter.
+	  */
+//	def ==(other :Any) :Any =
+//		throw new UnsupportedOperationException(
+//			"Expression expr1 == expr2 is unclear: was the intent object equality, or an SQL expression comparing " +
+//				"the two expressions? Use equals, sameAs for the former and === for the latter."
+//		)
+
+	/** Compares the two expressions for structural equality: two instances created by executing the same,
+	  * pure, functional code twice should always compare equal. This represents functional equivalency: the two
+	  * instances are interchangeable in contexts which do not share state with either of them
+	  * (that is, in-memory object graphs of the 'inspecting' code and the expressions are disjoint).
+	  * This relation is strictly looser than equality as defined by `equals`: while for most expression types
+	  * the two methods will yield the same results (and in fact, the default implementation of this method
+	  * delegates to `equals`), the primary difference lies in [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]]
+	  * expressions: they compare equal only if their [[net.noresttherein.oldsql.schema.Relation relations]] are equal.
+	  * The latter however almost universally implement equals as ''referential'' equality, i.e. any object
+	  * is equal only to itself. For database tables, this is largely irrelevant, as their instances are typically
+	  * static, unique for the whole application, and two expressions for the same table will compare equal.
+	  * However, [[net.noresttherein.oldsql.sql.ParamClause.ParamRelation ParamRelation]] instances are always
+	  * unique to a particular parameter in the ''from'' clause and thus recreating the same expression will result
+	  * in an expression unequal to the original.
+	  *
+	  * Like other mappings, [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam UnboundParam]] parameter mapping
+	  * will recognize only the components belonging to that instance - expressions derived from the value
+	  * of that particular parameter - which will make the two expressions incompatible in the sense that their parts
+	  * are ''not'' interchangeable, with attempts to combine the parameter relation of one expression
+	  * with subcomponents of another, of the same type and in the same position,
+	  * resulting in an [[IllegalArgumentException]] (typically) being thrown. This can happen in particular
+	  * when a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] instance is being modified and the expressions
+	  * used by its ''where''/''having'' etc. clauses are rewritten. However, when the expressions are used as wholes,
+	  * they can be safely combined to form larger expressions as long as the result is used in a purely additive
+	  * manner.
+	  */
+	def equiv(other :SQLExpression.*) :Boolean = this equals other
 	//todo: chunkedString
 }
 
@@ -826,7 +886,7 @@ object SQLExpression {
 	  * pseudo joins for all declared parameters. The parameters are available through this argument facade the same
 	  * way as in [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] method of
 	  * [[net.noresttherein.oldsql.sql.RowProduct RowProduct]]. Note that expressions created in this way cannot depend
-	  * on any tables: the only bottom terms possible are [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]]
+	  * on any tables: the only bottom terms possible are [[net.noresttherein.oldsql.sql.ast.BoundParam bound]]
 	  * and unbound parameters as well as [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]].
 	  * This is useful particularly for tuple expressions representing sequences of parameters.
 	  * {{{
@@ -852,7 +912,7 @@ object SQLExpression {
 	  * pseudo joins for all declared parameters.The parameters are available through this argument facade the same
 	  * way as in [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]] method of
 	  * [[net.noresttherein.oldsql.sql.RowProduct RowProduct]]. Note that expressions created in this way cannot depend
-	  * on any tables: the only bottom terms possible are [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]]
+	  * on any tables: the only bottom terms possible are [[net.noresttherein.oldsql.sql.ast.BoundParam bound]]
 	  * and unbound parameters as well as [[net.noresttherein.oldsql.sql.ast.SQLLiteral literals]].
 	  * This is useful particularly for tuple expressions representing sequences of parameters.
 	  * {{{
@@ -1017,7 +1077,7 @@ object SQLExpression {
 	  * in the local scope of a ''select'' as expected.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.LocalSQL]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PartOf]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.IncludedIn]]
 	  * @see [[net.noresttherein.oldsql.sql.ast.AggregateSQL]]
 	  * @see [[net.noresttherein.oldsql.sql.AggregateClause]]
 	  */ //the reverse direction of inheritance is because type inference always picks the upper bound when instantiating free type variables.
@@ -1031,7 +1091,7 @@ object SQLExpression {
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope]]
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy]]
-	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PartOf]]
+	  * @see [[net.noresttherein.oldsql.sql.RowProduct.IncludedIn]]
 	  */
 	type GlobalScope //consider: renaming to Discrete/RowScope
 
@@ -1043,8 +1103,8 @@ object SQLExpression {
 	  * of an SQL ''select'' based on the clause `F`. It is not allowed in the ''where'' clause
 	  * or within subselects of the select it is based on. This allows it to include aggregate expressions
 	  * such as `count(*)` as its subtypes.
-	  * @see [[net
-*      .noresttherein.oldsql.sql.SQLExpression.LocalScope]] @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL]]
+	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.LocalScope]]
+	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL]]
 	  * @see [[net.noresttherein.oldsql.sql.ast.AggregateSQL]]
 	  */ //todo: move it to package sql; rename to AggregateSQL/GroupSQL
 	type LocalSQL[-F <: RowProduct, V] = SQLExpression[F, LocalScope, V]
@@ -1057,7 +1117,7 @@ object SQLExpression {
 	  * [[net.noresttherein.oldsql.sql.ast.AggregateSQL aggregate]] expressions.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.GlobalScope]]
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.LocalSQL]]
-	  */ //todo: move to package sql; rename to DiscreteSQL/RowSQL
+	  */ //todo: move to package sql; rename to DiscreteSQL/RowSQL. Problem: RowBoolean doesn't suggest its meaning
 	type GlobalSQL[-F <: RowProduct, V] = SQLExpression[F, GlobalScope, V]
 
 	/** A type alias for [[net.noresttherein.oldsql.sql.SQLExpression SQL expressions]] independent of any relations

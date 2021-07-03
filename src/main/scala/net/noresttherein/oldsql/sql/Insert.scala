@@ -3,10 +3,10 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.OperationType.INSERT
 import net.noresttherein.oldsql.collection.{Chain, ReversedList}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.Opt.Got
+import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.MisspelledSQLException
 import net.noresttherein.oldsql.morsels.ChunkedString
-import net.noresttherein.oldsql.morsels.Extractor.Requisite
+import net.noresttherein.oldsql.morsels.Extractor.{Optional, Requisite}
 import net.noresttherein.oldsql.schema.{ColumnMapping, RelVar, SQLForm, Table}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
@@ -17,13 +17,13 @@ import net.noresttherein.oldsql.sql.DMLStatement.{AlteredResultStatement, BoundS
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult.{UpdateCount, UpdatedEntities}
 import net.noresttherein.oldsql.sql.Insert.implementation.{DefaultBatchInsert, DefaultEntityInsert, DefaultGroundInsert, DefaultInsert, DefaultInsertUpdatingEntity, GroundInsert, InsertReturning, InsertsReturning, ParamInsert}
 import net.noresttherein.oldsql.sql.Insert.syntax.{BatchInsertSet, DefaultInsertReturningEntity, DefaultInsertUpdatingOne, EntityInsertSet, GroundInsertFactory, GroundInsertOneFactory, GroundInsertSelect, GroundInsertSetRow, GroundMultiInsertFactory, InsertFacade, InsertMany, InsertOne, InsertParam, InsertReturningEntities, InsertReturningEntity, InsertReturningKey, InsertReturningKeys, InsertSelect, InsertSet, InsertUpdatingOne, ParamEntityInsert, RowInsert, RowInsertSet}
+import net.noresttherein.oldsql.sql.ParamClause.{ParamRelation, UnboundParam}
 import net.noresttherein.oldsql.sql.Returning.implementation.{AbstractReturningEntities, GenericBatchReturningEntities, ReturningProperTuple, ReturningTupleSeqTemplate, ReturningTupleSingleton, ReturningTuplesTemplate}
 import net.noresttherein.oldsql.sql.Returning.syntax.{BatchReturningEntitiesClause, BatchReturningTuplesClause, EntitiesBatch, EntitiesStatement, EntityStatement, EntityStatementsTemplate, GenericReturningEntitiesClause, GenericRowStatements, GroundBatchReturningEntitiesClause, GroundBatchReturningTuplesClause, GroundEntitiesBatch, GroundRowsBatch, ReturningEntitiesClause, ReturningEntitiesClauses, ReturningEntityClause, ReturningTupleClause, ReturningTuplesClause, ReturningTuplesClauses, ReturningTuplesClausesTemplate, RowsBatch, RowsStatement, RowStatement}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.TableStatement.{GroundSetClauseFactory, GroundSupplantClauseFactory, ReturningClauseFactory, SetClauseFactory, SupplantClauseFactory}
-import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamRelation}
+import net.noresttherein.oldsql.sql.TableStatement.{seqAt, GroundSetClauseFactory, GroundSupplantClauseFactory, ReturningClauseFactory, SetClauseFactory, SupplantClauseFactory}
 import net.noresttherein.oldsql.sql.ast.QuerySQL
-import net.noresttherein.oldsql.sql.ast.SQLParameter
+import net.noresttherein.oldsql.sql.ast.BoundParam
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.MappingReveal.MappingSubject
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
@@ -560,7 +560,7 @@ object Insert {
 		trait GenericInsertFactory[Arg, M[O] <: MappingAt[O], +Res]
 			extends Any with SetClauseFactory[Arg, M, JoinParam.Last[Arg], Res]
 		{
-			def setAll(setters :(M[From[M]], FromParam.Last[Arg]) => Seq[From[M] := SetDomain]) :Res = {
+			def setAll(setters :(M[From[M]], UnboundParam.Last[Arg]) => Seq[From[M] := SetDomain]) :Res = {
 				val base = setDomain
 				setAll(setters(table.row, base.last.mapping).map(_.anchor(base.left, base)))
 			}
@@ -569,7 +569,7 @@ object Insert {
 		sealed trait GenericSupplantedInsertFactory[Arg, M[O] <: MappingAt[O], +Res]
 			extends Any with SupplantClauseFactory[Arg, M, JoinParam.Last[Arg], Res]
 		{
-			def supplantAll(setters :(M[From[M]], FromParam.Last[Arg]) => Seq[From[M] := SetDomain]) :Res = {
+			def supplantAll(setters :(M[From[M]], UnboundParam.Last[Arg]) => Seq[From[M] := SetDomain]) :Res = {
 				val base = setDomain
 				supplantAll(setters(table.row, base.last.mapping).map(_.anchor(base.left, base)))
 			}
@@ -600,7 +600,7 @@ object Insert {
 		                   (protected override val setDomain :From[M] WithParam Arg)
 			extends /*AnyVal with */GenericInsertFactory[Arg, M, RowInsertSet[Arg, M, Int]]
 		{
-			protected override def table :RelVar[M] = setDomain.left.table.castTo[Table[M], RelVar[M]]
+			protected override def table :RelVar[M] = setDomain.left.table.castFrom[Table[M], RelVar[M]]
 
 			protected override def setAll(setters :Seq[From[M] := JoinParam.Last[Arg]]) :RowInsertSet[Arg, M, Int] =
 				new DefaultInsert[Arg, S, M](setDomain, table, setters)
@@ -613,7 +613,7 @@ object Insert {
 		                        (protected override val setDomain :From[M] WithParam Arg)
 			extends AnyVal with GenericInsertFactory[Arg, M, BatchInsertSet[Arg, M, Int]]
 		{
-			protected override def table :RelVar[M] = setDomain.left.table.castTo[Table[M], RelVar[M]]
+			protected override def table :RelVar[M] = setDomain.left.table.castFrom[Table[M], RelVar[M]]
 
 			protected override def setAll(setters :Seq[From[M] := JoinParam.Last[Arg]]) :BatchInsertSet[Arg, M, Int] =
 				new DefaultBatchInsert[Arg, S, M](setDomain, table, setters)
@@ -635,9 +635,9 @@ object Insert {
 			val setters :Seq[From[M] := JoinParam.Last[Arg]]
 			def setters[Xs <: Chain](domain :JoinParam.Last[Xs], get :Xs => Args) :Seq[From[M] := JoinParam.Last[Xs]]
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Arg, RowProduct] = {
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Arg] = {
 				val comps = components
-				val prefix = (spelling.INSERT + ' ' + spelling.INTO + ' ')
+				val prefix = spelling.INSERT + spelling._INTO_
 				val tableName = spelling.table(table, "")(SQLContext(), Parameterization.paramless)
 				val columnNames = comps.iterator.flatMap(_.insertedByDefault)
 				                       .mkString("(", ", ", ") " + spelling.VALUES)
@@ -655,7 +655,7 @@ object Insert {
 					res.delete(res.length - 2, res.length).append(')').toString
 				}
 				val sql = (prefix +: tableName.sql) + columnNames + params
-				SpelledSQL[Arg, Nothing](sql, tableName.context, tableName.params :+ argForm)
+				SpelledSQL[Arg, Nothing](sql, tableName.context, argForm)
 			}
 
 			private[Insert] def export[T](component :M[From[M]] => RefinedMapping[T, From[M]])
@@ -803,7 +803,7 @@ object Insert {
 			   with SupplantClauseFactory[S, M, JoinParam.Last[S], EntitiesInsertSet[S, M, Int]]
 		{
 			protected override def setAll(setters :Seq[From[M] := JoinParam.Last[S]]) :EntitiesInsertSet[S, M, Int] =
-				new MultiEntityInsertSet[S, M](domain, setDomain, table, setters, max)
+				new EntityMultiInsertSet[S, M](domain, setDomain, table, setters, max)
 
 			protected override def supplantAll(setters :Seq[From[M] := JoinParam.Last[S]])
 					:EntitiesInsertSet[S, M, Int] =
@@ -816,7 +816,7 @@ object Insert {
 				val export = table.export.asInstanceOf[RefinedMapping[S, Unit]]
 				implicit val paramForm = export.insertForm <> export.selectForm
 				(0 until max).map { i =>
-					domain.left.last := domain.last \ domain.last.mapping(_(i))
+					domain.left.last := domain.last \ domain.last.mapping.comp(seqAt(i))
 				}
 			}
 		}
@@ -840,13 +840,8 @@ object Insert {
 			override lazy val setters :Seq[From[M] := JoinParam.Last[Seq[Arg]]] =
 				(0 until max).flatMap { i =>
 					val scribe = SQLScribe.replaceParam(
-						setDomain, domain :JoinParam.Last[Seq[Arg]], setDomain.last.toRelationSQL, domain.last.toRelationSQL)(
-						Requisite { args :Seq[Arg] =>
-							if (args.sizeIs > i) args(i)
-							else throw new IllegalArgumentException(
-								s"Cannot insert ${args.length} elements with an insert template '$this' for $max rows: " + args
-							)
-						})
+						setDomain, domain :JoinParam.Last[Seq[Arg]],
+						setDomain.last.toRelationSQL, domain.last.toRelationSQL)(seqAt(i))
 					setOne map { set =>
 						def update[T](setter :ComponentSetter[From[M], JoinParam.Last[Arg], T]) =
 							setter.lvalue := scribe(setter.rvalue)
@@ -856,18 +851,18 @@ object Insert {
 		}
 
 
-		private class MultiEntityInsertSet[S, M[O] <: BaseMapping[S, O]] private[Insert]
+		private class EntityMultiInsertSet[S, M[O] <: BaseMapping[S, O]] private[Insert]
 		              (protected override val domain :From[M] WithParam Seq[S],
 		               protected override val setDomain :From[M] WithParam S, override val table :RelVar[M],
 		               override val setOne :Seq[From[M] := JoinParam.Last[S]], override val max :Int)
 			extends MultiInsertSet[S, S, M](domain, setDomain, table, setOne, max)
 				with EntitiesInsertSet[S, M, Int] with ParamEntitiesInsert[S, M, Int]
 		{
-			protected override def setAll(setters :Seq[From[M] := JoinParam.Last[S]]) :MultiEntityInsertSet[S, M] =
-				new MultiEntityInsertSet[S, M](domain, setDomain, table, setOne :++ setters, max)
+			protected override def setAll(setters :Seq[From[M] := JoinParam.Last[S]]) :EntityMultiInsertSet[S, M] =
+				new EntityMultiInsertSet[S, M](domain, setDomain, table, setOne :++ setters, max)
 
-			protected override def set(setter :From[M] := JoinParam.Last[S]) :MultiEntityInsertSet[S, M] =
-				new MultiEntityInsertSet[S, M](domain, setDomain, table, setOne, max)
+			protected override def set(setter :From[M] := JoinParam.Last[S]) :EntityMultiInsertSet[S, M] =
+				new EntityMultiInsertSet[S, M](domain, setDomain, table, setOne, max)
 		}
 
 
@@ -1069,7 +1064,7 @@ object Insert {
 			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Int] =
 				visitor.insertSelect[Args, S, M](this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] = {
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] = {
 				//todo: this is extremely simplistic, no reconciliation or validation
 				val mapping = table.export[Unit]
 				val columns = select.export[Unit].selectedByDefault
@@ -1084,8 +1079,8 @@ object Insert {
 					}
 				}
 				val noParams = Parameterization.paramless[From[M]]
-				val preamble = spelling.INSERT + " " + spelling.INTO + " "
-				val tableSQL = spelling.table[@~, From[M], M](table, "")(SQLContext(), noParams)
+				val preamble = spelling.INSERT + spelling._INTO_
+				val tableSQL = spelling.table[@~, M](table, "")(SQLContext(), noParams)
 				val columnsString = columns.mkString("(", ", ", ") ")
 				preamble +: tableSQL.sql +: columnsString +: spelling.spell(select)
 			}
@@ -1146,7 +1141,7 @@ object Insert {
 			extends AnyVal with InsertSelectFactory[S, M]
 			   with GenericGroundInsertFactory[M, GroundInsertSetRow[M, Int]]
 		{
-			protected override def table :RelVar[M] = domain.table.castTo[Table[M], RelVar[M]]
+			protected override def table :RelVar[M] = domain.table.castFrom[Table[M], RelVar[M]]
 
 			override def setAll(setters :Seq[From[M] := RowProduct]) :GroundInsertSetRow[M, Int] =
 				new DefaultGroundInsert[S, M](domain, table, setters)
@@ -1202,11 +1197,11 @@ object Insert {
 			}
 */
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any, RowProduct] = {
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any] = {
 				val columns = table.export[Unit].insertedByDefault
-				val prefix = spelling.INSERT + ' ' + spelling.INTO + ' '
+				val prefix = spelling.INSERT + spelling._INTO_
 				val noParams = Parameterization.paramless[From[M]]
-				val tableName = spelling.table[Any, RowProduct, M](table, "")(SQLContext(), noParams)
+				val tableName = spelling.table[Any, M](table, "")(SQLContext(), noParams)
 				val columnNames = columns.iterator.map(_.name).mkString("(", ", ", ") " + spelling.VALUES)
 				val preamble = (prefix +: tableName) + columnNames
 				val mapping = table.row[Unit]
@@ -1216,7 +1211,7 @@ object Insert {
 						val separator = if (s eq acc) s + '(' else s + ", "
 						def addParam[T](column :ColumnMapping[T, Unit]) =
 							mapping(column).opt(value) match {
-								case Got(x) => separator + (spelling(SQLParameter(x)(column.form))(_, _))
+								case Got(x) => separator + (spelling(BoundParam(x)(column.form))(_, noParams))
 								case _ => separator + spelling.NULL
 							}
 						addParam(col)
@@ -1253,16 +1248,18 @@ object Insert {
 			protected override def setDomain :From[M] = domain
 			override def result = UpdateCount
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any, RowProduct] = {
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any] = {
 				val inInsert = spelling.inInsert
 				val valueSets = values map { value =>
 					TableStatement.supplant[S, M, RowProduct](INSERT, table, ColumnSetter.inserts(table, value), overrides)
 				}
 				val columnCount = valueSets.head.length
 				val preamble = SpelledSQL(implementation.spellValuesClause(this)(valueSets.head)(inInsert))
-				((preamble :SpelledSQL[Any, RowProduct]) /: valueSets) { (sql, setters) =>
+				((preamble :SpelledSQL[Any]) /: valueSets) { (sql, setters) =>
 					val start = if (sql eq preamble) sql else sql + ", "
-					start + (implementation.spellValues[Any, M, RowProduct](this, columnCount)(setters)(_, _)(inInsert))
+					start + (implementation.spellValues[Any, M, RowProduct](
+						this, columnCount)(setters)(_, Parameterization.paramless)(inInsert)
+					)
 				}
 			}
 
@@ -1368,7 +1365,7 @@ object Insert {
 			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Any, Int] =
 				visitor.insertSelect[S, M](this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any, RowProduct] = {
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any] = {
 				val mapping = table.export[Unit]
 				val columns = select.export[Unit].selectedByDefault
 				columns.foreach { column =>
@@ -1382,10 +1379,10 @@ object Insert {
 					}
 				}
 				val noParams = Parameterization.paramless[From[M]]
-				val preamble = spelling.INSERT + " " + spelling.INTO + " "
-				val tableSQL = spelling.table[@~, From[M], M](table, "")(SQLContext(), noParams)
+				val preamble = spelling.INSERT + spelling._INTO_
+				val tableSQL = spelling.table[@~, M](table, "")(SQLContext(), noParams)
 				val columnsString = columns.mkString("(", ", ", ") ")
-				(preamble +: tableSQL.sql +: columnsString +: spelling.spell(select)) compose { _ => @~ }
+				(preamble +: tableSQL.sql +: columnsString +: spelling.spell(select)) adapt { _ => @~ }
 			}
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroundInsertSelect[_, MappingAt @unchecked]]
@@ -1425,10 +1422,10 @@ object Insert {
 			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Int] =
 				visitor.paramInsert(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] =
 				implementation.spell[@~ ~ Args, M, From[M] WithParam Args](this)(setters)(
 					SQLContext().param(""), domain.parameterization //"" is safe only because it is the only param
-				) compose { @~ ~ _ }
+				) adapt { @~ ~ _ }
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamInsert[_, MappingAt @unchecked]]
 
@@ -1483,9 +1480,9 @@ object Insert {
 			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Any, Int] =
 				visitor.groundInsert(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any, RowProduct] =
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any] =
 				implementation.spell[@~, M, From[M]](this)(setters)(SQLContext(), Parameterization.paramless[From[M]])
-					.compose { _ => @~ }
+					.adapt { _ => @~ }
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroundInsert[MappingAt @unchecked]]
 
@@ -1705,7 +1702,7 @@ object Insert {
 		                        (base :From[M] WithParam X, setters :Seq[From[M] := JoinParam.Last[X]], arg :X)
 				:Seq[From[M] := RowProduct] =
 		{
-			val binder = SQLScribe.applyParam(base, base.left :RowProduct, arg, 0)
+			val binder = SQLScribe.applyParam(base, base.left :RowProduct, arg)
 			def bindOne[T](update :ComponentSetter[From[M], RowProduct AndFrom ParamRelation[X]#Param, T]) =
 				ComponentSetter(update.lvalue, binder(update.rvalue))
 			setters.map(bindOne(_))
@@ -1716,7 +1713,7 @@ object Insert {
 		private[Insert] def spell[X, M[O] <: MappingAt[O], F <: RowProduct { type Params <: X }]
 		                         (self :Insert[Nothing, M, Any])(setters :Seq[From[M] := F])
 		                         (context :SQLContext, params :Parameterization[X, F])
-		                         (implicit spelling :SQLSpelling) :SpelledSQL[X, RowProduct] =
+		                         (implicit spelling :SQLSpelling) :SpelledSQL[X] =
 		{
 			val spell = spelling.inInsert
 			val columnCount = (0 /: setters) { (count, update) =>
@@ -1738,7 +1735,7 @@ object Insert {
 		{
 			val mapping = self.table.export[From[M]]
 			val noParams = Parameterization.paramless[From[M]]
-			val preamble = SpelledSQL(spelling.INSERT + " " + spelling.INTO + " ", SQLContext(), noParams)
+			val preamble = ChunkedString(spelling.INSERT + spelling._INTO_)
 			val tableSQL = spelling.table(self.table, "")(SQLContext(), noParams)
 
 			val columns = setters.flatMap { update =>
@@ -1753,25 +1750,22 @@ object Insert {
 			if (columns.isEmpty)
 				throw new MisspelledSQLException(s"Illegal DML '$self': cannot insert zero columns.")
 			val columnsString = columns.iterator.map(_.name).mkString("(", ", ", ") " + spelling.VALUES + " ")
-			preamble.sql + tableSQL.sql + columnsString
+			preamble + tableSQL.sql + columnsString
 		}
 
 		private[Insert] def spellValues[X, M[O] <: MappingAt[O], F <: RowProduct { type Params <: X }]
 		                               (self :Insert[Nothing, M, Any], columnCount :Int)(setters :Seq[From[M] := F])
 		                               (context :SQLContext, params :Parameterization[X, F])
-		                               (implicit spelling :SQLSpelling) :SpelledSQL[X, RowProduct] =
+		                               (implicit spelling :SQLSpelling) :SpelledSQL[X] =
 		{
-			val values = setters.flatMapWith(params) { (ps, update) =>
-				val sqls = spelling.explode(update.rvalue)(context, ps)
-				if (sqls.isEmpty) (ps, sqls) else (sqls.last.params, sqls)
-			}
+			val values = setters.flatMap { update => spelling.explode(update.rvalue)(context, params) }
 			if (values.isEmpty)
 				throw new MisspelledSQLException(s"Illegal DML '$self': cannot insert zero columns.")
 			if (values.length != columnCount)
 				throw new MisspelledSQLException(
 					s"Illegal DML '$self': number of values $values differs from the expected column number $columnCount."
 				)
-			("(" +: values.reduce(_.sql +: ", " +: _)) + ")"
+			"(" +: (values.reduce(_ + ", " + _) + ")")
 		}
 	}
 

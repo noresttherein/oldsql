@@ -31,19 +31,20 @@ trait AggregateFunction extends Serializable {
 	val name :String
 
 	protected def defaultSpelling[P, F <: RowProduct](arg :ColumnSQL[F, LocalScope, _], distinct :Boolean = false)
-	                                                 (context :SQLContext, params :Parameterization[P, F])
+	                                                 (from :F, context :SQLContext[P], params :Parameterization[P, F])
 	                                                 (implicit spelling :SQLSpelling)
-			:SpelledSQL[P, F] =
+			:SpelledSQL[P] =
 	{
-		val prefix = SpelledSQL(spelling.function(name) + (if (distinct) "(DISTINCT" else "("), context, params)
-		prefix + (spelling(arg)(_, _)) + ")"
+		val prefix = spelling.function(name) + (if (distinct) "(" + spelling.DISTINCT else "(")
+		prefix +: (spelling(arg)(from, context, params) + ")")
 	}
 
-	private[sql] final def defaultSpelling[P, F <: RowProduct](spelling :SQLSpelling)
-	                                                          (arg :ColumnSQL[F, LocalScope, _], distinct :Boolean)
-	                                                          (implicit context :SQLContext, params :Parameterization[P, F])
-			:SpelledSQL[P, F] =
-		defaultSpelling(arg, distinct)(context, params)(spelling)
+	private[sql] final def defaultSpelling[P, F <: RowProduct]
+	                                      (spelling :SQLSpelling)
+	                                      (arg :ColumnSQL[F, LocalScope, _], distinct :Boolean)
+	                                      (from :F, context :SQLContext[P], params :Parameterization[P, F])
+			:SpelledSQL[P] =
+		defaultSpelling(arg, distinct)(from, context, params)(spelling)
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[AggregateFunction]
 
@@ -93,8 +94,6 @@ object AggregateFunction {
 		/** Represents the `COUNT(*)` SQL expression. Note that this stands for the whole expression, not only
 		  * the '*' within it.
 		  */
-//		final val * :AggregateSQL[FromSome, AggregateClause, Nothing, Int] =
-//			new DefaultAggregateSQL[FromSome, AggregateOf[FromSome], Nothing, Int](this, AllColumns, false)
 		val * :AggregateSQL[FromSome, AggregateClause, Nothing, Int] =
 			new AggregateSQL[FromSome, AggregateClause, Nothing, Int] {
 				override def readForm :ColumnReadForm[Int] = ColumnReadForm[Int]
@@ -109,20 +108,16 @@ object AggregateFunction {
 					override def isDistinct = true
 					override def distinct = this
 
-					protected override def defaultSpelling[P, E <: AggregateClause]
-					                       (context :SQLContext, params :Parameterization[P, E])
-					                       (implicit spelling :SQLSpelling) =
-					{
-						val sql = spelling.function("count") + "(" + spelling.keyword("distinct") + ")"
-						SpelledSQL(sql, context, params)
-					}
-
+					protected override def defaultSpelling[P](from :AggregateClause, context :SQLContext[P],
+					                                          params :Parameterization[P, AggregateClause])
+					                                         (implicit spelling :SQLSpelling) =
+						SpelledSQL(spelling.function("count") + "(" + spelling.DISTINCT + " *)", context)
 				}
 
-				protected override def defaultSpelling[P, E <: AggregateClause]
-				                       (context :SQLContext, params :Parameterization[P, E])
-				                       (implicit spelling :SQLSpelling) =
-					SpelledSQL(spelling.function("count(*)"), context, params)
+				protected override def defaultSpelling[P](from :AggregateClause, context :SQLContext[P],
+				                                          params :Parameterization[P, AggregateClause])
+				                                         (implicit spelling :SQLSpelling) =
+					SpelledSQL(spelling.function("count(*)"), context)
 			}
 
 		/** The SQL expression used as the argument in `count(*)`. */
@@ -142,16 +137,17 @@ object AggregateFunction {
 
 			override def asGlobal :Option[ColumnSQL[RowProduct, GlobalScope, Nothing]] = None
 			override def isAnchored = true
+			override def isAnchored(from :RowProduct) :Boolean = true
 			override def anchor(from :RowProduct) = this
 
 			protected override def applyTo[Y[-_ >: LocalScope <: GlobalScope, _]]
 			                    (visitor :ColumnVisitor[RowProduct, Y]) :Y[LocalScope, Nothing] =
 				visitor.*(this)
 
-			protected override def defaultSpelling[P, E <: RowProduct]
-			                       (context :SQLContext, params :Parameterization[P, E])
+			protected override def defaultSpelling[P]
+			                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
 			                       (implicit spelling :SQLSpelling) =
-				SpelledSQL("*", context, params)
+				SpelledSQL("*", context)
 
 			override def isomorphic(expression: SQLExpression.*) :Boolean = this == expression
 

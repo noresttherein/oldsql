@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.sql.ast
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
+import net.noresttherein.oldsql.exceptions.Bug
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ColumnVisitor
@@ -58,14 +59,14 @@ class ConcatSQL[-F <: RowProduct, -S >: LocalScope <: GlobalScope] private
 		visitor.concat(this)
 
 
-	protected override def defaultSpelling[P, E <: F](context :SQLContext, params :Parameterization[P, E])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, E] =
-		parts.scanLeft(SpelledSQL("''", context, params)) { //reverse order!
-			(sql, col) => col.inParens(sql.context, sql.params)
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		parts.scanLeft(SpelledSQL("''", context)) { //reverse order!
+			(sql, col) => col.inParens(from, sql.context, params)
 		} match {
 			case Seq(empty) => empty  //reverse the order while reducing
-			case Seq(_, tail @ _*) => tail.reduce { (_2, _1) => _2 + (" " + spelling.CONCAT + " ") + _1.sql }
-			case _ => throw new IllegalStateException("empty scanLeft result")
+			case Seq(_, tail @ _*) => tail.reduce { (_2, _1) => _2 + spelling._CONCAT_ + _1 }
+			case _ => throw Bug("empty scanLeft result for " + parts + ".")
 		}
 
 

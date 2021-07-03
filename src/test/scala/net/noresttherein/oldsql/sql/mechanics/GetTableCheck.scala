@@ -3,11 +3,10 @@ package net.noresttherein.oldsql.sql.mechanics
 import net.noresttherein.oldsql.schema.bits.FormMapping
 import net.noresttherein.oldsql.schema.{Mapping, Relation, Table}
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.sql.{AndFrom, By, ByParam, From, FromSome, GroupBy, GroupByClause, InnerJoin, Join, LeftJoin, NonParam, RightJoin, RowProduct, Subselect, WithParam}
-import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamRelation}
-import net.noresttherein.oldsql.sql.mechanics.GetTable.{ByAlias, ByIndex, ByParamAlias, ByParamIndex, ByParamType, BySubject, ByType, RelationEvidence}
-import net.noresttherein.oldsql.sql.GroupBy.AndBy
+import net.noresttherein.oldsql.sql.{AndBy, AndFrom, By, ByParam, From, FromSome, GroupBy, GroupByClause, InnerJoin, Join, LeftJoin, NonParam, RightJoin, RowProduct, Subselect, WithParam}
+import net.noresttherein.oldsql.sql.ParamClause.{UnboundParam, ParamRelation}
 import net.noresttherein.oldsql.sql.RowProduct.As
+import net.noresttherein.oldsql.sql.mechanics.GetTable.{ByAlias, ByIndex, ByParamAlias, ByParamIndex, ByParamType, BySubject, ByType, RelationEvidence}
 
 
 
@@ -75,7 +74,7 @@ class GetTableCheck {{
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByIndex.ByPositiveIndex.Return, 2, FromParam[Int,
+	expect[ByIndex.ByPositiveIndex.Return, 2, UnboundParam[Int,
 		RowProduct AndFrom ParamRelation[Int]#Param Join C WithParam Long
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
@@ -89,7 +88,7 @@ class GetTableCheck {{
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByIndex.ByPositiveIndex.Return, 4, FromParam[Long,
+	expect[ByIndex.ByPositiveIndex.Return, 4, UnboundParam[Long,
 		RowProduct AndFrom ParamRelation[Long]#Param
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
@@ -126,7 +125,7 @@ class GetTableCheck {{
 		GroupByClause AndBy X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByIndex.ByPositiveIndex.Return, 11, FromParam[Byte,
+	expect[ByIndex.ByPositiveIndex.Return, 11, UnboundParam[Byte,
 		GroupByClause AndBy ParamRelation[Byte]#Param
 		Subselect Z
 	]]
@@ -150,7 +149,7 @@ class GetTableCheck {{
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByIndex.ByNegativeIndex.Return, -11, FromParam[Int,
+	expect[ByIndex.ByNegativeIndex.Return, -11, UnboundParam[Int,
 		RowProduct AndFrom ParamRelation[Int]#Param Join C WithParam Long
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
@@ -164,7 +163,7 @@ class GetTableCheck {{
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByIndex.ByNegativeIndex.Return, -9, FromParam[Long,
+	expect[ByIndex.ByNegativeIndex.Return, -9, UnboundParam[Long,
 		RowProduct AndFrom ParamRelation[Long]#Param
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
@@ -201,7 +200,7 @@ class GetTableCheck {{
 		GroupByClause AndBy X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByIndex.ByNegativeIndex.Return, -2, FromParam[Byte,
+	expect[ByIndex.ByNegativeIndex.Return, -2, UnboundParam[Byte,
 		GroupByClause AndBy ParamRelation[Byte]#Param
 		Subselect Z
 	]]
@@ -225,7 +224,7 @@ class GetTableCheck {{
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByAlias.Return, "Int", FromParam[Int,
+	expect[ByAlias.Return, "Int", UnboundParam[Int,
 		RowProduct AndFrom ParamRelation[Int]#Param Join C WithParam Long
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
@@ -239,7 +238,7 @@ class GetTableCheck {{
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByAlias.Return, "Long", FromParam[Long,
+	expect[ByAlias.Return, "Long", UnboundParam[Long,
 		RowProduct AndFrom ParamRelation[Long]#Param
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
@@ -276,7 +275,7 @@ class GetTableCheck {{
 		GroupByClause AndBy X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByAlias.Return, "Byte", FromParam[Byte,
+	expect[ByAlias.Return, "Byte", UnboundParam[Byte,
 		GroupByClause AndBy ParamRelation[Byte]#Param
 		Subselect Z
 	]]
@@ -300,7 +299,7 @@ class GetTableCheck {{
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, FromParam[Int, Unit], FromParam[Int,
+	expect[ByType.Return, UnboundParam[Int, Unit], UnboundParam[Int,
 		RowProduct AndFrom ParamRelation[Int]#Param Join C WithParam Long
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
@@ -314,7 +313,7 @@ class GetTableCheck {{
 		Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, FromParam[Long, Unit], FromParam[Long,
+	expect[ByType.Return, UnboundParam[Long, Unit], UnboundParam[Long,
 		RowProduct AndFrom ParamRelation[Long]#Param
 		Subselect D Join E WithParam Short GroupBy D By E
 		Subselect M Join N
@@ -351,7 +350,7 @@ class GetTableCheck {{
 		GroupByClause AndBy X ByParam Byte
 		Subselect Z
 	]]
-	expect[ByType.Return, FromParam[Byte, Unit], FromParam[Byte,
+	expect[ByType.Return, UnboundParam[Byte, Unit], UnboundParam[Byte,
 		GroupByClause AndBy ParamRelation[Byte]#Param
 		Subselect Z
 	]]
@@ -361,14 +360,14 @@ class GetTableCheck {{
 
 	//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ BySubject ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
-	expect[BySubject.Return, Int, FromParam[Int,
+	expect[BySubject.Return, Int, UnboundParam[Int,
 		RowProduct AndFrom ParamRelation[Int]#Param Join C WithParam Long
 			Subselect D Join E WithParam Short GroupBy D By E
 			Subselect M Join N
 			Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 			Subselect Z
 	]]
-	expect[BySubject.Return, Long, FromParam[Long,
+	expect[BySubject.Return, Long, UnboundParam[Long,
 		RowProduct AndFrom ParamRelation[Long]#Param
 			Subselect D Join E WithParam Short GroupBy D By E
 			Subselect M Join N
@@ -392,21 +391,21 @@ class GetTableCheck {{
 
 	//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ByPositiveParamIndex ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
-	expect[ByParamIndex.ByPositiveParamIndex.Return, 0, FromParam[Int,
+	expect[ByParamIndex.ByPositiveParamIndex.Return, 0, UnboundParam[Int,
 		RowProduct AndFrom ParamRelation[Int]#Param Join C WithParam Long
 			Subselect D Join E WithParam Short GroupBy D By E
 			Subselect M Join N
 			Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 			Subselect Z
 	]]
-	expect[ByParamIndex.ByPositiveParamIndex.Return, 1, FromParam[Long,
+	expect[ByParamIndex.ByPositiveParamIndex.Return, 1, UnboundParam[Long,
 		RowProduct AndFrom ParamRelation[Long]#Param
 			Subselect D Join E WithParam Short GroupBy D By E
 			Subselect M Join N
 			Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 			Subselect Z
 	]]
-	expect[ByParamIndex.ByPositiveParamIndex.Return, 3, FromParam[Byte,
+	expect[ByParamIndex.ByPositiveParamIndex.Return, 3, UnboundParam[Byte,
 		GroupByClause AndBy ParamRelation[Byte]#Param
 			Subselect Z
 	]]
@@ -415,21 +414,21 @@ class GetTableCheck {{
 
 	//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ByParamType ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
-	expect[ByParamType.Return, Int, FromParam[Int,
+	expect[ByParamType.Return, Int, UnboundParam[Int,
 		RowProduct AndFrom ParamRelation[Int]#Param Join C WithParam Long
 			Subselect D Join E WithParam Short GroupBy D By E
 			Subselect M Join N
 			Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 			Subselect Z
 	]]
-	expect[ByParamType.Return, Long, FromParam[Long,
+	expect[ByParamType.Return, Long, UnboundParam[Long,
 		RowProduct AndFrom ParamRelation[Long]#Param
 			Subselect D Join E WithParam Short GroupBy D By E
 			Subselect M Join N
 			Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 			Subselect Z
 	]]
-	expect[ByParamType.Return, Byte, FromParam[Byte,
+	expect[ByParamType.Return, Byte, UnboundParam[Byte,
 		GroupByClause AndBy ParamRelation[Byte]#Param
 			Subselect Z
 	]]
@@ -438,21 +437,21 @@ class GetTableCheck {{
 
 	//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ByParamAlias ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
-	expect[ByParamAlias.Return, "Int", FromParam[Int,
+	expect[ByParamAlias.Return, "Int", UnboundParam[Int,
 		RowProduct AndFrom ParamRelation[Int]#Param Join C WithParam Long
 			Subselect D Join E WithParam Short GroupBy D By E
 			Subselect M Join N
 			Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 			Subselect Z
 	]]
-	expect[ByParamAlias.Return, "Long", FromParam[Long,
+	expect[ByParamAlias.Return, "Long", UnboundParam[Long,
 		RowProduct AndFrom ParamRelation[Long]#Param
 			Subselect D Join E WithParam Short GroupBy D By E
 			Subselect M Join N
 			Subselect D Join X Join Y GroupBy Y By X ByParam Byte
 			Subselect Z
 	]]
-	expect[ByParamAlias.Return, "Byte", FromParam[Byte,
+	expect[ByParamAlias.Return, "Byte", UnboundParam[Byte,
 		GroupByClause AndBy ParamRelation[Byte]#Param
 			Subselect Z
 	]]
@@ -460,8 +459,8 @@ class GetTableCheck {{
 
 	//todo: ByLabel, ByParamName
 
-//	expect[ByParamName.Return, "Int", FromParam[Int, RowProduct AndFrom ParamRelation[Int]#Param Join C WithParam Long Subselect D Join E]]
-//	expect[ByParamName.Return, "Long", FromParam[Long, RowProduct AndFrom ParamRelation[Long]#Param Subselect D Join E]]
+//	expect[ByParamName.Return, "Int", UnboundParam[Int, RowProduct AndFrom ParamRelation[Int]#Param Join C WithParam Long Subselect D Join E]]
+//	expect[ByParamName.Return, "Long", UnboundParam[Long, RowProduct AndFrom ParamRelation[Long]#Param Subselect D Join E]]
 
 	/*
 			val f = From(A) as "A" leftJoin B as "B" rightJoin C as "C" subselect D as "D" join E as "E"
@@ -484,7 +483,7 @@ class GetTableCheck {{
 
 			//	def ?:[X] = ???
 			//	def ?:[String :ValueOf, Int] = ???
-			import net.noresttherein.oldsql.sql.UnboundParam.?:
+			import net.noresttherein.oldsql.sql.ParamClause.?:
 			?:[Int]
 			"param".?:[Int]
 			?:["p1", Int]
@@ -495,9 +494,9 @@ class GetTableCheck {{
 			//	val p1 = params ? 0; val p2 = params ? 1; val p3 = params ? 2
 			//	val p1 = params ? -3; val p2 = params ? -2; val p3 = params ? -1
 
-			p1 :FromParam[Int, RowProduct AndFrom FromParam.Of[Int]#P Join B JoinParam FromParam.Of[Long]#P Join C JoinParam FromParam.Of[String]#P]
-			p2 :FromParam[Long, RowProduct AndFrom FromParam.Of[Long]#P Join C JoinParam FromParam.Of[String]#P]
-			p3 :FromParam[String, RowProduct AndFrom FromParam.Of[String]#P]
+			p1 :UnboundParam[Int, RowProduct AndFrom UnboundParam.Of[Int]#P Join B JoinParam UnboundParam.Of[Long]#P Join C JoinParam UnboundParam.Of[String]#P]
+			p2 :UnboundParam[Long, RowProduct AndFrom UnboundParam.Of[Long]#P Join C JoinParam UnboundParam.Of[String]#P]
+			p3 :UnboundParam[String, RowProduct AndFrom UnboundParam.Of[String]#P]
 		*/
 
 }}
