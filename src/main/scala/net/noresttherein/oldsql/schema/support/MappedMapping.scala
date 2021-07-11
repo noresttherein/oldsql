@@ -64,7 +64,7 @@ trait MappedMapping[T, S, O] extends ShallowDelegate[S, O] with DelegateMapping[
 	  */
 	implicit override val nullValue :NullValue[S] =
 		if (nulls != null) nulls
-		else if (mapFun == null) backer.nullValue.flatMap(flatMapFun)
+		else if (mapFun == null) backer.nullValue.optMap(flatMapFun)
 		else backer.nullValue.map(mapFun)
 
 

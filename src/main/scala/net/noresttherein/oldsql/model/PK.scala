@@ -146,5 +146,5 @@ object PK {
 
 
 	implicit def KeyForm[T, K :SQLForm] :SQLForm[Key[T, K]] =
-		SQLForm.map[K, Key[T, K]]("Key[" + SQLForm[K] + "]")(PersistentPK.apply[T, K])(_.key)
+		SQLForm.map[K, Key[T, K]]("Key")(PersistentPK.apply[T, K])(_.key)
 }

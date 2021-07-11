@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.morsels.{SpecializingFactory, Stateless}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.SQLWriteForm.{CustomNullSQLWriteForm, JoinedSQLWriteForm, NotNullSQLWriteForm, ProxyWriteForm, WriteFormNullGuard}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{CustomNullSQLWriteForm, FlatMappedSQLWriteForm, JoinedSQLWriteForm, MappedSQLWriteForm, NotNullSQLWriteForm, ProxyWriteForm, WriteFormNullGuard}
 import net.noresttherein.oldsql.schema.ColumnWriteForm.SingletonColumnWriteForm
 import net.noresttherein.oldsql.schema.forms.{SQLForms, SuperSQLForm}
 import net.noresttherein.oldsql.slang.IterableExtension
@@ -168,14 +168,14 @@ trait SQLWriteForm[-T] extends SuperSQLForm { outer =>
 	  * The arguments are not tested for `null` values before being passed to `fun`, which should handle `null`s
 	  * gracefully if they are considered a valid value for the adapted form's use case.
 	  */
-	def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X] = SQLWriteForm.flatMap(fun)(this)
+	def optUnmap[X](fun :X => Option[T]) :SQLWriteForm[X] = SQLWriteForm.optMap(fun)(this)
 
 	/** Creates a write form for `X` which will use this form after extracting a value from `X` with the given
 	  * extractor. This is equivalent to `unmap` or `flatUnmap`, depending on whether the extractor is
 	  * a `RequisiteExtractor` instance. In corner cases, such as a constant extractor, a special `SQLWriteForm`
 	  * instance may be returned.
 	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.unmap]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.flatUnmap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.optUnmap]]
 	  */
 	def from[X](extractor :X =?> T) :SQLWriteForm[X] = compose(extractor)
 
@@ -183,7 +183,7 @@ trait SQLWriteForm[-T] extends SuperSQLForm { outer =>
 	  * extractor. This is equivalent to `unmap` or `flatUnmap`, depending on whether the extractor is
 	  * a `RequisiteExtractor` instance.
 	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.unmap]]
-	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.flatUnmap]]
+	  * @see [[net.noresttherein.oldsql.schema.SQLWriteForm.optUnmap]]
 	  */
 	def compose[X](extractor :X =?> T) :SQLWriteForm[X] = SQLWriteForm(extractor)(this)
 
@@ -463,32 +463,29 @@ object SQLWriteForm {
 	  * @param extractor producer of values for the implicit base form to write, called for every value written
 	  *                  with the produced form.
 	  */
-	def apply[S, T](extractor :T =?> S)(implicit writer :SQLWriteForm[S]) :SQLWriteForm[T] = extractor match {
-		case _ :IdentityExtractor[_] => writer.asInstanceOf[SQLWriteForm[T]]
+	def apply[S, T](extractor :T =?> S)(implicit base :SQLWriteForm[S]) :SQLWriteForm[T] = extractor match {
+		case _ :IdentityExtractor[_] => base.asInstanceOf[SQLWriteForm[T]]
 		case const :ConstantExtractor[_, S @unchecked] => SQLWriteForm.const(const.constant)
 		case req :RequisiteExtractor[T @unchecked, S @unchecked] => map(req.getter)
 		case _ :EmptyExtractor[_, _] => SQLWriteForm.none
-		case _ => flatMap(extractor.optional)
+		case _ => optMap(extractor.optional)
 	}
 
-	/** Composes an implicitly available write form `SQLWriteForm[S]` with a given extractor to create
-	  * an `SQLWriteForm[T]`. This has the effect of calling either
-	  * [[net.noresttherein.oldsql.schema.SQLWriteForm$.map map]] or
-	  * [[net.noresttherein.oldsql.schema.SQLWriteForm$.flatMap flatMap]], depending on the type of the extractor.
-	  * If the extractor yields `Some`, the value will be passed to
-	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.set set]] method of the implicit backing form. Otherwise
-	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull setNull]] will be called instead.
+	/** Creates a new form with a 'soft type' given as `name` argument, by combining an implicit `SQLWriteForm[S]`
+	  * with a given extractor to create an `SQLWriteForm[T]`. It is equivalent to
+	  * `SQLWriteForm`[[net.noresttherein.oldsql.schema.SQLWriteForm.apply[S,T](extractor)* (name)(extractor)]],
+	  * but the created form will equal any other `SQLWriteForm` created by this method if they have the same name
+	  * and their base forms and are equal.
 	  * @param extractor producer of values for the implicit base form to write, called for every value written
 	  *                  with the produced form.
-	  * @param name the name for the created form, used in its `toString` implementation.
+	  * @param name the name of this form constructor, used to recognize compatible forms and in `toString` implementation.
 	  */
 	def apply[S :SQLWriteForm, T](name :String)(extractor :T =?> S) :SQLWriteForm[T] =
 		extractor match {
-//			case _ :IdentityExtractor[_] => writer.asInstanceOf[SQLWriteForm[T]]
 			case const :ConstantExtractor[_, S @unchecked] => SQLWriteForm.const(const.constant, name)
 			case req :RequisiteExtractor[T @unchecked, S @unchecked] => map(name)(req.getter)
 			case _ :EmptyExtractor[_, _] => SQLWriteForm.none(name)
-			case _ => flatMap(name)(extractor.optional)
+			case _ => optMap(name)(extractor.optional)
 		}
 
 
@@ -501,18 +498,18 @@ object SQLWriteForm {
 	  * @param f the function mapping the arguments of the created form to values accepted by the implicit base form.
 	  */
 	def map[S :SQLWriteForm, T](f :T => S) :SQLWriteForm[T] =
-		SQLWriteForm.map(null :String)(f)
+		new MappedSQLWriteForm[S, T](f)
 
-	/** Composes an implicitly available write form `SQLWriteForm[S]` with a given getter function to create
-	  * an `SQLWriteForm[T]`. This function can in particular be used to present an `SQLWriteForm` for the type
-	  * of a property of some entity type as a write form for said entity type. Such forms can be later combined
-	  * together with [[net.noresttherein.oldsql.schema.SQLWriteForm.join join(forms)]] to create
-	  * an `SQLWriteForm` for the whole entity.
+	/** Creates a new form with a 'soft type' given as `name` argument, by combining an implicit `SQLWriteForm[S]`
+	  * with a given function to create an `SQLWriteForm[T]`. It is equivalent to
+	  * `SQLWriteForm`[[net.noresttherein.oldsql.schema.SQLWriteForm.map[S,T](f:T=>S)* .map(f)]],
+	  * but the created form will equal any other `SQLWriteForm` created by this method if they have the same name
+	  * and their base forms and are equal.
+	  * @param name the name of this form constructor, used to recognize compatible forms and in `toString` implementation.
 	  * @param f    the function mapping the arguments of the created form to values accepted by the implicit base form.
-	  * @param name the name for the created form, used in its `toString` implementation.
 	  */
 	def map[S :SQLWriteForm, T](name :String)(f :T => S) :SQLWriteForm[T] =
-		new MappedSQLWriteForm[S, T](f, name)
+		new DerivedMappedSQLWriteForm[S, T](name, f)
 
 
 
@@ -522,18 +519,19 @@ object SQLWriteForm {
 	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.set set]].
 	  * @param f the function mapping the arguments of the created form to values accepted by the implicit base form.
 	  */
-	def flatMap[S :SQLWriteForm, T](f :T => Option[S]) :SQLWriteForm[T] =
-		flatMap[S, T](null :String)(f)
+	def optMap[S :SQLWriteForm, T](f :T => Option[S]) :SQLWriteForm[T] =
+		new FlatMappedSQLWriteForm[S, T](f)
 
-	/** Composes an implicitly available write form `SQLWriteForm[S]` with a given getter to create
-	  * an `SQLWriteForm[T]`. If the function returns `None`, the created form will use
-	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.setNull setNull]] method of the base form instead of
-	  * [[net.noresttherein.oldsql.schema.SQLWriteForm.set set]].
+	/** Creates a new form with a 'soft type' given as `name` argument, by combining an implicit `SQLWriteForm[S]`
+	  * with a given function (returning the result value as an `Option`) to create an `SQLWriteForm[T]`. It is equivalent
+	  * to `SQLWriteForm`[[net.noresttherein.oldsql.schema.SQLWriteForm.optMap[S,T](f:T=>Option[S])* .optMap(f)]],
+	  * but the created form will equal any other `SQLWriteForm` created by this method if they have the same name
+	  * and their base forms and are equal.
+	  * @param name the name of this form constructor, used to recognize compatible forms and in `toString` implementation.
 	  * @param f    the function mapping the arguments of the created form to values accepted by the implicit base form.
-	  * @param name the name for the created form, used in its `toString` implementation.
 	  */
-	def flatMap[S :SQLWriteForm, T](name :String)(f :T => Option[S]) :SQLWriteForm[T] =
-		new FlatMappedSQLWriteForm[S, T](f, name)
+	def optMap[S :SQLWriteForm, T](name :String)(f :T => Option[S]) :SQLWriteForm[T] =
+		new DerivedFlatMappedSQLWriteForm[S, T](name, f)
 
 
 
@@ -745,6 +743,21 @@ object SQLWriteForm {
 		override def hashCode :Int = form.hashCode
 	}
 
+	protected[schema] trait DerivedWriteForm[-T] extends WriteFormAdapter[T] {
+		override def canEqual(that :Any) :Boolean = that.isInstanceOf[DerivedWriteForm[_]]
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if self eq this => true
+			case other :DerivedWriteForm[_] if other canEqual this => name == other.name && form == other.form
+			case _ => false
+		}
+		override def hashCode :Int = name.hashCode * 31 + form.hashCode
+
+		protected def name :String
+		private lazy val string = name + "[" + form + "]"
+		override def toString :String = string
+	}
+
 	protected[schema] trait ProxyWriteForm[-T] extends WriteFormAdapter[T] {
 		protected override def form :SQLWriteForm[T]
 
@@ -791,7 +804,7 @@ object SQLWriteForm {
 		override def inlineLiteral(value :Any) :String = inlineNullLiteral
 
 		override def unmap[X](fun :X => Any) :SQLWriteForm[X] = this
-		override def flatUnmap[X](fun :X => Option[Any]) :SQLWriteForm[X] = this
+		override def optUnmap[X](fun :X => Option[Any]) :SQLWriteForm[X] = this
 		override def compose[X](extractor :X =?> Any) :SQLWriteForm[X] = this
 		override def toOpt :SQLWriteForm[Option[Any]] = this
 
@@ -1094,13 +1107,14 @@ object SQLWriteForm {
 
 		override def nullLiteral(inline :Boolean): String = form.nullLiteral(inline)
 
-		override def split :Seq[ColumnWriteForm[T]] = form.split.map(_.flatUnmap( unmap))
+		override def split :Seq[ColumnWriteForm[T]] = form.split.map(_.optUnmap( unmap))
 
 		//map/flatMap not overriden to preserve potentially overriden toString.
 		override def toString :String = "<=" + form
 	}
 
-	private[schema] class FlatMappedSQLWriteForm[S, -T](protected override val unmap :T => Option[S], name :String = null)
+	private[schema] class FlatMappedSQLWriteForm[S, -T](protected override val unmap :T => Option[S],
+	                                                    protected val name :String = null)
 	                                                   (implicit protected override val form :SQLWriteForm[S])
 		extends FlatMappedWriteForm[S, T]
 	{
@@ -1109,6 +1123,14 @@ object SQLWriteForm {
 
 		override def toString = string
 		private[this] val string = if (name == null) "<=" + form else name
+	}
+
+	private[schema] class DerivedFlatMappedSQLWriteForm[S :SQLWriteForm, -T]
+	                                                   (protected override val name :String, f :T => Option[S])
+		extends FlatMappedSQLWriteForm[S, T](f, name) with DerivedWriteForm[T]
+	{
+		override def notNull :SQLWriteForm[T] =
+			new DerivedFlatMappedSQLWriteForm[S, T](name + ".notNull", unmap) with NotNullWriteForm[T]
 	}
 
 
@@ -1130,7 +1152,7 @@ object SQLWriteForm {
 		override def toString :String = "<=" + form
 	}
 
-	private[schema] class MappedSQLWriteForm[S, -T](protected override val unmap :T => S, name :String = null)
+	private[schema] class MappedSQLWriteForm[S, -T](protected override val unmap :T => S, protected val name :String = null)
 	                                               (implicit protected override val form :SQLWriteForm[S])
 		extends MappedWriteForm[S, T]
 	{
@@ -1139,6 +1161,13 @@ object SQLWriteForm {
 
 		override def toString :String = string
 		private[this] val string = if (name == null) "<=" + form else name
+	}
+
+	private[schema] class DerivedMappedSQLWriteForm[S :SQLWriteForm, -T](protected override val name :String, f :T => S)
+		extends MappedSQLWriteForm[S, T](f, name) with DerivedWriteForm[T]
+	{
+		override def notNull :SQLWriteForm[T] =
+			new DerivedMappedSQLWriteForm(name + ".notNull", unmap) with NotNullWriteForm[T]
 	}
 
 
@@ -1174,7 +1203,7 @@ object SQLWriteForm {
 
 		//better to risk too early evaluation and remove the decorator overhead
 		override def unmap[X](fun :X => T) :SQLWriteForm[X] = form.unmap(fun)
-		override def flatUnmap[X](fun :X => Option[T]) :SQLWriteForm[X] = form.flatUnmap(fun)
+		override def optUnmap[X](fun :X => Option[T]) :SQLWriteForm[X] = form.optUnmap(fun)
 
 		override def toOpt = form.toOpt
 		override def nullSafe = form.nullSafe
@@ -1303,7 +1332,7 @@ object SQLWriteForm {
 		}
 
 		override def split = form.split.mapWithIndex {
-			(i, f) => f flatUnmap { seq :Seq[T] => if (seq.sizeIs > i) Some(seq(i)) else None }
+			(i, f) => f optUnmap { seq :Seq[T] => if (seq.sizeIs > i) Some(seq(i)) else None }
 		}
 
 		override def toString :String = "(" + form.toString + "*" + repeats + ")"

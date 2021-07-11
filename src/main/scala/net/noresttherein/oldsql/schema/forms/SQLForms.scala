@@ -52,9 +52,12 @@ trait SuperSQLForm extends SQLForms with Serializable {
   * into the search scope and groups common properties of derived types.
   */
 trait SuperColumnForm extends SuperSQLForm {
-	/** The JDBC code for the underlying column type, as defined by constants in `java.sql.Types`. */
+	/** The type of the column as a wrapper over an `Int` code understood by the database JDBC driver.
+	  * @see [[java.sql.SQLType]]
+	  */
 	def sqlType :JDBCType
 }
+
 
 
 
@@ -205,10 +208,10 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 
 
 	implicit def OptionalReadForm[T :SQLReadForm] :SQLReadForm[Optional[T]] = //takes advantage of NullValue[Optional[T]]
-		SQLReadForm.map("Optional[" + SQLReadForm[T] + "]>")(Optional.of[T](_))
+		SQLReadForm.map("Optional>")(Optional.of[T](_))
 
 	implicit def OptionalWriteForm[T :SQLWriteForm] :SQLWriteForm[Optional[T]] =
-		SQLWriteForm.flatMap("<Optional[" + SQLWriteForm[T] + "]")(optionalToOption _)
+		SQLWriteForm.optMap("<Optional")(optionalToOption _)
 
 	protected[forms] final def flatMapToOptional[T](t :T) :Option[Optional[T]] =
 		Some(Optional.of(t))
@@ -466,16 +469,16 @@ sealed trait SQLRWFormsImplicits extends SQLRWFormsLevel1Implicits {
 
 
 	implicit def ListingItemReadForm[K <: Listing.Key :ValueOf, V :SQLReadForm] :SQLReadForm[K :~ V] =
-		SQLReadForm.map(s"(${valueOf[K]}:~${SQLReadForm[V]}") { :~[K](_:V) }
+		SQLReadForm.map(valueOf[K].toString + ":~") { :~[K](_:V) }
 
 	implicit def ListingItemWriteForm[K <: Listing.Key, V :SQLWriteForm] :SQLWriteForm[K :~ V] =
-		SQLWriteForm(s"(:~${SQLWriteForm[V]})") { e :(K :~ V) => e.value }
+		SQLWriteForm(s":~") { e :(K :~ V) => e.value }
 
 	private[forms] def ChainMapEntryReadForm[K <: ChainMap.Key :ValueOf, V :SQLReadForm] :SQLReadForm[(K, V)] =
-		SQLReadForm.map(s"(${valueOf[K]}->${SQLReadForm[V]})") { v :V => valueOf[K] -> v }
+		SQLReadForm.map(valueOf[K].toString + "->") { v :V => valueOf[K] -> v }
 
 	private[forms] def ChainMapEntryWriteForm[K <: ChainMap.Key, V :SQLWriteForm] :SQLWriteForm[(K, V)] =
-		SQLWriteForm.map(s"(,${SQLWriteForm[V]})") { e :(K, V) => e._2 }
+		SQLWriteForm.map("?->") { e :(K, V) => e._2 }
 
 
 
@@ -760,7 +763,7 @@ sealed trait SQLFormImplicits extends SQLFormLevel1Implicits {
 		}
 
 	implicit def OptionalForm[T :SQLForm] :SQLForm[Optional[T]] =
-		SQLForm.flatMap("Optional[" + SQLForm[T] + "]")(SQLForms.flatMapToOptional[T])(SQLForms.optionalToOption)
+		SQLForm.optMap("Optional")(SQLForms.flatMapToOptional[T])(SQLForms.optionalToOption)
 
 
 
@@ -805,10 +808,10 @@ sealed trait SQLFormImplicits extends SQLFormLevel1Implicits {
 
 
 	implicit def ListingItemForm[K <: Listing.Key :ValueOf, V :SQLForm] :SQLForm[K :~ V] =
-		SQLForm.map(s"(${valueOf[K]}:~${SQLForm[V]})")(:~[K](_:V))(_.value)
+		SQLForm.map(valueOf[K].toString + ":~")(:~[K](_:V))(_.value)
 
 	private[forms] def ChainMapEntryForm[K <: ChainMap.Key :ValueOf, V :SQLForm] :SQLForm[(K, V)] =
-		SQLForm.map(s"${valueOf[K]},${SQLForm[V]})")((v :V) => valueOf[K] -> v)(_._2)
+		SQLForm.map(valueOf[K].toString + "->")((v :V) => valueOf[K] -> v)(_._2)
 
 
 
@@ -903,10 +906,10 @@ sealed trait ColumnRWFormsImplicits extends SQLFormImplicits {
 
 
 	implicit def OptionalColumnReadForm[T :ColumnReadForm] :ColumnReadForm[Optional[T]] =
-		ColumnReadForm.map("Optional[" + ColumnReadForm[T] + "]>")(Optional.of[T])
+		ColumnReadForm.map("Optional>")(Optional.of[T])
 
 	implicit def OptionalColumnWriteForm[T :ColumnWriteForm] :ColumnWriteForm[Optional[T]] =
-		ColumnWriteForm.flatMap("<Optional[" + ColumnWriteForm[T] + "]")(optionalToOption)
+		ColumnWriteForm.optMap("<Optional")(optionalToOption)
 }
 
 
@@ -947,7 +950,7 @@ sealed trait ColumnFormImplicits extends ColumnRWFormsImplicits {
 		}
 
 	implicit def OptionalColumnForm[T :ColumnForm] :ColumnForm[Optional[T]] =
-		ColumnForm.flatMap("Optional[" + ColumnForm[T] + "]")(flatMapToOptional[T])(optionalToOption)
+		ColumnForm.optMap("Optional")(flatMapToOptional[T])(optionalToOption)
 
 }
 

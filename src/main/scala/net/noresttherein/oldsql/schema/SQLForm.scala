@@ -11,13 +11,13 @@ import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.Kin
-import net.noresttherein.oldsql.morsels.{SpecializingFactory, Extractor, Stateless}
+import net.noresttherein.oldsql.morsels.{Extractor, SpecializingFactory, Stateless}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, ConstantExtractor, EmptyExtractor, IdentityExtractor, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.morsels.witness.Maybe
-import net.noresttherein.oldsql.schema.SQLForm.{NotNullSQLForm, NullValue}
+import net.noresttherein.oldsql.schema.SQLForm.{FlatMappedSQLForm, MappedSQLForm, NotNullSQLForm, NullValue}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue.NotNull
-import net.noresttherein.oldsql.schema.SQLReadForm.{FlatMappedSQLReadForm, LazySQLReadForm, MappedSQLReadForm, NotNullReadForm, ProxyReadForm, ReadFormNullGuard, ReadFormNullValue, ReadFormSeq, SeqReadForm}
-import net.noresttherein.oldsql.schema.SQLWriteForm.{CustomNullSQLWriteForm, EmptyWriteForm, EvalOrNullSQLWriteForm, FlatMappedWriteForm, LazyWriteForm, MappedWriteForm, NonLiteralWriteForm, NotNullWriteForm, ProxyWriteForm, SeqWriteForm, SQLWriteFormSeq, WriteFormNullGuard}
+import net.noresttherein.oldsql.schema.SQLReadForm.{DerivedFlatMappedSQLReadForm, DerivedMappedSQLReadForm, FlatMappedSQLReadForm, LazySQLReadForm, MappedSQLReadForm, NotNullReadForm, ProxyReadForm, ReadFormNullGuard, ReadFormNullValue, ReadFormSeq, SeqReadForm}
+import net.noresttherein.oldsql.schema.SQLWriteForm.{CustomNullSQLWriteForm, EmptyWriteForm, FlatMappedWriteForm, LazyWriteForm, MappedWriteForm, NonLiteralWriteForm, NotNullWriteForm, ProxyWriteForm, SeqWriteForm, SQLWriteFormSeq, WriteFormNullGuard}
 import net.noresttherein.oldsql.schema.forms.SQLForms
 import net.noresttherein.oldsql.slang.innerNameOf
 
@@ -78,9 +78,9 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] { outer =>
 	  * @param map a function mapping the result read from the `ResultSet` to the new type `X`. Will never be called
 	  *            for `null` values unless this form returns `Some(null)` from `opt` in a non-standard practice.
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement parameters.
-	  */ //todo: rename optMap
-	def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
-		SQLForm.flatMap(map)(unmap)(this, NullValue[X])
+	  */
+	def biOptMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
+		SQLForm.optMap(map)(unmap)(this, NullValue[X])
 
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values. If the underlying
 	  * column(s) is null, or `map` returns `None`, the `nullValue` provided  here is returned directly
@@ -91,8 +91,8 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] { outer =>
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement
 	  *              parameters.
 	  */
-	def biflatMap[X](map :T => Option[X], nullValue :X)(unmap :X => Option[T]) :SQLForm[X] =
-		biflatMap(map)(unmap)(NullValue(nullValue))
+	def biOptMap[X](map :T => Option[X], nullValue :X)(unmap :X => Option[T]) :SQLForm[X] =
+		biOptMap(map)(unmap)(NullValue(nullValue))
 
 	/** Adapt this form to a new value type `X` by bidirectionally mapping read and written values.
 	  * The `nullValue` of the new form is the result of mapping this instance's `nulls` with the given function,
@@ -102,9 +102,9 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] { outer =>
 	  * @param map a function mapping the result read from the `ResultSet` to the new type `X`.
 	  * @param unmap a function mapping values of `X` for passing them to this form before setting the statement
 	  *              parameters.
-	  */ //todo: rename optMap ?
-	def nullBiflatMap[X](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
-		biflatMap(map)(unmap)(nulls.flatMap(map))
+	  */
+	def nullBiOptMap[X](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
+		biOptMap(map)(unmap)(nulls.optMap(map))
 
 
 
@@ -311,24 +311,28 @@ object SQLForm {
 	  * the [[net.noresttherein.oldsql.schema.SQLReadForm.defaults one present in the source form]] will be mapped
 	  * with `map`.
 	  */
-	def apply[S, T](map :S =?> T)(unmap :T =?> S)(implicit source :SQLForm[S], nulls :Maybe[NullValue[T]]) :SQLForm[T] =
+	def apply[S, T](map :S =?> T)(unmap :T =?> S)(implicit base :SQLForm[S], nulls :Maybe[NullValue[T]]) :SQLForm[T] =
 		(map, unmap) match {
-			case (_ :IdentityExtractor[_], _:IdentityExtractor[_]) => source.asInstanceOf[SQLForm[T]]
+			case (_ :IdentityExtractor[_], _:IdentityExtractor[_]) => base.asInstanceOf[SQLForm[T]]
 			case (Extractor.Requisite(there), Extractor.Requisite(back)) => SQLForm.map(there)(back)
-			case _ => flatMap(map.optional)(unmap.optional)
+			case _ => optMap(map.optional)(unmap.optional)
 		}
 
-	/** Creates a new `SQLForm` for type `T` based on an implicit form for type `S` and an optional `NullValue[T]`.
+	/** Creates a new `SQLForm[T]` of 'soft type' given as `name` argument, based on an implicit form for type `S`
+	  * and an optional `NullValue[T]`. This is equivalent in function to
+	  * `SQLForm`[[net.noresttherein.oldsql.schema.SQLForm.apply[S,T](map* (map)(unmap)]],
+	  * but the created form will equal any other `SQLForm` created by this method if they have the same name
+	  * and their base forms and [[net.noresttherein.oldsql.schema.SQLReadForm.nulls null values]] are equal.
+	  *
 	  * If no implicit [[net.noresttherein.oldsql.schema.SQLForm.NullValue]]`[T]` is present,
 	  * the [[net.noresttherein.oldsql.schema.SQLReadForm.defaults one present in the source form]] will be mapped
 	  * with `map`.
 	  */
 	def apply[S, T](name :String)(map :S =?> T)(unmap :T =?> S)
-	               (implicit source :SQLForm[S], nulls :Maybe[NullValue[T]]) :SQLForm[T] =
+	               (implicit base :SQLForm[S], nulls :Maybe[NullValue[T]]) :SQLForm[T] =
 		(map, unmap) match {
-//			case (_ :IdentityExtractor[_], _:IdentityExtractor[_]) => source.asInstanceOf[SQLForm[T]]
 			case (Extractor.Requisite(there), Extractor.Requisite(back)) => SQLForm.map(name)(there)(back)
-			case _ => flatMap(name)(map.optional)(unmap.optional)
+			case _ => optMap(name)(map.optional)(unmap.optional)
 		}
 
 
@@ -338,19 +342,26 @@ object SQLForm {
 	  * the [[net.noresttherein.oldsql.schema.SQLReadForm.defaults one present in the source form]] will be mapped
 	  * with `map`.
 	  */
-	def map[S, T](map :S => T)(unmap :T => S)(implicit source :SQLForm[S], nulls :Maybe[NullValue[T]]) :SQLForm[T] =
-		SQLForm.map("<=" + source + "=>")(map)(unmap)
+	def map[S, T](map :S => T)(unmap :T => S)(implicit base :SQLForm[S], nulls :Maybe[NullValue[T]]) :SQLForm[T] = {
+		val nullValue = nulls.opt getOrElse NullValue.NotNull
+		new MappedSQLForm[S, T](map, unmap)(base, nullValue)
+	}
 
-	/** Creates a new `SQLForm` for type `T` based on an implicit form for type `S` and an optional `NullValue[T]`.
+	/** Creates a new `SQLForm[T]` of 'soft type' given as `name` argument, based on an implicit form for type `S`
+	  * and an optional `NullValue[T]`. This is equivalent in function to
+	  * `SQLForm`[[net.noresttherein.oldsql.schema.SQLForm.map[S,T](map:S=>T)* .map(map)(unmap)]],
+	  * but the created form will equal any other `SQLForm` created by this method if they have the same name
+	  * and their base forms and [[net.noresttherein.oldsql.schema.SQLReadForm.nulls null values]] are equal.
+	  *
 	  * If no implicit [[net.noresttherein.oldsql.schema.SQLForm.NullValue]]`[T]` is present,
 	  * the [[net.noresttherein.oldsql.schema.SQLReadForm.defaults one present in the source form]] will be mapped
 	  * with `map`.
 	  */
 	def map[S, T](name :String)(map :S => T)(unmap :T => S)
-	             (implicit source :SQLForm[S], nulls :Maybe[NullValue[T]]) :SQLForm[T] =
+	             (implicit base :SQLForm[S], nulls :Maybe[NullValue[T]]) :SQLForm[T] =
 	{
 		val nullValue = nulls.opt getOrElse NullValue.NotNull
-		new MappedSQLForm[S, T](map, unmap, name)(source, nullValue)
+		new DerivedMappedSQLForm[S, T](name, map, unmap)(base, nullValue)
 	}
 
 
@@ -360,20 +371,28 @@ object SQLForm {
 	  * the [[net.noresttherein.oldsql.schema.SQLReadForm.defaults one present in the source form]] will be flat mapped
 	  * with `map`.
 	  */
-	def flatMap[S, T](map :S => Option[T])(unmap :T => Option[S])
-	                 (implicit source :SQLForm[S], nulls :Maybe[NullValue[T]]) :SQLForm[T] =
-		SQLForm.flatMap("<=" + source + "=>")(map)(unmap)
-
-	/** Creates a new `SQLForm` for type `T` based on an implicit form for type `S` and an optional `NullValue[T]`.
-	  * If no implicit [[net.noresttherein.oldsql.schema.SQLForm.NullValue]]`[T]` is present,
-	  * the [[net.noresttherein.oldsql.schema.SQLReadForm.defaults one present in the source form]] will be flat mapped
-	  * with `map`.
-	  */
-	def flatMap[S, T](name :String)(map :S => Option[T])(unmap :T => Option[S])
-	                 (implicit source :SQLForm[S], nulls :Maybe[NullValue[T]]) :SQLForm[T] =
+	def optMap[S, T](map :S => Option[T])(unmap :T => Option[S])
+	                (implicit base :SQLForm[S], nulls :Maybe[NullValue[T]]) :SQLForm[T] =
 	{
 		val nullValue = nulls.opt getOrElse NullValue.NotNull
-		new FlatMappedSQLForm[S, T](map, unmap, name)(source, nullValue)
+		new FlatMappedSQLForm[S, T](map, unmap)(base, nullValue)
+	}
+
+	/** Creates a new `SQLForm[T]` of 'soft type' given as `name` argument, based on an implicit form for type `S`
+	  * and an optional `NullValue[T]`. This is equivalent in function to
+	  * `SQLForm`[[net.noresttherein.oldsql.schema.SQLForm.optMap[S,T](map:S=>Option[T])(unmap :T=>Option[S])* .optMap(map)(unmap)]],
+	  * but the created form will equal any other `SQLForm` created by this method if they have the same name
+	  * and their base forms and [[net.noresttherein.oldsql.schema.SQLReadForm.nulls null values]] are equal.
+	  *
+	  * If no implicit [[net.noresttherein.oldsql.schema.SQLForm.NullValue]]`[T]` is present,
+	  * the [[net.noresttherein.oldsql.schema.SQLReadForm.defaults one present in the source form]] will be mapped
+	  * with `optMap`.
+	  */
+	def optMap[S, T](name :String)(map :S => Option[T])(unmap :T => Option[S])
+	                (implicit base :SQLForm[S], nulls :Maybe[NullValue[T]]) :SQLForm[T] =
+	{
+		val nullValue = nulls.opt getOrElse NullValue.NotNull
+		new DerivedFlatMappedSQLForm[S, T](name, map, unmap)(base, nullValue)
 	}
 
 
@@ -483,7 +502,7 @@ object SQLForm {
 		  * effect as throwing a `NoSuchElementException`, which will be throw by the returned `NullValue` instead
 		  * of letting it out of this method.
 		  */
-		def flatMap[U](f :T => Option[U]) :NullValue[U] =
+		def optMap[U](f :T => Option[U]) :NullValue[U] =
 			map(tnull => f(tnull) getOrElse { //consider: shouldn't it throw NullPointerException?
 			 	throw new NoSuchElementException("No corresponding null value for " + tnull + " of " + this)
 			})
@@ -497,11 +516,11 @@ object SQLForm {
 		  */
 		def extract[U](f :T =?> U) :NullValue[U] = f match {
 			case _ :EmptyExtractor[_, _] => NullValue.NotNull
-			case _ :OptionalExtractor[_, _] => flatMap(f.optional)
+			case _ :OptionalExtractor[_, _] => optMap(f.optional)
 			case _ :IdentityExtractor[_] => this.asInstanceOf[NullValue[U]]
 			case const :ConstantExtractor[_, U @unchecked] => NullValue(const.constant)
 			case _ :RequisiteExtractor[_, _] => map(f.requisite.get)
-			case _ => flatMap(f.optional)
+			case _ => optMap(f.optional)
 		}
 
 	}
@@ -886,27 +905,49 @@ object SQLForm {
 
 	private[schema] class FlatMappedSQLForm[S, T](fmap :S => Option[T], protected override val unmap :T => Option[S],
 	                                              name :String = null)
-	                                             (implicit override val form :SQLForm[S], nulls :NullValue[T])
+	                                             (implicit protected override val form :SQLForm[S], nulls :NullValue[T])
 		extends FlatMappedSQLReadForm[S, T](fmap) with FlatMappedWriteForm[S, T] with SQLForm[T]
 	{   //map/flatMap not overriden to preserve potentially custom name.
 		override def notNull :SQLForm[T] =
 			new FlatMappedSQLForm[S, T](map, unmap, toString + ".notNull")(form, NotNull)
 				with NotNullForm[T] with ReadFormNullGuard[T]
 
-		override val toString :String = if (name != null) name else "<=" + form + "=>"
+		private val string = if (name != null) name else "<=" + form + "=>"
+		override def toString :String = string
+	}
+
+	private[schema] class DerivedFlatMappedSQLForm[S, T](protected override val name :String, fmap :S => Option[T],
+	                                                     protected override val unmap :T => Option[S])
+	                                                    (implicit override val form :SQLForm[S], nulls :NullValue[T])
+		extends DerivedFlatMappedSQLReadForm[S, T](name, fmap) with FlatMappedWriteForm[S, T] with SQLForm[T]
+	{
+		override def notNull :SQLForm[T] =
+			new DerivedFlatMappedSQLForm[S, T](name + ".notNull", map, unmap)(form, NotNull)
+				with NotNullForm[T] with ReadFormNullGuard[T]
 	}
 
 
 
 	private[schema] class MappedSQLForm[S, T](f :S => T, protected override val unmap :T => S, name :String = null)
-	                                         (implicit override val form :SQLForm[S], nulls :NullValue[T])
+	                                         (implicit protected override val form :SQLForm[S], nulls :NullValue[T])
 		extends MappedSQLReadForm[S, T](f) with MappedWriteForm[S, T] with SQLForm[T]
 	{ //map/flatMap not overriden to preserve potentially custom name.
 		override def notNull :SQLForm[T] =
 			new MappedSQLForm[S, T](map, unmap, toString + ".notNull")(form, NotNull)
 				with NotNullForm[T] with ReadFormNullGuard[T]
 
-		override val toString :String = if (name != null) name else "<=" + form + "=>"
+		private val string = if (name != null) name else "<=" + form + "=>"
+		override def toString :String = string
+	}
+
+	private[schema] class DerivedMappedSQLForm[S, T](protected override val name :String, read :S => T,
+	                                                 protected override val unmap :T => S)
+	                                                (implicit protected override val form :SQLForm[S], nulls :NullValue[T])
+		extends DerivedMappedSQLReadForm[S, T](name, read) with MappedWriteForm[S, T] with SQLForm[T]
+	{
+		override def notNull :SQLForm[T] =
+			new DerivedMappedSQLForm[S, T](name + ".notNull", map, unmap)(form, NotNull)
+				with NotNullForm[T] with ReadFormNullGuard[T]
 	}
 
 
@@ -932,8 +973,8 @@ object SQLForm {
 		override def bimap[X :NullValue](map :T => X)(unmap :X => T) :SQLForm[X] =
 			form.bimap(map)(unmap)
 
-		override def biflatMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
-			form.biflatMap(map)(unmap)
+		override def biOptMap[X :NullValue](map :T => Option[X])(unmap :X => Option[T]) :SQLForm[X] =
+			form.biOptMap(map)(unmap)
 
 		override def toOpt = form.toOpt
 		override def nullSafe = form.nullSafe

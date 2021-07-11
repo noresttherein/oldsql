@@ -216,10 +216,10 @@ object QuerySQL extends ImplicitDerivedTables {
 
 
 		implicit def readForm[T :SQLReadForm] :SQLReadForm[Rows[T]] =
-			SQLReadForm.map("Rows[_]>")((t :T) => Rows(t))
+			SQLReadForm.map("Rows>")((t :T) => Rows(t))
 
 		implicit def writeForm[T :SQLWriteForm] :SQLWriteForm[Rows[T]] =
-			SQLWriteForm.unsupported("SQLWriteForm[Rows[_]]")
+			SQLWriteForm.unsupported("<Rows[_]")
 
 
 		private case class MultipleRows[+E](seq :Seq[E]) extends Rows[E] {
