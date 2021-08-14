@@ -9,6 +9,8 @@ import net.noresttherein.oldsql.exceptions.OldSQLException
 import net.noresttherein.oldsql.model.InvocationReflection.Trace
 import net.noresttherein.oldsql.model.PropertyPath.UpdatableProperty
 import net.noresttherein.oldsql.slang
+
+//here be implicits
 import slang._
 
 
@@ -476,7 +478,7 @@ object PropertyPath {
 
 
 	/** PropertyPath consisting of a single property call. */
-	sealed class SimpleProperty[-X, +Y] private[PropertyPath](tpe :Type, _method :PropertyCall, _property :X =>Y)
+	sealed class SimpleProperty[-X, +Y] private[PropertyPath](tpe :Type, _method :PropertyCall, _property :X => Y)
 		extends Property[X, Y](tpe, _method, _property)
 	{
 		private[PropertyPath] def this(tpe :Type, method :PropertyCall) =
@@ -611,6 +613,8 @@ object PropertyPath {
 	{
 		def this(msg :String) = this(msg, null)
 		def this(cause :Throwable) = this(null, cause)
+
+		override def stackOn(msg :String) :OldSQLException = new PropertyReflectionException(msg, this)
 	}
 
 

@@ -1,13 +1,13 @@
 package net.noresttherein.oldsql.collection
 
-
-import scala.annotation.nowarn
-
-import net.noresttherein.oldsql.collection.Unique.{UniqueSeqAdapter, UniqueSetAdapter}
 import scala.collection.immutable.{ArraySeq, IndexedSeq, Iterable, Seq, Set}
 import scala.collection.mutable.Builder
 import scala.collection.{AbstractSeq, AbstractSet, Factory, IterableFactory, IterableFactoryDefaults, IterableOps}
 import scala.reflect.ClassTag
+
+import net.noresttherein.oldsql.collection.companionFactoryOf
+import net.noresttherein.oldsql.collection.Opt.Got
+import net.noresttherein.oldsql.collection.Unique.{UniqueSeqAdapter, UniqueSetAdapter}
 
 
 
@@ -15,12 +15,16 @@ import scala.reflect.ClassTag
 
 
 /** A collection of unique items in a specific order providing `O(1)` `indexOf(T)`, `contains(T)`, `apply(Int)`,
-  * `toSet`, `toSeq`, `toIndexedSeq` and `size` implementations. This class is used for the column lists exported
-  * by mappings in order to quickly find the column mapping for a given column result in a `ResultSet`.
-  * It works like a `Seq`, but append/prepend operations will result in no change if the added element is already
-  * present (in terms of `equals`) in this collection
+  * `toSet`, `toSeq`, `toIndexedSeq` and `size` implementations. It can be thought as a mix of [[Set]] and [[Seq]]:
+  * no two elements in the collection are equal, but their position is in the collection is important and features
+  * in equality (essentially having `Seq` semantics), unlike `Set` equality even for implementations preserving
+  * insertion order. Note that this means that seq-like append/prepend operations will lead to no change
+  * in the collection if the added items already exists.
+  *
+  * This class is used for the column lists exported by mappings in order to quickly find the column mapping
+  * for a given column result in a `ResultSet`.
   * @tparam T element type.
-  */
+  */ //consider: renaming to SeqSet or smth, Unique may be a good name for a collection of entities using their id as equality
 trait Unique[+T]
 	extends Iterable[T] with IterableOps[T, Unique, Unique[T]] with IterableFactoryDefaults[T, Unique]
 	   with Serializable
@@ -32,6 +36,14 @@ trait Unique[+T]
 	override def toIndexedSeq :IndexedSeq[T] = new UniqueSeqAdapter(this)
 	override def toSeq :Seq[T] = toIndexedSeq
 	override def toSet[U >: T] :Set[U] = new UniqueSetAdapter(this)
+
+	override def to[C1](factory :Factory[T, C1]) :C1 = companionFactoryOf(factory) match {
+		case Got(Seq) | Got(IndexedSeq) => toSeq.asInstanceOf[C1]
+		case Got(Set) => toSet.asInstanceOf[C1]
+		case _ => super.to(factory)
+	}
+
+
 	def reverseIterator :Iterator[T]
 
 	/** The `n`-th element in this collection.

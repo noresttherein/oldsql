@@ -4,6 +4,11 @@ import java.{lang => j}
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier.{ABSTRACT, FINAL, PROTECTED, PUBLIC}
 
+import scala.annotation.tailrec
+import scala.reflect.runtime.universe.{runtimeMirror, typeOf, Symbol, TermName, Type, TypeTag}
+import scala.collection.concurrent.{Map => ConcurrentMap, TrieMap => ConcurrentTrieMap}
+import scala.collection.mutable
+
 import net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy.ForDefaultConstructor
 import net.bytebuddy.implementation.MethodDelegation.to
 import net.bytebuddy.ByteBuddy
@@ -14,11 +19,8 @@ import net.bytebuddy.implementation.bind.annotation.{Origin, RuntimeType, This}
 import net.bytebuddy.implementation.FixedValue
 import net.bytebuddy.implementation.MethodCall.invoke
 import net.bytebuddy.matcher.ElementMatchers.{isConstructor, not}
-import net.noresttherein.oldsql.model.PropertyPath.{IdentityProperty, PropertyReflectionException}
-import scala.annotation.tailrec
-import scala.reflect.runtime.universe.{runtimeMirror, typeOf, Symbol, TermName, Type, TypeTag}
-import scala.collection.concurrent.{Map => ConcurrentMap, TrieMap => ConcurrentTrieMap}
-import scala.collection.mutable
+import net.noresttherein.oldsql.model.ComposedOf.DecomposableTo.{DecomposableMap, DecomposableSeq}
+import net.noresttherein.oldsql.model.PropertyPath.PropertyReflectionException
 
 
 
@@ -184,23 +186,24 @@ private[model] object InvocationReflection {
 		val tpeSuffix = tpe.toString.replace('.', '_')
 			.replace("[", "$q$").replace("]", "$p$") //
 		val name = clazz.getName + TracerClassNameSuffix + tpeSuffix
+		val mockClass = ClassSubstitutions(clazz)
 		val builder =
-			if (clazz.isInterface) //todo: implement abstract methods!!!
-				ByteBuddy.subclass(clazz, new ForDefaultConstructor).name(name)
+			if (mockClass.isInterface)
+				ByteBuddy.subclass(mockClass, new ForDefaultConstructor).name(name)
 			else {
-				val constructors = clazz.getDeclaredConstructors
+				val constructors = mockClass.getDeclaredConstructors
 					.filter { c => (c.getModifiers & (PUBLIC | PROTECTED)) != 0 }.sortBy(_.getParameterCount)
 				if (constructors.isEmpty)
 					throw new PropertyReflectionException(
-						s"Can't instrument a tracer for class ${clazz.getName} as it has no accessible constructor."
+						s"Can't instrument a tracer for class ${mockClass.getName} as it has no accessible constructor."
 					)
-				val best = constructors.head
-
-				new ByteBuddy().subclass(clazz, NO_CONSTRUCTORS).name(name)
-					.defineConstructor(PUBLIC).intercept(
-					invoke(best).onSuper.`with`(best.getParameterTypes.map(createInstance):_*)
-				)
-			}   //todo: simply copy the constructor signatures so we can try several argument combinations and calls.
+				(new ByteBuddy().subclass(mockClass, NO_CONSTRUCTORS).name(name) /: constructors) {
+					(buddy, constructor) =>
+						buddy.defineConstructor(PUBLIC).intercept(
+							invoke(constructor).onSuper.`with`(constructor.getParameterTypes.map(createInstance):_*)
+						)
+				}
+			}
 		builder //todo: discover cycles in constructors
 			.method(not(isConstructor[MethodDescription]())).intercept(to(new MethodInterceptor()))
 			.defineMethod(TypeMethodName, classOf[AnyRef], PUBLIC).intercept(FixedValue.value(tpe))
@@ -343,6 +346,11 @@ private[model] object InvocationReflection {
 	@inline private[this] final val TraceFieldName = "__oldsql__trace__"
 	@inline private[this] final val TypeMethodName = "__oldsql__type__"
 	@inline private[this] final val BugInfo = "This is a bug!"
+
+	private[this] final val ClassSubstitutions = Map[Class[_], Class[_]](
+		classOf[Map[_, _]] -> classOf[DecomposableMap[_, _]],
+		classOf[Seq[_]] -> classOf[DecomposableSeq[_]]
+	).withDefault(identity)
 
 	@inline private[this] final val JavaByte = classOf[j.Byte] :Any
 	@inline private[this] final val JavaShort = classOf[j.Short] :Any

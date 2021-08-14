@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.collection
 
 import scala.annotation.tailrec
-import scala.collection.{AbstractSeq, LinearSeq}
+import scala.collection.AbstractSeq
 
 
 

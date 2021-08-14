@@ -157,7 +157,7 @@ trait Kin[+T] extends Serializable {
 	  *  specifying which relationships should be fetched together with a queried entity, providing a clearer
 	  *  view and a uniform access to the related entity's properties.
 	  *  @throws NoSuchElementException if this kin is absent
-	  */ //fixme: this won't work for k->v, as it doesn't return the result a no-arg method on this
+	  */
 	def fetch[E](implicit decomposition :T DecomposableTo E) :E = decomposition.first(get)
 
 
@@ -357,6 +357,10 @@ trait Kin[+T] extends Serializable {
 	  * @param as information about the composition of the required type `C` from individual property values `X`.
 	  * @param decomposition implicit information how the value `T` of this kin decomposes to individual elements `E`.
 	  */
+	@throws[IncompatibleElementTypeException](
+		"if this kin is a DerivedKin and its composition is incompatible with the passed decomposition (that is, " +
+		"type E of intended elements doesn't match the internal element type of this instance."
+	)
 	def properties[E, X, C](property :PropertyPath[E, X], as :C ComposableFrom X)
 	                       (implicit decomposition :T DecomposableTo E) :Kin[C] //=
 //		Property(this, property)(decomposition, as)
@@ -815,7 +819,7 @@ object Kin {
 	  * @see [[net.noresttherein.oldsql.model.Kin.KinSeq]]
 	  * @see [[net.noresttherein.oldsql.model.Kin.KinSet]]
 	  * @see [[net.noresttherein.oldsql.model.Kin.Of]]
-	  */
+	  */ //consider: a special collection type and Kin for essentially a Set using entity id as equality
 	type Many[T] = Derived[T, Iterable[T]]
 
 	/** A factory and a matching pattern for [[net.noresttherein.oldsql.model.Kin.Derived Derived]]`[T, Iterable[T]]`
@@ -1350,6 +1354,10 @@ object Kin {
 				:Derived[X, C[X]] =
 			properties(property, ComposableFrom.Collection.of[X](in))
 
+		@throws[IncompatibleElementTypeException](
+			"if this.composition is incompatible with decomposition (that is, type I of intended elements doesn't match" +
+			" type E of elements of this instance."
+		)
 		override def properties[I, X, C](property :PropertyPath[I, X], as :C ComposableFrom X)
 		                                (implicit decomposition :T DecomposableTo I) :Derived[X, C] =
 			if (decomposition compatibleWith composition)

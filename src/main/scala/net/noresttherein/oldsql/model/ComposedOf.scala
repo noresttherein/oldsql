@@ -1,9 +1,9 @@
 package net.noresttherein.oldsql.model
 
-import scala.collection.{immutable, EvidenceIterableFactory, Factory, IterableFactory, MapFactory}
+import scala.collection.{immutable, EvidenceIterableFactory, Factory, IterableFactory}
 import scala.collection.mutable.Builder
 
-import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.{companionFactoryOf, Opt}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.IllegalKinArityException
 import net.noresttherein.oldsql.model.ComposedOf.{Arity, CollectionOf, ComposableFrom, ConstructFrom, DecomposableTo, ExtractAs}
@@ -947,22 +947,6 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			override def toString = "Nothing"
 		}
 
-
-		//todo: compare also factories with implicit evidence
-		private val IterableToFactoryClass = scala.collection.Iterable.iterableFactory.getClass
-		private val iterableFactoryField = IterableToFactoryClass.getFields.find(_.getType == classOf[IterableFactory[Iterable]])
-		private val MapToFactoryClass = scala.collection.Map.mapFactory.getClass
-		private val mapFactoryField = MapToFactoryClass.getFields.find(_.getType == classOf[MapFactory[Map]])
-
-		private def companionFactoryOf[E, T](factory :Factory[E, T]) :Option[Any] =
-			factory match {
-				case comparable: ComparableFactory[_, _] => Some(comparable.factory)
-				case _ if IterableToFactoryClass isAssignableFrom factory.getClass =>
-					iterableFactoryField.map(_.get(factory).asInstanceOf[IterableFactory[Iterable]])
-				case _ if MapToFactoryClass isAssignableFrom factory.getClass =>
-					mapFactoryField.map(_.get(factory).asInstanceOf[MapFactory[Map]])
-				case _ => None
-			}
 	}
 
 
@@ -1189,9 +1173,11 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			override def apply(composite :Map[Any, Any]) :Iterable[Any -> Any] =
 				composite.map { case (_1, _2) => ->(_1, _2) }
 
-			override def first(composite :Map[Any, Any]) :Any -> Any = {
-				val (_1, _2) = composite.head
-				->(_1, _2)
+			override def first(composite :Map[Any, Any]) :Any -> Any = composite match {
+				case mock :DecomposableMap[_, _] => mock.first
+				case _ =>
+					val (_1, _2) = composite.head
+					->(_1, _2)
 			}
 
 			override def toString = "Map"
@@ -1203,11 +1189,28 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			override def apply(composite :Iterable[Any]) :Iterable[Int -> Any] =
 				composite.view.zipWithIndex.map { case (v, idx) => ->(idx, v) }
 
-			override def first(composite :Iterable[Any]) :Int -> Any = ->(0, composite.head)
+			override def first(composite :Iterable[Any]) :Int -> Any = composite match {
+				case mock :DecomposableSeq[_] => mock.first
+				case _ => -> (0, composite.head)
+			}
 
 			override def toString = "Ordered"
 		}
 
+
+		/** Mock class specialization of `Map` for instrumentations, makes `Kin.fetch` for a K->V
+		  * resolve to a single property call, and thus work with `PropertyPath`.
+		  */
+		private[oldsql] trait DecomposableMap[K, V] extends Map[K, V] {
+			def first :K -> V
+		}
+
+		/** Mock class specialization of `Set` for instrumentations, makes `Kin.fetch` for a Int->E
+		  * resolve to a single property call, and thus work with `PropertyPath`.
+		  */
+		private[oldsql] trait DecomposableSeq[E] extends Seq[E] {
+			def first :Int -> E
+		}
 	}
 
 }

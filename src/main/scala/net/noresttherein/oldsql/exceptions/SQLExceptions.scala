@@ -1,6 +1,9 @@
 package net.noresttherein.oldsql.exceptions
 
+import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, Relation}
+import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.sql.{DMLStatement, Query, SQLExpression}
+import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 
 
 
@@ -39,6 +42,21 @@ class MisspelledSQLException(msg :String, cause :Throwable = null)
 	def this(expression :SQLExpression.*) = this("Invalid SQL expression: " + expression + ".")
 	def this(query :Query.*) = this("Invalid SQL query: " + query + ".")
 	def this(statement :DMLStatement.*) = this("Invalid DML statement: " + statement + ".")
+
+	override def stackOn(msg :String) :OldSQLException = new MisspelledSQLException(msg, this)
+}
+
+
+/** Thrown during SQL rendering when a [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expression
+  * is encountered for a component or column whose buffs prevent it from being used in the given context
+  * (syntactical scope?clause).
+  */
+class IllegalComponentException(msg :String, cause :Throwable = null) extends MisspelledSQLException(msg, cause) {
+	def this(relation :Relation[MappingAt], component :Mapping)(implicit spelling :SQLSpelling) =
+		this({
+			val compType = if (component.isInstanceOf[ColumnMapping[_, _]]) "Column" else "Component"
+			s"$compType $component of $relation is not permitted in " + spelling.scope + "."
+		})
 }
 
 
@@ -48,9 +66,11 @@ class MisspelledSQLException(msg :String, cause :Throwable = null)
   * columns cannot be used to set values in an SQL ''update'' on a column-by-column basis.
   */
 class InseparableExpressionException(msg :String, cause :Throwable = null) extends MisspelledSQLException(msg, cause) {
-	def this(expression :SQLExpression.*) = this(
-		s"Cannot split expression '$expression' of ${expression.readForm.readColumns} columns into individual columns."
+	def this(expression :SQLExpression.*)(implicit spelling :SQLSpelling) = this(
+		s"Cannot split expression '$expression' into individual columns."
 	)
+
+	override def stackOn(msg :String) :OldSQLException = new InseparableExpressionException(msg, this)
 }
 
 
@@ -61,6 +81,8 @@ class InseparableExpressionException(msg :String, cause :Throwable = null) exten
   * This is the case when two expressions with the same value type are used in a comparison, assignment or ''select''
   * clauses of composites of a compound ''select'' have different implementation and structure.
   */
-class MismatchedExpressionsException(msg :String, cause :Throwable = null) extends MisspelledSQLException(msg, cause)
+class MismatchedExpressionsException(msg :String, cause :Throwable = null) extends MisspelledSQLException(msg, cause) {
+	override def stackOn(msg :String) :OldSQLException = new MismatchedExpressionsException(msg, this)
+}
 
 

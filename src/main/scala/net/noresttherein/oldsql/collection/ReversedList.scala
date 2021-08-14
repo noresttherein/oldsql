@@ -130,6 +130,7 @@ private[oldsql] sealed abstract class ReversedList[+E] extends AbstractSeq[E] {
   * rather than prepend.
   */
 private[oldsql] object ReversedList extends SeqFactory[ReversedList] {
+	/** A singleton list. */
 	def :+[A](elem :A) :ReversedList[A] = new NonEmpty(Empty, elem, 1)
 
 	override def from[A](source :IterableOnce[A]) :ReversedList[A] = source match {

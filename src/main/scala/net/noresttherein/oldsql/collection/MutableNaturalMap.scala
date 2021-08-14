@@ -1,11 +1,11 @@
 package net.noresttherein.oldsql.collection
 
-import net.noresttherein.oldsql
-import net.noresttherein.oldsql.collection.NaturalMap.{Assoc, BaseNaturalMap}
-import net.noresttherein.oldsql.morsels.generic.=#>
-
 import scala.collection.mutable
 import scala.collection.mutable.Builder
+
+import net.noresttherein.oldsql
+import net.noresttherein.oldsql.collection.NaturalMap.Assoc
+import net.noresttherein.oldsql.morsels.generic.=#>
 
 
 /**

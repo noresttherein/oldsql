@@ -143,7 +143,7 @@ object Chain extends ChainFactory {
 	trait ~[+I <: Chain, +L] extends Chain {
 		val init :I
 		def last :L
-
+		//method allowing this class to be returned directly from unapply
 		def get :(I, L) = init -> last
 
 		override def isEmpty = false

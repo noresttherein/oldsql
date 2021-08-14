@@ -88,15 +88,27 @@ trait NaturalMap[K[X], +V[X]] extends Iterable[NaturalMap.Assoc[K, V, _]] with (
 		res.result()
 	}
 
-	override def filter(f :Assoc[K, V, _] => Boolean) :NaturalMap[K, V] = {
+	override def filter(p :Assoc[K, V, _] => Boolean) :NaturalMap[K, V] = {
 		val res = NaturalMap.newBuilder[K, V]
 		val iter = iterator
 		while (iter.hasNext) {
 			val entry = iter.next()
-			if (f(entry))
+			if (p(entry))
 				res += entry
 		}
 		res.result()
+	}
+
+	override def partition(p :Assoc[K, V, _] => Boolean) :(NaturalMap[K, V], NaturalMap[K, V]) = {
+		val yes = NaturalMap.newBuilder[K, V]
+		val no  = NaturalMap.newBuilder[K, V]
+		val iter = iterator
+		while (iter.hasNext) {
+			val entry = iter.next()
+			if (p(entry)) yes += entry
+			else no += entry
+		}
+		(yes.result(), no.result())
 	}
 
 
@@ -336,16 +348,30 @@ object NaturalMap {
 			}
 
 
-		override def filter(f :Assoc[K, V, _] => Boolean) :NaturalMap[K, V] =
+		override def filter(p :Assoc[K, V, _] => Boolean) :NaturalMap[K, V] =
 			if (cache != null)
-				cache.filter(f)
+				cache filter p
 			else {
 				val map = backing
 				if (map != null) {
 					cache = map
-					map filter f
+					map filter p
 				} else
-					new LazyNaturalMap(target filter f)
+					new LazyNaturalMap(target filter p)
+			}
+
+		override def partition(p :Assoc[K, V, _] => Boolean) :(NaturalMap[K, V], NaturalMap[K, V]) =
+			if (cache != null)
+				cache partition p
+			else {
+				val map = backing
+				if (map != null) {
+					cache = map
+					map partition p
+				} else {
+					lazy val (yes, no) = target partition p
+					(new LazyNaturalMap(yes), new LazyNaturalMap(no))
+				}
 			}
 
 
