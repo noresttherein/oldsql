@@ -2,9 +2,7 @@ package net.noresttherein.oldsql.model
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.model.EntityIdentity.NoPrimaryKeyException
 import net.noresttherein.oldsql.schema.SQLForm
-import net.noresttherein.oldsql.schema.SQLForm.NullValue
 
 
 

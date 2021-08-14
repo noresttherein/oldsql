@@ -4,8 +4,8 @@ import scala.reflect.runtime.universe.TypeTag
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
+import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory}
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom
-import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory, PropertyPath}
 import net.noresttherein.oldsql.model.Kin.{Derived, Present, Unknown}
 import net.noresttherein.oldsql.model.KinFactory.{BaseDerivedKinFactory, BaseKinFactory, DerivedKinFactory}
 

@@ -7,8 +7,8 @@ import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.Restraint.Compares.{GT, GTE, LT, LTE}
-import net.noresttherein.oldsql.model.Restraint.{Compares, Equal, Exists, False, ForAll, IsNull, Membership, Restrainer, StringLike, True}
-import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, Collection, ComposedRestrictive, ConcatRestrictive, Literal, NegatedRestrictive, SizeOf, SubclassRestrictive, SwitchRestrictive, TranslableTerm}
+import net.noresttherein.oldsql.model.Restraint.{Compares, Equal, Exists, ForAll, IsNull, Membership, Restrainer, StringLike}
+import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, ComposedRestrictive, ConcatRestrictive, NegatedRestrictive, SizeOf, SubclassRestrictive, SwitchRestrictive, TranslableTerm}
 import net.noresttherein.oldsql.model.Restrictive.Arithmetic.{DIV, MINUS, MULT, Operator, PLUS, REM}
 import net.noresttherein.oldsql.model.types.{ArithmeticSupport, OrderingSupport}
 

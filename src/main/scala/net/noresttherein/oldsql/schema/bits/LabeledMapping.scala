@@ -72,8 +72,7 @@ object LabeledMapping {
 	  * for the appropriate type constructor.
 	  */
 	sealed trait @:[N <: Label, M <: Mapping]
-		extends LabeledMapping[N, M#Subject, M#Origin]
-		   with MappingAdapter[M, M#Subject, M#Origin]
+		extends LabeledMapping[N, M#Subject, M#Origin] with MappingAdapter[M, M#Subject, M#Origin]
 	{
 		def label :N
 

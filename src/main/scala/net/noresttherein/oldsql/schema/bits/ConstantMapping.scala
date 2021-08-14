@@ -1,9 +1,9 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.collection.{Opt, Unique}
-import net.noresttherein.oldsql.schema.support.EmptyMapping
+import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.schema.SQLReadForm
+import net.noresttherein.oldsql.schema.support.EmptyMapping
 
 //implicits
 import net.noresttherein.oldsql.slang._

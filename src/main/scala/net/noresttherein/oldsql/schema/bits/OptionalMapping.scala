@@ -3,11 +3,11 @@ package net.noresttherein.oldsql.schema.bits
 import net.noresttherein.oldsql.model.RelatedEntityFactory
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional, Requisite}
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
-import net.noresttherein.oldsql.schema.support.{MappedMapping, MappingAdapter}
-import net.noresttherein.oldsql.schema.SQLForm.NullValue
-import net.noresttherein.oldsql.schema.support.MappingAdapter.{ColumnAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.ColumnMapping
+import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.support.{MappedMapping, MappingAdapter}
+import net.noresttherein.oldsql.schema.support.MappingAdapter.{ColumnAdapter, DelegateAdapter}
 
 
 
@@ -35,7 +35,8 @@ object OptionalMapping {
 
 
 
-	class OptionalKinMapping[+M <: RefinedMapping[S, O], K, S, R, O](protected override val backer :M, factory :RelatedEntityFactory[K, S, S, R])
+	class OptionalKinMapping[+M <: RefinedMapping[S, O], K, S, R, O]
+	                        (protected override val backer :M, factory :RelatedEntityFactory[K, S, S, R])
 		extends MappedMapping[S, R, O] with DelegateAdapter[M, R, O]
 	{
 		protected override def nulls :NullValue[R] =

@@ -2,7 +2,10 @@ package net.noresttherein.oldsql.morsels
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.morsels.Extractor.{ConstantExtractor, EmptyExtractor, IdentityExtractor, Optional, OptionalExtractor, RequisiteExtractor}
+import net.noresttherein.oldsql.morsels.Extractor.{OptionalExtractor, RequisiteExtractor}
+
+
+
 
 
 
@@ -30,6 +33,7 @@ trait Extractor[-X, +Y] extends Serializable { self =>
 	def apply(x :X) :Y
 
 	def opt(x :X) :Opt[Y]
+	@inline final def ?(x :X) :Opt[Y] = opt(x)
 
 	def unapply(x :X) :Opt[Y] = opt(x)
 
@@ -66,8 +70,9 @@ object Extractor extends ImplicitExtractors {
 
 	/** A type alias for [[net.noresttherein.oldsql.morsels.Extractor Extractor]], allowing concise writing it
 	  * in the infix function format `X =?> Y`.
-	  */ //todo: make Extractor extend PartialFunction
+	  */
 	type =?>[-X, +Y] = Extractor[X, Y]
+	type =!>[-X, +Y] = RequisiteExtractor[X, Y]
 
 
 	def apply[X, Y](extract :X => Option[Y], requisite: Opt[X => Y]) :Extractor[X, Y] = requisite match {
@@ -203,7 +208,7 @@ object Extractor extends ImplicitExtractors {
 
 	/** The default `Extractor` implementation which can fail to produce a value for the argument.
 	  * It is a 'SAM' type, leaving only the `opt` method to be implemented by subclasses.
-	  */
+	  *///todo: make OptionalExtractor extend PartialFunction
 	trait OptionalExtractor[-X, +Y] extends Extractor[X, Y] { self =>
 		override def apply(x :X) :Y = opt(x) getOrElse {
 			throw new NoSuchElementException("No value for " + this + " in " + x)

@@ -5,7 +5,6 @@ import scala.annotation.{nowarn, tailrec}
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.schema.bits.LabelPath.{/, :/, ConcatLabelPath, Label, SplitLabelPath}
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 
 
 
@@ -19,7 +18,7 @@ import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
   * of individual mappings. There are two subtypes of this type:
   *   1. [[net.noresttherein.oldsql.schema.bits.LabelPath.:/ #/]], the type class for any
   *      `String` literal type representing an atomic label;
-  *      2. [[net.noresttherein.oldsql.schema.bits.LabelPath./ /]], the type of compound paths composed of several labels.
+  *   1. [[net.noresttherein.oldsql.schema.bits.LabelPath./ /]], the type of compound paths composed of several labels.
   *      `A / B / C` is a type class for itself, `A / B / C`.
   *      This class/type class duality comes from the dual use cases of path types: indexing by values and indexing
   *      purely on type level and the desire for uniform interface of single labels and compound paths. The polymorphism
@@ -171,7 +170,16 @@ object LabelPath {
 			case _ => false
 		}
 
-		override def toString :String = prefix.toString + "/" + label
+		override def toString :String = {
+			def rec(path :Any = this, capacity :Int = 0) :StringBuilder = path match {
+				case composite: /[_, _] =>
+					rec(composite.prefix, capacity + 1 + composite.label.length) += '/' ++= composite.label.toString
+				case _ =>
+					val string = path.toString
+					new StringBuilder(capacity + string.length) ++= string
+			}
+			rec().toString
+		}
 	}
 
 

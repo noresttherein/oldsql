@@ -9,8 +9,8 @@ import net.noresttherein.oldsql
 
 /**
   * @author Marcin Mościcki
-  */
-trait Lazy[+T] extends Serializable {
+  */ //this is private[oldsql] to seal countless private[schema] fields of LazyMapping, because I'm too lazy to wrap them in Sealed
+private[oldsql] trait Lazy[+T] extends Serializable {
 	def get :T
 
 	def isInitialized :Boolean
@@ -22,7 +22,7 @@ trait Lazy[+T] extends Serializable {
 
 
 
-object Lazy {
+private[oldsql] object Lazy {
 
 	def apply[T](init: => T) :Lazy[T] = new Lazy[T] {
 		@volatile @transient private[this] var f = () => init
@@ -30,7 +30,7 @@ object Lazy {
 		private[this] var cache :T = _
 
 		override def isInitialized :Boolean = f == null
-
+		//fixme: this almost certainly doesn't work - cache!=null doesn't imply all changes from init() are visible
 		override def get :T = {
 			if (cache == null) {
 				var init = f

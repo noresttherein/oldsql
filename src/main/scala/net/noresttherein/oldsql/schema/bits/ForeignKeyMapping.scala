@@ -10,11 +10,10 @@ import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom
 import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, Requisite}
-import net.noresttherein.oldsql.schema.{composeColumnExtracts, composeExtracts, Buff, Buffs, ColumnForm, ColumnMapping, Mapping, MappingExtract}
+import net.noresttherein.oldsql.schema.{composeColumnExtracts, composeExtracts, Buff, Buffs, ColumnForm, ColumnMapping, MappingExtract, RelVar}
 import net.noresttherein.oldsql.schema.ColumnMapping.{OptimizedColumn, SimpleColumn, StableColumn}
 import net.noresttherein.oldsql.schema.ColumnWriteForm.SingletonColumnWriteForm
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.RelVar
 import net.noresttherein.oldsql.schema.SQLForm.{AbstractMappedForm, NullValue}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping, OptimizedMappingAssembly}
 import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.CounterpartComponent
@@ -25,18 +24,46 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.OpaqueColumnProxy
 
 
 
-/** Common super type of components mapping relationships between two tables into references
-  * between the scala objects mapped to those tables. The subject type represents a unidirectional view
+/** Common super type of components mapping a relationship between two tables into a reference
+  * linking the scala objects mapped to those tables. The subject type represents a unidirectional view
   * of the relationship, starting from the table mapped by the root mapping containing this component, and linking
-  * to `table` property of this object. It is of little use in itself, but allows to refer to both
+  * to `table` property of this object. The subject type `S` of this mapping is a 'reference type' which consists
+  * of two optional parts: a ''key'', that is a value from the owning table identifying a row or rows
+  * in the target table, which is (typically) included in every object created by this mapping, and a ''value'',
+  * that is either the subject type of the target table, or some collection of those subjects
+  * for ''to-many'' relationships.
+  *
+  * This trait is of little use in itself, but allows to refer to both
   * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping ForeignKeyMapping]] and
   * [[net.noresttherein.oldsql.schema.bits.JoinTableCollectionMapping JoinTableCollectionMapping]] through
   * a single interface.
+  * @author Marcin Mościcki
   */
 trait RelationshipMapping[+T[A] <: MappingAt[A], S, O] extends BaseMapping[S, O] {
+	/** The 'key' type carried by the subject of the mapping, which is a subject type of a component in the owning table
+	  * referencing (or referenced by) rows
+	  * in the target [[net.noresttherein.oldsql.schema.bits.RelationshipMapping.table table]], either directly
+	  * (a foreign key to the primary key in the referenced table or a primary key of this table referenced by
+	  * a foreign key in the target table), or indirectly through a join table.
+	  */
 	type Key
+
+	/** The table with entities in a relationship with the owning table. Row value(s) `T[_]#Subject`
+	  * form the subject type `S` of this mapping.
+	  */
 	def table :RelVar[T]
+
+	/** A component of this mapping with a subject type representing a column or columns in the owning table which
+	  * identifies a set of rows in the target [[net.noresttherein.oldsql.schema.bits.RelationshipMapping.table table]]
+	  * (possibly indirectly). This might be a component for a foreign key fully managed by this instance,
+	  * or a 'symlink' to the primary key in the owning table (that is, a component declared directly
+	  * by the owning mapping), in which case it will likely carry
+	  * an [[net.noresttherein.oldsql.schema.Buff.Ignored Ignored]] buff
+	  * or be a [[net.noresttherein.oldsql.schema.bits.SymlinkMapping SymlinkMapping]].
+	  */
 	def key :Component[Key]
+
+	/** Creates a reference instance of the subject type of this mapping wrapping the given key. */
 	def forKey(key :Key) :S
 }
 
@@ -47,18 +74,22 @@ trait RelationshipMapping[+T[A] <: MappingAt[A], S, O] extends BaseMapping[S, O]
 
 /** Base trait for relationships joining two tables by matching isomorphic components between them.
   * It is a mapping for a reference-like type `S` which has two distinct, optional parts: a ''key'', which
-  * identifies a row or rows in the other table, and/or an object of type derived from the referenced table's
+  * identifies a row or rows in the other table, and/or a ''value'': an object of type derived from the referenced table's
   * entity type (the subject of the table's mapping). The latter can be simply the type mapped to a single row
   * of the table, or a collection combined from multiple rows. It works as an adapter to a single 'key' component
   * in the containing table, but also grants access to the referenced table matching key component.
-  * It serves as the 'outside' interface of [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping ForeignKeyMapping]],
+  * It serves as an 'outside' interface of [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping ForeignKeyMapping]],
   * providing all information required to join the two tables by matching the corresponding key values,
-  * while keeping the type signature uncluttered.
+  * while keeping the type signature uncluttered. Instances (if not necessarily implementations) belong
+  * to one of two distinct groups: components for foreign keys, and mappings of 'inverse foreign keys':
+  * components for keys in the owning tables referenced by foreign keys from target tables.
+  * @see [[net.noresttherein.oldsql.model.Kin]]
+  * @author Marcin Mościcki
   */
 trait DirectRelationshipMapping[+T[A] <: MappingAt[A], S, O] extends RelationshipMapping[T, S, O] {
 
 	/** The key type: the subject type of both the referenced and local key components `target`, `key`. */
-	type Key
+	override type Key
 
 	/** [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type of the referenced component, differing
 	  * from this instance's `Origin`.
@@ -66,7 +97,7 @@ trait DirectRelationshipMapping[+T[A] <: MappingAt[A], S, O] extends Relationshi
 	type TargetOrigin
 
 	/** Referenced table. */
-	def table :RelVar[T]
+	override def table :RelVar[T]
 
 	/** Referenced component (typically the primary key for a foreign key mapping) in
 	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.table table]].
@@ -80,11 +111,17 @@ trait DirectRelationshipMapping[+T[A] <: MappingAt[A], S, O] extends Relationshi
 	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.table table]].
 	  * It contains a column for every column and a similarly mirrored component for every component in `target`.
 	  * The names of the columns may (and likely will) differ and depend on the naming scheme of this instance.
+	  * For inverse foreign key mappings, if the local key is the primary key of the enclosing table,
+	  * or otherwise a component occurring independently elsewhere, there is a need to prevent from duplicate
+	  * entries for this component in generated SQL. This is typically achieved either by granting it
+	  * an [[net.noresttherein.oldsql.schema.Buff.Ignored Ignored]] buff, or by excluding it altogether from
+	  * this mapping's component lists (for example,
+	  * by extending [[net.noresttherein.oldsql.schema.bits.SymlinkMapping SymlinkMapping]]).
 	  */
-	def key :Component[Key]
+	override def key :Component[Key]
 
 	/** Creates the mapped reference for the given key. */
-	def forKey(key :Key) :S
+	override def forKey(key :Key) :S
 }
 
 
@@ -99,10 +136,12 @@ trait DirectRelationshipMapping[+T[A] <: MappingAt[A], S, O] extends Relationshi
   * [[net.noresttherein.oldsql.schema.bits.DirectRelationshipMapping.table table]] on the other one. It expands
   * [[net.noresttherein.oldsql.schema.bits.DirectRelationshipMapping DirectRelationshipMapping]] with API allowing
   * access to subcomponents of the [[net.noresttherein.oldsql.schema.bits.DirectRelationshipMapping.key key]] component
-  * without specifying if the original comes from this table or the referenced one. It contains `key`
-  * as its only component, which is homomorphic with component mapping `target` in the other table,
-  * containing a proxy component for every subcomponent (and column) of `target`. The foreign key `target`
-  * however is ''not'' a component of this mapping. It should never be projected to
+  * without specifying if the original comes from this table or the referenced one.
+  *
+  * The single component [[net.noresttherein.oldsql.schema.bits.RelationshipMapping.key key]] of this mapping
+  * is homomorphic with component mapping [[net.noresttherein.oldsql.schema.bits.DirectRelationshipMapping.target target]]
+  * in the other table, containing a proxy component for every subcomponent (and column) of `target`.
+  * The foreign key `target` however is ''not'' a component of this mapping. It should never be projected to
   * [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type of this instance and passed to
   * [[net.noresttherein.oldsql.haul.ComponentValues ComponentValues]] used in the assembly of this mapping.
   * In this way, the mapping can be used to implement both
@@ -122,7 +161,7 @@ trait DirectRelationshipMapping[+T[A] <: MappingAt[A], S, O] extends Relationshi
   * @tparam S a type derived from the subject type of the referenced table, referencing all rows with `target`
   *           component's value matching the value of the local `key` component.
   * @tparam O the [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type of this component.
-  * @author Marcin Mościcki
+  * @see [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping]]
   */
 trait JoinedEntityComponent[+T[A] <: MappingAt[A], +C[X] <: MappingAt[X], K, S, O]
 	extends DirectRelationshipMapping[T, S, O]

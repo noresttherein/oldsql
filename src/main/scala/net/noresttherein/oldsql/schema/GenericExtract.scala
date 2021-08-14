@@ -15,7 +15,6 @@ import net.noresttherein.oldsql.schema.GenericExtract.{ConstantExtract, EmptyExt
 
 object ColumnExtract { //todo: unify the name with ColumnMappingExtract
 
-
 	def apply[S, T, O](column :ColumnMapping[T, O], pick :S => Option[T], surepick :Option[S => T])
 			:ColumnMappingExtract[S, T, O] =
 		surepick match {
@@ -131,11 +130,14 @@ object MappingExtract {
   * with the type of the ''export'' mapping. Both of the above types are type aliases to this trait, so as long as
   * the export mapping is a column, a `MappingExtract` can be cast down to a `ColumnMappingExtract`, even if it was
   * created as a `MappingExtract` (using the more generic `MappingExtract` factory). Several places in the codebase
-  * take advantage of this type.
+  * take advantage of this type. Note that while it is generally assumed that the component included as an extract
+  * is an export component of some [[net.noresttherein.oldsql.schema.Mapping.RefinedMapping RefinedMapping]]`[S, O]`,
+  * ensuring that it is indeed the case lies on the code creating a new instance, hence any code dependent on this type
+  * should exert normal caution.
   */
 trait GenericExtract[+M <: RefinedMapping[T, O], -S, T, O] extends Extractor[S, T] {
 
-	val export :M
+	val export :M //todo: rename to actual
 
 	@inline final def apply[L <: S](pieces :ComponentValues[L, O]) :T = pieces(this)
 

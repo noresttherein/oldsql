@@ -3,7 +3,7 @@ package net.noresttherein.oldsql
 import java.lang.{StringBuilder => JStringBuilder}
 
 import scala.annotation.tailrec
-import scala.collection.{IterableOnce, IterableOps}
+import scala.collection.{IterableOnce, IterableOps, LinearSeq}
 import scala.reflect.{classTag, ClassTag}
 import scala.util.Try
 
@@ -21,6 +21,11 @@ package object slang {
 		def unapply[T](value :T) :Opt[(T, T)] = Got((value, value))
 	}
 
+	/** Extends any non-value object with a `neq` method being the opposite of the built-in method `eq`. */
+	private[oldsql] implicit class neq(private val self :AnyRef) extends AnyVal {
+		/** `!(this eq other)` */
+		@inline def neq(other :AnyRef) :Boolean = !(self eq other)
+	}
 
 
 	/** Additional extension methods for collections of the standard library framework. */
@@ -62,6 +67,52 @@ package object slang {
 			val b = self.iterableFactory.newBuilder[O]
 			self foreach { e => b ++= f(i, e); i += 1 }
 			b.result()
+		}
+
+		/** Maps the elements of the collection in the reverse order. The operation is faster than
+		  * `this.map(f).reverse`. */
+		def reverseMap[O](f :E => O) :C[O] = self match {
+			case list :List[E] =>
+				@tailrec def mapList(unmapped :List[E], mapped :List[O]) :List[O] = unmapped match {
+					case h::t => mapList(t, f(h)::mapped)
+					case _ => mapped
+				}
+				mapList(list, Nil).asInstanceOf[C[O]]
+			case list :LinearSeq[E] =>
+				@tailrec def mapLinear(unmapped :LinearSeq[E], mapped :LinearSeq[O]) :LinearSeq[O] =
+					if (unmapped.isEmpty) mapped
+					else mapLinear(unmapped.tail, f(unmapped.head) +: mapped)
+				mapLinear(list, list.iterableFactory.empty).asInstanceOf[C[O]]
+			case seq :scala.collection.IndexedSeq[E] =>
+				def mapIndexed() = {
+					val b = self.iterableFactory.newBuilder[O]
+					var i = seq.length
+					while (i > 0) {
+						i -= 1
+						b += f(seq(i))
+					}
+					b.result()
+				}
+				mapIndexed()
+			case seq :scala.collection.Seq[E] =>
+				def mapSeq() = {
+					val i = seq.reverseIterator
+					val b = self.iterableFactory.newBuilder[O]
+					b sizeHint self
+					while (i.hasNext)
+						b += f(i.next())
+					b.result()
+				}
+				mapSeq()
+			case _ =>
+				def mapIterable() = {
+					val mapped = (List.empty[O] /: self){ (acc, e) => f(e)::acc }
+					val b = self.iterableFactory.newBuilder[O]
+					b sizeHint self
+					b ++= mapped
+					b.result()
+				}
+				mapIterable()
 		}
 	}
 
@@ -613,7 +664,7 @@ package object slang {
 		  * @tparam U the (super)type of `this` expression.
 		  * @tparam Y the target type of the expression after casting.
 		  */
-		@inline def castTo[U >: X, Y] :Y = value.asInstanceOf[Y]
+		@inline def castFrom[U >: X, Y] :Y = value.asInstanceOf[Y]
 
 		/** A safer casting expression which, in addition to the target type, accepts also the type of the cast
 		  * expression itself (`this`). Both types are given as a single argument function `X => Y`,
@@ -624,6 +675,14 @@ package object slang {
 		@inline def castWith[F <: X => Any](implicit function :ReturnTypeOf[F]) :function.Return =
 			value.asInstanceOf[function.Return]
 
+		/** A safer casting expression intended for the cases where the cast is an optimisation meant to
+		  * eliminate the re-creation of a composite object solely to change its type signature (typically
+		  * phantom type parameters), while the implementation is reusable for the target type.
+		  * It accepts an (unused) function re-creating the object `Y` in a type safe manner, which both
+		  * serves as an illustration and documentation of why the cast is safe, and specifies the target type.
+		  */
+		@inline def castLike[Y](like : => X => Y) :Y = value.asInstanceOf[Y]
+
 
 		@inline def asSubclass[S <: X](implicit S :ClassTag[S]) :Option[S] = S.unapply(value)
 
@@ -632,9 +691,6 @@ package object slang {
 		@inline def ifSubclassOf[S] :CastValueGuard[X, S] = new CastValueGuard[X, S](value)
 
 		@inline def ifSubclass[S <: X] :CastValueGuard[X, S] = ifSubclassOf[S]
-
-//		@inline def explicitCast[F>:T, S] :S = value.asInstanceOf[S]
-
 	}
 
 	private[oldsql] final class ReturnTypeOf[F <: Nothing => Any] private { type Return }

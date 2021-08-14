@@ -3,7 +3,7 @@ package net.noresttherein.oldsql.haul
 import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.haul.ColumnValues.{AliasedColumnValues, DedicatedColumnValues, EmptyValues, FallbackColumnValues}
-import net.noresttherein.oldsql.haul.ComponentValues.{aliasing, selectiveAliasing, AliasedComponentValues, ChosenDisassembledValues, ComponentValuesAliasing, ComponentValuesMap, ComponentValuesNaturalMap, DedicatedComponentValues, DisassembledValues, FallbackValues, GlobalComponentValues, IndexedValues, LazyComponentValuesProxy, MappingAliasing, SimpleComponentValues, TypedValues, UntypedValues}
+import net.noresttherein.oldsql.haul.ComponentValues.{aliasing, selectiveAliasing, AliasedComponentValues, ChosenDisassembledValues, ComponentValuesAliasing, ComponentValuesMap, ComponentValuesNaturalMap, DedicatedComponentValues, DisassembledValues, FallbackValues, SharedComponentValues, IndexedValues, LazyComponentValuesProxy, MappingAliasing, SimpleComponentValues, TypedValues, UntypedValues}
 import net.noresttherein.oldsql.morsels.generic.{=#>, Self}
 import net.noresttherein.oldsql.schema.ColumnMapping
 import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
@@ -104,7 +104,7 @@ object ColumnValues {
 			new ColumnValuesNaturalMap(map)
 		case _ =>
 			new TypedValues[S, O](values.asInstanceOf[NaturalMap[MappingAt[O]#Component, Self]])
-				with ColumnValuesAdapter[S, O] with GlobalColumnValues[S, O] with ImmutableColumnValues[S, O]
+				with ColumnValuesAdapter[S, O] with SharedColumnValues[S, O] with ImmutableColumnValues[S, O]
 	}
 
 	/** Returns `ColumnValues` using the given function as the source of values for columns.
@@ -120,7 +120,7 @@ object ColumnValues {
 			new ColumnValuesMap(map.asInstanceOf[Map[ColumnMapping[_, O], Any]])
 		case _ =>
 			new UntypedValues[S, O](values.asInstanceOf[Map[RefinedMapping[_, O], Any]])
-				with ColumnValuesAdapter[S, O] with GlobalColumnValues[S, O] with ImmutableColumnValues[S, O]
+				with ColumnValuesAdapter[S, O] with SharedColumnValues[S, O] with ImmutableColumnValues[S, O]
 	}
 
 
@@ -134,7 +134,7 @@ object ColumnValues {
 	  */
 	def apply[S, O](values :IndexedSeq[Any])(index :ColumnMapping[_, O] => Int) :ColumnValues[S, O] =
 		new IndexedValues[S, O](values, index.asInstanceOf[MappingAt[O] => Int])
-			with ColumnValuesAdapter[S, O]with GlobalColumnValues[S, O] with ImmutableColumnValues[S, O]
+			with ColumnValuesAdapter[S, O]with SharedColumnValues[S, O] with ImmutableColumnValues[S, O]
 
 
 	/** Creates a `ColumnValues` instance with a given preset for the specified mapping. If non-empty,
@@ -158,7 +158,7 @@ object ColumnValues {
 	  */
 	def apply[S, O](mapping :RefinedMapping[S, O], value :S) :ColumnValues[S, O] =
 		new DisassembledValues[S, S, O](mapping, value)
-			with ColumnValuesAdapter[S, O] with GlobalColumnValues[S, O] with ImmutableColumnValues[S, O]
+			with ColumnValuesAdapter[S, O] with SharedColumnValues[S, O] with ImmutableColumnValues[S, O]
 
 	/** Create `ColumnValues` for the given mapping and its subject. All values returned by this instance will use
 	  * the `MappingExtract` provided by the given mapping to extract the value from the given argument.
@@ -172,7 +172,7 @@ object ColumnValues {
 	def apply[S, O](mapping :RefinedMapping[S, O], value :S, components :Unique[ColumnMapping[_, O]])
 			:ColumnValues[S, O] =
 		new ChosenDisassembledValues[S, S, O](mapping, value, components)
-			with ColumnValuesAdapter[S, O] with GlobalColumnValues[S, O] with ImmutableColumnValues[S, O]
+			with ColumnValuesAdapter[S, O] with SharedColumnValues[S, O] with ImmutableColumnValues[S, O]
 
 
 	/** An empty instance, returning always `Lack` or throwing `NoSuchElementException`. This instance does ''not''
@@ -494,7 +494,7 @@ object ColumnValues {
 	/** Base trait for `ColumnValues` implementations which always pass themselves (after casting) to all
 	  * components of the associated mapping.
 	  */
-	trait GlobalColumnValues[S, O] extends GlobalComponentValues[S, O] with ColumnValues[S, O] {
+	trait SharedColumnValues[S, O] extends SharedComponentValues[S, O] with ColumnValues[S, O] {
 		override def /[T](extract :Extract[T]) :ColumnValues[T, O] = this.asColumnsOf[T]
 		override def /[T](component :Component[T]) :ColumnValues[T, O] = this.asColumnsOf[T]
 		override def /[T](path :ComponentPath[_ <: RefinedMapping[S, O], _ <: Component[T], S, T, O]) :ColumnValues[T, O] =
@@ -521,7 +521,7 @@ object ColumnValues {
 	  * This added functionality is used to substitute every component mapping used for assembly with its operative,
 	  * `export` version as defined by the root mapping.
 	  */
-	trait ColumnValuesAliasing[S, O] extends ComponentValuesAliasing[S, O] with GlobalColumnValues[S, O] { outer =>
+	trait ColumnValuesAliasing[S, O] extends ComponentValuesAliasing[S, O] with SharedColumnValues[S, O] { outer =>
 		override val aliasing :ColumnValues[S, O] = new AliasingValues with ColumnValues[S, O] {
 			override def /[T](component :Component[T]) = outer.asColumnsOf[T]
 
@@ -556,12 +556,12 @@ object ColumnValues {
 	/** A `ColumnValues` instance with a preset result (possibly `Lack`) for a single column. It is recognized
 	  * by some of the other mapping's `++` methods.
 	  */
-	trait ColumnValue[S, X, O] extends GlobalColumnValues[S, O] {
+	trait ColumnValue[S, X, O] extends SharedColumnValues[S, O] {
 		val column :ColumnMapping[X, O]
 		def value :Opt[X]
 
 		override def preset(root :RefinedMapping[S, O]) :Opt[S] =
-			if (root eq column) value.asInstanceOf[Opt[S]] else Lack
+			if (root == column) value.asInstanceOf[Opt[S]] else Lack
 
 		override def orElse(values :ComponentValues[S, O]) :ComponentValues[S, O] =
 			if (value.isEmpty)
@@ -585,7 +585,7 @@ object ColumnValues {
 			else
 				values match {
 					case col :ColumnValue[S @unchecked, x, O @unchecked] =>
-						if ((col.column eq column) || col.value.isEmpty)
+						if ((col.column == column) || col.value.isEmpty)
 							this
 						else {
 							val map = Map.empty[Column[_], Option[_]]
@@ -676,7 +676,7 @@ object ColumnValues {
 
 	private class ColumnValuesNaturalMap[S, O](values :NaturalMap[MappingAt[O]#Column, Self])
 		extends ComponentValuesNaturalMap[S, O](values.asInstanceOf[NaturalMap[MappingAt[O]#Component, Self]])
-		   with ImmutableColumnValues[S, O] with GlobalColumnValues[S, O]
+		   with ImmutableColumnValues[S, O] with SharedColumnValues[S, O]
 	{
 		private def columnValues :NaturalMap[MappingAt[O]#Column, Self] = values
 
@@ -700,7 +700,7 @@ object ColumnValues {
 
 	private class ColumnValuesMap[S, O](values :Map[ColumnMapping[_, O], Any])
 		extends ComponentValuesMap[S, O](values.asInstanceOf[Map[RefinedMapping[_, O], Any]])
-		   with ImmutableColumnValues[S, O] with GlobalColumnValues[S, O]
+		   with ImmutableColumnValues[S, O] with SharedColumnValues[S, O]
 	{
 		private def columnValues :Map[ColumnMapping[_, O], Any] = values
 
@@ -828,7 +828,7 @@ object ColumnValues {
 
 
 
-	private[haul] class EmptyValues[S, O](source : => String) extends GlobalColumnValues[S, O] {
+	private[haul] class EmptyValues[S, O](source : => String) extends SharedColumnValues[S, O] {
 		def this() = this("Empty")
 
 		def this(mapping :RefinedMapping[S, O]) = this(mapping.toString)

@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.{MissingKeyException, NonexistentEntityException}
 import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.Kin.{Derived, Nonexistent, Present}
-import net.noresttherein.oldsql.model.KinFactory.{DerivedKinFactory, NotRequiredKinFactoryDecorator, RequiredKinFactoryDecorator}
+import net.noresttherein.oldsql.model.KinFactory.{NotRequiredKinFactoryDecorator, RequiredKinFactoryDecorator}
 import net.noresttherein.oldsql.morsels.Lazy
 
 

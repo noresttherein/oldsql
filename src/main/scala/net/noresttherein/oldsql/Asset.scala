@@ -178,7 +178,7 @@ trait Asset {
 	  * @see [[net.noresttherein.oldsql.Asset.transactional]] which will reuse an implicit transaction if one 
 	  *      is available and create a fresh one in the other case.      
 	  */
-	@deprecated("This method does not make sense. What was I thinking?", "release")
+//	@deprecated("This method does not make sense. What was I thinking?", "release")
 	def inTransaction[T](block :Transaction => T)(implicit transaction :Transaction) :T = block(transaction)
 
 	/** Starts a fresh [[net.noresttherein.oldsql.Asset.Transaction transaction]] and passes it to the given

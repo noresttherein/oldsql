@@ -8,14 +8,12 @@ import net.noresttherein.oldsql.haul.ColumnValues
 import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory, PropertyPath}
 import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.Kin.{Derived, Nonexistent, Present}
-import net.noresttherein.oldsql.model.Kin.Derived.Of
 import net.noresttherein.oldsql.model.KinFactory.{BaseDerivedKinFactory, BaseKinFactory, DerivedKinFactory, HigherKindKinFactory, RequiredKinFactory}
 import net.noresttherein.oldsql.morsels.generic.{=#>, Self}
-import net.noresttherein.oldsql.slang.&&
-import net.noresttherein.oldsql.schema.ColumnMapping
+import net.noresttherein.oldsql.schema.{ColumnMapping, Table}
 import net.noresttherein.oldsql.schema.ColumnMapping.ColumnOf
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
-import net.noresttherein.oldsql.schema.Table
+import net.noresttherein.oldsql.slang.&&
 
 
 

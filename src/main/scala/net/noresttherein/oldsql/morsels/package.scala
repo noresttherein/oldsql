@@ -22,4 +22,12 @@ package object morsels {
 		override def hashCode :Int = getClass.hashCode
 	}
 
+
+	private[oldsql] final class IdentityKey[T <: AnyRef](val value :T) extends Serializable {
+		override def equals(that :Any) :Boolean = that match {
+			case other :IdentityKey[_] => (this eq other) || (this.value eq other.value)
+			case _ => false
+		}
+		override def hashCode :Int = System.identityHashCode(value)
+	}
 }

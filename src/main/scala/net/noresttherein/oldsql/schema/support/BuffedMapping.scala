@@ -1,11 +1,11 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.schema.{Buff, Buffs}
+import net.noresttherein.oldsql.schema.Buffs.BuffsZipper
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, ComposedAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy
-import net.noresttherein.oldsql.schema.Buffs.BuffsZipper
 
 
 
@@ -21,11 +21,17 @@ import net.noresttherein.oldsql.schema.Buffs.BuffsZipper
   *   1. When adapting ('cascading') buffs from `backer` for subcomponents, `tag` of the inherited buffs is preserved;
   *   1. Some or all declarations from a mapping can be dropped by its (sub)component, but the order
   *      of inherited declarations is preserved: it two declarations with the same tags are both present
-  *      on two components, then they are present in the same order.
+  *      on two components, then they are present in the same order. The declaration here means a complete
+  *      `Buff` collection declared on a single mapping.
   *
-  * The replacement buffs are cascaded for every component, and any declarations which are present also
-  * in `backer.buffs` are removed, unless they were also retained by the component. Then, the buffs inherited
-  * by the component from `backer.buffs` are replaced with the new list.
+  * All above conditions hold within default implementations; however, if buffs were reset by a subcomponent of `backer`
+  * (and, in the result, inheriting no buffs from enclosing mappings by it or its components), the operation will
+  * have no effect for that subcomponent subtree.
+  *
+  * The replacement buffs are cascaded for every component, but declarations which were not inherited by the component
+  * are removed. Then, all buffs inherited by the component from `backer.buffs` are replaced with the new list.
+  * Any hypothetical existing declarations in `component.buffs` which are located after a declaration inherited
+  * from `backer.buffs` but are not themselves inherited, are also removed.
   * In this way, the new buffs of every mapping in the component tree of `backer` consist of three segments:
   *   1. old buffs of the mapping, without buffs inherited from `backer`,
   *   1. 'new' declarations in `replacements`: cascaded `replacements` with the longest suffix common with

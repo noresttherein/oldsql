@@ -14,9 +14,6 @@ import net.noresttherein.oldsql.schema.Buff.{BuffType, TypedBuffType}
 import net.noresttherein.oldsql.schema.Buffs.{BuffsFactory, BuffsZipper, DeclaredBuffs, EmptyDeclaration, HierarchicalBuffs, Tag}
 import net.noresttherein.oldsql.schema.Mapping.MappingOf
 
-//here be implicits
-import net.noresttherein.oldsql.slang._
-
 
 
 
@@ -71,15 +68,17 @@ import net.noresttherein.oldsql.slang._
   * @see [[net.noresttherein.oldsql.schema.Buffs.DeclaredBuffs]]
   * @see [[net.noresttherein.oldsql.schema.Buffs.Tag]]
   * @author Marcin Mościcki
-  */
+  */ //todo: reverse order - make later buffs override earlier. This changes prepend to append and +/: to /
 trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buffs[T]] with Serializable {
-	/** A zipper over this list: a sort of an immutable, bidirectional iterator which allows applying changes
-	  * to this instance at its current position (declaration).
+	/** A zipper over this list of buff declarations: a sort of an immutable, bidirectional iterator which allows
+	  * applying changes to this instance at its current position (declaration).
 	  */
 	def zipper :BuffsZipper[T] = new BuffsZipper(this)
 
 	/** A value unique to this declaration, preserved by the transformation and cascading processes and identifying
-	  * the originating mapping for future comparison with other `Buffs` instances.
+	  * the originating mapping for future comparison with other `Buffs` instances. It is often the `Mapping` instance
+	  * which declared this buff collection; note that [[net.noresttherein.oldsql.schema.Buffs.inherited inherited]]
+	  * buffs contain their own tags (likely the enclosing components of the component declaring this instance).
 	  */
 	def tag :Tag
 
@@ -94,7 +93,7 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 	  * same between different runs and preserved by transformation methods. The type of the collection used
 	  * may vary, with [[net.noresttherein.oldsql.collection.Unique Unique]]
 	  * and [[java.util.LinkedHashSet LinkedHashSet]] being possible alternatives to [[Seq]] types.
-	  */
+	  */ //todo: rename to top
 	def front :Iterable[Buff[T]]
 
 	/** A view of this instance as its [[net.noresttherein.oldsql.schema.Buffs.front front]] collection of buffs,
@@ -117,7 +116,6 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 	  * in which case the search is aborted.
 	  */
 	def apply[B[X] <: Buff[X]](buff :TypedBuffType[B]) :Opt[B[T]]
-
 
 	/** Creates a new `Buffs` stack with this instance as result's
 	  * [[net.noresttherein.oldsql.schema.Buffs.inherited inherited]] property and the given buffs as its first
@@ -184,7 +182,7 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 	/** Prepends the given buff ''to the first declaration'' of this collection. Created `Buffs` will have `buff`
 	  * as the first element of their [[net.noresttherein.oldsql.schema.Buffs.front front]] property.
 	  * @return `reset(buff +: front.toSeq: _*)`.
-	  */
+	  */ //consider: removing it and leaving only in DeclaredBuffs
 	def +:(buff :Buff[T]) :Buffs[T] = reset(buff +: front.toSeq :_*)
 
 	/** Prepends the given buffs ''to the first declaration'' of this collection. Created `Buffs`'
@@ -195,7 +193,7 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 
 	/** Appends this collection to the given one. Created buffs will have all the declarations of `buffs`
 	  * (with the same tags) followed by the declarations of this collection.
-	  */
+	  */ //todo: better name, this is awful;
 	def +/:(buffs :Buffs[T]) :Buffs[T] =
 		if (isEmpty) buffs
 		else if (buffs.isEmpty) declare(buffs.tag)
@@ -475,11 +473,11 @@ object Buffs extends ImplicitBuffs {
 
 
 
-	/** A view on the top/first declaration of a [[net.noresttherein.oldsql.schema.Buffs Buffs]] collection.
+	/** A view of the top/first declaration of a [[net.noresttherein.oldsql.schema.Buffs Buffs]] collection.
 	  * All collection methods operate only on the [[net.noresttherein.oldsql.schema.Buffs.front front]] property:
 	  * methods returning a standard collection, searching for items, etc, are limited to the buffs in that declaration.
 	  * While this class is [[IterableOnce]], the specific collection type of extended [[IterableOps]] is `Buffs[T]`.
-	  * All non-conversion methods return `Buffs[T]` instead of `DeclaredBuffs[T]`, simply stack all processed buffs
+	  * All non-conversion methods return `Buffs[T]` instead of `DeclaredBuffs[T]`, simply stacking all processed buffs
 	  * on the inherited suffix `Buffs`, which remains unchanged, as is
 	  * the [[net.noresttherein.oldsql.schema.Buffs.DeclaredBuffs.source source]] of this declaration (and in returned
 	  * `Buffs`). This class is only a light syntactic wrapper over `Buffs`, intended to make the operations on
@@ -662,7 +660,7 @@ object Buffs extends ImplicitBuffs {
 		def set(buffs :Buff[T]*) :BuffsZipper[T] =
 			new BuffsZipper(prefix, stack.inherited.declare(stack.tag, buffs :_*))
 
-		/** Replaces the whole suffix (all declarations starting from the current one to the outermost one.
+		/** Replaces the whole suffix (all declarations starting from the current one to the outermost one).
 		  * After the operation `stack` will equal `buffs`, while the prefix remains unchanged. */
 		def replace(buffs :Buffs[T]) :BuffsZipper[T] = new BuffsZipper(prefix, buffs)
 	}

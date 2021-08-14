@@ -77,7 +77,7 @@ import net.noresttherein.oldsql.slang._
   *
   * @tparam S the subject type of the target mapping defining the components for which this instance contains values.
   * @tparam O the origin type of the target mapping and all components with values in this instance.
-  */
+  */ //todo: replace all mentions of 'aliasing' with 'exporting' or 'actualizing'
 trait ComponentValues[S, O] extends Cloneable {
 
 	/** The type of components from the associated mapping (sharing the origin type with this instance). */
@@ -539,7 +539,7 @@ trait ComponentValues[S, O] extends Cloneable {
 		this.asInstanceOf[ComponentValues[X, O]]
 
 
-
+	//todo: remove it; why we were needing it in the first place?
 	override def clone() :ComponentValues[S, O] = super.clone().asInstanceOf[ComponentValues[S, O]]
 
 	def canEqual(that :Any) :Boolean = that.isInstanceOf[ComponentValues[_, _]]
@@ -981,7 +981,7 @@ object ComponentValues {
 	/** Base trait for `ComponentValues` implementations which always pass themselves (after casting) to all
 	  * components of the associated mapping.
 	  */
-	trait GlobalComponentValues[S, O] extends ComponentValues[S, O] { outer =>
+	trait SharedComponentValues[S, O] extends ComponentValues[S, O] { outer =>
 
 		override def /[T](extract :Extract[T]) :ComponentValues[T, O] = asComponentsOf[T]
 
@@ -1073,7 +1073,7 @@ object ComponentValues {
 	  * calls `alias` for the argument in all methods, before delegating to this instance. As the result, the instance
 	  * passed to the `optionally` method of every component is again the outer, this, instance, closing the cycle.
 	  */
-	trait ComponentValuesAliasing[S, O] extends GlobalComponentValues[S, O] { outer =>
+	trait ComponentValuesAliasing[S, O] extends SharedComponentValues[S, O] { outer =>
 		//consider: this trait leaves room for optimisation for disassembling values which rely on a MappingExtract
 		// for every passed component. Aliasing is typically performed by getting an extract for the component,
 		// which is then discarded when passing to the component's assembling methods, only to be requested again
@@ -1516,13 +1516,13 @@ object ComponentValues {
 
 
 	private[haul] class DisassembledValues[R, S, O](root :RefinedMapping[R, O], subject :R)
-		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O] with Serializable
+		extends SharedComponentValues[S, O] with ImmutableComponentValues[S, O] with Serializable
 	{
 		private def mapping = root
 		private def value = subject
 
 		override def preset(mapping :RefinedMapping[S, O]) =
-			if (mapping eq root) Got(subject.asInstanceOf[S])
+			if (mapping == root) Got(subject.asInstanceOf[S])
 			else root(mapping).opt(subject)
 
 		override def canEqual(that :Any) :Boolean = that.getClass == getClass
@@ -1542,7 +1542,7 @@ object ComponentValues {
 
 
 	private[haul] class LazyDisassembledValues[R, S, O](root :RefinedMapping[R, O], private var init: () => Option[R])
-		extends GlobalComponentValues[S, O]
+		extends SharedComponentValues[S, O]
 	{
 		@volatile private[this] var result :Option[R] = _
 		private[this] var cached :Option[R] = _
@@ -1565,7 +1565,7 @@ object ComponentValues {
 		}
 
 		override def preset(mapping :RefinedMapping[S, O]) =
-			if (mapping eq root) subject.asInstanceOf[Opt[S]]
+			if (mapping == root) subject.asInstanceOf[Opt[S]]
 			else root(mapping).opt(subject.get)
 
 
@@ -1600,7 +1600,7 @@ object ComponentValues {
 		extends DisassembledValues[R, S, O](root, value) with Serializable
 	{
 		override def preset(mapping :RefinedMapping[S, O]) :Opt[S] =
-			if (mapping eq root) Got(value.asInstanceOf[S])
+			if (mapping == root) Got(value.asInstanceOf[S])
 			else {
 				val extract = root(mapping)
 				if (components.contains(extract.export)) extract.opt(value)
@@ -1613,7 +1613,7 @@ object ComponentValues {
 
 
 	private[haul] class TypedValues[S, O](values :MappingAt[O]#Component =#> Self)
-		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O] with Serializable
+		extends SharedComponentValues[S, O] with ImmutableComponentValues[S, O] with Serializable
 	{
 		override def preset(component :RefinedMapping[S, O]) :Opt[S] = Opt(values[S](component))
 		override def canEqual(that :Any) = that.getClass == getClass
@@ -1657,7 +1657,7 @@ object ComponentValues {
 
 
 	private[haul] class UntypedValues[S, O](values :RefinedMapping[_, O] => Any)
-		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O] with Serializable
+		extends SharedComponentValues[S, O] with ImmutableComponentValues[S, O] with Serializable
 	{
 		override def preset(component :RefinedMapping[S, O]) :Opt[S] =
 			Opt(values(component).asInstanceOf[S])
@@ -1699,7 +1699,7 @@ object ComponentValues {
 
 
 	private[haul] class IndexedValues[S, O](values :IndexedSeq[Any], index :MappingAt[O] => Int)
-		extends GlobalComponentValues[S, O] with ImmutableComponentValues[S, O] with Serializable
+		extends SharedComponentValues[S, O] with ImmutableComponentValues[S, O] with Serializable
 	{
 		override def preset(component :RefinedMapping[S, O]) :Opt[S] = {
 			val i = index(component)

@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.{MismatchedKeyException, MissingKeyException, NonexistentEntityException}
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom
 import net.noresttherein.oldsql.model.RelatedEntityFactory.{NotRequiredRelatedEntityFactory, OptionalKeyRelatedEntityFactory, OptionalRelatedEntityFactory, RelatedEntityOptionFactory, RequiredRelatedEntityFactory}
-import net.noresttherein.oldsql.morsels.Extractor.{=?>, none, Optional}
+import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional}
 
 
 

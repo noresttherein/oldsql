@@ -11,7 +11,6 @@ import net.noresttherein.oldsql.model.Restraint.{Conjunction, Disjunction, False
 import net.noresttherein.oldsql.model.Restraint.Restrainer.{AbstractTermRestrainer, FlattenedRestrainer, MappedRestrainer, NestedRestrainer}
 import net.noresttherein.oldsql.model.Restrictive.{Collection, IfElse, Literal, Self, TranslableTerm}
 import net.noresttherein.oldsql.model.types.OrderingSupport
-import net.noresttherein.oldsql.slang._
 
 
 

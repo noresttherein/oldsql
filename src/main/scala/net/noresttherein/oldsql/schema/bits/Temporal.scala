@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema.bits
 
-import java.{sql, time, util}
+import java.{sql, util}
 import java.time.{Clock, Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime, ZonedDateTime, ZoneId, ZoneOffset}
 
 

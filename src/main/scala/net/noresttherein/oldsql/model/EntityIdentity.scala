@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.model
 
-import net.noresttherein.oldsql.model.EntityIdentity.NoPrimaryKeyException
+
 
 
 trait Entity[T, K <: PK[T]] extends Serializable { this :T =>

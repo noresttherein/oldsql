@@ -5,7 +5,7 @@ import scala.reflect.runtime.universe.{typeOf, TypeTag}
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom
-import net.noresttherein.oldsql.model.Kin.{Derived, Nonexistent, One, Present}
+import net.noresttherein.oldsql.model.Kin.{Derived, Nonexistent, Present}
 import net.noresttherein.oldsql.model.KinFactory.{DerivedKinFactory, RequiredKinFactory}
 
 
@@ -163,7 +163,7 @@ object EntityPropertyKin {
 		override def apply(key :K, value: Option[T]) :Derived[E, T] = delay(key, value)
 
 		override def present(value :T) :Derived[E, T] =
-			new Present[T] with Derived[E, T] {//fixme: many places assume isPresent -> items.isDefined
+			new Present[T] with Derived[E, T] {
 				implicit override val composition = factory.composition
 				override val get = value
 				override def items = Some(Iterable.empty)

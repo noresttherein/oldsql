@@ -12,6 +12,10 @@ import net.noresttherein.oldsql.model.types.LiteralSupport.MappedLiteral
 import net.noresttherein.oldsql.model.types.OrderingSupport.MappedOrdering
 
 
+
+
+
+
 /**
   * @author Marcin Mościcki
   */
@@ -30,18 +34,18 @@ object types {
 	object <%< {
 //		@inline implicit final def symmetrical[S, T](implicit equiv: S=%=T) :T=%=S = adapt(equiv.left, equiv.right)
 
-		implicit final val (byteUnboxing, byteBoxing) = adapt((_:j.Byte).byteValue, j.Byte.valueOf :Byte=>j.Byte)
-		implicit final val (shortUnboxing, shortBoxing) = adapt((_ :j.Short).shortValue, j.Short.valueOf :Short=>j.Short)
-		implicit final val (intUnboxing, intBoxing) = adapt((_ :j.Integer).intValue, j.Integer.valueOf :Int=>j.Integer)
-		implicit final val (longUnboxing, longBoxing) = adapt((_ :j.Long).longValue, j.Long.valueOf :Long=>j.Long)
-		implicit final val (floatUnboxing, floatBoxing) = adapt((_ :j.Float).floatValue, j.Float.valueOf :Float=>j.Float)
-		implicit final val (doubleUnboxing, doubleBoxing) = adapt((_ :j.Double).doubleValue, j.Double.valueOf :Double=>j.Double)
-		implicit final val (charUnboxing, charBoxing) = adapt((_ :j.Character).charValue, j.Character.valueOf :Char=>j.Character)
-		implicit final val (booleanUnboxing, booleanBoxing) = adapt((_ :j.Boolean).booleanValue, j.Boolean.valueOf :Boolean=>j.Boolean)
+		implicit final val (byteUnboxing, byteBoxing) = adapt((_:j.Byte).byteValue, j.Byte.valueOf :Byte => j.Byte)
+		implicit final val (shortUnboxing, shortBoxing) = adapt((_ :j.Short).shortValue, j.Short.valueOf :Short => j.Short)
+		implicit final val (intUnboxing, intBoxing) = adapt((_ :j.Integer).intValue, j.Integer.valueOf :Int => j.Integer)
+		implicit final val (longUnboxing, longBoxing) = adapt((_ :j.Long).longValue, j.Long.valueOf :Long => j.Long)
+		implicit final val (floatUnboxing, floatBoxing) = adapt((_ :j.Float).floatValue, j.Float.valueOf :Float => j.Float)
+		implicit final val (doubleUnboxing, doubleBoxing) = adapt((_ :j.Double).doubleValue, j.Double.valueOf :Double => j.Double)
+		implicit final val (charUnboxing, charBoxing) = adapt((_ :j.Character).charValue, j.Character.valueOf :Char => j.Character)
+		implicit final val (booleanUnboxing, booleanBoxing) = adapt((_ :j.Boolean).booleanValue, j.Boolean.valueOf :Boolean => j.Boolean)
 
-		implicit final def nullToOption[X >: Null] :X=%=Option[X] = nullBoxing.asInstanceOf[X=%=Option[X]]
-		implicit final def optionToNull[X >: Null] :Option[X]=%=X = nullUnboxing.asInstanceOf[Option[X]=%=X]
-		private[this] final val (nullUnboxing, nullBoxing) = adapt((_ :Option[Null]).orNull, Option.apply :Null=>Option[Null])
+		implicit final def nullToOption[X >: Null] :X =%= Option[X] = nullBoxing.asInstanceOf[X =%= Option[X]]
+		implicit final def optionToNull[X >: Null] :Option[X] =%= X = nullUnboxing.asInstanceOf[Option[X] =%= X]
+		private[this] final val (nullUnboxing, nullBoxing) = adapt((_ :Option[Null]).orNull, Option.apply :Null => Option[Null])
 
 		implicit final val byte2Short = adapt((_ :Byte).toShort)
 		implicit final val byte2Int = adapt((_ :Byte).toInt)
@@ -59,7 +63,7 @@ object types {
 		implicit final val long2Double = adapt((_ :Long).toDouble)
 		implicit final val float2Double = adapt((_ :Float).toDouble)
 
-		@inline private def adapt[S, T](right :S=>T, left :T=>S) :(S=%=T, T=%=S) =
+		@inline private def adapt[S, T](right :S => T, left :T => S) :(S =%= T, T =%= S) =
 			(new adapt(right, left), new adapt(left, right))
 
 		private class adapt[S, T](r :S=>T, l :T=>S) extends (S =%= T) {
