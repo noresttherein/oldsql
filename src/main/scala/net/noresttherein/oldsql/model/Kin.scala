@@ -1229,30 +1229,44 @@ object Kin {
 
 	/** A lower level [[net.noresttherein.oldsql.model.Kin Kin]] interface which is aware of how the referenced value `T`
 	  * is composed of entities `E`. This of course applies to all collection types, but also `Option[E]` and `E` itself;
-	  * it cannot be assumed that a composite kin can handle an arbitrary number of entities. Most, if not all,
-	  * kin returned to the application will be actually `Derived`, and a `Derived` may be required
-	  * to build the referenced value. It is however not intended to be used as a public interface, yielding that
-	  * function to the simpler and cleaner `Kin[T]`. This is of course with an exception of use cases where this
-	  * information is required, but it is recommended that argument `Kin` are instead either cast down
-	  * (i.e., pattern matched for implementing this trait), or converted to this type. In particular,
-	  * [[net.noresttherein.oldsql.model.Kin.recompose recompose]] method will return `this` instance if called
-	  * on a `Derived` and its composition matches the one provided implicitly.
-	  *
+	  * it cannot be assumed that a composite kin can handle an arbitrary number of entities. Virtually all kin returned
+	  * to the application will be actually `Derived`, and a `Derived` may be required to build the referenced value.
 	  * Unlike properties/statuses mentioned in the documentation of `Kin`, all 'composite' kin are in fact
 	  * instances of this trait.
+	  *
+	  * In most cases, applications will be better of with the simpler `Kin` interface,
+	  * but there are some valid use cases when the use of this type is advised:
+	  *   1. `Derived` kin cannot be [[net.noresttherein.oldsql.model.Kin.Nonexistent nonexistent]]:
+	  *      if an instance should be able to represent a lack of value, it should be explicitly reflected in
+	  *      the derived ('collection') type by using [[Option]] or a similar type as type argument for `T`.
+	  *      This allows a distinction on the type level impossible with `Kin`.
+	  *   1. The need for generic code on the application side, requiring the knowledge about thee relationship of
+	  *      the value type and the underlying database entity.
+	  *   1. Creating custom `Kin` implementations - in that case it is recommended to extend from `Derived` instead.
+	  *
+	  * In order to make working with this type somewhat more convenient as well as a self-documenting measure,
+	  * several standard type aliases exist representing most common cases:
+	  *   1. [[net.noresttherein.oldsql.model.Kin.One One]]`[E]` - a `Derived[E, E] for `''to-one'' relationships,
+	  *   1. [[net.noresttherein.oldsql.model.Kin.Supposed Supposed]]`[E]` - a `Derived[E, Option[E]]`
+	  *      for ''to-zero-or-one'' relationships,
+	  *   1. [[net.noresttherein.oldsql.model.Kin.Many Many]]`[E]` - a `Derived[E, Iterable[E]]`
+	  *      for generic ''to-many'' relationships,
+	  *   1. `C `[[net.noresttherein.oldsql.model.Kin.Of Of]]` E` - a `Derived[E, C[E]]` in a shorter syntax,
+	  *      avoiding listing the element type twice in ''to-many'' relationships.
+	  *
 	  * @tparam E referenced entity type. This can be both an application model class, and a tuple - for example
 	  *           when referencing a `Map` or an `IndexedSeq`.
 	  * @tparam T the value type of this kin, which can be assembled from individual values of `E` using its
 	  *           [[net.noresttherein.oldsql.model.Kin.Derived.composition composition]].
 	  * @see [[net.noresttherein.oldsql.model.Kin.Of]]
-	  */
-	trait Derived[E, +T] extends Kin[T] {
-		/** Derived kin do not have `Nonexistent` instances (at least by default). Instead, one should use
+	  */ //consider: renaming; ItemKin? KinItems? Items?
+	trait Derived[E, +T] extends Kin[T] { //somewhere here fits the future Unique
+		/** Derived kin do not have `Nonexistent` instances. Instead, one should use
 		  * either `Derived[E, Option[E]]` ([[net.noresttherein.oldsql.model.Kin.Supposed Supposed]]`[E]`)
 		  * or `Option[Derived[E, E]]` (`Option[`[[net.noresttherein.oldsql.model.Kin.One One]]`[E]]`).
 		  * @return `false`.
-		  */
-		override def isNonexistent :Boolean = false
+		  */ //was overriden only in EntityPropertyKin, and that as a forwarder to another instance
+		final override def isNonexistent :Boolean = false
 
 		/** All derived kin are assumed missing, but existing.
 		  * @return `isAbsent`.

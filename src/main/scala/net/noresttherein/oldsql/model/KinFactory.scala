@@ -268,7 +268,7 @@ object KinFactory {
 
 
 	/** A mixin trait which makes any [[net.noresttherein.oldsql.model.GenericKinFactory GenericKinFactory]]
-	  * not [[net.noresttherein.oldsql.model.RelatedEntityFactory.isRequired required]].
+	  * [[net.noresttherein.oldsql.model.RelatedEntityFactory.isRequired required]].
 	  */
 	trait RequiredKinFactory[K, E, X, +R <: Kin[X]] extends GenericKinFactory[K, E, X, R] {
 		override def absent(key :K) :R = missing(key)

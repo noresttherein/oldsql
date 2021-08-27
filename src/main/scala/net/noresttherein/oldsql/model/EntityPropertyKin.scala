@@ -255,7 +255,7 @@ private class EntityPropertyKin[E, X, P, +T](val owner :Derived[E, X], val prope
 { //consider: having a TypeTag[E]
 	override def isPresent :Boolean = owner.isPresent
 	override def isMissing :Boolean = owner.isMissing
-	override def isNonexistent :Boolean = owner.isNonexistent
+//	override def isNonexistent :Boolean = owner.isNonexistent
 	override val composition :T ComposableFrom E = ComposableFrom.Properties(property)
 	override def parts :Iterable[Derived[E, _]] = owner.parts
 	override def items :Option[Iterable[E]] = owner.items
