@@ -95,9 +95,6 @@ class PropertyPathSpec extends AnyFlatSpec with Suite with Matchers {
 //	}
 
 	"PropertyPath" should "accept transitive properties" in {
-		val byte :Byte = 0
-		val Null :AnyRef = null
-
 		val id1 = PropertyPath.property((_:Forum).topic.subject.intVal)
 		id1.name should equal ("topic.subject.intVal")
 	}

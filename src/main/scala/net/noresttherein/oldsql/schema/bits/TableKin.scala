@@ -9,10 +9,10 @@ import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory, PropertyPath
 import net.noresttherein.oldsql.model.ComposedOf.{ComposableFrom, DecomposableTo}
 import net.noresttherein.oldsql.model.Kin.{Derived, Nonexistent, Present}
 import net.noresttherein.oldsql.model.KinFactory.{BaseDerivedKinFactory, BaseKinFactory, DerivedKinFactory, HigherKindKinFactory, RequiredKinFactory}
-import net.noresttherein.oldsql.morsels.generic.{=#>, Self}
-import net.noresttherein.oldsql.schema.{ColumnMapping, Table}
-import net.noresttherein.oldsql.schema.ColumnMapping.ColumnOf
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.morsels.generic.{=>:, Self}
+import net.noresttherein.oldsql.schema.ColumnMapping.TypedColumn
+import net.noresttherein.oldsql.schema.Table
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, TypedMapping}
 import net.noresttherein.oldsql.slang.&&
 
 
@@ -31,6 +31,7 @@ import net.noresttherein.oldsql.slang.&&
   * @author Marcin Mościcki
   */
 trait TableKin[+T] extends Kin[T] {
+	type Origin
 
 	/** The referenced table (one containing values used to create a present version of this kin).
 	  * Note: equality of tables is not preserved by serialization and name-based aliasing may be required before use.
@@ -41,11 +42,11 @@ trait TableKin[+T] extends Kin[T] {
 	  * Note: equality of columns is not preserved by serialization and deserialized columns will make illegal arguments
 	  * for the mapping of the original table.
 	  */
-	val columns :NaturalMap[ColumnOf, Self] //consider: using ColumnValues/ComponentValues
+	val columns :NaturalMap[MappingAt[Origin]#Column, Self] //consider: using ColumnValues/ComponentValues
 
 	/** Mapping from column names to column values. Used in `equals` in order to preserve equality over serialization. */
 	def byName :Map[String, Any] = columns.view.map {
-		case Assoc(column, value) => (table.export[Unit].export(column.asInstanceOf[ColumnMapping[_, Unit]]).name, value)
+		case Assoc(column, value) => (table.export[Origin].export(column).name, value)
 	}.toMap
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[TableKin[_]]
@@ -67,7 +68,7 @@ trait TableKin[+T] extends Kin[T] {
 			case _ if isMissing => "Missing|" + table + "|{"
 			case _ if isNonexistent => "Nonexistent|" + table + "|{"
 			case _ => "Absent|" + table + "|{"
-		}, "; ", "}")
+		}, " && ", "}")
 
 }
 
@@ -89,7 +90,7 @@ object TableKin {
 		                                (implicit decomposition :Nothing DecomposableTo E) :Kin[Nothing] = this
 
 		override val table = target
-		override val columns = NaturalMap.empty[ColumnOf, Self]
+		override val columns = NaturalMap.empty[MappingAt[Origin]#Column, Self]
 	}
 
 	/** A [[net.noresttherein.oldsql.model.Kin.isMissing missing]] instance, assumed to identify a value of `T`,
@@ -102,7 +103,7 @@ object TableKin {
 	  * @param component the component of the mapping of `target` serving as the referenced key.
 	  * @param key the value of the key of the referenced rows.
 	  */
-	def missing[K, E, T, O](target :Table[MappingOf[E]#Projection], component :RefinedMapping[K, O], key :K)
+	def missing[K, E, T, O](target :Table[MappingOf[E]#Projection], component :TypedMapping[K, O], key :K)
 	                       (implicit composition :T ComposableFrom E) :TableKin[T] =
 		missing(target, columns(target.export[O], component, key))
 
@@ -112,9 +113,10 @@ object TableKin {
 	  * @param target the referenced table.
 	  * @param columnValues a map from columns of the table's mapping to their values in the referenced rows.
 	  */
-	def missing[E, T](target :Table[MappingOf[E]#Projection], columnValues :NaturalMap[ColumnOf, Self])
-	              (implicit composition :T ComposableFrom E) :TableKin[T] =
+	def missing[E, T, O](target :Table[MappingOf[E]#Projection], columnValues :NaturalMap[MappingAt[O]#Column, Self])
+	                    (implicit composition :T ComposableFrom E) :TableKin[T] =
 		new DerivedTableKin[E, T](target) {
+			override type Origin = O
 			override val columns = columnValues
 			override def toOption = None
 			override def items = None
@@ -130,7 +132,7 @@ object TableKin {
 	  * @param component the component of the mapping of `target` serving as the referenced key.
 	  * @param key the value of the key of the referenced rows.
 	  */
-	def absent[K, E, T, O](target :Table[MappingOf[E]#Projection], component :RefinedMapping[K, O], key :K)
+	def absent[K, E, T, O](target :Table[MappingOf[E]#Projection], component :TypedMapping[K, O], key :K)
 	                      (implicit composition :T ComposableFrom E) :TableKin[T] =
 		TableKin.absent(target, columns(target.export[O], component, key))
 
@@ -139,9 +141,10 @@ object TableKin {
 	  * @param target the referenced table.
 	  * @param columnValues a map from columns of the table's mapping to their values in the referenced rows.
 	  */
-	def absent[E, T](target :Table[MappingOf[E]#Projection], columnValues :NaturalMap[ColumnOf, Self])
-	                (implicit composition :T ComposableFrom E) :TableKin[T] =
+	def absent[E, T, O](target :Table[MappingOf[E]#Projection], columnValues :NaturalMap[MappingAt[O]#Column, Self])
+	                   (implicit composition :T ComposableFrom E) :TableKin[T] =
 		new DerivedTableKin[E, T](target) {
+			override type Origin = O
 			override val columns = columnValues
 			override def toOption = None
 			override def items = None
@@ -154,8 +157,9 @@ object TableKin {
 	  *                     the key.
 	  * @param value the value of the created kin.
 	  */
-	def present[E, T](target :Table[MappingOf[E]#Projection], columnValues :NaturalMap[ColumnOf, Self], value :T)
-	                 (implicit composition :T ComposedOf E) :TableKin[T] =
+	def present[E, T, O](target :Table[MappingOf[E]#Projection],
+	                     columnValues :NaturalMap[MappingAt[O]#Column, Self], value :T)
+	                    (implicit composition :T ComposedOf E) :TableKin[T] =
 		TableKin(target, columnValues, Some(value))
 
 	/** A present kin with the given value `T`, either assembled from all entities `E` mapped to rows in the referenced
@@ -168,9 +172,9 @@ object TableKin {
 	  * @param key the value of the key of the referenced rows.
 	  * @param value the value of the created kin.
 	  */
-	def present[K, E, T, O](target :Table[MappingOf[E]#Projection], component :RefinedMapping[K, O], key :K, value :T)
+	def present[K, E, T, O](target :Table[MappingOf[E]#Projection], component :TypedMapping[K, O], key :K, value :T)
 	                       (implicit composition :T ComposedOf E) :TableKin[T] =
-		present[E, T](target, columns(target.export[O], component, key), value)
+		present[E, T, O](target, columns(target.export[O], component, key), value)
 
 	/** A present kin with the given value `T`, either assembled from all entities `E` mapped to rows in the referenced
 	  * table with the given `key` value for the key `component`, or one which is intended to be disassembled to
@@ -188,8 +192,9 @@ object TableKin {
 	@throws[IllegalArgumentException]("If `value` is an empty collection/option.")
 	@throws[MismatchedKeyException]("If two elements of `value` have a different value for `component`.")
 	@throws[MissingKeyException]("If any of the elements in `value` doesn't have a value for `component`.")
-	def present[K, E, T, O](target :Table[MappingOf[E]#Projection], component :RefinedMapping[K, O], value :T)
-	                       (implicit composition :T ComposedOf E) :TableKin[T] = {
+	def present[K, E, T, O](target :Table[MappingOf[E]#Projection], component :TypedMapping[K, O], value :T)
+	                       (implicit composition :T ComposedOf E) :TableKin[T] =
+	{
 		val keyExtract = target.row[O](component) //should be table.export[O] to be pedantic, but it doesn't have the same subject type
 		val entities = composition.decomposer(value)
 		if (entities.isEmpty)
@@ -216,7 +221,7 @@ object TableKin {
 					)
 				hd.get
 		}
-		present[E, T](target, columns(target.export[O], component, key), value)
+		present[E, T, O](target, columns(target.export[O], component, key), value)
 	}
 
 
@@ -226,12 +231,12 @@ object TableKin {
 	  * This in particular means that if `value` doesn't have a value for `component`, then the kin will have
 	  * an empty column set.
 	  */
-	def one[E, K, O](target :Table[MappingOf[E]#Projection], component :RefinedMapping[K, O], value :E) :TableKin[E] =
+	def one[E, K, O](target :Table[MappingOf[E]#Projection], component :TypedMapping[K, O], value :E) :TableKin[E] =
 		TableKin.present(target,
 			(NaturalMap.newBuilder ++= component.filteredByDefault.view.map(target.export[O].export(_)).flatMap { c =>
-				def assoc[X](column :ColumnMapping[X, O]) =
-					target.row[O](column).opt(value) match {
-						case Got(v) => Some(Assoc[ColumnOf, Self, X](column, v))
+				def assoc[X](column :TypedColumn[X, O]) =
+					target[O].apply(column).opt(value) match {
+						case Got(v) => Some(Assoc[MappingAt[O]#Column, Self, X](column, v))
 						case _ => None
 					}
 				assoc(c)
@@ -249,7 +254,7 @@ object TableKin {
 	  * @param key the value of the key of the referenced rows.
 	  * @param value the value of the created kin.
 	  */
-	def apply[K, E, T, O](target :Table[MappingOf[E]#Projection], component :RefinedMapping[K, O], key :K, value :Option[T])
+	def apply[K, E, T, O](target :Table[MappingOf[E]#Projection], component :TypedMapping[K, O], key :K, value :Option[T])
 	                     (implicit composition :T ComposedOf E) :TableKin[T] =
 		TableKin(target, columns(target.export[O], component, key), value)
 
@@ -259,8 +264,9 @@ object TableKin {
 	  *                     the key.
 	  * @param value the value of the created kin.
 	  */
-	def apply[E, T](target :Table[MappingOf[E]#Projection], columnValues :NaturalMap[ColumnOf, Self], value :Option[T])
-	               (implicit composition :T ComposedOf E) :TableKin[T] =
+	def apply[E, T, O](target :Table[MappingOf[E]#Projection],
+	                   columnValues :NaturalMap[MappingAt[O]#Column, Self], value :Option[T])
+	                  (implicit composition :T ComposedOf E) :TableKin[T] =
 		new EagerTableKin(target, columnValues, value)
 
 
@@ -275,28 +281,30 @@ object TableKin {
 	  * @param value by-name expression initializing the value of the created kin.
 	  */
 	def delay[K, E, T, O]
-	         (target :Table[MappingOf[E]#Projection], component :RefinedMapping[K, O], key: => K, value: => Option[T])
+	         (target :Table[MappingOf[E]#Projection], component :TypedMapping[K, O], key: => K, value: => Option[T])
 	         (implicit composition :T ComposedOf E) :TableKin[T] =
-		delay[E, T](target, columns(target.export[O], component, key), value)
+		delay[E, T, O](target, columns(target.export[O], component, key), value)
 
 
-	/** A lzyz kin with the given value referencing all rows in the specified table with matching column values.
+	/** A lazy kin with the given value referencing all rows in the specified table with matching column values.
 	  * @param target the referenced table.
 	  * @param columnValues a by-name expression initializing the key - a map from columns of the table's mapping
 	  *                     to their values in the referenced rows.
 	  * @param value by-name expression initializing the value of the created kin.
 	  */
-	def delay[E, T]
-	         (target :Table[MappingOf[E]#Projection], columnValues: => NaturalMap[ColumnOf, Self], value: => Option[T])
-	         (implicit composition :T ComposedOf E) :TableKin[T] =
+	def delay[E, T, O](target :Table[MappingOf[E]#Projection],
+	                   columnValues: => NaturalMap[MappingAt[O]#Column, Self], value: => Option[T])
+	                  (implicit composition :T ComposedOf E) :TableKin[T] =
 		new DelayedTableKin(target, columnValues, value)
 
 
-	private def columns[O, K, S](mapping :MappingAt[O], component :RefinedMapping[K, O], key :K) = {
+	private def columns[K, O](mapping :MappingAt[O], component :TypedMapping[K, O], key :K)
+			:NaturalMap[MappingAt[O]#Column, Self] =
+	{
 		(NaturalMap.newBuilder ++= component.filteredByDefault.view.map(mapping.export(_)).flatMap { c =>
-			def assoc[X](column :ColumnMapping[X, O]) =
+			def assoc[X](column :TypedColumn[X, O]) =
 				component(column).opt(key) match {
-					case Got(v) => Some(Assoc[ColumnOf, Self, X](column, v))
+					case Got(v) => Some(Assoc[MappingAt[O]#Column, Self, X](column, v))
 					case _ => None
 				}
 			assoc(c)
@@ -305,7 +313,7 @@ object TableKin {
 
 
 
-	def unapply[T](kin :Kin[T]) :Opt[(Table[MappingAt], NaturalMap[ColumnOf, Self])] = kin match {
+	def unapply[T](kin :Kin[T]) :Opt[(Table[MappingAt], NaturalMap[MappingAt[_]#Column, Self])] = kin match {
 		case key :TableKin[T @unchecked] => Got((key.table, key.columns))
 		case _ => Lack
 	}
@@ -323,7 +331,7 @@ object TableKin {
 	  * a `NonexistentEntityException` as the latter one.
 	  * @see [[net.noresttherein.oldsql.schema.bits.TableKin.required[K,E,O]* apply]]`(target, component)`.
 	  */
-	def apply[K, E, O](target :Table[MappingOf[E]#Projection], component :RefinedMapping[K, O]) :KinFactory[K, E, E] =
+	def apply[K, E, O](target :Table[MappingOf[E]#Projection], component :TypedMapping[K, O]) :KinFactory[K, E, E] =
 		new TableKinFactory[K, E, E, O](target, component)
 
 	/** A factory of references to entities `E` from table `target` with a specific value of the provided `component`.
@@ -338,7 +346,7 @@ object TableKin {
 	  * throws a [[net.noresttherein.oldsql.exceptions.NonexistentEntityException NonexistentEntityException]].
 	  * @see [[net.noresttherein.oldsql.schema.bits.TableKin.apply[K,E,O]* apply]]`(target, component)`.
 	  */
-	def required[K, E, O](target :Table[MappingOf[E]#Projection], component :RefinedMapping[K, O])
+	def required[K, E, O](target :Table[MappingOf[E]#Projection], component :TypedMapping[K, O])
 			:DerivedKinFactory[K, E, E] =
 		new DerivedTableKinFactory[K, E, E, O](target, component)
 
@@ -349,21 +357,23 @@ object TableKin {
 	                                             (implicit override val composition :T ComposableFrom E)
 		extends TableKin[T] with Derived[E, T]
 
-	private class EagerTableKin[E, +T](table :Table[MappingOf[E]#Projection],
-	                                   override val columns :NaturalMap[ColumnOf, Self],
-	                                   override val toOption :Option[T])
-	                                  (implicit as :T ComposedOf E)
+	private class EagerTableKin[E, +T, O](table :Table[MappingOf[E]#Projection],
+	                                      override val columns :NaturalMap[MappingAt[O]#Column, Self],
+	                                      override val toOption :Option[T])
+	                                     (implicit as :T ComposedOf E)
 		extends DerivedTableKin[E, T](table)(as.composer)
 	{
+		override type Origin = O
 		private[this] val decomposer = as.decomposer
 		override def items = toOption.map(decomposer(_))
 	}
 
-	private class DelayedTableKin[E, +T](override val table :Table[MappingOf[E]#Projection],
-	                                     columnValues: => NaturalMap[ColumnOf, Self], value: => Option[T])
-	                                    (implicit as :T ComposedOf E)
+	private class DelayedTableKin[E, +T, O](override val table :Table[MappingOf[E]#Projection],
+	                                        columnValues: => NaturalMap[MappingAt[O]#Column, Self], value: => Option[T])
+	                                       (implicit as :T ComposedOf E)
 		extends DerivedTableKin[E, T](table)(as.composer)
 	{
+		override type Origin = O
 		override lazy val columns = columnValues
 		override lazy val toOption = value
 		private[this] val decomposer = as.decomposer
@@ -373,7 +383,7 @@ object TableKin {
 
 
 	private abstract class AbstractTableKinFactory[K, E, T, O]
-	                       (val table :Table[MappingOf[E]#Projection], val key :RefinedMapping[K, O])
+	                       (val table :Table[MappingOf[E]#Projection], val key :TypedMapping[K, O])
 	                       (implicit override val result :T ComposedOf E)
 		extends BaseKinFactory[K, E, T]
 	{
@@ -404,8 +414,8 @@ object TableKin {
 			}
 			case TableKin(t, columns) if t == table => //or we could cache TableKin.byName in a lazy val
 				val byName = columns.view.map { case Assoc(col, value) => (col.name, value) }.toMap
-				val values = ColumnValues(entity.refine)(new (MappingAt[O]#Column =#> Self) {
-					override def apply[X](x :ColumnMapping[X, O]) =
+				val values = ColumnValues(entity.refine)(new (MappingAt[O]#Column =>: Self) {
+					override def apply[X](x :TypedColumn[X, O]) =
 						byName.getOrElse(x.name, null).asInstanceOf[X]
 				})
 				values.get(key)
@@ -435,7 +445,7 @@ object TableKin {
 
 
 	private class TableKinFactory[K, E, T, O](override val table :Table[MappingOf[E]#Projection],
-	                                          override val key :RefinedMapping[K, O])
+	                                          override val key :TypedMapping[K, O])
 	                                         (implicit override val result :T ComposedOf E)
 		extends AbstractTableKinFactory[K, E, T, O](table, key) with HigherKindKinFactory[K, E, T, TableKin]
 	{
@@ -460,7 +470,7 @@ object TableKin {
 
 	private class DerivedTableKinFactory[K, E, T, O]
 	                                    (override val table :Table[MappingOf[E]#Projection],
-	                                     override val key :RefinedMapping[K, O])
+	                                     override val key :TypedMapping[K, O])
 	                                    (implicit override val result :T ComposedOf E)
 		extends AbstractTableKinFactory[K, E, T, O](table, key) with BaseDerivedKinFactory[K, E, T]
 	{

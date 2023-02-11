@@ -28,8 +28,8 @@ trait ConnectedMapping[E] extends StaticMapping[E] { table =>
 			new ForeignKeyComponent[K, FK, TK, T, X](property, localKey, targetKey)
 
 		def apply[T<:Mapping[X], K](name :String, targetKey : =>ComponentPath[T, _<:Mapping[K]])(implicit keyType :ColumnType[K], targetTag :TypeTag[X])
-				:ForeignKeyComponent[K, ColumnMapping[K], _<:Mapping[K], T, X] =
-			apply(ColumnMapping(name), targetKey)
+				:ForeignKeyComponent[K, TypedColumn[K], _<:Mapping[K], T, X] =
+			apply(TypedColumn(name), targetKey)
 	}
 
 

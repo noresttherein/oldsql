@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ComponentValues, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{ColumnForm, TypedColumn, ComponentValues, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy
 import net.noresttherein.oldsql.schema.Mapping.ColumnFilter.AllColumns
 import net.noresttherein.oldsql.schema.Mapping.{Component, _}
@@ -259,7 +259,7 @@ object SelectFormula {
 		  * @param name column name (sqlName) and suggested alias for the column in the select clause
 		  */
 		class ColumnExpression[T](val formula :SQLFormula[S, T], val name :String)
-			extends ColumnMapping[Owner, T] with SelectedColumn[T]
+			extends TypedColumn[Owner, T] with SelectedColumn[T]
 		{ component =>
 
 			if (formula.readForm.readColumns != 1)

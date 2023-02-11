@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, Component, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{ColumnFilter, Component, TypedMapping}
 import net.noresttherein.oldsql.schema.{ComponentValues, Mapping, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Mapping.ColumnFilter.{ForInsert, ForSelect, ForUpdate}
 import net.noresttherein.oldsql.schema.MappingPath.ComponentPath

@@ -1,11 +1,11 @@
 package net.noresttherein.oldsql.schema.forms
 
-import java.sql.PreparedStatement
+import java.sql.{JDBCType, PreparedStatement}
 
 import scala.collection.immutable.ArraySeq
 
 import net.noresttherein.oldsql.schema.SQLWriteForm
-import net.noresttherein.oldsql.schema.SQLWriteForm.NullableWriteFormLiteralsBackFeed
+import net.noresttherein.oldsql.schema.SQLWriteForm.{CompositeWriteForm, WriteFormSeparateLiterals}
 
 
 
@@ -313,39 +313,46 @@ trait ScalaWriteForms {
 
 
 
-
+	@inline private def literals[T](form :SQLWriteForm[T], value :T) :Seq[String] =
+		form.columnLiterals(value)
 
 	
-	private[schema] trait AbstractTuple2WriteForm[-L, -R] extends SQLWriteForm[(L, R)] {
-		override def writtenColumns: Int = _1.writtenColumns + _2.writtenColumns
-
+	private[schema] trait AbstractTuple2WriteForm[-L, -R] 
+		extends SQLWriteForm[(L, R)] with WriteFormSeparateLiterals[(L, R)] 
+	{
 		val _1 :SQLWriteForm[L]
 		val _2 :SQLWriteForm[R]
+
+		override val columnCount: Int = _1.columnCount + _2.columnCount
+		override lazy val columnTypes :Seq[JDBCType] = _1.columnTypes ++ _2.columnTypes
+		override def isUniversal: Boolean = _1.isUniversal && _2.isUniversal
 
 		override def set(statement :PreparedStatement, position :Int, value :(L, R)) :Unit =
 			if (value == null) {
 				_1.setNull(statement, position)
-				_2.setNull(statement, position + _1.writtenColumns)
+				_2.setNull(statement, position + _1.columnCount)
 			} else {
 				_1.set(statement, position, value._1)
-				_2.set(statement, position + _1.writtenColumns, value._2)
+				_2.set(statement, position + _1.columnCount, value._2)
 			}
 
 		override def setNull(statement :PreparedStatement, position :Int) :Unit = {
 			_1.setNull(statement, position)
-			_2.setNull(statement, position + _1.writtenColumns)
+			_2.setNull(statement, position + _1.columnCount)
 		}
 
 
-		override def literal(value: (L, R)): String =
-			if (value == null) s"(${_1.inlineNullLiteral}, ${_2.inlineNullLiteral})"
-			else s"(${_1.inlineLiteral(value._1)}, ${_2.inlineLiteral(value._2)})"
+		override def inlineLiteral(value: (L, R)): String =
+			if (value == null) inlineNullLiteral
+			else _1.inlineLiteral(value._1) + ", " + _2.inlineLiteral(value._2)
 
-		override def nullLiteral: String = s"(${_1.inlineNullLiteral}, ${_2.inlineNullLiteral})"
+		override lazy val inlineNullLiteral :String = _1.inlineNullLiteral + ", " + _2.inlineNullLiteral
 
-		override def inlineLiteral(value: (L, R)): String = _1.inlineLiteral(value._1) + ", " + _2.inlineLiteral(value._2)
+		override def columnLiterals(value: (L, R)): Seq[String] =
+			_1.columnLiterals(value._1) ++ _2.columnLiterals(value._2)
 
-		override def inlineNullLiteral: String = _1.inlineNullLiteral + ", " + _2.inlineNullLiteral
+		override lazy val nullColumnLiterals: Seq[String] = _1.nullColumnLiterals ++ _2.nullColumnLiterals
+
 
 		override def split =
 			(_1.split.view.map(_.compose((_:(L, R))._1)) ++ 
@@ -362,15 +369,17 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple3WriteForm[-A, -B, -C] extends NullableWriteFormLiteralsBackFeed[(A, B, C)] {
+	private[schema] trait AbstractTuple3WriteForm[-A, -B, -C] extends CompositeWriteForm[(A, B, C)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
+		lazy val forms = Seq(_1, _2, _3)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
 
-		override val writtenColumns: Int = offset_3 + _3.writtenColumns
+		override val columnCount: Int = offset_3 + _3.columnCount
+		override lazy val columnTypes :Seq[JDBCType] = _1.columnTypes ++ _2.columnTypes ++ _3.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, value :(A, B, C)) :Unit =
 			if (value == null) {
@@ -406,6 +415,9 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3)
+
 		override def split =
 			(_1.split.view.map(_.compose((_:(A, B, C))._1)) ++
 				_2.split.view.map(_.compose((_:(A, B, C))._2)) ++
@@ -421,17 +433,20 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple4WriteForm[-A, -B, -C, -D] extends NullableWriteFormLiteralsBackFeed[(A, B, C, D)] {
+	private[schema] trait AbstractTuple4WriteForm[-A, -B, -C, -D] extends CompositeWriteForm[(A, B, C, D)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
 		val _4 :SQLWriteForm[D]
+		override lazy val forms = Seq(_1, _2, _3, _4)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
 
-		override val writtenColumns: Int = offset_4 + _4.writtenColumns
+		override val columnCount: Int = offset_4 + _4.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, value :(A, B, C, D)) :Unit =
 			if (value == null) {
@@ -471,6 +486,9 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D))._2)) ++
@@ -487,19 +505,22 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple5WriteForm[-A, -B, -C, -D, -E] extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E)] {
+	private[schema] trait AbstractTuple5WriteForm[-A, -B, -C, -D, -E] extends CompositeWriteForm[(A, B, C, D, E)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
 		val _4 :SQLWriteForm[D]
 		val _5 :SQLWriteForm[E]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
 
-		override val writtenColumns: Int = offset_5 + _5.writtenColumns
+		override val columnCount: Int = offset_5 + _5.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, value :(A, B, C, D, E)) :Unit =
 			if (value == null) {
@@ -543,6 +564,9 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E))._2)) ++
@@ -561,21 +585,25 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple6WriteForm[-A, -B, -C, -D, -E, -F] extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F)] {
+	private[schema] trait AbstractTuple6WriteForm[-A, -B, -C, -D, -E, -F] extends CompositeWriteForm[(A, B, C, D, E, F)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
 		val _4 :SQLWriteForm[D]
 		val _5 :SQLWriteForm[E]
 		val _6 :SQLWriteForm[F]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
 
-		override val writtenColumns: Int = offset_6 + _6.writtenColumns
+		override val columnCount: Int = offset_6 + _6.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, value :(A, B, C, D, E, F)) :Unit =
 			if (value == null) {
@@ -623,6 +651,10 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F))._2)) ++
@@ -643,7 +675,7 @@ trait ScalaWriteForms {
 
 
 
-	private[schema] trait AbstractTuple7WriteForm[-A, -B, -C, -D, -E, -F, -G] extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G)] {
+	private[schema] trait AbstractTuple7WriteForm[-A, -B, -C, -D, -E, -F, -G] extends CompositeWriteForm[(A, B, C, D, E, F, G)] {
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
 		val _3 :SQLWriteForm[C]
@@ -651,15 +683,19 @@ trait ScalaWriteForms {
 		val _5 :SQLWriteForm[E]
 		val _6 :SQLWriteForm[F]
 		val _7 :SQLWriteForm[G]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6, _7)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
 
-		override val writtenColumns: Int = offset_7 + _7.writtenColumns
+		override val columnCount: Int = offset_7 + _7.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, value :(A, B, C, D, E, F, G)) :Unit =
 			if (value == null) {
@@ -711,6 +747,10 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G))._2)) ++
@@ -733,7 +773,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple8WriteForm[-A, -B, -C, -D, -E, -F, -G, -H]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -743,16 +783,20 @@ trait ScalaWriteForms {
 		val _6 :SQLWriteForm[F]
 		val _7 :SQLWriteForm[G]
 		val _8 :SQLWriteForm[H]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6, _7, _8)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
 
-		override val writtenColumns: Int = offset_8 + _8.writtenColumns
+		override val columnCount: Int = offset_8 + _8.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, value :(A, B, C, D, E, F, G, H)) :Unit =
 			if (value == null) {
@@ -808,6 +852,10 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H))._2)) ++
@@ -831,7 +879,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple9WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -842,17 +890,21 @@ trait ScalaWriteForms {
 		val _7 :SQLWriteForm[G]
 		val _8 :SQLWriteForm[H]
 		val _9 :SQLWriteForm[I]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
 
-		override val writtenColumns: Int = offset_9 + _9.writtenColumns
+		override val columnCount: Int = offset_9 + _9.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, value :(A, B, C, D, E, F, G, H, I)) :Unit =
 			if (value == null) {
@@ -912,6 +964,10 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I))._2)) ++
@@ -936,7 +992,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple10WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -948,18 +1004,22 @@ trait ScalaWriteForms {
 		val _8 :SQLWriteForm[H]
 		val _9 :SQLWriteForm[I]
 		val _10 :SQLWriteForm[J]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
 
-		override val writtenColumns: Int = offset_10 + _10.writtenColumns
+		override val columnCount: Int = offset_10 + _10.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, value :(A, B, C, D, E, F, G, H, I, J)) :Unit =
 			if (value == null) {
@@ -1023,6 +1083,11 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J))._2)) ++
@@ -1048,7 +1113,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple11WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J, K)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1061,19 +1126,23 @@ trait ScalaWriteForms {
 		val _9 :SQLWriteForm[I]
 		val _10 :SQLWriteForm[J]
 		val _11 :SQLWriteForm[K]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
-		private[this] val offset_11 = offset_10 + _10.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
+		private[this] val offset_11 = offset_10 + _10.columnCount
 
-		override val writtenColumns: Int = offset_11 + _11.writtenColumns
+		override val columnCount: Int = offset_11 + _11.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes ++ _10.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, value :(A, B, C, D, E, F, G, H, I, J, K)) :Unit =
 			if (value == null) {
@@ -1141,6 +1210,11 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J, K)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10) ++ literals(_11, t._11)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K))._2)) ++
@@ -1168,7 +1242,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple12WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J, K, L)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1182,20 +1256,25 @@ trait ScalaWriteForms {
 		val _10 :SQLWriteForm[J]
 		val _11 :SQLWriteForm[K]
 		val _12 :SQLWriteForm[L]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
-		private[this] val offset_11 = offset_10 + _10.writtenColumns
-		private[this] val offset_12 = offset_11 + _11.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
+		private[this] val offset_11 = offset_10 + _10.columnCount
+		private[this] val offset_12 = offset_11 + _11.columnCount
 
-		override val writtenColumns: Int = offset_12 + _12.writtenColumns
+		override val columnCount: Int = offset_12 + _12.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes ++ _10.columnTypes ++
+				_11.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, value :(A, B, C, D, E, F, G, H, I, J, K, L)) :Unit =
 			if (value == null) {
@@ -1267,6 +1346,11 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J, K, L)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10) ++ literals(_11, t._11) ++ literals(_12, t._12)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L))._2)) ++
@@ -1295,7 +1379,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple13WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J, K, L, M)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1310,21 +1394,26 @@ trait ScalaWriteForms {
 		val _11 :SQLWriteForm[K]
 		val _12 :SQLWriteForm[L]
 		val _13 :SQLWriteForm[M]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
-		private[this] val offset_11 = offset_10 + _10.writtenColumns
-		private[this] val offset_12 = offset_11 + _11.writtenColumns
-		private[this] val offset_13 = offset_12 + _12.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
+		private[this] val offset_11 = offset_10 + _10.columnCount
+		private[this] val offset_12 = offset_11 + _11.columnCount
+		private[this] val offset_13 = offset_12 + _12.columnCount
 
-		override val writtenColumns: Int = offset_13 + _13.writtenColumns
+		override val columnCount: Int = offset_13 + _13.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes ++ _10.columnTypes ++
+				_11.columnTypes ++ _12.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, value :(A, B, C, D, E, F, G, H, I, J, K, L, M)) :Unit =
 			if (value == null) {
@@ -1400,6 +1489,11 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J, K, L, M)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10) ++ literals(_11, t._11) ++ literals(_12, t._12) ++ literals(_13, t._13)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M))._2)) ++
@@ -1429,7 +1523,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple14WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1445,22 +1539,27 @@ trait ScalaWriteForms {
 		val _12 :SQLWriteForm[L]
 		val _13 :SQLWriteForm[M]
 		val _14 :SQLWriteForm[N]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
-		private[this] val offset_11 = offset_10 + _10.writtenColumns
-		private[this] val offset_12 = offset_11 + _11.writtenColumns
-		private[this] val offset_13 = offset_12 + _12.writtenColumns
-		private[this] val offset_14 = offset_13 + _13.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
+		private[this] val offset_11 = offset_10 + _10.columnCount
+		private[this] val offset_12 = offset_11 + _11.columnCount
+		private[this] val offset_13 = offset_12 + _12.columnCount
+		private[this] val offset_14 = offset_13 + _13.columnCount
 
-		override val writtenColumns: Int = offset_14 + _14.writtenColumns
+		override val columnCount: Int = offset_14 + _14.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes ++ _10.columnTypes ++
+				_11.columnTypes ++ _12.columnTypes ++ _13.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, value :(A, B, C, D, E, F, G, H, I, J, K, L, M, N)) :Unit =
 			if (value == null) {
@@ -1540,6 +1639,12 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J, K, L, M, N)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10) ++ literals(_11, t._11) ++ literals(_12, t._12) ++ literals(_13, t._13) ++
+				literals(_14, t._14)
+
 		override def split = 
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N))._2)) ++
@@ -1570,7 +1675,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple15WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1587,23 +1692,28 @@ trait ScalaWriteForms {
 		val _13 :SQLWriteForm[M]
 		val _14 :SQLWriteForm[N]
 		val _15 :SQLWriteForm[O]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
-		private[this] val offset_11 = offset_10 + _10.writtenColumns
-		private[this] val offset_12 = offset_11 + _11.writtenColumns
-		private[this] val offset_13 = offset_12 + _12.writtenColumns
-		private[this] val offset_14 = offset_13 + _13.writtenColumns
-		private[this] val offset_15 = offset_14 + _14.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
+		private[this] val offset_11 = offset_10 + _10.columnCount
+		private[this] val offset_12 = offset_11 + _11.columnCount
+		private[this] val offset_13 = offset_12 + _12.columnCount
+		private[this] val offset_14 = offset_13 + _13.columnCount
+		private[this] val offset_15 = offset_14 + _14.columnCount
 
-		override val writtenColumns: Int = offset_15 + _15.writtenColumns
+		override val columnCount: Int = offset_15 + _15.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes ++ _10.columnTypes ++
+				_11.columnTypes ++ _12.columnTypes ++ _13.columnTypes ++ _14.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int,
 		                 value :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)) :Unit =
@@ -1688,6 +1798,12 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10) ++ literals(_11, t._11) ++ literals(_12, t._12) ++ literals(_13, t._13) ++
+				literals(_14, t._14) ++ literals(_15, t._15)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O))._2)) ++
@@ -1719,7 +1835,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple16WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1737,24 +1853,29 @@ trait ScalaWriteForms {
 		val _14 :SQLWriteForm[N]
 		val _15 :SQLWriteForm[O]
 		val _16 :SQLWriteForm[P]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
-		private[this] val offset_11 = offset_10 + _10.writtenColumns
-		private[this] val offset_12 = offset_11 + _11.writtenColumns
-		private[this] val offset_13 = offset_12 + _12.writtenColumns
-		private[this] val offset_14 = offset_13 + _13.writtenColumns
-		private[this] val offset_15 = offset_14 + _14.writtenColumns
-		private[this] val offset_16 = offset_15 + _15.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
+		private[this] val offset_11 = offset_10 + _10.columnCount
+		private[this] val offset_12 = offset_11 + _11.columnCount
+		private[this] val offset_13 = offset_12 + _12.columnCount
+		private[this] val offset_14 = offset_13 + _13.columnCount
+		private[this] val offset_15 = offset_14 + _14.columnCount
+		private[this] val offset_16 = offset_15 + _15.columnCount
 
-		override val writtenColumns: Int = offset_16 + _16.writtenColumns
+		override val columnCount: Int = offset_16 + _16.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes ++ _10.columnTypes ++
+				_11.columnTypes ++ _12.columnTypes ++ _13.columnTypes ++ _14.columnTypes ++ _15.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int,
 		                 value :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)) :Unit =
@@ -1843,6 +1964,12 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10) ++ literals(_11, t._11) ++ literals(_12, t._12) ++ literals(_13, t._13) ++
+				literals(_14, t._14) ++ literals(_15, t._15) ++ literals(_16, t._16)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P))._2)) ++
@@ -1876,7 +2003,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple17WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -1895,25 +2022,31 @@ trait ScalaWriteForms {
 		val _15 :SQLWriteForm[O]
 		val _16 :SQLWriteForm[P]
 		val _17 :SQLWriteForm[Q]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
-		private[this] val offset_11 = offset_10 + _10.writtenColumns
-		private[this] val offset_12 = offset_11 + _11.writtenColumns
-		private[this] val offset_13 = offset_12 + _12.writtenColumns
-		private[this] val offset_14 = offset_13 + _13.writtenColumns
-		private[this] val offset_15 = offset_14 + _14.writtenColumns
-		private[this] val offset_16 = offset_15 + _15.writtenColumns
-		private[this] val offset_17 = offset_16 + _16.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
+		private[this] val offset_11 = offset_10 + _10.columnCount
+		private[this] val offset_12 = offset_11 + _11.columnCount
+		private[this] val offset_13 = offset_12 + _12.columnCount
+		private[this] val offset_14 = offset_13 + _13.columnCount
+		private[this] val offset_15 = offset_14 + _14.columnCount
+		private[this] val offset_16 = offset_15 + _15.columnCount
+		private[this] val offset_17 = offset_16 + _16.columnCount
 
-		override val writtenColumns: Int = offset_17 + _17.writtenColumns
+		override val columnCount: Int = offset_17 + _17.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes ++ _10.columnTypes ++
+				_11.columnTypes ++ _12.columnTypes ++ _13.columnTypes ++ _14.columnTypes ++ _15.columnTypes ++
+				_16.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int,
 		                 value :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)) :Unit =
@@ -2006,6 +2139,12 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10) ++ literals(_11, t._11) ++ literals(_12, t._12) ++ literals(_13, t._13) ++
+				literals(_14, t._14) ++ literals(_15, t._15) ++ literals(_16, t._16) ++ literals(_17, t._17)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q))._2)) ++
@@ -2040,7 +2179,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple18WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2060,26 +2199,32 @@ trait ScalaWriteForms {
 		val _16 :SQLWriteForm[P]
 		val _17 :SQLWriteForm[Q]
 		val _18 :SQLWriteForm[R]
+		override lazy val forms = Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
-		private[this] val offset_11 = offset_10 + _10.writtenColumns
-		private[this] val offset_12 = offset_11 + _11.writtenColumns
-		private[this] val offset_13 = offset_12 + _12.writtenColumns
-		private[this] val offset_14 = offset_13 + _13.writtenColumns
-		private[this] val offset_15 = offset_14 + _14.writtenColumns
-		private[this] val offset_16 = offset_15 + _15.writtenColumns
-		private[this] val offset_17 = offset_16 + _16.writtenColumns
-		private[this] val offset_18 = offset_17 + _17.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
+		private[this] val offset_11 = offset_10 + _10.columnCount
+		private[this] val offset_12 = offset_11 + _11.columnCount
+		private[this] val offset_13 = offset_12 + _12.columnCount
+		private[this] val offset_14 = offset_13 + _13.columnCount
+		private[this] val offset_15 = offset_14 + _14.columnCount
+		private[this] val offset_16 = offset_15 + _15.columnCount
+		private[this] val offset_17 = offset_16 + _16.columnCount
+		private[this] val offset_18 = offset_17 + _17.columnCount
 
-		override val writtenColumns: Int = offset_18 + _18.writtenColumns
+		override val columnCount: Int = offset_18 + _18.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes ++ _10.columnTypes ++
+				_11.columnTypes ++ _12.columnTypes ++ _13.columnTypes ++ _14.columnTypes ++ _15.columnTypes ++
+				_16.columnTypes ++ _17.columnTypes ++ _18.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int,
 		                 value :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)) :Unit =
@@ -2176,6 +2321,13 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10) ++ literals(_11, t._11) ++ literals(_12, t._12) ++ literals(_13, t._13) ++
+				literals(_14, t._14) ++ literals(_15, t._15) ++ literals(_16, t._16) ++ literals(_17, t._17) ++
+				literals(_18, t._18)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R))._2)) ++
@@ -2211,7 +2363,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple19WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2232,27 +2384,34 @@ trait ScalaWriteForms {
 		val _17 :SQLWriteForm[Q]
 		val _18 :SQLWriteForm[R]
 		val _19 :SQLWriteForm[S]
+		override lazy val forms =
+			Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
-		private[this] val offset_11 = offset_10 + _10.writtenColumns
-		private[this] val offset_12 = offset_11 + _11.writtenColumns
-		private[this] val offset_13 = offset_12 + _12.writtenColumns
-		private[this] val offset_14 = offset_13 + _13.writtenColumns
-		private[this] val offset_15 = offset_14 + _14.writtenColumns
-		private[this] val offset_16 = offset_15 + _15.writtenColumns
-		private[this] val offset_17 = offset_16 + _16.writtenColumns
-		private[this] val offset_18 = offset_17 + _17.writtenColumns
-		private[this] val offset_19 = offset_18 + _18.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
+		private[this] val offset_11 = offset_10 + _10.columnCount
+		private[this] val offset_12 = offset_11 + _11.columnCount
+		private[this] val offset_13 = offset_12 + _12.columnCount
+		private[this] val offset_14 = offset_13 + _13.columnCount
+		private[this] val offset_15 = offset_14 + _14.columnCount
+		private[this] val offset_16 = offset_15 + _15.columnCount
+		private[this] val offset_17 = offset_16 + _16.columnCount
+		private[this] val offset_18 = offset_17 + _17.columnCount
+		private[this] val offset_19 = offset_18 + _18.columnCount
 
-		override val writtenColumns: Int = offset_19 + _19.writtenColumns
+		override val columnCount: Int = offset_19 + _19.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes ++ _10.columnTypes ++
+				_11.columnTypes ++ _12.columnTypes ++ _13.columnTypes ++ _14.columnTypes ++ _15.columnTypes ++
+				_16.columnTypes ++ _17.columnTypes ++ _18.columnTypes ++ _19.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int,
 		                 value :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)) :Unit =
@@ -2353,6 +2512,13 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10) ++ literals(_11, t._11) ++ literals(_12, t._12) ++ literals(_13, t._13) ++
+				literals(_14, t._14) ++ literals(_15, t._15) ++ literals(_16, t._16) ++ literals(_17, t._17) ++
+				literals(_18, t._18) ++ literals(_19, t._19)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S))._2)) ++
@@ -2389,7 +2555,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple20WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S, -T]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2411,28 +2577,35 @@ trait ScalaWriteForms {
 		val _18 :SQLWriteForm[R]
 		val _19 :SQLWriteForm[S]
 		val _20 :SQLWriteForm[T]
+		override lazy val forms =
+			Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
-		private[this] val offset_11 = offset_10 + _10.writtenColumns
-		private[this] val offset_12 = offset_11 + _11.writtenColumns
-		private[this] val offset_13 = offset_12 + _12.writtenColumns
-		private[this] val offset_14 = offset_13 + _13.writtenColumns
-		private[this] val offset_15 = offset_14 + _14.writtenColumns
-		private[this] val offset_16 = offset_15 + _15.writtenColumns
-		private[this] val offset_17 = offset_16 + _16.writtenColumns
-		private[this] val offset_18 = offset_17 + _17.writtenColumns
-		private[this] val offset_19 = offset_18 + _18.writtenColumns
-		private[this] val offset_20 = offset_19 + _19.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
+		private[this] val offset_11 = offset_10 + _10.columnCount
+		private[this] val offset_12 = offset_11 + _11.columnCount
+		private[this] val offset_13 = offset_12 + _12.columnCount
+		private[this] val offset_14 = offset_13 + _13.columnCount
+		private[this] val offset_15 = offset_14 + _14.columnCount
+		private[this] val offset_16 = offset_15 + _15.columnCount
+		private[this] val offset_17 = offset_16 + _16.columnCount
+		private[this] val offset_18 = offset_17 + _17.columnCount
+		private[this] val offset_19 = offset_18 + _18.columnCount
+		private[this] val offset_20 = offset_19 + _19.columnCount
 
-		override val writtenColumns: Int = offset_20 + _20.writtenColumns
+		override val columnCount: Int = offset_20 + _20.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes ++ _10.columnTypes ++
+				_11.columnTypes ++ _12.columnTypes ++ _13.columnTypes ++ _14.columnTypes ++ _15.columnTypes ++
+				_16.columnTypes ++ _17.columnTypes ++ _18.columnTypes ++ _19.columnTypes ++ _20.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int,
 		                 value :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)) :Unit =
@@ -2537,6 +2710,13 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10) ++ literals(_11, t._11) ++ literals(_12, t._12) ++ literals(_13, t._13) ++
+				literals(_14, t._14) ++ literals(_15, t._15) ++ literals(_16, t._16) ++ literals(_17, t._17) ++
+				literals(_18, t._18) ++ literals(_19, t._19) ++ literals(_20, t._20)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T))._2)) ++
@@ -2574,7 +2754,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple21WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S, -T, -U]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2597,29 +2777,37 @@ trait ScalaWriteForms {
 		val _19 :SQLWriteForm[S]
 		val _20 :SQLWriteForm[T]
 		val _21 :SQLWriteForm[U]
+		override lazy val forms =
+			Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21)
 
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
-		private[this] val offset_11 = offset_10 + _10.writtenColumns
-		private[this] val offset_12 = offset_11 + _11.writtenColumns
-		private[this] val offset_13 = offset_12 + _12.writtenColumns
-		private[this] val offset_14 = offset_13 + _13.writtenColumns
-		private[this] val offset_15 = offset_14 + _14.writtenColumns
-		private[this] val offset_16 = offset_15 + _15.writtenColumns
-		private[this] val offset_17 = offset_16 + _16.writtenColumns
-		private[this] val offset_18 = offset_17 + _17.writtenColumns
-		private[this] val offset_19 = offset_18 + _18.writtenColumns
-		private[this] val offset_20 = offset_19 + _19.writtenColumns
-		private[this] val offset_21 = offset_20 + _20.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
+		private[this] val offset_11 = offset_10 + _10.columnCount
+		private[this] val offset_12 = offset_11 + _11.columnCount
+		private[this] val offset_13 = offset_12 + _12.columnCount
+		private[this] val offset_14 = offset_13 + _13.columnCount
+		private[this] val offset_15 = offset_14 + _14.columnCount
+		private[this] val offset_16 = offset_15 + _15.columnCount
+		private[this] val offset_17 = offset_16 + _16.columnCount
+		private[this] val offset_18 = offset_17 + _17.columnCount
+		private[this] val offset_19 = offset_18 + _18.columnCount
+		private[this] val offset_20 = offset_19 + _19.columnCount
+		private[this] val offset_21 = offset_20 + _20.columnCount
 
-		override val writtenColumns: Int = offset_21 + _21.writtenColumns
+		override val columnCount: Int = offset_21 + _21.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes ++ _10.columnTypes ++
+				_11.columnTypes ++ _12.columnTypes ++ _13.columnTypes ++ _14.columnTypes ++ _15.columnTypes ++
+				_16.columnTypes ++ _17.columnTypes ++ _18.columnTypes ++ _19.columnTypes ++ _20.columnTypes ++
+				_21.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int,
 		                 value :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)) :Unit =
@@ -2728,6 +2916,13 @@ trait ScalaWriteForms {
 			res.toString
 		}
 
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10) ++ literals(_11, t._11) ++ literals(_12, t._12) ++ literals(_13, t._13) ++
+				literals(_14, t._14) ++ literals(_15, t._15) ++ literals(_16, t._16) ++ literals(_17, t._17) ++
+				literals(_18, t._18) ++ literals(_19, t._19) ++ literals(_20, t._20) ++ literals(_21, t._21)
+
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._1)) ++
 				_2.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U))._2)) ++
@@ -2767,7 +2962,7 @@ trait ScalaWriteForms {
 
 
 	private[schema] trait AbstractTuple22WriteForm[-A, -B, -C, -D, -E, -F, -G, -H, -I, -J, -K, -L, -M, -N, -O, -P, -Q, -R, -S, -T, -U, -V]
-		extends NullableWriteFormLiteralsBackFeed[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)]
+		extends CompositeWriteForm[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)]
 	{
 		val _1 :SQLWriteForm[A]
 		val _2 :SQLWriteForm[B]
@@ -2791,30 +2986,38 @@ trait ScalaWriteForms {
 		val _20 :SQLWriteForm[T]
 		val _21 :SQLWriteForm[U]
 		val _22 :SQLWriteForm[V]
-		
-		private[this] val offset_2 = _1.writtenColumns
-		private[this] val offset_3 = offset_2 + _2.writtenColumns
-		private[this] val offset_4 = offset_3 + _3.writtenColumns
-		private[this] val offset_5 = offset_4 + _4.writtenColumns
-		private[this] val offset_6 = offset_5 + _5.writtenColumns
-		private[this] val offset_7 = offset_6 + _6.writtenColumns
-		private[this] val offset_8 = offset_7 + _7.writtenColumns
-		private[this] val offset_9 = offset_8 + _8.writtenColumns
-		private[this] val offset_10 = offset_9 + _9.writtenColumns
-		private[this] val offset_11 = offset_10 + _10.writtenColumns
-		private[this] val offset_12 = offset_11 + _11.writtenColumns
-		private[this] val offset_13 = offset_12 + _12.writtenColumns
-		private[this] val offset_14 = offset_13 + _13.writtenColumns
-		private[this] val offset_15 = offset_14 + _14.writtenColumns
-		private[this] val offset_16 = offset_15 + _15.writtenColumns
-		private[this] val offset_17 = offset_16 + _16.writtenColumns
-		private[this] val offset_18 = offset_17 + _17.writtenColumns
-		private[this] val offset_19 = offset_18 + _18.writtenColumns
-		private[this] val offset_20 = offset_19 + _19.writtenColumns
-		private[this] val offset_21 = offset_20 + _20.writtenColumns
-		private[this] val offset_22 = offset_21 + _21.writtenColumns
+		override lazy val forms =
+			Seq(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22)
 
-		override val writtenColumns: Int = offset_22 + _22.writtenColumns
+		private[this] val offset_2 = _1.columnCount
+		private[this] val offset_3 = offset_2 + _2.columnCount
+		private[this] val offset_4 = offset_3 + _3.columnCount
+		private[this] val offset_5 = offset_4 + _4.columnCount
+		private[this] val offset_6 = offset_5 + _5.columnCount
+		private[this] val offset_7 = offset_6 + _6.columnCount
+		private[this] val offset_8 = offset_7 + _7.columnCount
+		private[this] val offset_9 = offset_8 + _8.columnCount
+		private[this] val offset_10 = offset_9 + _9.columnCount
+		private[this] val offset_11 = offset_10 + _10.columnCount
+		private[this] val offset_12 = offset_11 + _11.columnCount
+		private[this] val offset_13 = offset_12 + _12.columnCount
+		private[this] val offset_14 = offset_13 + _13.columnCount
+		private[this] val offset_15 = offset_14 + _14.columnCount
+		private[this] val offset_16 = offset_15 + _15.columnCount
+		private[this] val offset_17 = offset_16 + _16.columnCount
+		private[this] val offset_18 = offset_17 + _17.columnCount
+		private[this] val offset_19 = offset_18 + _18.columnCount
+		private[this] val offset_20 = offset_19 + _19.columnCount
+		private[this] val offset_21 = offset_20 + _20.columnCount
+		private[this] val offset_22 = offset_21 + _21.columnCount
+
+		override val columnCount: Int = offset_22 + _22.columnCount
+		override lazy val columnTypes :Seq[JDBCType] =
+			_1.columnTypes ++ _2.columnTypes ++ _3.columnTypes ++ _4.columnTypes ++ _5.columnTypes ++
+				_6.columnTypes ++ _7.columnTypes ++ _8.columnTypes ++ _9.columnTypes ++ _10.columnTypes ++
+				_11.columnTypes ++ _12.columnTypes ++ _13.columnTypes ++ _14.columnTypes ++ _15.columnTypes ++
+				_16.columnTypes ++ _17.columnTypes ++ _18.columnTypes ++ _19.columnTypes ++ _20.columnTypes ++
+				_21.columnTypes ++ _22.columnTypes
 
 		override def set(statement :PreparedStatement, position :Int, 
 		                 value :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)) :Unit =
@@ -2926,6 +3129,14 @@ trait ScalaWriteForms {
 			if (!inline) res append ")"
 			res.toString
 		}
+
+		override def columnLiterals(t :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)) :Seq[String] =
+			literals(_1, t._1) ++ literals(_2, t._2) ++ literals(_3, t._3) ++ literals(_4, t._4) ++ literals(_5, t._5) ++
+				literals(_6, t._6) ++ literals(_7, t._7) ++ literals(_8, t._8) ++ literals(_9, t._9) ++
+				literals(_10, t._10) ++ literals(_11, t._11) ++ literals(_12, t._12) ++ literals(_13, t._13) ++
+				literals(_14, t._14) ++ literals(_15, t._15) ++ literals(_16, t._16) ++ literals(_17, t._17) ++
+				literals(_18, t._18) ++ literals(_19, t._19) ++ literals(_20, t._20) ++ literals(_21, t._21) ++
+				literals(_22, t._22)
 
 		override def split =
 			(_1.split.view.map(_.compose((_ :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V))._1)) ++

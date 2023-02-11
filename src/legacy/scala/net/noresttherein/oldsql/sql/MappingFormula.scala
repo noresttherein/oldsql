@@ -1,7 +1,7 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.Mapping.{Component, _}
-import net.noresttherein.oldsql.schema.{ColumnMapping, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{TypedColumn, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.Buff.{NoQuery, NoSelect}
 import net.noresttherein.oldsql.schema.MappingPath.{ComponentPath, SelfPath}
 import net.noresttherein.oldsql.schema.bits.MappingPath
@@ -185,7 +185,7 @@ object MappingFormula {
 
 
 		implicit private def sqlForm :SQLForm[V] = table.mapping.lift(path.end) match {
-			case column :ColumnMapping[O, V] => column.form //fixme: this doesn't take into account the buffs from selectForm
+			case column :TypedColumn[O, V] => column.form //fixme: this doesn't take into account the buffs from selectForm
 			case comp  => comp.selectForm && comp.queryForm
 		}
 

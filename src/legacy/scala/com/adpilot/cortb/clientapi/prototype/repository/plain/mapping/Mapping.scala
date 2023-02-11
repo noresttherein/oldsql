@@ -9,7 +9,7 @@ import scala.slick.jdbc.{GetResult, PositionedParameters, PositionedResult, SetP
 
 
 import Mapping._
-import ColumnMapping._
+import TypedColumn._
 import ComponentMapping._
 import ColumnOption._
 
@@ -22,7 +22,7 @@ trait AnyMapping {
 	type Component[_] <: AnyMapping
 	type AnyColumn <: Component[_]
 	type Component[T] <: ComponentMapping[ResultType, T] with Component[_]
-	type Column[T] <: ColumnMapping[ResultType, T] with Component[T] with AnyColumn
+	type Column[T] <: TypedColumn[ResultType, T] with Component[T] with AnyColumn
 
 
 	def readValue(res :PositionedResult) :ResultType
@@ -39,7 +39,7 @@ trait AnyMapping {
 trait Mapping[E] extends GetResult[E] with AnyMapping { self =>
 	type ResultType = E
 	type Component[T] <: ComponentMapping[E, T]
-	type Column[T] <: ColumnMapping[E, T] with Component[T]
+	type Column[T] <: TypedColumn[E, T] with Component[T]
 	type Component[_] = Component[_]
 	type AnyColumn = Column[_]
 
@@ -93,7 +93,7 @@ trait Mapping[E] extends GetResult[E] with AnyMapping { self =>
 
 		val columns = {
 			def mapColumn[T](column :Column[T]) = new EmbeddedColumn(column, column.value, None, Seq(ReadOnly))
-//				ColumnMapping(column.name, column.value _, ReadOnly)
+//				TypedColumn(column.name, column.value _, ReadOnly)
 			val extra = explicitColumns.flatMap {
 				case c @ ExplicitSelect(_) => Some(mapColumn(c))
 				case c if c.disabled[NoSelect] => None
@@ -113,7 +113,7 @@ trait Mapping[E] extends GetResult[E] with AnyMapping { self =>
 //	def withValues(values :ColumnValues.Value[_]*) :Mapping[E] =
 //		new DirectMappingAdapter[E, self.type] {
 //			import ColumnValues.Value
-//			private val ommitedColumns = values.map(v => (v.column :ColumnMapping[_, _]) -> v.value).toMap[ColumnMapping[_, _], Any]
+//			private val ommitedColumns = values.map(v => (v.column :TypedColumn[_, _]) -> v.value).toMap[TypedColumn[_, _], Any]
 //
 //			val adaptedMapping = self :self.type
 //
@@ -125,14 +125,14 @@ trait Mapping[E] extends GetResult[E] with AnyMapping { self =>
 //			}
 //
 //			private def valueFor[T](values :ColumnValues)(column :Column[T], idx :Int) =
-//				Value[T](column :ColumnMapping[_, T], ommitedColumns.getOrElse(column, values(idx)).asInstanceOf[T])
+//				Value[T](column :TypedColumn[_, T], ommitedColumns.getOrElse(column, values(idx)).asInstanceOf[T])
 //		}
 	
 }
 
 object Mapping {
 
-	def apply[E](columns :Seq[ColumnMapping[E, _]], map :Seq[_]=>E) :Mapping[E] =
+	def apply[E](columns :Seq[TypedColumn[E, _]], map :Seq[_]=>E) :Mapping[E] =
 		new ColumnSeqMapping[E](columns, map)
 
 	
@@ -148,16 +148,16 @@ object Mapping {
 		lazy val generated = adaptColumns(_.generated)
 
 		//TODO FIXME:  this will return duplicate columns for every column that is a part of a component.
-		protected def adaptColumns(columns :ComponentMapping[E, _]=>Seq[ColumnMapping[_, _]]) =
+		protected def adaptColumns(columns :ComponentMapping[E, _]=>Seq[TypedColumn[_, _]]) =
 			components.flatMap(c => columns(c).map(adapt(_)))
 
-		protected def adapt[T, X](c :ColumnMapping[T, X]) :Column[X]
+		protected def adapt[T, X](c :TypedColumn[T, X]) :Column[X]
 	}
 */
 
 	trait UniversalMapping[E] extends Mapping[E] {
 		type Component[X] = ComponentMapping[E, X]
-		type Column[X] = ColumnMapping[E, X]
+		type Column[X] = TypedColumn[E, X]
 	}
 
 	
@@ -190,7 +190,7 @@ object Mapping {
 	}
 
 	
-	class ColumnSeqMapping[E](val columns :Seq[ColumnMapping[E, _]], map :Seq[_] => E)
+	class ColumnSeqMapping[E](val columns :Seq[TypedColumn[E, _]], map :Seq[_] => E)
 		extends AbstractMapping[E]
 	{
 
@@ -272,7 +272,7 @@ object Mapping {
 			columns.map(c => adaptColumn(c))
 
 		protected final def adapt[X](c :adaptedMapping.Component[X]) :Component[X] = c match {
-			case _:ColumnMapping[_, _] => adaptColumn[X](c.asInstanceOf[adaptedMapping.Column[X]])
+			case _:TypedColumn[_, _] => adaptColumn[X](c.asInstanceOf[adaptedMapping.Column[X]])
 			case _ => adaptComponent[X](c)
 		}
 		protected def adaptComponent[X](component :adaptedMapping.Component[X]) :Component[X]
@@ -436,7 +436,7 @@ object Mapping {
 
 
 	object SetParameters {
-		def apply[E](columns :ColumnMapping[E, _]*) = SetParameter[E](
+		def apply[E](columns :TypedColumn[E, _]*) = SetParameter[E](
 			(entity, params) => columns.foreach(_.paramFrom(entity).set(params))
 		)
 
@@ -449,7 +449,7 @@ object Mapping {
 		implicit val Unit :SetParameter[Unit] = SetParameter[Unit]((_, _) => ())
 	}
 
-	def GetColumns[E](columns :ColumnMapping[E, _]*) = GetResult[Seq[Any]](
+	def GetColumns[E](columns :TypedColumn[E, _]*) = GetResult[Seq[Any]](
 		params => columns.map(_(params))
 	)
 }

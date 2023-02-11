@@ -2,7 +2,7 @@ package com.adpilot.cortb.clientapi.prototype.repository.plain.mapping
 
 import com.adpilot.cortb.clientapi.prototype.repository.entities.meta.Reference.{UniquePropertyReferenceFactory, One, PropertyReference, Transient}
 import com.adpilot.cortb.clientapi.prototype.repository.entities.meta._
-import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.ColumnMapping.ColumnOption.OptionalSelect
+import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.TypedColumn.ColumnOption.OptionalSelect
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.ColumnType.{NullValue, MappedType}
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.ColumnValues.PositionedResultView
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.EntityMapping.{ColumnKey, JoinResult, JoinKey, JoinByFK}
@@ -336,7 +336,7 @@ object EntityMapping {
 
 
 
-	private[EntityMapping] case class JoinByFK[E, PK] private (table :EntityMapping[E, PK], prev :Option[(Mapping[One[E]], JoinByFK[_, _])], columns :Seq[ColumnMapping[E, _]]=Seq())
+	private[EntityMapping] case class JoinByFK[E, PK] private (table :EntityMapping[E, PK], prev :Option[(Mapping[One[E]], JoinByFK[_, _])], columns :Seq[TypedColumn[E, _]]=Seq())
 	{
 		def joinMock = table.joinMock(this)
 		
@@ -354,7 +354,7 @@ object EntityMapping {
 			if (join!=this)
 				this
 			else
-				JoinByFK(table, prev, join.columns.filter(c => columns.forall(_.name != c.name)).asInstanceOf[Seq[ColumnMapping[E, _]]]++:columns)
+				JoinByFK(table, prev, join.columns.filter(c => columns.forall(_.name != c.name)).asInstanceOf[Seq[TypedColumn[E, _]]]++:columns)
 
 		def joinedWith(table :EntityMapping[_, _]) :Boolean =
 			table == this.table || prev.exists(_._2.joinedWith(table))

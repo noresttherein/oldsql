@@ -34,7 +34,7 @@ class SymLinkSpec extends FlatSpec with Matchers {
 
 		val otherSocks = embed(_.otherSocks, new Boxes[String](symLink(this \\ socks :\ socks.list)))
 
-		val ties = embed(_.ties, new Boxes[Box[String]](new Boxes[String](ColumnMapping("ties"))))
+		val ties = embed(_.ties, new Boxes[Box[String]](new Boxes[String](TypedColumn("ties"))))
 
 		val moreTies = embed(_.moreTies, new Boxes[Box[String]](symLink(this \\ ties :\ ties.adaptee.value)))
 

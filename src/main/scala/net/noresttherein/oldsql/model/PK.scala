@@ -139,10 +139,11 @@ object PK {
 		/** Creates a key assigned to an entity by an application (transient) backed by the given value. */
 		def apply[T, @specialized(Int, Long) K](key :K) :AssignedPK[T, K] = new AssignedPK[T, K](key)
 
-		def unapply[T, K](pk :Key[T, K]) :Opt[K] = if (pk.isTransient) Got(pk.key) else Lack
+		//It might be crashing the compiler
+		//def unapply[T, K](pk :Key[T, K]) :Opt[K] = if (pk.isTransient) Got(pk.key) else Lack
 	}
 
 
-	implicit def KeyForm[T, K :SQLForm] :SQLForm[Key[T, K]] =
-		SQLForm.map[K, Key[T, K]]("Key")(PersistentPK.apply[T, K])(_.key)
+//	implicit def KeyForm[T, K :SQLForm] :SQLForm[Key[T, K]] =
+//		SQLForm.map[K, Key[T, K]]("Key")(PersistentPK.apply[T, K])(_.key)
 }

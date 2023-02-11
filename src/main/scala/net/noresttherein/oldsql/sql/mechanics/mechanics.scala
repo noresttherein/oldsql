@@ -1,8 +1,5 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.OperationView
-import net.noresttherein.oldsql.OperationView.FilterView
-
 
 
 
@@ -14,5 +11,7 @@ import net.noresttherein.oldsql.OperationView.FilterView
   * the intermediate SQL structure [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL SpelledSQL]] built during
   * rendering of all SQL objects and features, and [[net.noresttherein.oldsql.sql.mechanics.SQLScribe SQLScribe]]
   * visitor providing a global framework for converting SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]].
-  *///consider: renaming the package to familiars
-package object mechanics
+  *///consider: renaming the package to familiars or magic
+package object mechanics {
+	type sql_=>[X, Y] = SQLConversion[X, Y]
+}

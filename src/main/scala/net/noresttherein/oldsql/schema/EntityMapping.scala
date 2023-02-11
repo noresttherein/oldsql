@@ -1,28 +1,28 @@
 package net.noresttherein.oldsql.schema
 
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingOf, TypedMapping}
 
 
 
 
 
 
-trait EntityMappingTemplate[+C[A] <: RefinedMapping[PK, A], PK, S, O] extends BaseMapping[S, O] {
+trait GenericEntityMapping[+C[A] <: TypedMapping[PK, A], PK, S, O] extends BaseMapping[S, O] {
 	val pk :C[O]
 }
 
 
 
-object EntityMappingTemplate {
-	implicit def primaryKeyOf[C[A] <: RefinedMapping[PK, A], PK, S]
-			:PrimaryKeyOf[({ type M[O] = EntityMappingTemplate[C, PK, S, O] })#M]
+object GenericEntityMapping {
+	implicit def primaryKeyOf[C[A] <: TypedMapping[PK, A], PK, S]
+			:PrimaryKeyOf[({ type M[O] = GenericEntityMapping[C, PK, S, O] })#M]
 				{ type Key = PK; type PKMapping[O] = C[O] } =
-		new PrimaryKeyOf[({ type M[O] = EntityMappingTemplate[C, PK, S, O] })#M] {
+		new PrimaryKeyOf[({ type M[O] = GenericEntityMapping[C, PK, S, O] })#M] {
 			override type Key = PK
 			override type PKMapping[O] = C[O]
 
-			override def apply[O](entity :EntityMappingTemplate[C, PK, S, O]) = entity.pk
+			override def apply[O](entity :GenericEntityMapping[C, PK, S, O]) = entity.pk
 		}
 }
 
@@ -31,6 +31,6 @@ object EntityMappingTemplate {
 /**
   * @author Marcin Mościcki
   */
-trait EntityMapping[PK, S, O] extends EntityMappingTemplate[MappingOf[PK]#Projection, PK, S, O] {
+trait EntityMapping[PK, S, O] extends GenericEntityMapping[MappingOf[PK]#Projection, PK, S, O] {
 	val pk :Component[PK]
 }

@@ -12,7 +12,7 @@ object generic {
 	type Fixed[Y] = { type T[X] = Y }
 	type FunctionOf[X] = { type F[Y] = X => Y }
 
-	type =#>[-X[A], +Y[A]] = GenericFun[X, Y]
+	type =>:[-X[A], +Y[A]] = GenericFun[X, Y]
 
 	trait GenericFun[-X[A], +Y[A]] extends Serializable { outer =>
 		def apply[T](x :X[T]) :Y[T]

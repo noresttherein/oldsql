@@ -3,7 +3,7 @@ package com.adpilot.cortb.clientapi.prototype.repository.plain.mapping
 import com.adpilot.cortb.clientapi.prototype.repository.DBConfig
 import com.adpilot.cortb.clientapi.prototype.repository.entities.Model.{Id, HasId}
 import com.adpilot.cortb.clientapi.prototype.repository.entities.meta.Reference.One
-import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.ColumnMapping.ColumnOption.NoUpdate
+import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.TypedColumn.ColumnOption.NoUpdate
 
 import scala.slick.jdbc.{StaticQuery => Q, GetResult, SetParameter}
 

@@ -32,7 +32,7 @@ trait Extractor[-X, +Y] extends Serializable { self =>
 
 	def apply(x :X) :Y
 
-	def opt(x :X) :Opt[Y]
+	def opt(x :X) :Opt[Y] //consider: renaming to unapply
 	@inline final def ?(x :X) :Opt[Y] = opt(x)
 
 	def unapply(x :X) :Opt[Y] = opt(x)
@@ -51,7 +51,7 @@ trait Extractor[-X, +Y] extends Serializable { self =>
 
 	def isIdentity :Boolean = false
 
-	override def toString :String = "Extractor@" + System.identityHashCode(this)
+	override def toString :String = "Extractor@" + System.identityHashCode(this).toHexString
 
 }
 
@@ -73,6 +73,8 @@ object Extractor extends ImplicitExtractors {
 	  */
 	type =?>[-X, +Y] = Extractor[X, Y]
 	type =!>[-X, +Y] = RequisiteExtractor[X, Y]
+
+	type from[X] = { type to[Y] = X =?> Y }
 
 
 	def apply[X, Y](extract :X => Option[Y], requisite: Opt[X => Y]) :Extractor[X, Y] = requisite match {
@@ -257,7 +259,7 @@ object Extractor extends ImplicitExtractors {
 				}
 			}
 
-		override def toString :String = "Optional@" + System.identityHashCode(this)
+		override def toString :String = "Optional@" + System.identityHashCode(this).toHexString
 	}
 
 
@@ -300,12 +302,12 @@ object Extractor extends ImplicitExtractors {
 	trait RequisiteExtractor[-X, +Y] extends Extractor[X, Y] { self =>
 		def getter :X => Y = apply
 		override def optional :X => Some[Y] = (x :X) => Some(apply(x))
-		override def requisite :Opt[X => Y] = Got(getter)
+		override def requisite :Got[X => Y] = Got(getter)
 		override def force :X => Y = getter
 
 		override def apply(x :X) :Y
 
-		override def opt(x :X) :Opt[Y] = Got(apply(x))
+		override def opt(x :X) :Got[Y] = Got(apply(x))
 
 		override def andThen[Z](extractor :Y =?> Z) :X =?> Z = extractor.composeReq[X](this)
 
@@ -344,7 +346,7 @@ object Extractor extends ImplicitExtractors {
 				}
 			}
 
-		override def toString :String = "Requisite@" + System.identityHashCode(this)
+		override def toString :String = "Requisite@" + System.identityHashCode(this).toHexString
 	}
 
 
@@ -382,7 +384,7 @@ object Extractor extends ImplicitExtractors {
 		override val optional :X => Some[X] = identityOptional.asInstanceOf[X => Some[X]]
 
 		override def apply(x :X) :X = x
-		override def opt(x :X) :Opt[X] = Got(x)
+		override def opt(x :X) :Got[X] = Got(x)
 
 		override def andThen[Z](extractor :X =?> Z) :X =?> Z = extractor
 		override def andThenOpt[Z](extractor :OptionalExtractor[X, Z]) :X =?> Z = extractor
@@ -400,9 +402,7 @@ object Extractor extends ImplicitExtractors {
 		override def toString = "Identity"
 	}
 
-	private[this] final val identityGetter = identity[Any] _
 	private[this] final val identityOptional = (x :Any) => Some(x)
-	private[this] final val identityRequisite = Got((x :Any) => x)
 
 
 
@@ -415,7 +415,7 @@ object Extractor extends ImplicitExtractors {
 		final override val optional = { val res = Some(constant); _ :X => res }
 
 		final override def apply(x :X) :Y = constant
-		final override def opt(x :X) :Opt[Y] = Got(constant)
+		final override def opt(x :X) :Got[Y] = Got(constant)
 
 		override def andThenOpt[Z](extractor :OptionalExtractor[Y, Z]) :X =?> Z = andThenOpt(extractor.optional)
 

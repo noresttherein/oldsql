@@ -1,32 +1,31 @@
 package net.noresttherein.oldsql.sql
 
-import net.noresttherein.oldsql.OperationType.UPDATE
+import net.noresttherein.oldsql.OperationView.UpdateView
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.collection.{Chain, ReversedList}
+import net.noresttherein.oldsql.collection.{Chain, PassedArray, ReversedList}
 import net.noresttherein.oldsql.exceptions.{MismatchedExpressionsException, MisspelledSQLException}
-import net.noresttherein.oldsql.morsels.Extractor.Optional
-import net.noresttherein.oldsql.schema.{ColumnMapping, RelVar, SQLForm, Table}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.{RelVar, SQLForm, Table}
+import net.noresttherein.oldsql.schema.ColumnMapping.TypedColumn
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, TypedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.sql.ComponentSetter.:=
+import net.noresttherein.oldsql.sql.SingleSQL
 import net.noresttherein.oldsql.sql.DML.{BoundDML, ComposedDML, DMLAPI, GroundDML, RepeatedDML}
 import net.noresttherein.oldsql.sql.DMLStatement.{AlteredResultStatement, BoundStatement, ComposedStatement, DMLStatementAPI, StatementResult, StatementVisitor}
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult.{UpdateCount, UpdatedEntities}
+import net.noresttherein.oldsql.sql.ParamClause.UnboundParam
 import net.noresttherein.oldsql.sql.Returning.implementation.{AbstractReturningEntities, GenericBatchReturningEntities, ReturningProperTuple, ReturningTupleSeqTemplate, ReturningTupleSingleton, ReturningTuplesTemplate}
-import net.noresttherein.oldsql.sql.Returning.syntax.{BatchReturningEntitiesClause, BatchReturningTuplesClause, EntitiesBatch, EntitiesStatement, EntityStatement, EntityStatementsTemplate, GenericReturningEntitiesClause, GenericRowStatements, GroundBatchReturningEntitiesClause, GroundBatchReturningTuplesClause, GroundEntitiesBatch, GroundRowsBatch, ReturningEntitiesClause, ReturningEntitiesClauses, ReturningEntityClause, ReturningTupleClause, ReturningTuplesClause, ReturningTuplesClauses, ReturningTuplesClausesTemplate, RowsBatch, RowsStatement, RowStatement}
-import net.noresttherein.oldsql.sql.RowProduct.ParameterizedFrom
+import net.noresttherein.oldsql.sql.Returning.syntax.{BatchReturningEntitiesClause, BatchReturningTuplesClause, EntitiesBatch, EntitiesStatement, EntityStatement, EntityStatementsTemplate, GenericReturningEntitiesClause, GroundBatchReturningEntitiesClause, GroundBatchReturningTuplesClause, GroundEntitiesBatch, GroundRowsBatch, ReturningEntitiesClause, ReturningEntitiesClauses, ReturningEntityClause, ReturningTupleClause, ReturningTuplesClause, ReturningTuplesClauses, ReturningTuplesClausesTemplate, RowsBatch, RowsStatement, RowStatement}
+import net.noresttherein.oldsql.sql.RowProduct.ParameterizedRow
+import net.noresttherein.oldsql.sql.SQLBoolean.True
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.GlobalSQL
-import net.noresttherein.oldsql.sql.TableStatement.{GroundSetClauseFactory, GroundSupplantClauseFactory, GroundWhereClauseFactory, ReturningClauseFactory, SetClauseFactory, SupplantClauseFactory, WhereAllClauseFactory, WhereAnyClauseFactory, WhereClauseFactory}
-import net.noresttherein.oldsql.sql.UnboundParam.FromParam
+import net.noresttherein.oldsql.sql.TableStatement.{seqAt, GroundSetClauseFactory, GroundSupplantClauseFactory, GroundWhereClauseFactory, ReturningClauseFactory, SetClauseFactory, SetParamScope, SupplantClauseFactory, WhereAllClauseFactory, WhereAnyClauseFactory, WhereClauseFactory}
 import net.noresttherein.oldsql.sql.Update.implementation.{updateDomain, DefaultEntityUpdate, DefaultGroundEntitiesUpdate, DefaultGroundEntityUpdate, DefaultGroundUpdate, DefaultUpdate, DefaultUpdateReturningEntityWhereSeed, DefaultUpdateUpdatingEntity, GroundUpdate, ParamUpdate, UpdateReturning, UpdatesReturning}
 import net.noresttherein.oldsql.sql.Update.syntax.{DefaultUpdateReturningEntity, DefaultUpdateUpdatingOne, EntitiesUpdate, EntityUpdate, EntityUpdateWhere, EntityUpdateWhereAll, EntityUpdateWhereSeed, GenericUpdateFactory, GroundEntitiesUpdate, GroundEntitiesUpdateWhereSeed, GroundEntityMultiUpdateFactory, GroundEntityUpdate, GroundEntityUpdateWhereSeed, GroundRowUpdateWhereSeed, GroundUpdateAllFactory, GroundUpdateFactory, GroundUpdateOneFactory, RowUpdate, RowUpdateWhereAll, RowUpdateWhereSeed, UpdateFacade, UpdateMany, UpdateOne, UpdateParam, UpdateUpdatingOne}
-import net.noresttherein.oldsql.sql.ast.{OrSQL, SQLParameter}
-import net.noresttherein.oldsql.sql.ast.SQLLiteral.True
+import net.noresttherein.oldsql.sql.ast.{BoundParam, OrSQL}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.MappingReveal.MappingSubject
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
+import net.noresttherein.oldsql.sql.SQLExpression.Single
 
 //here be implicits
 import net.noresttherein.oldsql.slang._
@@ -36,19 +35,19 @@ import net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals.boundParameter
 
 
 
-
+//todo: rename to Updates
 trait UpdateDML[-Args, M[O] <: MappingAt[O], +Res]
-	extends TableDML[Args, M, Res] with DMLAPI[Args, Res, Update.Of[M]#DML]
+	extends TableDML[Args, M, Res] with DMLAPI[Args, Res, Update.table[M]#DML]
 {
 	override def compose[X](f :X => Args) :UpdateDML[X, M, Res] =
-		new ComposedDML.Base[X, Args, Res, Update.Of[M]#DML](this, f)
+		new ComposedDML.Base[X, Args, Res, Update.table[M]#DML](this, f)
 			with UpdateDML[X, M, Res] with DerivedDML[X, Res]
-			with ComposedDML[X, Args, Res] with ComposedDML.Impl[X, Args, Res, Update.Of[M]#DML]
+			with ComposedDML[X, Args, Res] with ComposedDML.Impl[X, Args, Res, Update.table[M]#DML]
 
 	override def bind(args :Args) :UpdateDML[Unit, M, Res] =
-		new BoundDML.Base[Args, Res, Update.Of[M]#DML](this, args)
+		new BoundDML.Base[Args, Res, Update.table[M]#DML](this, args)
 			with UpdateDML[Any, M, Res] with DerivedDML[Any, Res]
-			with BoundDML[Args, Res] with BoundDML.Impl[Args, Res, Update.Of[M]#DML]
+			with BoundDML[Args, Res] with BoundDML.Impl[Args, Res, Update.table[M]#DML]
 }
 
 
@@ -56,28 +55,28 @@ trait UpdateDML[-Args, M[O] <: MappingAt[O], +Res]
 
 trait Update[-Args, M[O] <: MappingAt[O], +Res]
 	extends UpdateDML[Args, M, Res] with TableStatement[Args, M, Res]
-		with DMLStatementAPI[Args, Res, Update.Of[M]#Stmt]
+		with DMLStatementAPI[Args, Res, Update.table[M]#Stmt]
 {
 	protected override def returns[Y](result :StatementResult[Nothing, Y]) :Update[Args, M, Y] =
-		new AlteredResultStatement.Base[Args, Y, Update.Of[M]#Stmt](this, result)
+		new AlteredResultStatement.Base[Args, Y, Update.table[M]#Stmt](this, result)
 			with Update[Args, M, Y] with DerivedDML[Args, Y]
-			with AlteredResultStatement[Args, Y] with AlteredResultStatement.Impl[Args, Y, Update.Of[M]#Stmt]
+			with AlteredResultStatement[Args, Y] with AlteredResultStatement.Impl[Args, Y, Update.table[M]#Stmt]
 
 	override def compose[X](f :X => Args) :Update[X, M, Res] =
-		new ComposedDML.Base[X, Args, Res, Update.Of[M]#Stmt](this, f)
+		new ComposedDML.Base[X, Args, Res, Update.table[M]#Stmt](this, f)
 			with Update[X, M, Res] with DerivedDML[X, Res]
-			with ComposedStatement[X, Args, Res] with ComposedStatement.Impl[X, Args, Res, Update.Of[M]#Stmt]
+			with ComposedStatement[X, Args, Res] with ComposedStatement.Impl[X, Args, Res, Update.table[M]#Stmt]
 
 	override def bind(args :Args) :Update[Unit, M, Res] =
-		new BoundDML.Base[Args, Res, Update.Of[M]#Stmt](this, args)
+		new BoundDML.Base[Args, Res, Update.table[M]#Stmt](this, args)
 			with Update[Any, M, Res] with DerivedDML[Any, Res]
-			with BoundStatement[Args, Res] with BoundStatement.Impl[Args, Res, Update.Of[M]#Stmt]
+			with BoundStatement[Args, Res] with BoundStatement.Impl[Args, Res, Update.table[M]#Stmt]
 
 	override def batch :UpdateDML[Seq[Args], M, Seq[Res]] =
-		new RepeatedDML.Base[Args, Res, Update.Of[M]#Stmt](this)
+		new RepeatedDML.Base[Args, Res, Update.table[M]#Stmt](this)
 			with UpdateDML[Seq[Args], M, Seq[Res]] with DerivedDML[Seq[Args], Seq[Res]] with RepeatedDML[Args, Res]
 
-	protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] = visitor.update(this)
+	protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] = visitor.update(this)
 }
 
 
@@ -139,12 +138,12 @@ trait Update[-Args, M[O] <: MappingAt[O], +Res]
   *
   * Update.by[String] table Dragons set ... where ....                     :Update[String, Dragons, Int]
   * Update.by[String] all Dragons set ...                                  :Update[String, Dragons, Int]
-  * Update.by[String] * 10 table Dragons set ...                           :Update[String, Dragons, Int]
+  * Update.by[String] * 10 table Dragons set ...                           :Update[Seq[String], Dragons, Int]
   * }}}
   *
   * @see [[net.noresttherein.oldsql.sql.ComponentSetter]]
-  * @see [[net.noresttherein.oldsql.sql.ast.ComponentLValueSQL.:=]]
-  * @see [[net.noresttherein.oldsql.sql.ast.ComponentLValueSQL.:=?]]
+  * @see [[net.noresttherein.oldsql.sql.ast.LValueSQL.:=]]
+  * @see [[net.noresttherein.oldsql.sql.ast.LValueSQL.:=?]]
   * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.+=]]
   * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.-=]]
   * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.*=]]
@@ -156,11 +155,11 @@ trait Update[-Args, M[O] <: MappingAt[O], +Res]
   * @author Marcin Mościcki
   */
 object Update {
-	type Of[M[O] <: MappingAt[O]] = {
+	type table[M[O] <: MappingAt[O]] = {
 		type DML[-X, +Y] = UpdateDML[X, M, Y]
 		type Stmt[-X, +Y] = Update[X, M, Y]
 	}
-
+	//todo: make either this, or Update(table) by ... accept non-implicit form
 	def by[X] :UpdateParam[X] = new UpdateParam[X] {}
 
 	def table[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S] //this could potentially be UpdateMany or UpdateOne
@@ -212,20 +211,20 @@ object Update {
 			extends Update[Args, M, Res] with RowStatement[Args, M, Res]
 			   with ReturningClauseFactory[M, ({ type U[X] = UpdateReturningKey[Args, M, @~ ~ X, X] })#U]
 		{
-			override def returning[T](key :M[From[M]] => RefinedMapping[T, From[M]])
+			override def returning[T](key :M[From[M]] => TypedMapping[T, From[M]])
 					:UpdateReturningKey[Args, M, @~ ~ T, T] =
 				new UpdateComponentReturning[Args, M, T](this, key(table.row))
 		}
 
 		sealed trait RowUpdates[-Args, M[O] <: MappingAt[O], +Res]
-			extends UpdateDML[Args, M, Res] with GenericRowStatements[Args, M, Res, Seq]
+			extends UpdateDML[Args, M, Res] //with GenericRowStatements[Args, M, Res, Seq]
 			   with ReturningClauseFactory[M, ({ type U[X] = UpdatesReturningKeys[Args, M, @~ ~ X, X] })#U]
 
 		sealed trait RowsUpdate[-Args, M[O] <: MappingAt[O], +Res]
 			extends Update[Args, M, Res] with RowUpdates[Args, M, Res] with RowsStatement[Args, M, Res]
 			   with ReturningClauseFactory[M, ({ type U[X] = UpdateReturningKeys[Args, M, @~ ~ X, X] })#U]
 		{
-			override def returning[T](key :M[From[M]] => RefinedMapping[T, From[M]])
+			override def returning[T](key :M[From[M]] => TypedMapping[T, From[M]])
 					:UpdateReturningKeys[Args, M, @~ ~ T, T] =
 				new DefaultUpdateReturningKeys[Args, M, @~ ~ T, T](
 					new UpdateComponentReturning[Args, M, T](this, key(table.row))
@@ -236,7 +235,7 @@ object Update {
 			extends UpdateDML[Seq[Args], M, Seq[Res]] with RowsBatch[Args, M, Res]
 			   with ReturningClauseFactory[M, ({ type U[X] = UpdateBatchReturningKeys[Args, M, @~ ~ X, X] })#U]
 		{
-			override def returning[T](key :M[From[M]] => RefinedMapping[T, From[M]])
+			override def returning[T](key :M[From[M]] => TypedMapping[T, From[M]])
 					:UpdateBatchReturningKeys[Args, M, @~ ~ T, T] =
 				new DefaultUpdateBatchReturningKeys[Args, M, @~ ~ T, T](dml returning key)
 
@@ -247,7 +246,7 @@ object Update {
 			extends UpdateDML[Any, M, Seq[Res]] with GroundRowsBatch[Args, M, Res]
 			with ReturningClauseFactory[M, ({ type U[X] = GroundUpdateBatchReturningKeys[Args, M, @~ ~ X, X] })#U]
 		{
-			override def returning[T](key :M[From[M]] => RefinedMapping[T, From[M]])
+			override def returning[T](key :M[From[M]] => TypedMapping[T, From[M]])
 					:GroundUpdateBatchReturningKeys[Args, M, @~ ~ T, T] =
 				new DefaultGroundUpdateBatchReturningKeys[Args, M, @~ ~ T, T](dml returning key, args)
 
@@ -259,19 +258,19 @@ object Update {
 		sealed trait EntityUpdateTemplate[-Args, S, M[O] <: BaseMapping[S, O], +Res, +U]
 			extends Update[Args, M, Res] with EntityStatementsTemplate[Args, M, Res, U]
 		{
-			override def updatingKeys(keys :Seq[RefinedMapping[_, From[M]]]) :U =
+			override def updatingKeys(keys :Seq[TypedMapping[_, From[M]]]) :U =
 				updating(keys, Returning.implementation.columnNames(table, keys))
 
-			protected def updating(components :Seq[RefinedMapping[_, From[M]]], columnNames :Seq[String]) :U
+			protected def updating(components :Seq[TypedMapping[_, From[M]]], columnNames :Seq[String]) :U
 
-			private[sql] def exportMapping = table.export.asInstanceOf[RefinedMapping[S, From[M]]]
+			private[sql] def exportMapping = table.export.asInstanceOf[TypedMapping[S, From[M]]]
 		}
 
 		sealed trait EntityUpdate[-Args, S, M[O] <: BaseMapping[S, O], +Res]
 			extends RowUpdate[Args, M, Res] with EntityStatement[Args, S, M, Res]
 			   with EntityUpdateTemplate[Args, S, M, Res, UpdateReturningEntity[Args, S, M]]
 		{
-			protected override def updating(components :Seq[RefinedMapping[_, From[M]]], columnNames :Seq[String])
+			protected override def updating(components :Seq[TypedMapping[_, From[M]]], columnNames :Seq[String])
 					:UpdateReturningEntity[Args, S, M] =
 				new DefaultUpdateReturningEntity[Args, S, M](this, components, columnNames, updatedResult(columnNames))
 
@@ -297,7 +296,7 @@ object Update {
 			   with EntitiesStatement[Args, S, M, Res]
 			   with EntityUpdateTemplate[Args, S, M, Res, UpdateReturningEntities[Args, S, M]]
 		{
-			protected override def updating(components :Seq[RefinedMapping[_, From[M]]], columnNames :Seq[String])
+			protected override def updating(components :Seq[TypedMapping[_, From[M]]], columnNames :Seq[String])
 					:UpdateReturningEntities[Args, S, M] =
 				new DefaultUpdateReturningEntities[Args, S, M](
 					this, components, columnNames, updatedResult(columnNames)
@@ -320,7 +319,7 @@ object Update {
 			extends EntitiesBatch[S, S, M, Res] with BatchUpdate[S, M, Res] with EntityUpdates[Seq[S], S, M, Seq[Res]]
 			   with EntityStatementsTemplate[Seq[S], M, Seq[Res], UpdateBatchReturningEntities[S, M]]
 		{
-			override def updatingKeys(keys :Seq[RefinedMapping[_, From[M]]]) :UpdateBatchReturningEntities[S, M] =
+			override def updatingKeys(keys :Seq[TypedMapping[_, From[M]]]) :UpdateBatchReturningEntities[S, M] =
 				new DefaultUpdateBatchReturningEntities[S, M](dml updatingKeys keys)
 
 			protected def dml :EntityUpdate[S, S, M, Res]
@@ -331,7 +330,7 @@ object Update {
 			   with EntityUpdates[Any, S, M, Seq[Res]]
 			   with EntityStatementsTemplate[Any, M, Seq[Res], GroundUpdateBatchReturningEntities[S, M]]
 		{
-			override def updatingKeys(keys :Seq[RefinedMapping[_, From[M]]]) :GroundUpdateBatchReturningEntities[S, M] =
+			override def updatingKeys(keys :Seq[TypedMapping[_, From[M]]]) :GroundUpdateBatchReturningEntities[S, M] =
 				new DefaultGroundUpdateBatchReturningEntities[S, M](dml updatingKeys keys, args)
 
 			protected def dml :BatchEntityUpdate[S, M, Res]
@@ -500,20 +499,20 @@ object Update {
 		{
 			override type tuple[X <: Chain] = UpdateReturningKey[Args, M, X, X]
 
-			override def x[T](key :M[From[M]] => RefinedMapping[T, From[M]]) :UpdateReturningKey[Args, M, Keys~T, Keys~T] =
+			override def x[T](key :M[From[M]] => TypedMapping[T, From[M]]) :UpdateReturningKey[Args, M, Keys~T, Keys~T] =
 				//don't export it for better debugging, columns will be exported anyway and only they really matter
 				new UpdateComponentsReturning[Args, M, Keys, T](this, key(table.row))
 		}
 
 		private class UpdateComponentReturning[Args, M[O] <: MappingAt[O], K]
 		                                      (override val statement :Update[Args, M, Any],
-		                                       override val key :RefinedMapping[K, From[M]])
+		                                       override val key :TypedMapping[K, From[M]])
 			extends ReturningTupleSingleton[Args, M, K](statement, key)
 			   with UpdateReturningKeyExpansion[Args, M, @~ ~ K, K]
 
 		private class UpdateComponentsReturning[Args, M[O] <: MappingAt[O], Keys <: Chain, K]
 		                                       (override val init :UpdateReturningKey[Args, M, Keys, Any],
-		                                        override val key :RefinedMapping[K, From[M]])
+		                                        override val key :TypedMapping[K, From[M]])
 			extends ReturningProperTuple[Args, M, Keys, K](init, key)
 			   with UpdateReturningKeyExpansion[Args, M, Keys ~ K, Keys ~ K]
 		{
@@ -542,7 +541,7 @@ object Update {
 			   with UpdateReturningKeys[Args, M, Keys, Res]
 		{
 			override type tuple[X <: Chain] = UpdateReturningKeys[Args, M, X, X]
-			override def x[T](key :M[From[M]] => RefinedMapping[T, From[M]]) =
+			override def x[T](key :M[From[M]] => TypedMapping[T, From[M]]) =
 				new DefaultUpdateReturningKeys[Args, M, Keys ~ T, Keys ~ T](dml x key)
 		}
 
@@ -560,7 +559,7 @@ object Update {
 			   with UpdateBatchReturningKeys[Args, M, Keys, Res]
 		{
 			override type tuple[X <: Chain] = UpdateBatchReturningKeys[Args, M, X, X]
-			override def x[T](key :M[From[M]] => RefinedMapping[T, From[M]]) =
+			override def x[T](key :M[From[M]] => TypedMapping[T, From[M]]) =
 				new DefaultUpdateBatchReturningKeys[Args, M, Keys ~ T, Keys ~ T](dml x key)
 		}
 
@@ -575,10 +574,10 @@ object Update {
 		              (override val dml :UpdateBatchReturningKeys[Args, M, Keys, Res], override val args :Seq[Args])
 			extends BoundDML[Seq[Args], Seq[Res]] with ReturningTupleSeqTemplate[Any, M, Keys, Res, Update[Args, M, Any]]
 			   with GroundUpdateBatchReturningKeys[Args, M, Keys, Res]
-			   with BoundDML.Impl[Seq[Args], Seq[Res], Update.Of[M]#DML]
+			   with BoundDML.Impl[Seq[Args], Seq[Res], Update.table[M]#DML]
 		{
 			override type tuple[X <: Chain] = GroundUpdateBatchReturningKeys[Args, M, X, X]
-			override def x[T](key :M[From[M]] => RefinedMapping[T, From[M]]) =
+			override def x[T](key :M[From[M]] => TypedMapping[T, From[M]]) =
 				new DefaultGroundUpdateBatchReturningKeys[Args, M, Keys ~ T, Keys ~ T](dml x key, args)
 		}
 
@@ -591,18 +590,18 @@ object Update {
 
 		private[Update] class DefaultUpdateReturningEntity[Args, S, M[O] <: BaseMapping[S, O]]
 		                                                  (override val statement :Update[Args, M, Any],
-		                                                   override val keys :Seq[RefinedMapping[_, From[M]]],
+		                                                   override val keys :Seq[TypedMapping[_, From[M]]],
 		                                                   override val columnNames :Seq[String],
 		                                                   override val result :StatementResult[S, S])
 			extends AbstractReturningEntities[Args, S, M, S](statement, keys, columnNames, result)
 			   with UpdateReturningEntity[Args, S, M]
 		{
-			def this(statement :Update[Args, M, Any], keys :Seq[RefinedMapping[_, From[M]]], result :StatementResult[S, S]) =
+			def this(statement :Update[Args, M, Any], keys :Seq[TypedMapping[_, From[M]]], result :StatementResult[S, S]) =
 				this(statement, keys, Returning.implementation.columnNames(statement.table, keys), result)
 
 			override type x[T] = UpdateReturningEntity[Args, S, M]
 
-			override def x[T](key :M[From[M]] => RefinedMapping[T, From[M]]) = {
+			override def x[T](key :M[From[M]] => TypedMapping[T, From[M]]) = {
 				val comp = key(table.row)
 				val columns = columnNames :++ Returning.implementation.columnNames(table, comp)
 				new DefaultUpdateReturningEntity[Args, S, M](statement, keys :+ comp, columns, result)
@@ -624,14 +623,14 @@ object Update {
 			                                       Update[Args, M, Any], UpdateReturningEntities[Args, S, M]]
 
 		private class DefaultUpdateReturningEntities[Args, S, M[O] <: BaseMapping[S, O]]
-		              (override val statement :Update[Args, M, Any], override val keys :Seq[RefinedMapping[_, From[M]]],
+		              (override val statement :Update[Args, M, Any], override val keys :Seq[TypedMapping[_, From[M]]],
 		               override val columnNames :Seq[String], override val result :StatementResult[S, Seq[S]])
 			extends AbstractReturningEntities[Args, S, M, Seq[S]](statement, keys, columnNames, result)
 			   with UpdateReturningEntities[Args, S, M]
 		{
 			override type x[T] = UpdateReturningEntities[Args, S, M]
 
-			override def x[T](key :M[From[M]] => RefinedMapping[T, From[M]]) = {
+			override def x[T](key :M[From[M]] => TypedMapping[T, From[M]]) = {
 				val comp = key(table.row)
 				val columns = columnNames :++ Returning.implementation.columnNames(table, comp)
 				new DefaultUpdateReturningEntities[Args, S, M](statement, keys :+ comp, columns, result)
@@ -649,7 +648,7 @@ object Update {
 			   with GenericBatchReturningEntities[Seq[S], S, M, Seq[S], Update[S, M, Any],
 			                                      UpdateBatchReturningEntities[S, M]]
 		{
-			override def x[T](key :M[From[M]] => RefinedMapping[T, From[M]]) =
+			override def x[T](key :M[From[M]] => TypedMapping[T, From[M]]) =
 				new DefaultUpdateBatchReturningEntities[S, M](dml x key)
 		}
 
@@ -662,11 +661,11 @@ object Update {
 		private class DefaultGroundUpdateBatchReturningEntities[S, M[O] <: BaseMapping[S, O]]
 		              (override val dml :UpdateBatchReturningEntities[S, M], override val args :Seq[S])
 			extends GroundUpdateBatchReturningEntities[S, M] with BoundDML[Seq[S], Seq[S]]
-			   with BoundDML.Impl[Seq[S], Seq[S], Update.Of[M]#DML]
+			   with BoundDML.Impl[Seq[S], Seq[S], Update.table[M]#DML]
 			   with GenericBatchReturningEntities[Any, S, M, Seq[S], Update[S, M, Any],
 			                                      GroundUpdateBatchReturningEntities[S, M]]
 		{
-			override def x[T](key :M[From[M]] => RefinedMapping[T, From[M]]) =
+			override def x[T](key :M[From[M]] => TypedMapping[T, From[M]]) =
 				new DefaultGroundUpdateBatchReturningEntities[S, M](dml x key, args)
 		}
 
@@ -710,19 +709,111 @@ object Update {
 
 		sealed trait GenericUpdateFactory[Arg, M[O] <: MappingAt[O], +Res]
 			extends Any with SetClauseFactory[Arg, M, From[M] WithParam Arg, Res]
-		{
-			def set(setter :(M[From[M]], M[From[M] WithParam Arg], FromParam.Last[Arg])
-	                        => From[M] := (From[M] WithParam Arg)) :Res =
+		{   //consider: removing this, and moving all InsertUpdateFactory.set methods to SetClauseFactory
+			def setAll(setters :(M[From[M]], M[SetDomain], UnboundParam.Last[Arg])
+			                    => Seq[From[M] := SetDomain]) :Res =
+			{
+				val base = setDomain
+				setAll(setters(table.row, table.row, base.last.mapping).map(_.anchor(base.left, base)))
+			}
+
+			def set(setter :(M[From[M]], M[SetDomain], UnboundParam.Last[Arg])
+	                        => From[M] := SetDomain) :Res =
 			{
 				val base = setDomain
 				set(setter(table.row, table.row, base.last.mapping).anchor(base.left, base))
 			}
 
-			def setAll(setters :(M[From[M]], M[From[M] WithParam Arg], FromParam.Last[Arg])
-			                    => Seq[From[M] := SetDomain]) :Res =
+
+			def merge(setter :(M[From[M]], SetParamScope[Arg, M]) => From[M] := SetDomain) :Res = {
+				val base = setDomain
+				set(setter(table.row, new SetParamScope(base)))
+			}
+
+			def merge(setter :(M[From[M]], SetParamScope[Arg, M], SetParamScope[Arg, M])
+			                  => From[M] := SetDomain) :Res =
 			{
 				val base = setDomain
-				setAll(setters(table.row, table.row, base.last.mapping).map(_.anchor(base.left, base)))
+				val facade = new SetParamScope(base)
+				set(setter(table.row, facade, facade))
+			}
+
+			def merge(setter :(M[From[M]], SetParamScope[Arg, M], SetParamScope[Arg, M], SetParamScope[Arg, M])
+			                  => From[M] := SetDomain) :Res =
+			{
+				val base = setDomain
+				val facade = new SetParamScope(base)
+				set(setter(table.row, facade, facade, facade))
+			}
+
+			def merge(setter :(M[From[M]], SetParamScope[Arg, M], SetParamScope[Arg, M], SetParamScope[Arg, M],
+			                   SetParamScope[Arg, M])
+			                  => From[M] := SetDomain) :Res =
+			{
+				val base = setDomain
+				val facade = new SetParamScope(base)
+				set(setter(table.row, facade, facade, facade, facade))
+			}
+
+			def merge(setter :(M[From[M]], SetParamScope[Arg, M], SetParamScope[Arg, M], SetParamScope[Arg, M],
+			                   SetParamScope[Arg, M], SetParamScope[Arg, M])
+			                  => From[M] := SetDomain) :Res =
+			{
+				val base = setDomain
+				val facade = new SetParamScope(base)
+				set(setter(table.row, facade, facade, facade, facade, facade))
+			}
+
+			def merge(setter :(M[From[M]], SetParamScope[Arg, M], SetParamScope[Arg, M], SetParamScope[Arg, M],
+			                   SetParamScope[Arg, M], SetParamScope[Arg, M], SetParamScope[Arg, M])
+			                  => From[M] := SetDomain) :Res =
+			{
+				val base = setDomain
+				val facade = new SetParamScope(base)
+				set(setter(table.row, facade, facade, facade, facade, facade, facade))
+			}
+
+			def merge(setter :(M[From[M]], SetParamScope[Arg, M], SetParamScope[Arg, M], SetParamScope[Arg, M],
+			                   SetParamScope[Arg, M], SetParamScope[Arg, M], SetParamScope[Arg, M],
+			                   SetParamScope[Arg, M])
+			                  => From[M] := SetDomain) :Res =
+			{
+				val base = setDomain
+				val facade = new SetParamScope(base)
+				set(setter(table.row, facade, facade, facade, facade, facade, facade, facade))
+			}
+
+			def merge(setter :(M[From[M]], SetParamScope[Arg, M], SetParamScope[Arg, M], SetParamScope[Arg, M],
+			                   SetParamScope[Arg, M], SetParamScope[Arg, M], SetParamScope[Arg, M],
+			                   SetParamScope[Arg, M], SetParamScope[Arg, M])
+			                  => From[M] := SetDomain) :Res =
+			{
+				val base = setDomain
+				val facade = new SetParamScope(base)
+				set(setter(table.row, facade, facade, facade, facade, facade, facade, facade, facade))
+			}
+
+			def merge(setter :(M[From[M]], SetParamScope[Arg, M], SetParamScope[Arg, M], SetParamScope[Arg, M],
+			                   SetParamScope[Arg, M], SetParamScope[Arg, M], SetParamScope[Arg, M],
+			                   SetParamScope[Arg, M], SetParamScope[Arg, M], SetParamScope[Arg, M])
+			                  => From[M] := SetDomain) :Res =
+			{
+				val base = setDomain
+				val facade = new SetParamScope(base)
+				set(setter(table.row, facade, facade, facade, facade, facade, facade, facade, facade, facade))
+			}
+
+			def merge(setters :Seq[(M[From[M]], SetParamScope[Arg, M]) => From[M] := SetDomain]) :Res = {
+				val base = setDomain
+				val row = table.row[From[M]]
+				val facade = new SetParamScope(base)
+				setAll(setters.map(_(row, facade).anchor(base.left, base)))
+			}
+
+
+			def mergeAll(setters :(M[From[M]], SetParamScope[Arg, M]) => Seq[From[M] := SetDomain]) :Res = {
+				val base = setDomain
+				setAll(setters(table.row, new SetParamScope(base)).map(_.anchor(base.left, base)))
 			}
 
 
@@ -764,7 +855,8 @@ object Update {
 			}
 
 			def update(setter :(M[From[M]], M[SetDomain], M[SetDomain], M[SetDomain], M[SetDomain],
-			                    M[SetDomain]) => (From[M] := SetDomain)) :Res =
+			                    M[SetDomain])
+			                   => (From[M] := SetDomain)) :Res =
 			{
 				val base = setDomain
 				val row = table.row[SetDomain]
@@ -772,7 +864,8 @@ object Update {
 			}
 
 			def update(setter :(M[From[M]], M[SetDomain], M[SetDomain], M[SetDomain], M[SetDomain],
-			                    M[SetDomain], M[SetDomain]) => (From[M] := SetDomain)) :Res =
+			                    M[SetDomain], M[SetDomain])
+			                   => (From[M] := SetDomain)) :Res =
 			{
 				val base = setDomain
 				val row = table.row[SetDomain]
@@ -780,7 +873,8 @@ object Update {
 			}
 
 			def update(setter :(M[From[M]], M[SetDomain], M[SetDomain], M[SetDomain], M[SetDomain],
-			                    M[SetDomain], M[SetDomain], M[SetDomain]) => (From[M] := SetDomain)) :Res =
+			                    M[SetDomain], M[SetDomain], M[SetDomain])
+			                   => (From[M] := SetDomain)) :Res =
 			{
 				val base = setDomain
 				val row = table.row[SetDomain]
@@ -788,7 +882,8 @@ object Update {
 			}
 
 			def update(setter :(M[From[M]], M[SetDomain], M[SetDomain], M[SetDomain], M[SetDomain],
-			                    M[SetDomain], M[SetDomain], M[SetDomain], M[SetDomain]) => (From[M] := SetDomain)) :Res =
+			                    M[SetDomain], M[SetDomain], M[SetDomain], M[SetDomain])
+			                   => (From[M] := SetDomain)) :Res =
 			{
 				val base = setDomain
 				val row = table.row[SetDomain]
@@ -809,12 +904,18 @@ object Update {
 		sealed trait GenericSupplantedUpdateFactory[Arg, M[O] <: MappingAt[O], +Res]
 			extends Any with SupplantClauseFactory[Arg, M, From[M] WithParam Arg, Res]
 		{
-			def supplant(update :(M[From[M]], M[From[M] WithParam Arg], FromParam.Last[Arg])
-			                     => From[M] := (From[M] WithParam Arg)) :Res =
+			def supplantAll(setters :(M[From[M]], M[SetDomain], UnboundParam.Last[Arg])
+				=> Seq[From[M] := SetDomain]) :Res =
 			{
+				val base = setDomain
+				supplantAll(setters(table.row, table.row, base.last.mapping).map(_.anchor(base.left, base)))
+			}
+
+			def supplant(update :(M[From[M]], M[SetDomain], UnboundParam.Last[Arg]) => From[M] := SetDomain) :Res = {
 				val base = setDomain
 				supplant(update(table.row, table.row, base.last.mapping).anchor(base.left, base))
 			}
+			//consider: supplantUpdate, supplantMerge - how to name those?
 		}
 
 
@@ -848,7 +949,7 @@ object Update {
 			protected override def set(update :From[M] := (From[M] WithParam Arg)) :UpdateSetClause[Arg, S, M] =
 				new UpdateSetClause[Arg, S, M](setDomain, whereDomain, table, setters :+ update)
 
-			protected override def where(condition :GlobalBoolean[From[M] WithParam Arg]) :RowUpdateWhere[Arg, M, Int] =
+			protected override def where(condition :SingleBoolean[From[M] WithParam Arg]) :RowUpdateWhere[Arg, M, Int] =
 				new DefaultUpdate[Arg, S, M](setDomain, whereDomain, table, setters, condition)
 		}
 
@@ -858,7 +959,7 @@ object Update {
 		                      (protected override val setDomain :From[M] WithParam Arg)
 			extends AnyVal with GenericUpdateFactory[Arg, M, RowUpdateSeed[Arg, M, Int]]
 		{
-			protected override def table :RelVar[M] = setDomain.left.table.castTo[Table[M], RelVar[M]]
+			protected override def table :RelVar[M] = setDomain.left.table.castFrom[Table[M], RelVar[M]]
 
 			protected override def setAll(updates :Seq[From[M] := (From[M] WithParam Arg)]) :RowUpdateSeed[Arg, M, Int] =
 				new DefaultUpdate[Arg, S, M](setDomain, setDomain, table, updates, True)
@@ -872,7 +973,7 @@ object Update {
 		                        (protected override val setDomain :From[M] WithParam Arg)
 			extends AnyVal with GenericUpdateFactory[Arg, M, BatchUpdateSetClause[Arg, M, Int]]
 		{
-			protected override def table :RelVar[M] = setDomain.left.table.castTo[Table[M], RelVar[M]]
+			protected override def table :RelVar[M] = setDomain.left.table.castFrom[Table[M], RelVar[M]]
 
 			protected override def setAll(setters :Seq[From[M] := JoinParam.Last[Arg]]) :BatchUpdateSetClause[Arg, M] =
 				new BatchUpdateSetClause[Arg, S, M](setDomain, table, setters)
@@ -921,7 +1022,7 @@ object Update {
 					:MultiUpdateSetClause[Arg, S, M] =
 				new MultiUpdateSetClause[Arg, S, M](setDomain, whereDomain, table, this.setters :+ setter, max)
 
-			protected override def where(condition :GlobalBoolean[From[M] WithParam Arg])
+			protected override def where(condition :SingleBoolean[From[M] WithParam Arg])
 					:MultiUpdateWhereAll[Arg, S, M] =
 			{
 				implicit val form = setDomain.last.mapping.form * max
@@ -948,7 +1049,7 @@ object Update {
 					:EntityMultiUpdateSetClause[S, M] =
 				new EntityMultiUpdateSetClause(setDomain, whereDomain, table, this.setters :+ setter, max)
 
-			protected override def where(condition :GlobalBoolean[From[M] WithParam S])
+			protected override def where(condition :SingleBoolean[From[M] WithParam S])
 					:EntityMultiUpdateWhereAll[S, M] =
 			{
 				implicit val form = setDomain.last.mapping.form * max
@@ -965,10 +1066,10 @@ object Update {
 		                              protected override val whereDomain :From[M] WithParam Arg,
 		                              override val table :RelVar[M],
 		                              protected val setOne :Seq[From[M] := (From[M] WithParam Arg)],
-		                              protected val whereOne :GlobalBoolean[From[M] WithParam Arg], val max :Int)
+		                              protected val whereOne :SingleBoolean[From[M] WithParam Arg], val max :Int)
 			extends ParamUpdate[Seq[Arg], M] with WhereAnyClauseFactory[Arg, M, MultiUpdateWhere[Arg, S, M]]
 		{
-			protected override def or(condition :GlobalBoolean[From[M] WithParam Arg]) :MultiUpdateWhere[Arg, S, M] =
+			protected override def or(condition :SingleBoolean[From[M] WithParam Arg]) :MultiUpdateWhere[Arg, S, M] =
 				new MultiUpdateWhere[Arg, S, M](
 					domain, setDomain, whereDomain, table, setOne, whereOne || condition, max
 				)
@@ -976,24 +1077,21 @@ object Update {
 			override lazy val setters :Seq[From[M] := (From[M] WithParam Seq[Arg])] =
 				(0 until max).flatMap { i =>
 					val scribe = SQLScribe.replaceParam(
-						setDomain, domain, setDomain.last.toRelationSQL, domain.last.toRelationSQL)(
-						Optional { args :Seq[Arg] => if (args.sizeIs > i) Got(args(i)) else Lack }
+						setDomain, domain, setDomain.last.toRelationSQL, domain.last.toRelationSQL)(seqAt(i)
 					)
-					setOne map { set =>
-						def update[T](setter :ComponentSetter[From[M], From[M] WithParam Arg, T]) =
-							setter.lvalue := scribe(setter.rvalue)
-						update(set)
+					setOne map { (setter :From[M] := (From[M] WithParam Arg)) =>
+						setter.lvalue := scribe[Single, setter.Value](setter.rvalue)
 					}
 				}
 
-			override lazy val condition :GlobalBoolean[From[M] WithParam Seq[Arg]] =
+			override lazy val condition :SingleBoolean[From[M] WithParam Seq[Arg]] =
 				TableStatement.repeatedWhere[Arg, S, M](domain, whereDomain, whereOne, max)
 		}
 
 		sealed trait EntityMultiUpdateWhere[S, M[O] <: BaseMapping[S, O]]
 			extends MultiUpdateWhere[S, S, M] with WhereAnyClauseFactory[S, M, EntityMultiUpdateWhere[S, M]]
 		{
-			protected override def or(condition :GlobalBoolean[From[M] WithParam S]) :EntityMultiUpdateWhere[S, M] =
+			protected override def or(condition :SingleBoolean[From[M] WithParam S]) :EntityMultiUpdateWhere[S, M] =
 				new MultiUpdateWhere[S, S, M](
 					domain, setDomain, whereDomain, table, setOne, whereOne || condition, max
 				) with EntityMultiUpdateWhere[S, M]
@@ -1006,12 +1104,12 @@ object Update {
 		                                 protected override val whereDomain :From[M] WithParam Arg,
 		                                 override val table :RelVar[M],
 		                                 protected override val setOne :Seq[From[M] := (From[M] WithParam Arg)],
-		                                 protected override val whereOne :GlobalBoolean[From[M] WithParam Arg],
+		                                 protected override val whereOne :SingleBoolean[From[M] WithParam Arg],
 		                                 override val max :Int)
 			extends MultiUpdateWhere[Arg, S, M](domain, setDomain, whereDomain, table, setOne, whereOne, max)
 			   with WhereAllClauseFactory[Arg, M, MultiUpdateWhere[Arg, S, M], MultiUpdateWhereAll[Arg, S, M]]
 		{
-			protected override def and(condition :GlobalBoolean[From[M] WithParam Arg])
+			protected override def and(condition :SingleBoolean[From[M] WithParam Arg])
 					:MultiUpdateWhereAll[Arg, S, M] =
 				new MultiUpdateWhereAll[Arg, S, M](
 					domain, setDomain, whereDomain, table, setOne, this.whereOne && condition, max
@@ -1024,13 +1122,13 @@ object Update {
 				                              protected override val whereDomain :From[M] WithParam S,
 				                              override val table :RelVar[M],
 				                              protected override val setOne :Seq[From[M] := (From[M] WithParam S)],
-				                              protected override val whereOne :GlobalBoolean[From[M] WithParam S],
+				                              protected override val whereOne :SingleBoolean[From[M] WithParam S],
 				                              override val max :Int)
 			extends MultiUpdateWhereAll[S, S, M](domain, setDomain, whereDomain, table, setOne, whereOne, max)
 			   with EntityMultiUpdateWhere[S, M]
 			   with WhereAllClauseFactory[S, M, EntityMultiUpdateWhere[S, M], EntityMultiUpdateWhereAll[S, M]]
 		{
-			protected override def and(condition :GlobalBoolean[WithParam[From[M], S]])
+			protected override def and(condition :SingleBoolean[WithParam[From[M], S]])
 					:EntityMultiUpdateWhereAll[S, M] =
 				new EntityMultiUpdateWhereAll[S, M](
 					domain, setDomain, whereDomain, table, setOne, this.whereOne && condition, max
@@ -1055,7 +1153,7 @@ object Update {
 					:EntityUpdateWhereSeed[S, M, Int] =
 				new SupplantedUpdateOne[S, M](domain, whereDomain, table, updates, condition)
 
-			protected override def where(condition :GlobalBoolean[From[M] WithParam S]) :EntityUpdateWhereAll[S, M, Int] =
+			protected override def where(condition :SingleBoolean[From[M] WithParam S]) :EntityUpdateWhereAll[S, M, Int] =
 				new DefaultEntityUpdate[S, M](domain, whereDomain, table, setters, condition)
 
 			//would be better as lazy val, but update to other classes would be necessary
@@ -1064,8 +1162,8 @@ object Update {
 			protected override val domain      :From[M] WithParam S = updateDomain(whereDomain.left)
 
 			override val setters   :Seq[From[M] := (From[M] WithParam S)] =
-				ReversedList :+ (table.row[From[M]] := domain.last)
-			override val condition :GlobalBoolean[From[M] WithParam S] =
+				PassedArray :+ (table.row[From[M]] := domain.last)
+			override val condition :SingleBoolean[From[M] WithParam S] =
 				TableStatement.whereEntity(table, whereDomain)
 
 			override def bind(value :S) :Update[Unit, M, Int] = new GroundUpdateOne(table, value)
@@ -1087,7 +1185,7 @@ object Update {
 		                                         protected override val whereDomain :From[M] WithParam S,
 		                                         override val table :RelVar[M],
 		                                         protected val overrides :Seq[From[M] := (From[M] WithParam S)],
-		                                         override val condition :GlobalBoolean[From[M] WithParam S])
+		                                         override val condition :SingleBoolean[From[M] WithParam S])
 			extends ParamUpdate[S, M] with EntityUpdateWhereSeed[S, M, Int]
 		{
 			protected override def setDomain :From[M] WithParam S = domain
@@ -1098,12 +1196,13 @@ object Update {
 			protected override def set(update :From[M] := (From[M] WithParam S)) =
 				new SupplantedUpdateOne[S, M](domain, whereDomain, table, overrides :+ update, condition)
 
-			protected override def where(condition :GlobalBoolean[From[M] WithParam S]) :EntityUpdateWhereAll[S, M, Int] =
+			protected override def where(condition :SingleBoolean[From[M] WithParam S]) :EntityUpdateWhereAll[S, M, Int] =
 				new DefaultEntityUpdate[S, M](domain, whereDomain, table, setters, condition)
 
 			override lazy val setters :Seq[From[M] := (From[M] WithParam S)] =
+				//todo: delay the split into columns until defaultSpelling to use spelling.setterReform
 				TableStatement.supplant[S, M, From[M] WithParam S](
-					UPDATE, table, ColumnSetter.updates(domain), overrides
+					UpdateView, table, domain, ColumnSetter.updates(domain), overrides
 				)
 		}
 
@@ -1111,9 +1210,9 @@ object Update {
 		final class UpdateFacade[S, M[O] <: BaseMapping[S, O]] private[Update] (override val table :RelVar[M])
 			extends UpdateOne[S, M](table)
 		{
-			def set(first  :(M[From[M]], FromParam.Last[S]) => From[M] := (From[M] WithParam S),
-			        second :(M[From[M]], FromParam.Last[S]) => From[M] := (From[M] WithParam S),
-			        rest   :(M[From[M]], FromParam.Last[S]) => From[M] := (From[M] WithParam S)*)
+			def set(first  :(M[From[M]], UnboundParam.Last[S]) => From[M] := (From[M] WithParam S),
+			        second :(M[From[M]], UnboundParam.Last[S]) => From[M] := (From[M] WithParam S),
+			        rest   :(M[From[M]], UnboundParam.Last[S]) => From[M] := (From[M] WithParam S)*)
 					:EntityUpdateWhereSeed[S, M, Int] =
 			{
 				val row = table.row[From[M]]
@@ -1132,9 +1231,9 @@ object Update {
 			def *(max :Int) :EntityMultiUpdateFactory[S, M] =
 				new EntityMultiUpdateFactory[S, M](domain, whereDomain, table, max)
 
-			def apply[X :SQLForm] :UpdateFactory[X, S, M] = using[X]
+			def apply[X :SQLForm] :UpdateFactory[X, S, M] = by[X]
 
-			def using[X :SQLForm] :UpdateFactory[X, S, M] = {
+			def by[X :SQLForm] :UpdateFactory[X, S, M] = {
 				val domain = this.domain.left.param[X]
 				new UpdateFactory[X, S, M](domain, domain, table)
 			}
@@ -1149,15 +1248,15 @@ object Update {
 
 		private[Update] class DefaultUpdateUpdatingOne[S, M[O] <: BaseMapping[S, O]] private[Update]
 		                                              (override val statement :UpdateOne[S, M],
-		                                               override val keys :Seq[ColumnMapping[_, From[M]]],
+		                                               override val keys :Seq[TypedColumn[_, From[M]]],
 		                                               override val columnNames :Seq[String])
 			extends DefaultUpdateReturningEntity[S, S, M](
 				statement, keys, columnNames,
-				UpdatedEntities.Single(statement.table.export[Unit].asInstanceOf[RefinedMapping[S, _]], columnNames)
+				UpdatedEntities.Single(statement.table.export[Unit].asInstanceOf[TypedMapping[S, _]], columnNames)
 			) with UpdateUpdatingOne[S, M]
 		{
 			def this(statement :UpdateOne[S, M]) =
-				this(statement, statement.table.export[From[M]].autoUpdated.toSeq :Seq[ColumnMapping[_, From[M]]],
+				this(statement, statement.table.export[From[M]].autoUpdated.toSeq :Seq[TypedColumn[_, From[M]]],
 					statement.table.export[From[M]].autoUpdated.view.map(_.name).to(Seq))
 
 			protected override def setAll(setters :Seq[From[M] := (From[M] WithParam S)]) :UpdateWhereSeed[S, M, S] = {
@@ -1166,18 +1265,18 @@ object Update {
 			}
 			protected override def supplantAll(setters :Seq[From[M] := (From[M] WithParam S)]) :UpdateWhereSeed[S, M, S] =
 				new DefaultUpdateReturningEntityWhereSeed[S, M](
-					statement supplantAllForwarder setters, keys, columnNames, result
+					statement `->supplantAll` setters, keys, columnNames, result
 				)
 
-			protected override def where(condition :GlobalBoolean[From[M] WithParam S]) :EntityUpdateWhereAll[S, M, S] = {
+			protected override def where(condition :SingleBoolean[From[M] WithParam S]) :EntityUpdateWhereAll[S, M, S] = {
 				val update = new DefaultEntityUpdate[S, M](setDomain, whereDomain, table, setters, condition)
 				new DefaultUpdateUpdatingEntity[S, M](update, keys, columnNames, result)
 			}
 
-			protected override def setDomain   :From[M] WithParam S                   = statement.setDomainForwarder
-			protected override def whereDomain :From[M] WithParam S                   = statement.whereDomainForwarder
+			protected override def setDomain   :From[M] WithParam S                   = statement.`->setDomain`
+			protected override def whereDomain :From[M] WithParam S                   = statement.`->whereDomain`
 			private def setters                :Seq[From[M] := (From[M] WithParam S)] = statement.setters
-			private def condition              :GlobalBoolean[From[M] WithParam S]    = statement.condition
+			private def condition              :SingleBoolean[From[M] WithParam S]    = statement.condition
 		}
 
 
@@ -1190,24 +1289,24 @@ object Update {
 			   with WhereClauseFactory[S, M, UpdateManyWhereAll[S, M]]
 		{
 			protected override def supplantAll(setters :Seq[From[M] := (From[M] WithParam S)]) :UpdateManySet[S, M] =
-				new UpdateManySet[S, M](one supplantAllForwarder setters)
+				new UpdateManySet[S, M](one `->supplantAll` setters)
 
 			protected override def supplant(setter :From[M] := (From[M] WithParam S)) :UpdateManySet[S, M] =
-				new UpdateManySet[S, M](one supplantForwarder setter)
+				new UpdateManySet[S, M](one `->supplant` setter)
 
 			protected override def setAll(setters :Seq[From[M] := (From[M] WithParam S)]) :UpdateManySet[S, M] =
-				new UpdateManySet[S, M](one setAllForwarder setters)
+				new UpdateManySet[S, M](one `->setAll` setters)
 
 			protected override def set(setter :From[M] := (From[M] WithParam S)) :UpdateManySet[S, M] =
-				new UpdateManySet[S, M](one setForwarder setter)
+				new UpdateManySet[S, M](one `->set` setter)
 
-			protected override def where(condition :GlobalBoolean[From[M] WithParam S]) :UpdateManyWhereAll[S, M] =
-				new UpdateManyWhereAll[S, M](one whereForwarder condition)
+			protected override def where(condition :SingleBoolean[From[M] WithParam S]) :UpdateManyWhereAll[S, M] =
+				new UpdateManyWhereAll[S, M](one `->where` condition)
 
 			private[this] val one = new UpdateOne[S, M](table)
 			override def dml                   :EntityUpdate[S, S, M, Int] = one
-			protected override def setDomain   :From[M] WithParam S        = one.setDomainForwarder
-			protected override def whereDomain :From[M] WithParam S        = one.whereDomainForwarder
+			protected override def setDomain   :From[M] WithParam S        = one.`->setDomain`
+			protected override def whereDomain :From[M] WithParam S        = one.`->whereDomain`
 		}
 
 
@@ -1218,17 +1317,17 @@ object Update {
 			   with WhereClauseFactory[S, M, UpdateManyWhereAll[S, M]]
 		{
 			protected override def setAll(setters :Seq[From[M] := (From[M] WithParam S)]) :UpdateManySet[S, M] =
-				new UpdateManySet[S, M](dml.setAllForwarder(setters))
+				new UpdateManySet[S, M](dml.`->setAll`(setters))
 
 			protected override def set(setter :From[M] := (From[M] WithParam S)) :UpdateManySet[S, M] =
-				new UpdateManySet[S, M](dml.setForwarder(setter))
+				new UpdateManySet[S, M](dml.`->set`(setter))
 
-			protected override def where(condition :GlobalBoolean[From[M] WithParam S]) :UpdateManyWhereAll[S, M] =
-				new UpdateManyWhereAll[S, M](dml.whereForwarder(condition))
+			protected override def where(condition :SingleBoolean[From[M] WithParam S]) :UpdateManyWhereAll[S, M] =
+				new UpdateManyWhereAll[S, M](dml.`->where`(condition))
 
 			override val table :RelVar[M] = dml.table
-			protected override def whereDomain :From[M] WithParam S = dml.whereDomainForwarder
-			protected override def setDomain :From[M] WithParam S = dml.setDomainForwarder
+			protected override def whereDomain :From[M] WithParam S = dml.`->whereDomain`
+			protected override def setDomain :From[M] WithParam S = dml.`->setDomain`
 		}
 
 
@@ -1238,10 +1337,10 @@ object Update {
 			   with WhereAnyClauseFactory[S, M, UpdateManyWhere[S, M]]
 		{
 			override val table :RelVar[M] = dml.table
-			protected override def whereDomain :From[M] WithParam S = dml.whereDomainForwarder
+			protected override def whereDomain :From[M] WithParam S = dml.`->whereDomain`
 
-			protected override def or(condition :GlobalBoolean[From[M] WithParam S]) :UpdateManyWhere[S, M] =
-				new UpdateManyWhere[S, M](dml orForwarder condition)
+			protected override def or(condition :SingleBoolean[From[M] WithParam S]) :UpdateManyWhere[S, M] =
+				new UpdateManyWhere[S, M](dml `->or` condition)
 		}
 
 
@@ -1250,8 +1349,8 @@ object Update {
 			extends UpdateManyWhere[S, M](dml)
 			   with WhereAllClauseFactory[S, M, UpdateManyWhere[S, M], UpdateManyWhereAll[S, M]]
 		{
-			protected override def and(condition :GlobalBoolean[From[M] WithParam S]) :UpdateManyWhereAll[S, M] =
-				new UpdateManyWhereAll[S, M](dml andForwarder condition)
+			protected override def and(condition :SingleBoolean[From[M] WithParam S]) :UpdateManyWhereAll[S, M] =
+				new UpdateManyWhereAll[S, M](dml `->and` condition)
 		}
 
 
@@ -1314,7 +1413,7 @@ object Update {
 			extends GroundSetClauseFactory[M, From[M], GroundUpdateSetClause[S, M]]
 		{
 			@inline protected override def setDomain :From[M] = domain
-			@inline protected override def table :RelVar[M] = domain.table.castTo[Table[M], RelVar[M]]
+			@inline protected override def table :RelVar[M] = domain.table.castFrom[Table[M], RelVar[M]]
 
 			override def setAll(setters :Seq[From[M] := From[M]]) :GroundUpdateSetClause[S, M] =
 				new GroundUpdateSetClause[S, M](domain, table, setters)
@@ -1336,7 +1435,7 @@ object Update {
 			override def set(setter :From[M] := From[M]) :GroundUpdateSetClause[S, M] =
 				new GroundUpdateSetClause[S, M](domain, table, this.setters :+ setter)
 
-			override def where(condition :GlobalBoolean[From[M]]) :RowUpdate[Unit, M, Int] =
+			override def where(condition :SingleBoolean[From[M]]) :RowUpdate[Unit, M, Int] =
 				new DefaultGroundUpdate[S, M](domain, table, setters, condition)
 		}
 
@@ -1380,7 +1479,7 @@ object Update {
 			override def supplantAll(setters :Seq[From[M] := From[M]]) :GroundEntityUpdateSeed[S, M, Int] =
 				new GroundSupplantedUpdateOne[S, M](domain, table, value, setters, condition)
 
-			override def where(condition :GlobalBoolean[From[M]]) :EntityUpdate[Unit, S, M, Int] =
+			override def where(condition :SingleBoolean[From[M]]) :EntityUpdate[Unit, S, M, Int] =
 				new DefaultGroundEntityUpdate(domain, table, value, setters, condition)
 
 
@@ -1388,12 +1487,12 @@ object Update {
 
 			override lazy val setters :Seq[From[M] := From[M]] = {
 				implicit val updateForm = table[From[M]].selectForm <> table[From[M]].updateForm
-				ReversedList :+ (domain.last := SQLParameter(value))
+				PassedArray :+ (domain.last := BoundParam(value))
 			}
 
-			override lazy val condition :GlobalBoolean[From[M]] = {
+			override lazy val condition :SingleBoolean[From[M]] = {
 				implicit val filterForm = table[From[M]].selectForm <> table[From[M]].filterForm
-				domain.last === SQLParameter(value)
+				domain.last === BoundParam(value)
 			}
 
 
@@ -1413,7 +1512,7 @@ object Update {
 		private class GroundSupplantedUpdateOne[S, M[O] <: BaseMapping[S, O]] private[Update]
 		                                       (override val domain :From[M], override val table :RelVar[M],
 		                                        override val value :S, val overrides :Seq[From[M] := From[M]],
-		                                        override val condition :GlobalBoolean[From[M]])
+		                                        override val condition :SingleBoolean[From[M]])
 			extends GroundUpdate[M] with GroundEntityUpdateWhereSeed[S, M, Int] with GroundEntityUpdate[S, M, Int]
 			   with GroundDML.Impl[Int]
 		{
@@ -1423,12 +1522,15 @@ object Update {
 			override def set(update :From[M] := From[M]) =
 				new GroundSupplantedUpdateOne(domain, table, value, overrides :+ update, condition)
 
-			override def where(condition :GlobalBoolean[From[M]]) :EntityUpdate[Unit, S, M, Int] =
+			override def where(condition :SingleBoolean[From[M]]) :EntityUpdate[Unit, S, M, Int] =
 				new DefaultGroundEntityUpdate[S, M](domain, table, value, setters, condition)
 
 			protected override def setDomain :From[M] = domain
 			override lazy val setters :Seq[From[M] := From[M]] =
-				TableStatement.supplant[S, M, From[M]](UPDATE, table, ColumnSetter.updates(table, value), overrides)
+			//todo: delay the split into columns until defaultSpelling to use spelling.setterReform
+			TableStatement.supplant[S, M, From[M]](
+					UpdateView, table, setDomain, ColumnSetter.updates(table, value), overrides
+				)
 		}
 
 
@@ -1460,7 +1562,7 @@ object Update {
 		private class GroundSupplantedMultiUpdate[S, M[O] <: BaseMapping[S, O]] private[Update]
 		              (protected override val domain :From[M], override val table :RelVar[M],
 		               override val values :Seq[S], overrides :Seq[From[M] := From[M]],
-		               override val condition :GlobalBoolean[From[M]])
+		               override val condition :SingleBoolean[From[M]])
 			extends GroundUpdate[M] with GroundEntitiesUpdateSeed[S, M, Int] with GroundEntitiesUpdate[S, M, Int]
 			   with GroundDML.Impl[Int]
 		{
@@ -1474,8 +1576,9 @@ object Update {
 
 			override lazy val setters :Seq[From[M] := From[M]] =
 				values flatMap { value =>
+					//todo: delay the split into columns until defaultSpelling to use spelling.setterReform
 					TableStatement.supplant[S, M, From[M]](
-						UPDATE, table, ColumnSetter.updates(table, value), overrides
+						UpdateView, table, setDomain, ColumnSetter.updates(table, value), overrides
 					)
 				}
 		}
@@ -1500,7 +1603,7 @@ object Update {
 			protected type Domain = From[M] WithParam Arg
 			protected def domain :From[M] WithParam Arg
 			def setters :Seq[From[M] := (From[M] WithParam Arg)]
-			val condition :GlobalBoolean[From[M] WithParam Arg]
+			val condition :SingleBoolean[From[M] WithParam Arg]
 			override def result :StatementResult[Nothing, Int] = UpdateCount
 
 //			override def bind(args :Args) :Update[(), M, Int] =
@@ -1509,13 +1612,14 @@ object Update {
 //					override val setters = Update.bind(outer.domain, outer.setters, args)
 //					override val condition = outer.condition.bind(outer.domain, @~ ~ args)
 //				}
-			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Arg, Int] =
+			protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Arg, Int] =
 				visitor.paramUpdate(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Arg, RowProduct] = {
-				val ctx = SQLContext().join("").param("?")
-				implementation.spell[M, Domain, @~ ~ Arg](this)(setters, condition)(ctx, domain.parameterization)
-					.compose { @~ ~ _ }
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Arg] = {
+				val ctx = spelling.newContext.join("").param("") //the only param, the alias will be unique
+				implementation.spell[M, Domain, @~ ~ Arg](this)(setters, condition)(
+					domain.left, domain, ctx, domain.parameterization
+				).compose { @~ ~ _ }
 			}
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamUpdate[_, MappingAt @unchecked]]
@@ -1539,7 +1643,7 @@ object Update {
 		                             protected override val whereDomain :From[M] WithParam Arg,
 		                             override val table :RelVar[M],
 		                             override val setters :Seq[From[M] := (From[M] WithParam Arg)],
-		                             override val condition :GlobalBoolean[From[M] WithParam Arg])
+		                             override val condition :SingleBoolean[From[M] WithParam Arg])
 			extends ParamUpdate[Arg, M] with RowUpdateWhereSeed[Arg, M, Int] with RowUpdateWhereAll[Arg, M, Int]
 		{
 			override def setDomain :From[M] WithParam Arg = domain
@@ -1550,13 +1654,13 @@ object Update {
 			protected override def set(update :From[M] := (From[M] WithParam Arg)) =
 				new DefaultUpdate[Arg, S, M](domain, whereDomain, table, setters :+ update, condition)
 
-			protected override def where(condition :GlobalBoolean[From[M] WithParam Arg]) =
+			protected override def where(condition :SingleBoolean[From[M] WithParam Arg]) =
 				new DefaultUpdate[Arg, S, M](domain, whereDomain, table, setters, condition)
 
-			protected override def or(condition :GlobalBoolean[From[M] WithParam Arg]) =
+			protected override def or(condition :SingleBoolean[From[M] WithParam Arg]) =
 				new DefaultUpdate[Arg, S, M](domain, whereDomain, table, setters, this.condition || condition)
 
-			protected override def and(condition :GlobalBoolean[From[M] WithParam Arg]) =
+			protected override def and(condition :SingleBoolean[From[M] WithParam Arg]) =
 				new DefaultUpdate[Arg, S, M](domain, whereDomain, table, setters, this.condition && condition)
 		}
 
@@ -1565,7 +1669,7 @@ object Update {
 		                             protected override val whereDomain :From[M] WithParam S,
 		                             override val table                 :RelVar[M],
 		                             override val setters               :Seq[From[M] := (From[M] WithParam S)],
-		                             override val condition             :GlobalBoolean[From[M] WithParam S])
+		                             override val condition             :SingleBoolean[From[M] WithParam S])
 			extends ParamUpdate[S, M] with EntityUpdateWhereSeed[S, M, Int] with EntityUpdateWhereAll[S, M, Int]
 			   with GenericUpdateFactory[S, M, DefaultEntityUpdate[S, M]]
 			   with WhereClauseFactory[S, M, DefaultEntityUpdate[S, M]]
@@ -1577,13 +1681,13 @@ object Update {
 			override def set(update :From[M] := (From[M] WithParam S)) =
 				new DefaultEntityUpdate[S, M](domain, whereDomain, table, setters :+ update, condition)
 
-			override def where(condition :GlobalBoolean[From[M] WithParam S]) =
+			override def where(condition :SingleBoolean[From[M] WithParam S]) =
 				new DefaultEntityUpdate[S, M](domain, whereDomain, table, setters, condition)
 
-			override def or(condition :GlobalBoolean[From[M] WithParam S]) =
+			override def or(condition :SingleBoolean[From[M] WithParam S]) =
 				new DefaultEntityUpdate[S, M](domain, whereDomain, table, setters, this.condition || condition)
 
-			override def and(condition :GlobalBoolean[From[M] WithParam S]) =
+			override def and(condition :SingleBoolean[From[M] WithParam S]) =
 				new DefaultEntityUpdate[S, M](domain, whereDomain, table, setters, this.condition && condition)
 
 			override def domain :From[M] WithParam S = setDomain
@@ -1592,16 +1696,16 @@ object Update {
 
 		private[Update] final class DefaultUpdateUpdatingEntity[S, M[O] <: BaseMapping[S, O]]
 		                            (override val statement :DefaultEntityUpdate[S, M],
-		                             override val keys :Seq[RefinedMapping[_, From[M]]],
+		                             override val keys :Seq[TypedMapping[_, From[M]]],
 		                             override val columnNames :Seq[String],
 		                             override val result :StatementResult[S, S])
 			extends DefaultUpdateReturningEntity[S, S, M](statement, keys, columnNames, result)
 			   with EntityUpdateWhereSeed[S, M, S] with EntityUpdateWhereAll[S, M, S]
 			   with WhereAllClauseFactory[S, M, DefaultUpdateUpdatingEntity[S, M], DefaultUpdateUpdatingEntity[S, M]]
 		{
-			def this(statement :DefaultEntityUpdate[S, M], keys :Seq[RefinedMapping[_, From[M]]], columns :Seq[String]) =
+			def this(statement :DefaultEntityUpdate[S, M], keys :Seq[TypedMapping[_, From[M]]], columns :Seq[String]) =
 				this(statement, keys, columns, {
-					val mapping = statement.table.export[Unit].asInstanceOf[RefinedMapping[S, Unit]]
+					val mapping = statement.table.export[Unit].asInstanceOf[TypedMapping[S, Unit]]
 					UpdatedEntities.Single(mapping, columns)
 				})
 
@@ -1610,66 +1714,66 @@ object Update {
 					statement.table.export[Unit].autoUpdated.view.map(_.name).to(Seq))
 
 			protected override  def setAll(setters :Seq[From[M] := (From[M] WithParam S)]) =
-				new DefaultUpdateUpdatingEntity[S, M](statement setAllForwarder setters, keys, columnNames, result)
+				new DefaultUpdateUpdatingEntity[S, M](statement `->setAll` setters, keys, columnNames, result)
 
-			protected override def where(condition :GlobalBoolean[From[M] WithParam S]) =
-				new DefaultUpdateUpdatingEntity[S, M](statement whereForwarder condition, keys, columnNames, result)
+			protected override def where(condition :SingleBoolean[From[M] WithParam S]) =
+				new DefaultUpdateUpdatingEntity[S, M](statement `->where` condition, keys, columnNames, result)
 
-			protected override def and(condition :GlobalBoolean[From[M] WithParam S]) =
-				new DefaultUpdateUpdatingEntity[S, M](statement andForwarder condition, keys, columnNames, result)
+			protected override def and(condition :SingleBoolean[From[M] WithParam S]) =
+				new DefaultUpdateUpdatingEntity[S, M](statement `->and` condition, keys, columnNames, result)
 
-			protected override def or(condition :GlobalBoolean[From[M] WithParam S]) =
-				new DefaultUpdateUpdatingEntity[S, M](statement orForwarder condition, keys, columnNames, result)
+			protected override def or(condition :SingleBoolean[From[M] WithParam S]) =
+				new DefaultUpdateUpdatingEntity[S, M](statement `->or` condition, keys, columnNames, result)
 
-			protected override def setDomain   = statement.setDomainForwarder
-			protected override def whereDomain = statement.whereDomainForwarder
+			protected override def setDomain   = statement.`->setDomain`
+			protected override def whereDomain = statement.`->whereDomain`
 		}
 
 		private[Update] class DefaultUpdateReturningEntityWhereSeed[S, M[O] <: BaseMapping[S, O]]
 		                      (override val statement :EntityUpdateWhereSeed[S, M, Any],
-		                       override val keys :Seq[RefinedMapping[_, From[M]]],
+		                       override val keys :Seq[TypedMapping[_, From[M]]],
 		                       override val columnNames :Seq[String],
 		                       override val result :StatementResult[S, S])
 			extends DefaultUpdateReturningEntity[S, S, M](statement, keys, columnNames, result)
 			   with EntityUpdateWhereSeed[S, M, S]
 		{
 			protected override def setAll(setters :Seq[From[M] := (From[M] WithParam S)]) :EntityUpdateWhereSeed[S, M, S] =
-				new DefaultUpdateReturningEntityWhereSeed(statement setAllForwarder setters, keys, columnNames, result)
+				new DefaultUpdateReturningEntityWhereSeed(statement `->setAll` setters, keys, columnNames, result)
 
 			protected override def set(setter :From[M] := (From[M] WithParam S)) =
-				new DefaultUpdateReturningEntityWhereSeed(statement setForwarder setter, keys, columnNames, result)
+				new DefaultUpdateReturningEntityWhereSeed(statement `->set` setter, keys, columnNames, result)
 
-			protected override def where(condition :GlobalBoolean[WithParam[From[M], S]]) :EntityUpdateWhereAll[S, M, S] =
-				new DefaultUpdateReturningEntityWhereAll(statement whereForwarder condition, keys, columnNames, result)
+			protected override def where(condition :SingleBoolean[WithParam[From[M], S]]) :EntityUpdateWhereAll[S, M, S] =
+				new DefaultUpdateReturningEntityWhereAll(statement `->where` condition, keys, columnNames, result)
 
-			protected override def whereDomain :From[M] WithParam S = statement.whereDomainForwarder
-			protected override def setDomain   :From[M] WithParam S = statement.setDomainForwarder
+			protected override def whereDomain :From[M] WithParam S = statement.`->whereDomain`
+			protected override def setDomain   :From[M] WithParam S = statement.`->setDomain`
 		}
 
 		private[Update] class DefaultUpdateReturningEntityWhere[S, M[O] <: BaseMapping[S, O]]
 		                      (override val statement :EntityUpdateWhere[S, M, Any],
-		                       override val keys :Seq[RefinedMapping[_, From[M]]],
+		                       override val keys :Seq[TypedMapping[_, From[M]]],
 		                       override val columnNames :Seq[String],
 		                       override val result :StatementResult[S, S])
 			extends DefaultUpdateReturningEntity[S, S, M](statement, keys, columnNames, result)
 			   with EntityUpdateWhere[S, M, S]
 		{
-			protected override def or(condition :GlobalBoolean[From[M] WithParam S]) =
-				new DefaultUpdateReturningEntityWhere(statement orForwarder condition, keys, columnNames, result)
+			protected override def or(condition :SingleBoolean[From[M] WithParam S]) =
+				new DefaultUpdateReturningEntityWhere(statement `->or` condition, keys, columnNames, result)
 
-			protected override def whereDomain :From[M] WithParam S = statement.whereDomainForwarder
+			protected override def whereDomain :From[M] WithParam S = statement.`->whereDomain`
 		}
 
 		private[Update] class DefaultUpdateReturningEntityWhereAll[S, M[O] <: BaseMapping[S, O]]
 		                      (override val statement :EntityUpdateWhereAll[S, M, Any],
-		                       override val keys :Seq[RefinedMapping[_, From[M]]],
+		                       override val keys :Seq[TypedMapping[_, From[M]]],
 		                       override val columnNames :Seq[String],
 		                       override val result :StatementResult[S, S])
 			extends DefaultUpdateReturningEntityWhere[S, M](statement, keys, columnNames, result)
 			   with EntityUpdateWhereAll[S, M, S]
 		{
-			protected override def and(condition :GlobalBoolean[From[M] WithParam S]) =
-				new DefaultUpdateReturningEntityWhereAll(statement andForwarder condition, keys, columnNames, result)
+			protected override def and(condition :SingleBoolean[From[M] WithParam S]) =
+				new DefaultUpdateReturningEntityWhereAll(statement `->and` condition, keys, columnNames, result)
 		}
 
 
@@ -1677,16 +1781,17 @@ object Update {
 
 		trait GroundUpdate[M[O] <: MappingAt[O]] extends Update[Any, M, Int] {
 			protected type Domain = From[M]
+			protected val domain :Domain
 			def setters :Seq[From[M] := From[M]]
-			val condition :GlobalBoolean[From[M]]
+			val condition :SingleBoolean[From[M]]
 			override def result :StatementResult[Nothing, Int] = UpdateCount
 
-			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Any, Int] =
+			protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Any, Int] =
 				visitor.groundUpdate(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any, RowProduct] =
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any] =
 				implementation.spell[M, From[M], @~](this)(setters, condition)(
-					SQLContext().join(""), Parameterization.paramless
+					domain, domain, spelling.newContext.join(""), Parameterization.paramless
 				).compose { _ => @~ }
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroundUpdate[MappingAt @unchecked]]
@@ -1709,7 +1814,7 @@ object Update {
 		private[Update] class DefaultGroundUpdate[S, M[O] <: BaseMapping[S, O]]
 		                                         (override val domain :From[M], override val table :RelVar[M],
 		                                          override val setters :Seq[From[M] := From[M]],
-		                                          override val condition :GlobalBoolean[From[M]])
+		                                          override val condition :SingleBoolean[From[M]])
 			extends GroundUpdate[M] with RowUpdate[Any, M, Int]
 			   with GroundDML.Impl[Int] with GroundRowUpdateWhereSeed[M, Int]
 		{
@@ -1719,7 +1824,7 @@ object Update {
 			override def set(update :From[M] := From[M]) :GroundRowUpdateWhereSeed[M, Int] =
 				new DefaultGroundUpdate[S, M](domain, table, setters :+ update, condition)
 
-			override def where(condition :GlobalBoolean[From[M]]) :RowUpdate[Unit, M, Int] =
+			override def where(condition :SingleBoolean[From[M]]) :RowUpdate[Unit, M, Int] =
 				new DefaultGroundUpdate[S, M](domain, table, setters, condition)
 
 			protected override def setDomain :From[M] = domain
@@ -1729,7 +1834,7 @@ object Update {
 		                                               (override val domain :From[M], override val table :RelVar[M],
 		                                                override val value :S,
 		                                                override val setters :Seq[From[M] := From[M]],
-		                                                override val condition :GlobalBoolean[From[M]])
+		                                                override val condition :SingleBoolean[From[M]])
 			extends GroundUpdate[M] with GroundEntityUpdate[S, M, Int]
 			   with GroundDML.Impl[Int] with GroundEntityUpdateWhereSeed[S, M, Int]
 		{
@@ -1739,7 +1844,7 @@ object Update {
 			override def set(update :From[M] := From[M]) :GroundEntityUpdateWhereSeed[S, M, Int] =
 				new DefaultGroundEntityUpdate[S, M](domain, table, value, setters :+ update, condition)
 
-			override def where(condition :GlobalBoolean[From[M]]) :EntityUpdate[Unit, S, M, Int] =
+			override def where(condition :SingleBoolean[From[M]]) :EntityUpdate[Unit, S, M, Int] =
 				new DefaultGroundEntityUpdate[S, M](domain, table, value, setters, condition)
 
 			protected override def setDomain :From[M] = domain
@@ -1750,7 +1855,7 @@ object Update {
 		                                                 (override val domain :From[M], override val table :RelVar[M],
 		                                                  override val values :Seq[S],
 		                                                  override val setters :Seq[From[M] := From[M]],
-		                                                  override val condition :GlobalBoolean[From[M]])
+		                                                  override val condition :SingleBoolean[From[M]])
 			extends GroundUpdate[M] with GroundEntitiesUpdateWhereSeed[S, M, Int] with GroundEntitiesUpdate[S, M, Int]
 			   with GroundDML.Impl[Int]
 		{
@@ -1760,7 +1865,7 @@ object Update {
 			override def set(update :From[M] := From[M]) :GroundEntitiesUpdateWhereSeed[S, M, Int] =
 				new DefaultGroundEntitiesUpdate[S, M](domain, table, values, setters :+ update, condition)
 
-			override def where(condition :GlobalBoolean[From[M]]) :EntitiesUpdate[Unit, S, M, Int] =
+			override def where(condition :SingleBoolean[From[M]]) :EntitiesUpdate[Unit, S, M, Int] =
 				new DefaultGroundEntitiesUpdate[S, M](domain, table, values, setters, condition)
 
 			protected override def setDomain :From[M] = domain
@@ -1801,9 +1906,9 @@ object Update {
 //		  * @tparam R the return type of this visitor, parameterized with the type of the parameters of the statement
 //		  *           (the `Args` argument of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]])
 //		  *           and its return type (the `Res` argument of the visited statement).
-//		  * @see [[net.noresttherein.oldsql.sql.Insert.CaseInsert]]
+//		  * @see [[net.noresttherein.oldsql.sql.Insert.CaseAnyInsert]]
 //		  */
-//		trait MatchUpdate[R[-X, +Y]] extends UpdateVisitor[R] {
+//		trait MatchAnyUpdate[R[-X, +Y]] extends UpdateVisitor[R] {
 //			override def updateOne[S, M[O] <: BaseMapping[S, O]](stmt :UpdateOne[S, M])           = paramUpdate(stmt)
 //			override def updateAll[X, S, M[O] <: BaseMapping[S, O]](stmt :UpdateAll[X, S, M])     = paramUpdate(stmt)
 //			override def updateWhere[X, S, M[O] <: BaseMapping[S, O]](stmt :RowUpdateWhere[X, S, M]) = paramUpdate(stmt)
@@ -1812,11 +1917,11 @@ object Update {
 //			override def updateAll[S, M[O] <: BaseMapping[S, O]](stmt :GroundUpdateAll[S, M])     = groundUpdate(stmt)
 //			override def updateWhere[S, M[O] <: BaseMapping[S, O]](stmt :GroundUpdateWhere[S, M]) = groundUpdate(stmt)
 //		}
-	
+
 		/** A mix-in trait for [[net.noresttherein.oldsql.sql.DMLStatement.StatementVisitor StatementVisitor]] ''visitors''
 		  * of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]] type hierarchy. It expands on
-		  * [[net.noresttherein.oldsql.sql.Update.implementation.MatchUpdate MatchUpdate]] by further delegating the remaining open cases
-		  * to the method for [[net.noresttherein.oldsql.sql.Update Update]] trait itself. Cases for concrete subclasses
+		  * [[net.noresttherein.oldsql.sql.Update.implementation.MatchUpdate MatchAnyUpdate]] by further delegating the remaining open cases
+		  * to the method for [[net.noresttherein.oldsql.sql.Update Update]] trait itself. CaseAnys for concrete subclasses
 		  * dispatch still to their immediate base type, making the delegation a multi-step affair and allowing to override
 		  * on the chosen level.
 		  * @tparam R the return type of this visitor, parameterized with the type of the parameters of the statement
@@ -1832,55 +1937,52 @@ object Update {
 	
 
 		private[Update] def updateDomain[S, M[O] <: BaseMapping[S, O]](from :From[M]) :From[M] WithParam S = {
-			val mapping = from.table.export.asInstanceOf[RefinedMapping[S, Unit]]
+			val mapping = from.table.export.asInstanceOf[TypedMapping[S, Unit]]
 			from.param[S](mapping.selectForm <> mapping.updateForm)
 		}
 		
 		private[Update] def updateDomain[S, M[O] <: BaseMapping[S, O]](table :RelVar[M]) :From[M] WithParam S = {
-			val mapping = table.export.asInstanceOf[RefinedMapping[S, Unit]]
+			val mapping = table.export.asInstanceOf[TypedMapping[S, Unit]]
 			From(table).param[S](mapping.selectForm <> mapping.updateForm)
 		}
 
 		private[Update] def bind[M[O] <: MappingAt[O], X]
 		                        (base :From[M] WithParam X, setters :Seq[From[M] := (From[M] WithParam X)], arg :X)
 				:Seq[From[M] := From[M]] =
-		{
-			def bindOne[T](update :ComponentSetter[From[M], From[M] WithParam X, T]) =
-				ComponentSetter(update.lvalue, update.rvalue.bind(base, @~ ~ arg) :GlobalSQL[base.GeneralizedParamless, T])
-			setters.map(bindOne(_))
-		}
-	
+			setters.map { (update :From[M] := (From[M] WithParam X)) =>
+				update.lvalue := (update.rvalue.bind(base, @~ ~ arg) :SingleSQL[base.GeneralizedParamless, update.Value])
+			}
+
 	
 		//consider: making the validations earlier, at class creation
-		private[Update] def spell[M[O] <: MappingAt[O], R <: ParameterizedFrom[Xs], Xs]
+		private[Update] def spell[M[O] <: MappingAt[O], R <: ParameterizedRow[Xs], Xs]
 		                         (self :UpdateDML[Nothing, M, Any])
-		                         (setters :Seq[From[M] := R], condition :LocalBoolean[R])
-		                         (context :SQLContext, params :Parameterization[Xs, R])
-		                         (implicit spelling :SQLSpelling) :SpelledSQL[Xs, RowProduct] =
+		                         (setters :Seq[From[M] := R], condition :GroupedBoolean[R])
+		                         (setDomain :From[M], whereDomain :R, context :SQLContext[Xs], params :Parameterization[Xs, R])
+		                         (implicit spelling :SQLSpelling) :SpelledSQL[Xs] =
 		{
+			//todo: use UpdatePreset, CustomUpdate, ExtraUpdate
 			val spell = spelling.inUpdate
-			val tableSQL = spell.table(self.table, "")(SQLContext(), Parameterization.paramless[From[M]])
-	
-			val columnSetters = setters.flatMapWith(params) {
-				(ps, update) =>
-					val lefts = spell.explode(update.lvalue)(tableSQL.context, Parameterization.paramless[From[M]])
-					val rights = spell.explode(update.rvalue)(context, ps)
-					if (lefts.size != rights.size)
-						throw new MismatchedExpressionsException(
-							s"Illegal DML '$this': cannot set component ${update.lvalue} of ${self.table} " +
-							s"to ${update.rvalue} due to differing numbers of columns for both sides:\n$lefts\nvs\n$rights."
-						)
-					val exploded = lefts.iterator zip rights.iterator map {
-						case (l, r) => l.sql +: " = " +: r
-					} to List
-					(if (exploded.isEmpty) ps else exploded.last.params, exploded)
+			val tableSQL = spell.table(self.table, "")(Dual, spelling.newContext, Parameterization.paramless)
+			val columnSetters = setters.flatMap { update => //todo: eliminate duplicates as per supplant
+				implicit val spelling = spell //shadow the argument
+				val ComponentSetter(left, right) = update.reform
+				val lefts = spell.explode(left, false)(setDomain, tableSQL.context, Parameterization.paramless)
+				val rights = spell.explode(right, false)(whereDomain, context, params)
+				if (lefts.size != rights.size)
+					throw new MismatchedExpressionsException(
+						s"Illegal DML '$this': cannot set component ${update.lvalue} of ${self.table} " +
+						s"to ${update.rvalue} due to differing numbers of columns for both sides:\n$lefts\nvs\n$rights."
+					)
+				lefts.iterator zip rights.iterator map {
+					case (l, r) => l +: " = " +: r
+				} to List
 			}
 			if (columnSetters.isEmpty)
 				throw new MisspelledSQLException(s"Illegal DML '$this': an empty SET clause.")
-			val set = columnSetters.reduce(_.sql +: ", " +: _)
-			val where = spelling.inWhere(condition)(set.context, set.params)
-			(spell.UPDATE + " ") +: tableSQL.sql +: (" " + spell.SET + " ") +: set.sql +:
-				(" " + spell.WHERE + " ") +: where
+			val set = columnSetters.reduce(_ + ", " + _)
+			val where = spelling.inWhere(condition)(whereDomain, set.context, params)
+			spell.UPDATE_ +: tableSQL.sql +: spell._SET_ +: set +: spell._WHERE_ +: where
 		}
 	}
 	

@@ -1,13 +1,13 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.OperationView.WriteOperationView
 import net.noresttherein.oldsql.collection.{Chain, Record}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Record.{#>, |#}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, MappingExtract, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.schema.bits.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
 import net.noresttherein.oldsql.schema.bits.RecordMapping.NonEmptyRecordMapping
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@||, |-|, ||, LabeledSchemaColumn}
@@ -145,7 +145,7 @@ object RecordMapping {
 		override val filterForm = init.filterForm |# last.filterForm
 		override val insertForm = init.insertForm |# last.insertForm
 		override val updateForm = init.updateForm |# last.updateForm
-		override def writeForm(op :WriteOperationType) :SQLWriteForm[V |# (K, T)] = op.form(this)
+		protected override def newWriteForm(op :WriteOperationView) :SQLWriteForm[V |# (K, T)] = op.form(this)
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[X, V |# (K #> T), C ~ M, O] =
 			new NonEmptyFlatRecordSchema(init compose extractor, key, last, this.extractor compose extractor)

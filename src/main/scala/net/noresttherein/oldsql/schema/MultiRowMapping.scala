@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
+import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 
 
 
@@ -13,6 +13,6 @@ import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
 trait MultiRowMapping[S, O] {
 	type Item
 	type Grouping
-	val grouping :RefinedMapping[Grouping, O]
-	val mapping :RefinedMapping[Item, O]
+	val grouping :TypedMapping[Grouping, O]
+	val mapping :TypedMapping[Item, O]
 }

@@ -3,11 +3,9 @@ package net.noresttherein.oldsql.sql.mechanics
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 import net.noresttherein.oldsql.sql.{Aggregated, Dual, From, FromSome, GroupBy, RowProduct, Subselect}
-import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExpandingDecorator}
+import net.noresttherein.oldsql.sql.DecoratedRow.{DecoratorDecomposition, ExpandingDecorator}
 import net.noresttherein.oldsql.sql.Expanded.{ExpandedDecomposition, NonSubselect}
-import net.noresttherein.oldsql.sql.RowProduct.{As, NonEmptyFrom}
 
 
 
@@ -23,9 +21,9 @@ import net.noresttherein.oldsql.sql.RowProduct.{As, NonEmptyFrom}
   *      in its definition, never abstract types. Compare this with `Self`, which, for non-aliased clauses
   *      is always an abstract type with an upper bound such as `type Self <: L InnerJoin R`. This makes this implicit
   *      preferable when using `O` as an invariant type argument, especially in implicit values.
-  *   1. Any `Adjoin` and `DecoratedFrom` subtype is permitted in `F` and preserved in `O`,
+  *   1. Any `Adjoin` and `DecoratedRow` subtype is permitted in `F` and preserved in `O`,
   *      as long as the definition section of `F` following `O` is at least as specific as its
-  *      [[net.noresttherein.oldsql.sql.RowProduct.Generalized generalized]] type. This contrasts with `F#Outer`,
+  *      [[net.noresttherein.oldsql.sql.RowProduct!.Generalized generalized]] type. This contrasts with `F#Outer`,
   *      as it is always the `Self` type of `O`.
   *   1. If `F` has a wildcard prefix in the form of [[net.noresttherein.oldsql.sql.RowProduct RowProduct]],
   *      [[net.noresttherein.oldsql.sql.FromSome]], [[net.noresttherein.oldsql.sql.GroupByClause]], or any other,
@@ -33,7 +31,7 @@ import net.noresttherein.oldsql.sql.RowProduct.{As, NonEmptyFrom}
   *      the upper bound for the corresponding outer prefixes of all clauses conforming to `F`. Compare it with
   *      `F#Outer`, which - as a `Self` type may involve upcasting of `F` if it involves a type extending from a type
   *      with a concrete definition of `Self` as its supertype. On the other hand, if `F` includes abstract
-  *      join types - for example, it is in its [[net.noresttherein.oldsql.sql.RowProduct.Generalized Generalized]]
+  *      join types - for example, it is in its [[net.noresttherein.oldsql.sql.RowProduct!.Generalized Generalized]]
   *      form - `F#Outer` is an undefined, but still concrete type in the sense that only clauses with the same
   *      concrete joins types conform to it. In other words, upcasting `F` to its super type does not involve
   *      a corresponding upcasting of `F#Outer` and, what's more, `F <:< F#Self` does not hold.
@@ -47,6 +45,12 @@ abstract class OuterClauseOf[+O <: RowProduct, -F <: RowProduct] {
 object OuterClauseOf {
 	@inline def apply[O <: RowProduct, F <: RowProduct](from :F)(implicit outer :O OuterClauseOf F) :O =
 		outer(from)
+
+	def apply(from :RowProduct) :from.Outer OuterClauseOf from.Self =
+		instance.asInstanceOf[from.Outer OuterClauseOf from.Self]
+
+	def generalized(from :RowProduct) :from.Implicit OuterClauseOf from.Generalized =
+		instance.asInstanceOf[from.Implicit OuterClauseOf from.Generalized]
 
 
 	private[this] val instance :OuterClauseOf[RowProduct, RowProduct] = _.outer

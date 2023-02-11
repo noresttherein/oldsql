@@ -1,6 +1,6 @@
 package com.hcore.ogre.mapping.support
 
-import com.hcore.ogre.mapping.ColumnMapping._
+import com.hcore.ogre.mapping.TypedColumn._
 import com.hcore.ogre.mapping.ComponentPath.{SelfPath, DirectComponent, TypedComponentPath}
 import com.hcore.ogre.mapping.MappingMorphism.{ComponentMorphism, ValueMorphism}
 import com.hcore.ogre.mapping.Mapping.MappingExtension._
@@ -209,7 +209,7 @@ trait StaticMapping[E] extends Mapping[E] { composite =>
 	  *
 	  * @tparam T value type of this component
 	  */
-	trait Column[T] extends ColumnMapping[T] with Component[T] {
+	trait Column[T] extends TypedColumn[T] with Component[T] {
 		override private[StaticMapping] def init() =  {
 			composite.include(this)
 			Path(_ => Some(this))
@@ -246,7 +246,7 @@ trait StaticMapping[E] extends Mapping[E] { composite =>
 	private class ColumnCopy[T](val pick :E=>Option[T], val surepick :Option[E=>T], name :String, options :Seq[MappingExtension[T]])(implicit ev :ColumnType[T])
 		extends BaseColumn[T](columnPrefix + name, options) with DirectColumn[T]
 	{
-		def this(column :ColumnMapping[T], value :E=>T, name :Option[String], options :Seq[MappingExtension[T]]) =
+		def this(column :TypedColumn[T], value :E=>T, name :Option[String], options :Seq[MappingExtension[T]]) =
 			this((e:E)=> Some(value(e)), Some(value), name getOrElse column.name, options)(column.columnType)
 	}
 
@@ -374,8 +374,8 @@ trait StaticMapping[E] extends Mapping[E] { composite =>
 	
 
 
-	class ColumnCopist[T](source :ColumnMapping[T], name :Option[String], options :Seq[MappingExtension[T]]) {
-		def this(source :ColumnMapping[T]) = this(source, None, source.modifiers)
+	class ColumnCopist[T](source :TypedColumn[T], name :Option[String], options :Seq[MappingExtension[T]]) {
+		def this(source :TypedColumn[T]) = this(source, None, source.modifiers)
 
 		def apply(pick :E=>T) :Column[T] =
 			source match {
@@ -405,16 +405,16 @@ trait StaticMapping[E] extends Mapping[E] { composite =>
 
 
 
-	protected def column[T](col :ColumnMapping[T]) :ColumnCopist[T] =
+	protected def column[T](col :TypedColumn[T]) :ColumnCopist[T] =
 		new ColumnCopist(col)
 
-	protected def column[T](col :ColumnMapping[T], name :String) :ColumnCopist[T] =
+	protected def column[T](col :TypedColumn[T], name :String) :ColumnCopist[T] =
 		new ColumnCopist(col, Some(name), col.modifiers)
 
-	protected def column[T](col :ColumnMapping[T], options :Seq[MappingExtension[T]]) :ColumnCopist[T] =
+	protected def column[T](col :TypedColumn[T], options :Seq[MappingExtension[T]]) :ColumnCopist[T] =
 		new ColumnCopist(col, None, options)
 
-	protected def column[T](col :ColumnMapping[T], name :String, options :Seq[MappingExtension[T]]) :ColumnCopist[T] =
+	protected def column[T](col :TypedColumn[T], name :String, options :Seq[MappingExtension[T]]) :ColumnCopist[T] =
 		new ColumnCopist(col, Some(name), options)
 
 

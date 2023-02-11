@@ -288,7 +288,7 @@ object PropertyPath {
 	  * if so, return its reflected representation as an option.
 	  */
 	def ifProper[X :TypeTag, Y](property :X => Y) :Option[Property[X, Y]] =
-		this.property(property).asSubclass[Property[X, Y]]
+		this.property(property).asInstanceOpt[Property[X, Y]]
 
 	/** Assuming the given function is a single zero-argument method call on the argument,
 	  * return its reflected representation.
@@ -303,18 +303,18 @@ object PropertyPath {
 	  * if so, return its reflected representation as an option.
 	  */
 	def ifSimple[X :TypeTag, Y](property :X => Y) :Option[SimpleProperty[X, Y]] =
-		this.property(property).asSubclass[SimpleProperty[X, Y]]
+		this.property(property).asInstanceOpt[SimpleProperty[X, Y]]
 
 	/** Equivalent to apply(property) */
 	def property[X :TypeTag, Y](property :X => Y) :ReflectedProperty[X, Y] =
-		property.asSubclassOf[ReflectedProperty[X, Y]] getOrElse trace(property)
+		property.asInstanceOpt[ReflectedProperty[X, Y]] getOrElse trace(property)
 
 	/** Assuming property constitutes of chained calls of zero-argument methods starting with type X,
 	  * create a reflected representation which can be compared, composed and even subtracted in type safer manner
 	  * with other property path instances.
 	  */
 	def apply[X :TypeTag, Y](property :X => Y) :ReflectedProperty[X, Y] =
-		property.asSubclassOf[ReflectedProperty[X, Y]] getOrElse trace(property)
+		property.asInstanceOpt[ReflectedProperty[X, Y]] getOrElse trace(property)
 
 
 	/** Return a hacked, manually created instance representing the given property '''without''' performing
@@ -614,7 +614,7 @@ object PropertyPath {
 		def this(msg :String) = this(msg, null)
 		def this(cause :Throwable) = this(null, cause)
 
-		override def stackOn(msg :String) :OldSQLException = new PropertyReflectionException(msg, this)
+		override def addInfo(msg :String) :OldSQLException = new PropertyReflectionException(msg, this)
 	}
 
 

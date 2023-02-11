@@ -3,7 +3,7 @@ package com.adpilot.cortb.clientapi.prototype.repository.plain.mapping
 import java.lang.reflect.{Method, InvocationHandler}
 import java.sql.ResultSet
 
-import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.ColumnMapping.ColumnOption
+import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.TypedColumn.ColumnOption
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.ColumnType.NullValue
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.Mapping._
 import com.adpilot.cortb.clientapi.util.OptionOps
@@ -12,7 +12,7 @@ import scala.reflect.ClassTag
 import scala.slick.jdbc.{GetResult, PositionedParameters, PositionedResult, SetParameter}
 
 
-import ColumnMapping._
+import TypedColumn._
 import ColumnOption._
 import OptionOps._
 
@@ -108,9 +108,9 @@ object ColumnType {
 }
 
 
-trait ColumnMapping[E, T] extends ComponentMapping[E, T] with SetParameter[T] {
-	type Component[X] <: ColumnMapping[T, X]
-	type Column[X] <: ColumnMapping[T, X] with Component[X]
+trait TypedColumn[E, T] extends ComponentMapping[E, T] with SetParameter[T] {
+	type Component[X] <: TypedColumn[T, X]
+	type Column[X] <: TypedColumn[T, X] with Component[X]
 
 	def selectHeader(prefix :String) :String =
 		OptionalSelect.test(this).map(_ => "null") orElse prefixOption(prefix).map(_+"."+name) getOrElse name
@@ -181,23 +181,23 @@ trait ColumnMapping[E, T] extends ComponentMapping[E, T] with SetParameter[T] {
 
 
 
-object ColumnMapping {
-	type SelfColumn[T] = ColumnMapping[T, T]
+object TypedColumn {
+	type SelfColumn[T] = TypedColumn[T, T]
 
-	def apply[E, T :ColumnType](name :String, pick :E=>T, options :ColumnOption[T]*) :ColumnMapping[E, T] =
+	def apply[E, T :ColumnType](name :String, pick :E=>T, options :ColumnOption[T]*) :TypedColumn[E, T] =
 		new ColumnComponent(name, pick, options)
 
-	def apply[T :ColumnType](name :String, /*opt0 :ColumnOption, */opts :ColumnOption[T]*) :ColumnMapping[T, T] =
+	def apply[T :ColumnType](name :String, /*opt0 :ColumnOption, */opts :ColumnOption[T]*) :TypedColumn[T, T] =
 		apply[T,T](name, x=>x, /*opt0 +: */opts :_*)
 
 
 
 
 	class BaseColumn[T](val name :String, val options :Seq[ColumnOption[T]])(implicit val columnType :ColumnType[T])
-		extends ColumnMapping[T, T]
+		extends TypedColumn[T, T]
 	{
-		type Component[X] = ColumnMapping[T, X]
-		type Column[X] = ColumnMapping[T, X]
+		type Component[X] = TypedColumn[T, X]
+		type Column[X] = TypedColumn[T, X]
 
 		override val selectable = super.selectable
 		override val querable = super.querable
@@ -211,10 +211,10 @@ object ColumnMapping {
 
 
 	class ColumnComponent[E, T](val name :String, pick :E=>T, val options :Seq[ColumnOption[T]])(implicit val columnType :ColumnType[T])
-		extends ColumnMapping[E, T]
+		extends TypedColumn[E, T]
 	{
-		type Component[X] = ColumnMapping[T, X]
-		type Column[X] = ColumnMapping[T, X]
+		type Component[X] = TypedColumn[T, X]
+		type Column[X] = TypedColumn[T, X]
 
 		override val selectable = super.selectable
 		override val querable = super.querable
@@ -228,16 +228,16 @@ object ColumnMapping {
 	}
 
 
-	trait ColumnAdapter[E, T, C<:ColumnMapping[_, T]] extends ColumnMapping[E, T] with MappingDecorator[T, C]
+	trait ColumnAdapter[E, T, C<:TypedColumn[_, T]] extends TypedColumn[E, T] with MappingDecorator[T, C]
 
 
-	trait ColumnDecorator[E, T, C<:ColumnMapping[E, T]] extends ColumnAdapter[E, T, C] {
+	trait ColumnDecorator[E, T, C<:TypedColumn[E, T]] extends ColumnAdapter[E, T, C] {
 		override def value(entity: E): T = adaptedMapping.value(entity)
 	}
 
 
 
-	trait AbstractColumnAdapter[E, T, C<:ColumnMapping[_, T]] extends ColumnAdapter[E, T, C] {
+	trait AbstractColumnAdapter[E, T, C<:TypedColumn[_, T]] extends ColumnAdapter[E, T, C] {
 
 		def name = adaptedMapping.name
 		def options = adaptedMapping.options
@@ -248,12 +248,12 @@ object ColumnMapping {
 		override def columnType: ColumnType[T] = adaptedMapping.columnType
 	}
 
-	trait AbstractColumnDecorator[E, T, C<:ColumnMapping[E, T]]
+	trait AbstractColumnDecorator[E, T, C<:TypedColumn[E, T]]
 		extends AbstractColumnAdapter[E, T, C] with ColumnDecorator[E, T, C]
 
 
 
-	trait DirectColumnAdapter[E, T, C<:ColumnMapping[_, T]]
+	trait DirectColumnAdapter[E, T, C<:TypedColumn[_, T]]
 		extends AbstractColumnAdapter[E, T, C]
 	{
 		type Component[X] = adaptedMapping.Column[X]
@@ -268,12 +268,12 @@ object ColumnMapping {
 		override def self: Column[T] = adaptedMapping.self
 	}
 
-	trait DirectColumnDecorator[E, T, C<:ColumnMapping[E, T]]
+	trait DirectColumnDecorator[E, T, C<:TypedColumn[E, T]]
 		extends DirectColumnAdapter[E, T, C] with ColumnDecorator[E, T, C]
 
 
 
-	abstract class AbstractEmbeddedColumn[E, T, C<:ColumnMapping[_, T]](
+	abstract class AbstractEmbeddedColumn[E, T, C<:TypedColumn[_, T]](
 			val adaptedMapping :C, pick: E => T, override val name: String, override val options: Seq[ColumnOption[T]])
 		extends AbstractColumnAdapter[E, T, C]
 	{
@@ -286,11 +286,11 @@ object ColumnMapping {
 
 
 
-	class EmbeddedColumn[E, C, T](col :ColumnMapping[C, T], pick :E=>T, name :Option[String], options :Seq[ColumnOption[T]])
-		extends AbstractEmbeddedColumn[E, T, ColumnMapping[C, T]](col, pick, name getOrElse col.name, options) with DirectColumnAdapter[E, T, ColumnMapping[C, T]]
+	class EmbeddedColumn[E, C, T](col :TypedColumn[C, T], pick :E=>T, name :Option[String], options :Seq[ColumnOption[T]])
+		extends AbstractEmbeddedColumn[E, T, TypedColumn[C, T]](col, pick, name getOrElse col.name, options) with DirectColumnAdapter[E, T, TypedColumn[C, T]]
 	{
-		def this(column :ColumnMapping[C, T], pick :E=>T, name :Option[String]) = this(column, pick, name, column.options)
-		def this(column :ColumnMapping[C, T], pick :E=>T) = this(column, pick, None, column.options)
+		def this(column :TypedColumn[C, T], pick :E=>T, name :Option[String]) = this(column, pick, name, column.options)
+		def this(column :TypedColumn[C, T], pick :E=>T) = this(column, pick, None, column.options)
 //
 	}
 
@@ -350,15 +350,15 @@ object ColumnMapping {
 		trait ColumnOptionType[O[T]<:ColumnOption[T]] {
 			def test[T](option :ColumnOption[T]) :Option[O[T]]
 			def test[T](options :Seq[ColumnOption[T]]) :Option[O[T]] = options.map(test(_)).collectFirst{ case Some(x) => x }
-			def test[T](column :ColumnMapping[_, T]) :Option[O[T]] = test(column.options)
+			def test[T](column :TypedColumn[_, T]) :Option[O[T]] = test(column.options)
 
 			def enabled(option :ColumnOption[_]) :Boolean = test(option).isDefined
 			def enabled(options :Seq[ColumnOption[_]]) :Boolean = options.exists(enabled)
-			def enabled(column :ColumnMapping[_, _]) :Boolean = enabled(column.options)
+			def enabled(column :TypedColumn[_, _]) :Boolean = enabled(column.options)
 
 			def disabled(option :ColumnOption[_]) = test(option).isEmpty
 			def disabled(options :Seq[ColumnOption[_]]) :Boolean = options.forall(disabled)
-			def disabled(column :ColumnMapping[_, _]) :Boolean = disabled(column.options)
+			def disabled(column :TypedColumn[_, _]) :Boolean = disabled(column.options)
 
 		}
 
@@ -372,7 +372,7 @@ object ColumnMapping {
 				case _ => None
 			}
 
-			def unapply[T](column :ColumnMapping[_, T]) = enabled(column)
+			def unapply[T](column :TypedColumn[_, T]) = enabled(column)
 
 			def apply[T]() :O[T] = this.asInstanceOf[O[T]]
 //			def apply[T]() :O[T] = instance.asInstanceOf[O[T]]

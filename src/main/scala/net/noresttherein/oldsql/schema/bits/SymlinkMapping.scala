@@ -1,6 +1,6 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
+import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, ComposedAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.support.MappingProxy.EmptyProxy
@@ -16,15 +16,15 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.EmptyProxy
   *
   * @author Marcin Mościcki
   */
-class SymlinkMapping[M <: RefinedMapping[S, O], S, O](protected override val backer :M)
+class SymlinkMapping[M <: TypedMapping[S, O], S, O](protected override val backer :M)
 	extends EmptyProxy[S, O]
 
 
 
 object SymlinkMapping {
-	def apply[M <: RefinedMapping[S, O], S, O](component :M) :Adapted[M] =
+	def apply[M <: TypedMapping[S, O], S, O](component :M) :Adapted[M] =
 		new SymlinkMapping[M, S, O](component) with DelegateAdapter[M, S, O]
 
-	def adapter[M <: RefinedMapping[S, O], S, O](adapter :MappingAdapter[M, S, O]) :Adapted[M] =
+	def adapter[M <: TypedMapping[S, O], S, O](adapter :MappingAdapter[M, S, O]) :Adapted[M] =
 		new SymlinkMapping[MappingAdapter[M, S, O], S, O](adapter) with ComposedAdapter[M, S, S, O]
 }

@@ -4,6 +4,9 @@ _(old school)_
 
 ## Philosophy
 
+OldSQL is an object-relational mapper for Scala based around principles of explicit statement of intent
+and transparent, modular architecture.
+
 OldSQL implements a certain paradigm shift in thinking about relational database access. 
 Historically, most object-relational mappers featured a black box design, doing most work behind the scenes 
 and exposing a relatively small API. It is most evident in the _Java_ ecosystem, with _JPA_ and its _Hibernate_ roots. 

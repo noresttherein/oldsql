@@ -1,20 +1,23 @@
 package net.noresttherein.oldsql.schema.bases
 
-import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
-import net.noresttherein.oldsql.collection.{Opt, Unique}
+import net.noresttherein.oldsql.OperationView.WriteOperationView
+import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.NaturalMap.WhenNoKey
 import net.noresttherein.oldsql.collection.NaturalMap.WhenNoKey.Throw
 import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buffs, ColumnMapping, ColumnMappingExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, SelectAudit, SelectDefault}
-import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, MappingAt, MappingReadForm, MappingWriteForm, OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.{Buffs, ColumnForm, ColumnMapping, Mapping, Seal}
+import net.noresttherein.oldsql.schema.Buff.{SelectAudit, SelectDefault, SelectPreset}
+import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.OptionMapping
-import net.noresttherein.oldsql.schema.bits.OptionMapping.Optional
-import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping, BuffedMapping, MappedMapping, PrefixedMapping, RenamedMapping}
+import net.noresttherein.oldsql.schema.bits.OptionMapping.{Optional, OptionColumn}
+import net.noresttherein.oldsql.schema.support.{AlteredMapping, BuffedMapping, ColumnMappingPrototype, MappedMapping, MappingPrototype, PatchedMapping, PrefixedMapping, RenamedMapping, ReorderedMapping}
+import net.noresttherein.oldsql.schema.ColumnMapping.TypedColumn
+import net.noresttherein.oldsql.schema.support.MappingProxy.ExportColumnProxy
+import net.noresttherein.oldsql.OperationView
 
 
 
@@ -38,26 +41,26 @@ import net.noresttherein.oldsql.schema.support.{AdjustedMapping, AlteredMapping,
   *           included in a query can be used in the creation of SQL expressions used by that query.
   *           Consult [[net.noresttherein.oldsql.schema.Mapping.Origin Mapping.Origin]]
   */
-trait BaseMapping[S, O] extends Mapping { self =>
+trait BaseMapping[S, O] extends Mapping with MappingPrototype[({ type A[s] = TypedMapping[s, O] })#A, S, O] { self =>
 	override type Origin = O
 	override type Subject = S
 	//for nicer compiler output
-	override type Extract[T] = MappingExtract[S, T, O]
-	override type ColumnExtract[T] = ColumnMappingExtract[S, T, O]
-	override type AnyComponent = MappingAt[O]
-	override type Component[T] = RefinedMapping[T, O]
-	override type Column[T] = ColumnMapping[T, O]
+//	override type Extract[T] = MappingExtract[S, T, O]
+//	override type ColumnExtract[T] = ColumnMappingExtract[S, T, O]
+//	override type AnyComponent = MappingAt[O]
+//	override type Component[T] = TypedMapping[T, O]
+//	override type Column[T] = TypedColumn[T, O]
 
 
-
-	override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+	//fixme: this does not use the export components of the root mapping!
+	override def writtenValues[T](op :WriteOperationView, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 		if (op.Prohibited.inactive(this)) {
 			val audited = op.Audit.fold(this)(subject)
 			def componentValues[X](comp :Component[X]) :Unit = {
-				apply(comp).opt(audited) match {
-					case Got(value) => comp.writtenValues(op, value, collector)
+				apply(comp).opt(audited) match { //fixme: when we accept Opt[S] instead of S move Default.Value check to the tested mapping itself.
+					case Got(value) => collector.add(op, comp, value)//comp.writtenValues(op, value, collector)
 					case _ => op.Default.Value(comp) match {
-						case Got(value) => comp.writtenValues(op, value, collector)
+						case Got(value) => collector.add(op, comp, value) //comp.writtenValues(op, value, collector)
 						case _ =>
 					}
 				}
@@ -69,14 +72,14 @@ trait BaseMapping[S, O] extends Mapping { self =>
 	  * a [[net.noresttherein.oldsql.exceptions.NoSuchComponentException NoSuchComponentException]] with information
 	  * about both the key component and this mapping, instead of the default `NoSuchElementException`.
 	  */
-	implicit protected def throwNoSuchComponentException[C[X] <: Component[X]] :WhenNoKey[C, Throw] =
+	implicit protected def whenNoKeyThrowNoSuchComponentException[C[X] <: Component[X]] :WhenNoKey[C, Throw] =
 		WhenNoKey.Throw.aNoSuchComponentException(this)
 
 
-
 	override def apply(pieces: Pieces): S =
-		optionally(pieces) getOrElse {
-			throw new IllegalArgumentException(s"Can't assemble $this from $pieces")
+		optionally(pieces) match {
+			case Got(result) => result
+			case _ => throw new NoSuchElementException(s"Cannot assemble $this from $pieces.")
 		}
 
 	override def optionally(pieces: Pieces): Opt[S] = pieces.assemble(this) match {
@@ -85,7 +88,7 @@ trait BaseMapping[S, O] extends Mapping { self =>
 		case _ =>
 			val res = SelectDefault.Value(this)
 			if (res.isDefined) res
-			else ExtraSelect.Value(this)
+			else SelectPreset.Value(this)
 	}
 
 	override def assemble(pieces :Pieces) :Opt[S]
@@ -103,93 +106,56 @@ trait BaseMapping[S, O] extends Mapping { self =>
 		BuffedMapping[BaseMapping[S, O], S, O](this, buffs)
 
 
-
-//	def apply[M >: this.type <: RefinedMapping[S, O], X <: Mapping, C <: RefinedMapping[T, O], T]
-//	         (component :M => X)(implicit hint :InferTypeParams[X, C, RefinedMapping[T, O]])
-//			:ComponentPath[M, C, S, T, O] =
-//		ComponentPath(this :M, component(this))
+//	override def original :BaseMapping[S, O] = this
 
 
 
-	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		MappingReadForm.select(this, components)
-
-	/** @inheritdoc
-	  * @return `writeForm(FILTER, components)` unless overriden. */
-	override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		writeForm(FILTER, components)
-
-	/** @inheritdoc
-	  * @return `writeForm(INSERT, components)` unless overriden. */
-	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		writeForm(INSERT, components)
-
-	/** @inheritdoc
-	  * @return `writeForm(UPDATE, components)` unless overriden. */
-	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-		writeForm(UPDATE, components)
-
-	/** @inheritdoc
-	  * @return `MappingWriteForm(op, this, components)` by default. */
-	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
-		MappingWriteForm(op, this, components)
-
-	override def selectForm :SQLReadForm[S] = MappingReadForm.defaultSelect(this)
-
-	/** Default write form (included parameters) used for the ''WHERE'' clause filters for this mapping.
-	  * @return `writeForm(FILTER)` (or a functionally equivalent instance) unless overriden. */
-	override def filterForm :SQLWriteForm[S] = writeForm(FILTER)
-
-	/** Default write form (included columns) of insert statements for this mapping.
-	  * @return `writeForm(INSERT)` (or a functionally equivalent instance) unless overriden. */
-	override def insertForm :SQLWriteForm[S] = writeForm(INSERT)
-
-	/** Default write form (included columns) of update statements for this mapping.
-	  * @return `writeForm(UPDATE)` (or a functionally equivalent instance) unless overriden. */
-	override def updateForm :SQLWriteForm[S] = writeForm(UPDATE)
-
-	/** The delegate target of all properties with write forms of various statement types.
-	  * @return `MappingWriteForm(op, this)` unless overriden. */
-	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = MappingWriteForm(op, this)
-
-	override def selectForm[T](component :Component[T]) :SQLReadForm[T] = export(component).selectForm
-	override def filterForm[T](component :Component[T]) :SQLWriteForm[T] = export(component).filterForm
-	override def insertForm[T](component :Component[T]) :SQLWriteForm[T] = export(component).insertForm
-	override def updateForm[T](component :Component[T]) :SQLWriteForm[T] = export(component).updateForm
-
-	override def apply(adjustments :ComponentSelection[_, O]*) :Component[S] =
-		apply(
-			adjustments.view.collect { case IncludedComponent(c) => c },
-			adjustments.view.collect { case ExcludedComponent(c) => c }
-		)
-
+//	override def apply(first :ComponentSelection[_, O], rest :ComponentSelection[_, O]*) :TypedMapping[S, O] = {
+//		val all = rest.view prepended first
+//		apply(all collect { case IncludedComponent(c) => c }, all collect { case ExcludedComponent(c) => c })
+//	}
 
 	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :Component[S] =
-		AdjustedMapping[BaseMapping[S, O], S, O](this, include, exclude)
+		AlteredMapping[BaseMapping[S, O], S, O](this, include, exclude)
 
-	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		AlteredMapping.select[BaseMapping[S, O], S, O](this, include, exclude)
+	protected override def apply(op :OperationView, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
+			:Component[S] =
+		PatchedMapping[BaseMapping[S, O], S, O](op, this, include, exclude)
 
-	override def forFilter(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		AlteredMapping.filter[BaseMapping[S, O], S, O](this, include, exclude)
+//	override def forSelect(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
+//		PatchedMapping.select[BaseMapping[S, O], S, O](this, include, exclude)
+//
+//	override def forFilter(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
+//		PatchedMapping.filter[BaseMapping[S, O], S, O](this, include, exclude)
+//
+//	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
+//		PatchedMapping.insert[BaseMapping[S, O], S, O](this, include, exclude)
+//
+//	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
+//		PatchedMapping.update[BaseMapping[S, O], S, O](this, include, exclude)
 
-	override def forInsert(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		AlteredMapping.insert[BaseMapping[S, O], S, O](this, include, exclude)
-
-	override def forUpdate(include :Iterable[Component[_]], exclude :Iterable[Component[_]] = Nil) :Component[S] =
-		AlteredMapping.update[BaseMapping[S, O], S, O](this, include, exclude)
 
 
-
-	override def qualified(prefix :String) :Component[S] =
-		if (prefix.length == 0) this else prefixed(prefix + ".")
-
-	override def prefixed(prefix :String) :Component[S] =
-		if (prefix.length == 0) this
-		else PrefixedMapping[BaseMapping[S, O], S, O](prefix, this)
+//	override def qualified(prefix :String) :Component[S] =
+//		if (prefix.length == 0) this else prefixed(prefix + ".")
+//
+//	override def prefixed(prefix :String) :Component[S] =
+//		if (prefix.length == 0) this
+//		else PrefixedMapping[BaseMapping[S, O], S, O](prefix, this)
 
 	override def renamed(naming :String => String) :Component[S] =
 		RenamedMapping[this.type, S, O](this :this.type, naming)
+
+	override def reorder(permutation :IndexedSeq[Int]) :Component[S] =
+		if (permutation.length != columns.size)
+			throw new IllegalArgumentException(
+				"Length of permutation " + permutation + " (" + permutation.length +
+					") does not match the number of columns " + columns.size + " in " + this + ": " + columns + "."
+			)
+		else if (permutation == permutation.indices)
+			this
+		else
+			ReorderedMapping[this.type, S, O](this :this.type, permutation)
 
 
 	override def inOption :Optional[this.type] = OptionMapping.singleton(this)
@@ -198,8 +164,7 @@ trait BaseMapping[S, O] extends Mapping { self =>
 		MappedMapping[BaseMapping[S, O], S, X, O](this, there, back)
 
 
-	protected[oldsql] override def every_concrete_Mapping_must_extend_BaseMapping :Nothing =
-		throw new UnsupportedOperationException
+	private[schema] override def every_concrete_Mapping_must_extend_BaseMapping(seal :Seal) :Unit = ()
 }
 
 
@@ -208,19 +173,6 @@ trait BaseMapping[S, O] extends Mapping { self =>
 
 
 object BaseMapping {
-
-	/** A curried definition of [[net.noresttherein.oldsql.schema.bases.BaseMapping BaseMapping]]`[S, O]`,
-	  * containing a single type constructor `P[O] = BaseMapping[S, O]`. It allows the use of `BaseMapping`
-	  * as a type parameters to classes/methods which require the definition of a mapping accepting
-	  * its [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type.
-	  */
-	type Of[S] = { type P[O] = BaseMapping[S, O] }
-
-	type AnyAt[O] = M[O] forSome { type M[A] <: BaseMapping[_, A] }
-
-	type AnyOf[S] = M[S] forSome { type M[X] <: BaseMapping[X, _] }
-
-
 	//note for the future: there is some problem with projections from mappings with Nothing as the origin type.
 	@inline implicit def baseMappingOriginProjection[M[A] <: BaseMapping[S, A], S, O]
 	                                                (implicit types :M[O] <:< BaseMapping[S, O])
@@ -229,4 +181,33 @@ object BaseMapping {
 
 }
 
+
+
+
+
+
+trait BaseColumn[S, O] extends BaseMapping[S, O]
+	with ColumnMapping with ColumnMappingPrototype[({ type A[s] = TypedColumn[s, O]})#A, S, O]
+{
+	protected override def copy(name :String, buffs :Buffs[Subject]) :TypedColumn[Subject, Origin] =
+		new ExportColumnProxy[Subject, Origin](this, name, buffs)
+
+	protected override def thisColumn :TypedColumn[S, O] = this
+
+	override def as[X](there :Subject =?> X, back :X =?> Subject)(implicit nulls :NullValue[X]) :TypedColumn[X, Origin] =
+		MappedMapping.column[TypedColumn[Subject, Origin], Subject, X, Origin](refine, there, back)
+
+	override def inOption :OptionColumn[this.type, S, O] = OptionMapping.column(this)
+	final private[schema] override def every_concrete_ColumnMapping_must_extend_BaseColumn(seal :Seal) :Unit = ()
+}
+
+
+object BaseColumn {
+	//note for the future: there is some problem with projections from mappings with Nothing as the origin type.
+	@inline implicit def baseColumnOriginProjection[M[A] <: BaseColumn[S, A], S, O]
+	                                               (implicit types :M[O] <:< BaseColumn[S, O])
+			:ProjectionDef[M[O], M, S] =
+		OriginProjection.isomorphism[M, S, O]
+
+}
 

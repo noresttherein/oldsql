@@ -30,26 +30,46 @@ trait ComparableFactory[-E, +C] extends Factory[E, C] with Serializable {
 
 
 object ComparableFactory {
-	implicit def apply[E, C[_]](iterable :IterableFactory[C]) :ComparableFactory[E, C[E]] =
+	def apply[E, C[_]](factory :IterableFactory[C]) :ComparableFactory[E, C[E]] = {
+		val f = factory
 		new ComparableFactory[E, C[E]] {
-			override val factory = iterable
+			override val factory = f
 			override def fromSpecific(it :IterableOnce[E]) = factory.from(it)
 			override def newBuilder = factory.newBuilder
 		}
+	}
 
-	implicit def apply[E, C[_], Ev[_]](iterable :EvidenceIterableFactory[C, Ev])(implicit ev :Ev[E])
+	def apply[E, C[_], Ev[_]](factory :EvidenceIterableFactory[C, Ev])(implicit ev :Ev[E])
 			:ComparableFactory[E, C[E]] =
-		new EvidenceFactory[E, C, Ev](iterable)
+		new EvidenceFactory[E, C, Ev](factory)
 
-	implicit def apply[K, V, M[_, _]](map :MapFactory[M]) :ComparableFactory[(K, V), M[K, V]] =
+	def apply[K, V, M[_, _]](factory :MapFactory[M]) :ComparableFactory[(K, V), M[K, V]] = {
+		val f = factory
 		new ComparableFactory[(K, V), M[K, V]] {
-			override val factory = map
-			override def fromSpecific(it :IterableOnce[(K, V)]) = map.from(it)
-			override def newBuilder = map.newBuilder
+			override val factory = f
+			override def fromSpecific(it :IterableOnce[(K, V)]) = factory.from(it)
+			override def newBuilder = factory.newBuilder
 		}
+	}
 
-	implicit def apply[K :Ordering, V, M[_, _]](map :SortedMapFactory[M]) :ComparableFactory[(K, V), M[K, V]] =
-		new EvidenceMapFactory[K, V, M](map)
+	def apply[K :Ordering, V, M[_, _]](factory :SortedMapFactory[M]) :ComparableFactory[(K, V), M[K, V]] =
+		new EvidenceMapFactory[K, V, M](factory)
+
+
+	implicit def comparableIterableFactory[E, C[_]](factory :IterableFactory[C]) :ComparableFactory[E, C[E]] =
+		apply(factory)
+
+	implicit def comparableEvidenceIterableFactory[E, C[_], Ev[_]]
+	                                              (factory :EvidenceIterableFactory[C, Ev])(implicit ev :Ev[E])
+			:ComparableFactory[E, C[E]] =
+		apply(factory)
+
+	implicit def comparableMapFactory[K, V, M[_, _]](factory :MapFactory[M]) :ComparableFactory[(K, V), M[K, V]] =
+		apply(factory)
+
+	implicit def comparableSortedMapFactory[K :Ordering, V, M[_, _]](factory :SortedMapFactory[M])
+			:ComparableFactory[(K, V), M[K, V]] =
+		apply(factory)
 
 
 

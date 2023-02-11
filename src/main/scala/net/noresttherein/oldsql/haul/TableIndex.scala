@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.Table
-import net.noresttherein.oldsql.schema.Mapping.{MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingOf, TypedMapping}
 import net.noresttherein.oldsql.schema.MappingExtract
 
 
@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.schema.MappingExtract
   */
 trait TableIndex[K, E] {
 	def table :Table[MappingOf[E]#Projection]
-	def component[O] :RefinedMapping[K, O]
+	def component[O] :TypedMapping[K, O]
 	def property :E =?> K
 
 	def apply(key :K) :E
@@ -43,9 +43,9 @@ object TableIndex {
 		extends TableIndex[K, E]
 	{
 		private[this] val idx = mutable.Map.empty[K, E]
-		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[RefinedMapping[K, this.type]])
+		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[TypedMapping[K, this.type]])
 
-		override def component[O] :RefinedMapping[K, O] = keyMapping.asInstanceOf[RefinedMapping[K, O]]
+		override def component[O] :TypedMapping[K, O] = keyMapping.asInstanceOf[TypedMapping[K, O]]
 		protected def index :mutable.Map[K, E] = idx
 		override def property :E =?> K = extract
 
@@ -90,7 +90,7 @@ object TableIndex {
 	                                     keyMapping :MappingOf[Option[K]])
 		extends UniqueTableIndex[Option[K], E](table, keyMapping)
 	{
-		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[RefinedMapping[Option[K], this.type]])
+		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[TypedMapping[Option[K], this.type]])
 
 		override def +=(value :E) :Unit =
 			if (value != null)
@@ -114,9 +114,9 @@ object TableIndex {
 		extends TableIndex[K, E]
 	{
 		private[this] val idx = mutable.Map.empty[K, mutable.Set[E]]
-		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[RefinedMapping[K, this.type]])
+		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[TypedMapping[K, this.type]])
 
-		override def component[O] :RefinedMapping[K, O] = keyMapping.asInstanceOf[RefinedMapping[K, O]]
+		override def component[O] :TypedMapping[K, O] = keyMapping.asInstanceOf[TypedMapping[K, O]]
 		protected def cache :mutable.Map[K, mutable.Set[E]] = idx
 		override def property :E =?> K = extract
 
@@ -183,7 +183,7 @@ object TableIndex {
 	                                    keyMapping :MappingOf[Option[K]])
 		extends TableMultiIndex[Option[K], E](table, keyMapping)
 	{
-		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[RefinedMapping[Option[K], this.type]])
+		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[TypedMapping[Option[K], this.type]])
 
 		override def +=(value :E) :Unit =
 			if (value != null)
@@ -220,12 +220,12 @@ object TableIndex {
 	                                (implicit ordering :Ordering[I])
 		extends TableIndex[K, E]
 	{
-		implicit private[this] val entryOrdering = Ordering.by { e :(I, E) => e._1 }
-		private[this] val indexProperty = table.row[this.type](index.asInstanceOf[RefinedMapping[I, this.type]])
-		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[RefinedMapping[K, this.type]])
+		implicit private[this] val entryOrdering :Ordering[(I, E)] = Ordering.by { e :(I, E) => e._1 }
+		private[this] val indexProperty = table.row[this.type](index.asInstanceOf[TypedMapping[I, this.type]])
+		private[this] val extract = table.row[this.type](keyMapping.asInstanceOf[TypedMapping[K, this.type]])
 		private[this] val idx = mutable.Map.empty[K, mutable.ListBuffer[(I, E)]]
 
-		override def component[O] :RefinedMapping[K, O] = keyMapping.asInstanceOf[RefinedMapping[K, O]]
+		override def component[O] :TypedMapping[K, O] = keyMapping.asInstanceOf[TypedMapping[K, O]]
 		protected def cache :mutable.Map[K, mutable.ListBuffer[(I, E)]] = idx
 		override def property :E =?> K = extract
 

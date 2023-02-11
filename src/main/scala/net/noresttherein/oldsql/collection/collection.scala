@@ -12,9 +12,9 @@ import net.noresttherein.oldsql.morsels.ComparableFactory
 
 
 
-
+//todo: rename to collections: no conflict with scala.collection
 package object collection {
-
+	//todo: MultiSet
 	//todo: compare also factories with implicit evidence
 	private val IterableToFactoryClass = scala.collection.Iterable.iterableFactory.getClass
 	private val iterableFactoryField :Opt[Field] =

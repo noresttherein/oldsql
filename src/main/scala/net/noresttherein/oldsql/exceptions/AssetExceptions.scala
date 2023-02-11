@@ -13,7 +13,7 @@ class AssetUnavailableException(message :String, cause :Throwable)
 	def this(message :String) = this(message, null)
 	def this(cause :Throwable) = this(cause.getMessage, cause)
 
-	override def stackOn(msg :String) :OldSQLException = new AssetUnavailableException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new AssetUnavailableException(msg, this)
 }
 
 
@@ -25,7 +25,7 @@ class TransactionUnavailableException(message :String, cause :Throwable) extends
 	def this(message :String) = this(message, null)
 	def this() = this("No transaction currently in progress.", null)
 
-	override def stackOn(msg :String) :OldSQLException = new TransactionUnavailableException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new TransactionUnavailableException(msg, this)
 }
 
 
@@ -37,7 +37,7 @@ class TransactionAbortedException(message :String, cause :Throwable) extends Bas
 	def this(cause :Throwable) = this(s"Transaction rolled back on request: ${cause.getMessage}.", cause)
 	def this() = this("Transaction rolled back on request.", null)
 
-	override def stackOn(msg :String) :OldSQLException = new TransactionAbortedException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new TransactionAbortedException(msg, this)
 }
 
 
@@ -50,7 +50,7 @@ class PreexistingTransactionException(message :String, cause :Throwable) extends
 	def this(cause :Throwable) = this(s"Transaction already in progress: ${cause.getMessage}.", cause)
 	def this() = this("Transaction already in progress.", null)
 
-	override def stackOn(msg :String) :OldSQLException = new PreexistingTransactionException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new PreexistingTransactionException(msg, this)
 }
 
 
@@ -65,7 +65,7 @@ class TransactionClosedException(message :String, cause :Throwable) extends Base
 	def this(cause :Throwable) = this(s"Transaction already closed: ${cause.getMessage}.", cause)
 	def this() = this("Transaction already closed.", null)
 
-	override def stackOn(msg :String) :OldSQLException = new TransactionClosedException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new TransactionClosedException(msg, this)
 }
 
 
@@ -81,5 +81,5 @@ class TransactionRolledBackException(message :String, cause :Throwable)
 	def this(cause :Throwable) = this(s"Transaction already rolled back: ${cause.getMessage}.", cause)
 	def this() = this("Transaction already rolled back.", null)
 
-	override def stackOn(msg :String) :OldSQLException = new TransactionRolledBackException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new TransactionRolledBackException(msg, this)
 }

@@ -18,12 +18,17 @@ import scala.collection.mutable
   */
 trait OldSQLException extends Throwable {
 
-	/** Returns an exception of the same type as this one, with the given message and this exception as its cause.
-	  * This is useful when we want to preserve the original reason in case someone higher on the stack would want
-	  * to handle it, but also to add additional contextual information about the failed operation, such as
-	  * original parameters.
+	/** A 'virtual constructor' returning an exception of the same type as this one, with the given message,
+	  * and this exception as its cause. This is useful when we want to preserve both the original exception type
+	  * and the initial exception as the reason, in case someone higher on the call stack would want to handle it,
+	  * but also to add additional contextual information about the failed operation, such as original parameters.
+	  * This is different than [[java.lang.Throwable.addSuppressed addSuppressed]] in that the latter implies
+	  * another error (though possibly related) which happened when processing this exception, while this method
+	  * is used in catch-rethrow scenarios. Also, the latter accepts a new exception instance from the caller,
+	  * who may pass any type of the exception but typically does not know the precise type of this
+	  * exception.
 	  */
-	def stackOn(msg :String) :OldSQLException
+	def addInfo(msg :String) :OldSQLException
 
 	/** Standard [[Throwable.getSuppressed getSuppressed]] array as a scala [[Seq]]. */
 	def suppressed :Seq[Throwable] = ArraySeq.unsafeWrapArray(getSuppressed)
@@ -50,12 +55,23 @@ trait OldSQLException extends Throwable {
 	/** Denullified [[Throwable.getMessage getMessage]] returning an empty string instead of `null` if no message
 	  * was provided. */
 	val message :String = if (getMessage == null) "" else getMessage
+
+	def className :String = getClass.getName
+
+	override def toString :String = {
+		val s :String = className
+		val message :String = getLocalizedMessage
+		if (message != null) s + ": " + message else s
+	}
 }
 
 
 
 object OldSQLException {
-	def apply(msg :String, cause :Throwable = null) :OldSQLException = new BaseOldSQLException(msg, cause)
+	def apply(msg :String, cause :Throwable = null) :OldSQLException =
+		new BaseOldSQLException(msg, cause) {
+			override def className = classOf[OldSQLException].getName
+		}
 
 	def unapply(e :Throwable) :Option[(String, Option[Throwable])] = e match {
 		case ex :OldSQLException => Some((ex.message, ex.cause))
@@ -67,7 +83,7 @@ object OldSQLException {
 
 /** Base class of all dedicated exceptions - other than the standard Java/Scala types - thrown by the library. */
 class BaseOldSQLException protected (val msg :String, init :Throwable,
-                                 enableSuppression :Boolean, writableStackTrace :Boolean)
+                                     enableSuppression :Boolean, writableStackTrace :Boolean)
 	extends RuntimeException(msg, init, enableSuppression, writableStackTrace) with OldSQLException
 {
 	def this(message :String, cause :Throwable) = this(message, cause, true, true)
@@ -75,7 +91,7 @@ class BaseOldSQLException protected (val msg :String, init :Throwable,
 	def this(message :String) = this(message, null)
 	def this() = this(null, null)
 
-	override def stackOn(msg :String) :OldSQLException = new BaseOldSQLException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = OldSQLException(msg, this)
 
 //	override def toString :String = {
 //		val msg = getLocalizedMessage
@@ -105,7 +121,8 @@ object Bug {
 	private class BugException(msg :String, cause :Throwable = null)
 		extends BaseOldSQLException(msg, cause) with Bug
 	{
-		override def stackOn(msg :String) :OldSQLException = new BugException(msg, this)
+		override def addInfo(msg :String) :OldSQLException = Bug(msg, this)
+		override def className = classOf[Bug].getName
 	}
 }
 

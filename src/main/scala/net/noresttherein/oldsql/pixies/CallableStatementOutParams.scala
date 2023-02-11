@@ -9,6 +9,8 @@ import java.util.Calendar
 
 import scala.annotation.nowarn
 
+//import scala.annotation.nowarn
+
 
 
 
@@ -174,10 +176,11 @@ private[oldsql] class CallableStatementOutParams private (val call :CallableStat
 		try {
 			java.math.BigDecimal.valueOf(call.getLong(parameterName), scale)
 		} catch {
-			case e :Exception =>
+			case _ :Exception =>
 				new java.math.BigDecimal(new BigInteger(call.getString(parameterName)), scale)
 		}
-	@nowarn override def getBigDecimal(parameter :Int, scale :Int) = call.getBigDecimal(indices(parameter), scale)
+	@nowarn
+	override def getBigDecimal(parameter :Int, scale :Int) = call.getBigDecimal(indices(parameter), scale)
 
 
 	override def wasNull() = call.wasNull()

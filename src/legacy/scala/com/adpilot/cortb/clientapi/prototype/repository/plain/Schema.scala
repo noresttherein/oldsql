@@ -16,7 +16,7 @@ import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.EntityMapp
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.Mapping.{SetParameters, AbstractMapping}
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.MappingResult.ComponentResult
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping._
-import ColumnMapping.ColumnOption
+import TypedColumn.ColumnOption
 import ColumnType.MappedType
 
 
@@ -26,7 +26,7 @@ import com.adpilot.cortb.clientapi.util.{Time, OptionOps}
 
 import OptionOps._
 import ColumnOption._
-import ColumnMapping._
+import TypedColumn._
 
 import scala.reflect.runtime.universe.TypeTag
 import scala.slick.jdbc.{GetResult, SetParameter}
@@ -117,10 +117,10 @@ class Schema(config :DBConfig, name :Option[String]=Schema.DefaultSchemaName) ex
 		type TypicalEntity = HasId with HasHash with HasName with HasLifecycle
 		
 		
-		val hash = ColumnMapping[String]("hash", AutoGen)
-		val name = ColumnMapping[String]("name")
-		val addedAt = ColumnMapping[Date]("added_at") //todo :Default option
-		val deletedAt = ColumnMapping[Option[Date]]("deleted_at")
+		val hash = TypedColumn[String]("hash", AutoGen)
+		val name = TypedColumn[String]("name")
+		val addedAt = TypedColumn[Date]("added_at") //todo :Default option
+		val deletedAt = TypedColumn[Option[Date]]("deleted_at")
 	}
 
 

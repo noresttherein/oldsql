@@ -1,6 +1,6 @@
 package com.adpilot.cortb.clientapi.prototype.repository.plain.mapping
 
-import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.ColumnMapping.ColumnOption.OptionalSelect
+import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.TypedColumn.ColumnOption.OptionalSelect
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.Mapping.SetParameters
 import com.adpilot.cortb.clientapi.util.Repeat
 

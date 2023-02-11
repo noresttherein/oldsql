@@ -2,7 +2,7 @@ package com.adpilot.cortb.clientapi.prototype.repository.plain.mapping
 
 import com.adpilot.cortb.clientapi.prototype.repository.entities.meta.Reference
 import com.adpilot.cortb.clientapi.prototype.repository.entities.meta.Reference.{Full, UniquePropertyReference, One}
-import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.ColumnMapping.ColumnOption.OptionalSelect
+import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.TypedColumn.ColumnOption.OptionalSelect
 import com.adpilot.cortb.clientapi.util.Generic.GenericFunction
 import com.adpilot.cortb.clientapi.util.{OptionOps, PropertyChain, Matching, ObjectProperty}
 import com.adpilot.cortb.clientapi.util.ObjectProperty.AnyProperty
@@ -45,7 +45,7 @@ trait PropertiesMapping[E, PK] extends Mapping[E] {
 //		def select(component :Component[_]) :String = select(component.selectable)
 		def select(component :ComponentMapping[E, _]) :String = select(component.selectable)
 
-		def select(columns :Seq[ColumnMapping[_, _]]) :String = {
+		def select(columns :Seq[TypedColumn[_, _]]) :String = {
 			val header = columns.map(_.selectHeader("")).mkString(",")
 			s"select $header from ${table.qname} where $where"
 		}
@@ -204,7 +204,7 @@ trait PropertiesMapping[E, PK] extends Mapping[E] {
 
 	object OptionalComponent {
 		def is(property :PropertyChain[E, _]) :Boolean =
-			PrefixComponent(property.chain).map(_.component).collect{ case col :ColumnMapping[_, _] if OptionalSelect.enabled(col) => col }.nonEmpty
+			PrefixComponent(property.chain).map(_.component).collect{ case col :TypedColumn[_, _] if OptionalSelect.enabled(col) => col }.nonEmpty
 	}
 
 

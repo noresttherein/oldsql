@@ -7,11 +7,11 @@ package net.noresttherein.oldsql.exceptions
   * (for example, more than one for [[net.noresttherein.oldsql.model.ComposedOf.ComposableFrom.Self self]]-composition).
   */
 class IllegalResultArityException(msg :String, cause :Throwable = null) extends BaseOldSQLException(msg, cause) {
-	override def stackOn(msg :String) :OldSQLException = new IllegalResultArityException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new IllegalResultArityException(msg, this)
 }
 
 class TooManyResultsException(msg :String, cause :Throwable = null) extends IllegalResultArityException(msg, cause) {
-	override def stackOn(msg :String) :OldSQLException = new TooManyResultsException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new TooManyResultsException(msg, this)
 }
 
 /** Thrown when an implementation attempts to access either the update count or a [[java.sql.ResultSet ResultSet]]
@@ -21,5 +21,5 @@ class TooManyResultsException(msg :String, cause :Throwable = null) extends Ille
   * This is most likely a bug either in the framework or custom extending classes rather than application code.
   */
 class MissingStatementResultBug(msg :String, cause :Throwable = null) extends BaseOldSQLException(msg, cause) with Bug {
-	override def stackOn(msg :String) :OldSQLException = new MissingStatementResultBug(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new MissingStatementResultBug(msg, this)
 }

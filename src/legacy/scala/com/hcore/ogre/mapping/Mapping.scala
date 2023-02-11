@@ -167,7 +167,7 @@ trait Mapping[E] extends GetResult[E] with AnyMapping { self =>
 
 	type ResultType = E
 	type Component[T] <: Mapping[T]
-//	type Column[T] <: ColumnMapping[T] with Component[T]
+//	type Column[T] <: TypedColumn[T] with Component[T]
 
 	final override def asMapping :this.type = this
 
@@ -293,7 +293,7 @@ object Mapping {
 
 	
 
-//	def apply[E](columns :Seq[ColumnMapping[_]], assemble :Seq[_]=>E, deassamble :E=>Seq[_]) :Mapping[E] =
+//	def apply[E](columns :Seq[TypedColumn[_]], assemble :Seq[_]=>E, deassamble :E=>Seq[_]) :Mapping[E] =
 //		new ColumnSeqMapping[E](columns, assemble, deassamble)
 
 //	trait MappingWalker[M<:Mapping]
@@ -624,7 +624,7 @@ object Mapping {
 	}
 
 
-	def GetColumns[E](columns :ColumnMapping[_]*) = GetResult[Seq[Any]](
+	def GetColumns[E](columns :TypedColumn[_]*) = GetResult[Seq[Any]](
 		params => columns.map(_(params))
 	)
 

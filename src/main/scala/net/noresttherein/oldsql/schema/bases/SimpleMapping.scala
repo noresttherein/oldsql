@@ -1,12 +1,16 @@
 package net.noresttherein.oldsql.schema.bases
 
-import java.sql.{CallableStatement, ResultSet}
+import java.sql.{CallableStatement, JDBCType, ResultSet}
 
+import net.noresttherein.oldsql.schema.ColumnMapping.TypedColumn
+import net.noresttherein.oldsql.schema.Mapping.MappingReadForm
+
+//import scala.annotation.nowarn
 import scala.collection.immutable.ArraySeq
 import scala.collection.mutable.ListBuffer
 import scala.reflect.runtime.universe.TypeTag
 
-import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.OperationView.{FilterView, InsertView, UpdateView, WriteOperationView}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
@@ -16,14 +20,13 @@ import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory, PropertyPath
 import net.noresttherein.oldsql.model.Kin.Derived
 import net.noresttherein.oldsql.model.KinFactory.DerivedKinFactory
 import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
-import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
+import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.witness.Maybe
-import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnForm, ColumnMapping, MappingExtract, SQLReadForm}
-import net.noresttherein.oldsql.schema.Buff.{ExtraSelect, NoSelect, OptionalSelect}
-import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StableColumn}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.RelVar
+import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnForm, MappingExtract, RelVar, Sealed, SQLReadForm}
+import net.noresttherein.oldsql.schema.Buff.{SelectPreset, NoSelect, OptionalSelect}
+import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StableColumn, TypedColumn}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, TypedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.ReadFormNullValue
 import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping, JoinedEntityComponent, JoinTableCollectionMapping, RelationshipMapping}
@@ -37,7 +40,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.{OpaqueColumnProxy, 
 
 
 
-/** A base trait for mappings with a fixed structure, with columns known statically, and which should be created
+/** A base trait for mappings with a fixed structure, with columns known statically, and which are created
   * manually, rather than by some generic code. While it exposes mutator methods to facilitate creation and declaration
   * of columns, it is expected that they'll be used solely in constructors of derived classes by those classes
   * themselves and, once created, it will be seen as immutable from the outside. If an attempt is made to modify
@@ -45,7 +48,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.{OpaqueColumnProxy, 
   * will be thrown.
   *
   * This mapping is flat: all mapped columns are direct components of this instance. It can have components,
-  * but they are nominally empty: any column and component fields of such components are in fact, from the point of view
+  * but they are formally empty: any column and component fields of such components are in fact, from the point of view
   * of the framework, components of this mapping, with the components only grouping them into subsets. They are still
   * useful, as they can define [[net.noresttherein.oldsql.schema.bases.StaticMapping.construct construct]] method
   * in terms of the columns and components of this mapping, assembling some property values of subject `S`.
@@ -71,7 +74,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.{OpaqueColumnProxy, 
   *           by ensuring that only components of mappings included in a query can be used in creation
   *           of SQL expressions used by that query.
   * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame]]
-  */
+  */ //todo: rename to FlatMeta
 trait SimpleMapping[S, O]
 	extends StaticMapping[S, O] with LazyMapping[S, O] with RelatedMapping[S, O] with ExportMapping
 { root =>
@@ -79,9 +82,13 @@ trait SimpleMapping[S, O]
 	/** Base trait for all components of `SimpleMapping`, including columns, synthetic relationship components
 	  * and user components. Components for business model objects should be derived from
 	  * [[net.noresttherein.oldsql.schema.bases.SimpleMapping.FlatComponent FlatComponent]] rather than this trait.
+	  * Instances of this type are always instances of the enclosing mapping's
+	  * [[net.noresttherein.oldsql.schema.Mapping.ExportComponent ExportComponent]]`[T]`.
 	  */
 	sealed trait AbstractComponent[T] extends BaseMapping[T, O] {
-		protected[SimpleMapping] def componentSelector :S =?> T
+		override type SuperMapping = root.type
+
+		protected[SimpleMapping] def componentSelector :Sealed[S =?> T]
 
 		private[SimpleMapping] final val extract :root.Extract[T] = MappingExtract(this)(componentSelector)
 
@@ -101,14 +108,18 @@ trait SimpleMapping[S, O]
 		  */
 		protected final def inheritedBuffs :Buffs[T] = root.buffs.unsafeCascade(componentSelector)
 
-		protected[SimpleMapping] def registerSelf() :Unit = root.synchronized {
+		/** Enlists this component in the `components` ''in spe'' property of the enclosing `SimpmleMapping`.
+		  * Must be called from within the constructor of a component, and all its subcomponents must likewise
+		  * be either eagerly created and appended to `componentsBuffer`, or their constructors
+		  * appended to `lateComponents`
+		  */
+		protected[SimpleMapping] final def registerSelf() :Unit = root.synchronized {
 			if (componentsBuffer == null)
 				throw new IllegalStateException(
 					s"Cannot include $this as a component of $root: the root mapping has already been initialized."
 				)
 			componentsBuffer += this
 		}
-
 	}
 
 
@@ -127,12 +138,16 @@ trait SimpleMapping[S, O]
 	  * This class should not be used as a base class for column implementations, as such classes
 	  * would not be correctly recognized as columns and result in exceptions being thrown when used.
 	  * All columns of `SimpleMapping` should be created using its factory methods (or factory methods of this class).
-	  */
+	  */ //todo: relativeSuffix
 	abstract class FlatComponent[T](property :S =?> T, relativePrefix :String, override val buffs :Buffs[T])
 	                               (implicit nulls :Maybe[NullValue[T]])
 		extends AbstractComponent[T] with StaticMapping[T, O] with EffectivelyEmptyMapping[T, O] with ExportMapping
 		   with RelatedMapping[T, O] with LazyMapping[T, O]
 	{ self =>
+		//fixme: if this is empty, we can't select or update it! The motivation was for all transitive columns
+		// to have consecutive indices assigned by SimpleMapping, but the columns can still
+		// extend FlatColumn/AbstractColumn, together with FlatComponent.Subcolumn
+
 		def this(property :S =?> T, buffs :Buffs[T])(implicit nullValue :Maybe[NullValue[T]]) =
 			this(property, "", buffs)
 
@@ -142,25 +157,29 @@ trait SimpleMapping[S, O]
 		def this(property :S =?> T, buffs :Buff[T]*)(implicit nullValue :Maybe[NullValue[T]]) =
 			this(property, "", buffs :_*)
 
-		override val nullValue :NullValue[T] = nulls.opt getOrElse NullValue.NotNull
+		/** Returns `SimpleMapping.this.`[[net.noresttherein.oldsql.schema.bases.SimpleMapping.columnPrefix columnPrefix]]. */
 		protected def inheritedPrefix :String = root.verifiedPrefix
 		protected override val columnPrefix :String = inheritedPrefix + relativePrefix
+		override val nullValue :NullValue[T] = nulls.opt getOrElse NullValue.NotNull
 
-		protected[SimpleMapping] override def componentSelector :S =?> T = property
+		protected[SimpleMapping] override def componentSelector :Sealed[S =?> T] = property
 
 		registerSelf()
 
+		protected abstract class Subcomponent[X]()
+
 		private[this] var initExtractMap :NaturalMap[Component, Extract] = NaturalMap.empty
-		private[this] val lazyExtracts = Lazy(synchronized { val res = initExtractMap; initExtractMap = null; res })
+		private[this] lazy val lazyExtracts = synchronized { val res = initExtractMap; initExtractMap = null; res }
 
-		protected[schema] override val lazyColumns :Lazy[Unique[Column[_]]] =
-			Lazy(lazyColumnExtracts.get.collect { case Assoc(col, _) => col }.to(Unique))
+		private[this] lazy val lazyColumns :Unique[Column[_]] =
+			columnExtracts.collect { case Assoc(col, _) => col }.to(Unique)
 
-		protected[schema] val lazyComponents :Lazy[Unique[Component[_]]] =
-			Lazy(lazyExtracts.get.collect { case Assoc(comp, _) => comp }.to(Unique))
+		private[this] lazy val lazyComponents :Unique[Component[_]] =
+			lazyExtracts.collect { case Assoc(comp, _) => comp }.to(Unique)
 
-		final override def extracts :NaturalMap[Component, Extract] = lazyExtracts.get
+		final override def extracts   :NaturalMap[Component, Extract] = lazyExtracts
 		final override def components :Unique[Component[_]] = lazyComponents
+		final override def columns    :Unique[Column[_]]    = lazyColumns
 
 		/** Adds the given component of the outer mapping to the waiting list of this mapping's components.
 		  * Once any of the column, component or extract collections of this mapping are accessed, they will contain
@@ -270,21 +289,21 @@ trait SimpleMapping[S, O]
 			optcolumn[X](PropertyPath.nameOf(property), property, buffs :_*)
 
 
-		protected override def fkimpl[M[A] <: RefinedMapping[E, A], K, E, X, R]
+		protected override def fkimpl[M[A] <: TypedMapping[E, A], K, E, X, R]
 		                             (name :String, property :T => R, buffs :Buff[R]*)
-		                             (table :RelVar[M], key :M[_] => ColumnMapping[K, _],
+		                             (table :RelVar[M], key :M[_] => TypedColumn[K, _],
 		                              factory :RelatedEntityFactory[K, E, X, R]) :ForeignKeyColumnMapping[M, K, R, O] =
 		{
 			val selector = Extractor.req(property)
 			val allBuffs = this.buffs.cascade(property).declare(buffs :_*)
 			borrow(
 				new FKColumn[M, K, E, X, R, Unit](extract andThenReq selector, columnPrefix + name, allBuffs)(
-					factory, table, key.asInstanceOf[M[Unit] => ColumnMapping[K, Unit]]
+					factory, table, key.asInstanceOf[M[Unit] => TypedColumn[K, Unit]]
 				), selector
 			)
 		}
 
-		protected override def fkimpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, X, R]
+		protected override def fkimpl[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, X, R]
 		                             (property :T => R, buffs :Buff[R]*)
 		                             (table :RelVar[M], key :M[_] => C[_], factory :RelatedEntityFactory[K, E, X, R])
 		                             (rename :String => String) :ForeignKeyMapping[M, C, K, R, O] =
@@ -299,7 +318,7 @@ trait SimpleMapping[S, O]
 			)
 		}
 
-		protected override def inverseFKImpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, X, R]
+		protected override def inverseFKImpl[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, X, R]
 		                       (property :T => R, key :C[O], reference :RelatedEntityFactory[K, E, X, R], buffs :Buff[R]*)
 		                       (table :RelVar[M], fk :M[_] => ForeignKeyMapping[MappingAt, C, K, _, _])
 				:JoinedEntityComponent[M, C, K, R, O] =
@@ -313,7 +332,7 @@ trait SimpleMapping[S, O]
 			)
 		}
 
-		protected override def kinimpl[J[A] <: RefinedMapping[JE, A], M[A] <: RefinedMapping[E, A],
+		protected override def kinimpl[J[A] <: TypedMapping[JE, A], M[A] <: TypedMapping[E, A],
 			                           C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
 		                              (property :T => Kin[X], joinTable :RelVar[J],
 		                               source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
@@ -332,7 +351,7 @@ trait SimpleMapping[S, O]
 			)
 		}
 
-		protected override def manyimpl[J[A] <: RefinedMapping[JE, A], M[A] <: RefinedMapping[E, A],
+		protected override def manyimpl[J[A] <: TypedMapping[JE, A], M[A] <: TypedMapping[E, A],
 			                            C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
 		                               (property :T => Derived[E, X], joinTable :RelVar[J],
 		                                source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
@@ -350,7 +369,6 @@ trait SimpleMapping[S, O]
 				), selector
 			)
 		}
-
 	}
 
 
@@ -470,11 +488,11 @@ trait SimpleMapping[S, O]
 
 
 
-	private trait AbstractColumn[T] extends AbstractComponent[T] with ColumnMapping[T, O] {
-		protected[SimpleMapping] val index = root.synchronized {
+	private trait AbstractColumn[T] extends AbstractComponent[T] with BaseColumn[T, O] {
+		protected[SimpleMapping] final val index = root.synchronized {
 			if (componentsBuffer == null)
 				throw new IllegalStateException(
-					s"Cannot include $this as a column of $root: the root mapping has already been initialized."
+					s"Cannot include $buffString as a column of $root: the root mapping has already been initialized."
 				)
 			componentsBuffer += this
 			columnsBuffer += this
@@ -506,8 +524,9 @@ trait SimpleMapping[S, O]
 	  * [[net.noresttherein.oldsql.schema.bases.SimpleMapping.AbstractComponent components]] and
 	  * [[net.noresttherein.oldsql.schema.bases.SimpleMapping.AbstractColumn columns]] of the enclosing `SimpleMapping`.
 	  */
-	private class MirrorComponent[M <: RefinedMapping[T, X], T, X]
-	                             (override val componentSelector :S =?> T, override val buffs :Buffs[T] = Buffs.empty[T])
+	private class MirrorComponent[M <: TypedMapping[T, X], T, X]
+	                             (override val componentSelector :Sealed[S =?> T],
+	                              override val buffs :Buffs[T] = Buffs.empty[T])
 	                             (override val backer :M, rename :String => String = identity[String])
 		extends OpaqueProxy[T, O](backer) with AbstractComponent[T]
 	{ mirror =>
@@ -521,7 +540,7 @@ trait SimpleMapping[S, O]
 			val extract = backer(component)
 			val totalBuffs = buffs.unsafeCascade(extract).declare()
 			val selector = componentSelector andThen extract
-			new MirrorComponent[RefinedMapping[U, X], U, X](selector, totalBuffs)(component, rename)
+			new MirrorComponent[TypedMapping[U, X], U, X](selector, totalBuffs)(component, rename)
 		}
 
 		protected override def adapt[U](column :backer.Column[U]) :Column[U] = {
@@ -540,6 +559,7 @@ trait SimpleMapping[S, O]
 			}
 		}
 
+		registerSelf()
 
 		def mirror[U](component :backer.Component[U]) :Component[U] = alias(component)
 		def mirror[U](column :backer.Column[U]) :Column[U] = alias(column)
@@ -547,8 +567,8 @@ trait SimpleMapping[S, O]
 
 
 
-	private class FKComponent[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X]
-	              (override val componentSelector :S =?> R, rename :String => String, override val buffs :Buffs[R])
+	private class FKComponent[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, X]
+	              (override val componentSelector :Sealed[S =?> R], rename :String => String, override val buffs :Buffs[R])
 	              (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => C[X])
 		extends RelatedEntityForeignKey[M, C, K, E, T, R, X, O](rename, factory, buffs)(table, pk)
 		   with AbstractComponent[R]
@@ -563,35 +583,35 @@ trait SimpleMapping[S, O]
 				factory, table, pk
 			)
 
-		private[this] val lazyKey = Lazy {
+		private[this] lazy val lazyKey = {
 			val extract = KeyExtractor(factory)
 			val selector = componentSelector andThen extract
 			new MirrorComponent[C[X], K, X](selector, buffs.cascade(factory.forceKeyOutOf), Nil)(target, rename)
 		}
-		override def key :Component[K] = lazyKey.get
+		override def key :Component[K] = lazyKey
 
-		override def local[U](subKey :RefinedMapping[U, X]) :Component[U] = lazyKey.get.mirror(subKey)
-		override def local[U](subKey :ColumnMapping[U, X]) :Column[U] = lazyKey.get.mirror(subKey)
+		override def local[U](subKey :TypedMapping[U, X]) :Component[U] = lazyKey.mirror(subKey)
+		override def local[U](subKey :TypedColumn[U, X]) :Column[U] = lazyKey.mirror(subKey)
 
 		root.synchronized { //this component will be created lazily; it must be before root lists are accessed
 			registerSelf()
-			lateComponents += (() => lazyKey.get)
+			lateComponents += (() => lazyKey)
 		}
 	}
 
 
-	private class FKColumn[M[A] <: RefinedMapping[E, A], K, E, T, R, X]
-	                      (override val componentSelector :S =?> R, name :String, override val buffs :Buffs[R])
-	                      (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => ColumnMapping[K, X])
+	private class FKColumn[M[A] <: TypedMapping[E, A], K, E, T, R, X]
+	                      (override val componentSelector :Sealed[S =?> R], name :String, override val buffs :Buffs[R])
+	                      (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => TypedColumn[K, X])
 		extends RelatedEntityForeignKeyColumn[M, K, E, T, R, X, O](name, factory, buffs)(table, pk)
 		   with AbstractColumn[R]
 	{ fk =>
 		def this(selector :S =?> R, name :String, buffs :Seq[Buff[R]])
-				(factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => ColumnMapping[K, X]) =
+				(factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => TypedColumn[K, X]) =
 			this(selector, name, root.buffs.unsafeCascade(selector).declare(buffs :_*))(factory, table, pk)
 
 		//override the underlying key column with one extending AbstractColumn
-		private[this] val lazyKey = Lazy {
+		private[this] lazy val lazyKey = {
 			val extract = KeyExtractor(factory)
 			val selector = componentSelector andThen extract
 			if (target.isInstanceOf[SimpleColumn[_, _]])
@@ -605,7 +625,7 @@ trait SimpleMapping[S, O]
 		override def key :Column[K] = lazyKey
 
 		root synchronized { //last minute init because references target
-			lateComponents += (() => lazyKey.get)
+			lateComponents += (() => lazyKey)
 		}
 	}
 
@@ -622,8 +642,8 @@ trait SimpleMapping[S, O]
 		registerSelf()
 	}
 
-	private class InverseFKComponent[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X]
-	                                (override val componentSelector :S =?> R, buffs :Buffs[R])
+	private class InverseFKComponent[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, X]
+	                                (override val componentSelector :Sealed[S =?> R], buffs :Buffs[R])
 	                                (key :C[O], factory :RelatedEntityFactory[K, E, T, R])
 	                                (table :RelVar[M], fk :M[X] => ForeignKeyMapping[MappingAt, C, K, _, X])
 		extends InverseForeignKeyMapping[M, C, K, E, T, R, X, O](key, factory, buffs)(table, fk)
@@ -636,9 +656,9 @@ trait SimpleMapping[S, O]
 	}
 
 	private class ToManyDerivedComponent
-	              [J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+	              [J[A] <: TypedMapping[JE, A], T[A] <: TypedMapping[E, A],
 		           C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
-	              (override val componentSelector :S =?> Derived[E, X], override val joinTable :RelVar[J],
+	              (override val componentSelector :Sealed[S =?> Derived[E, X]], override val joinTable :RelVar[J],
 	               back :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
 	               forward :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
 	               linkKin: => DerivedKinFactory[K, JE, Iterable[JE]], targetKin: => KinFactory[TK, E, E],
@@ -649,9 +669,9 @@ trait SimpleMapping[S, O]
 		 ) with AbstractComponent[Derived[E, X]] with InverseRelationshipValidation[T, Derived[E, X]]
 
 	private class ToManyKinComponent
-	              [J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+	              [J[A] <: TypedMapping[JE, A], T[A] <: TypedMapping[E, A],
 		           C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
-	              (override val componentSelector :S =?> Kin[X], override val joinTable :RelVar[J],
+	              (override val componentSelector :Sealed[S =?> Kin[X]], override val joinTable :RelVar[J],
 	               back :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
 	               forward :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
 	               linkKin: => DerivedKinFactory[K, JE, Iterable[JE]], targetKin: => KinFactory[TK, E, E],
@@ -664,7 +684,7 @@ trait SimpleMapping[S, O]
 
 
 
-	private[this] val lazyBuffs = Lazy {
+	private[this] lazy val lazyBuffs = {
 		val bs = declaredBuffs
 		if (bs == null)
 			throw new IllegalStateException(
@@ -687,7 +707,7 @@ trait SimpleMapping[S, O]
 	  * [[net.noresttherein.oldsql.schema.bases.SimpleMapping.declaredBuffs declaredBuffs]] instead (if at all).
 	  * @return `Buffs(this, `[[net.noresttherein.oldsql.schema.bases.SimpleMapping.declaredBuffs declaredBuffs]]`:_*)`.
 	  */
-	override def buffs :Buffs[S] = lazyBuffs.get
+	override def buffs :Buffs[S] = lazyBuffs
 
 	/** Buffs declared by this instance (rather than inherited). It becomes
 	  * the [[net.noresttherein.oldsql.schema.Buffs.front front]] portion of this instance's
@@ -699,23 +719,23 @@ trait SimpleMapping[S, O]
 
 
 
-	override def filterValues(subject :S) :ComponentValues[S, O] = writtenValues(FILTER, subject)
-	override def insertValues(subject :S) :ComponentValues[S, O] = writtenValues(INSERT, subject)
-	override def updateValues(subject :S) :ComponentValues[S, O] = writtenValues(UPDATE, subject)
+	override def filterValues(subject :S) :ComponentValues[S, O] = writtenValues(FilterView, subject)
+	override def insertValues(subject :S) :ComponentValues[S, O] = writtenValues(InsertView, subject)
+	override def updateValues(subject :S) :ComponentValues[S, O] = writtenValues(UpdateView, subject)
 
-	override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] = {
+	override def writtenValues[T](op :WriteOperationView, subject :S) :ComponentValues[S, O] = {
 		val res = new IndexedColumnValuesBuilder
 		writtenValues(op, subject, res) //StaticMapping delegates this to specific methods
 		res.result()
 	}
 
 	private class IndexedColumnValuesBuilder extends ComponentValuesBuilder[S, O] {
-		private[this] val columns = lazyColumns.get
+		private[this] val columns = lazyColumns
 		private[this] val columnCount = columns.size
 		private[this] val values = new Array[Any](columnCount)
-		private[this] var componentValues = Map.empty[RefinedMapping[_, O], Any]
+		private[this] var componentValues = Map.empty[TypedMapping[_, O], Any]
 
-		override def addOpt[T](component :RefinedMapping[T, O], result :Opt[T]) :this.type = export(component) match {
+		override def addOpt[T](component :TypedMapping[T, O], result :Opt[T]) :this.type = export(component) match {
 			case col :SimpleMapping[_, _]#AbstractColumn[_] =>
 				values(col.index) = result.orNull; this
 			case _ if !result.isEmpty =>
@@ -742,72 +762,9 @@ trait SimpleMapping[S, O]
 	}
 
 
-
-	override def apply[T](component :Component[T]) :Extract[T] = component match {
-		case comp :SimpleMapping[_, _]#FlatComponent[_] if comp belongsTo this =>
-			comp.extract.asInstanceOf[Extract[T]]
-		case _ =>
-			throw new NoSuchComponentException(s"$component is not a component of $this.")
-	}
-
-	override def apply[T](column :Column[T]) :ColumnExtract[T] = column match {
-		case comp :SimpleMapping[_, _]#FlatComponent[_] if comp belongsTo this =>
-			comp.extract.asInstanceOf[ColumnExtract[T]]
-		case _ =>
-			throw new NoSuchComponentException(s"$column is not a column of $this.")
-	}
-
-	private[this] var lateComponents :ListBuffer[() => AbstractComponent[_]] = ListBuffer.empty
-	private[this] var componentsBuffer :ListBuffer[AbstractComponent[_]] = ListBuffer.empty
-	private[this] var columnsBuffer :ListBuffer[AbstractColumn[_]] = ListBuffer.empty
-
-	private val lazyComponents = Lazy(synchronized {
-		while (lateComponents.nonEmpty) {
-			val late = lateComponents
-			lateComponents = ListBuffer.empty
-			late.foreach { f => f() }
-		}
-		lateComponents = null
-		val comps = Unique.from(componentsBuffer)
-		componentsBuffer = null
-		comps
-	})
-
-	protected[schema] override val lazyColumns :Lazy[Unique[Column[_]]] = Lazy(synchronized {
-		lazyComponents.get
-		val cols = Unique.from(columnsBuffer)
-		columnsBuffer = null
-		cols
-	})
-
-	private[this] val lazyExtracts = Lazy {
-		def entry[T](component :AbstractComponent[T]) =
-			Assoc[Component, Extract, T](component, component.extract)
-
-		NaturalMap(lazyComponents.map(entry(_)) :_*)
-	}
-
-	final override def extracts :ExtractMap = lazyExtracts
-	final override def components :Unique[Component[_]] = lazyComponents
-	final override def subcomponents :Unique[Component[_]] = lazyComponents
-
-
-	/** Prefix added to given names of all created instances of this.Column[_]. Defaults to "", subclasses may override.
-	  * Overrides with a `val` or `var` (or any used in their implementation) must happen ''before'' any components
-	  * of this mapping are initialized - in practice before any column declarations.
-	  */
-	protected override def columnPrefix = ""
-
-	private final def verifiedPrefix :String = columnPrefix match {
-		case null => throw new IllegalStateException(
-			s"$this.columnPrefix is null: override with a val must happen before any component declarations.")
-		case prefix => prefix
-	}
-
-
-
-	private class ReadForm(columns :Unique[Column[_]],
-	                       read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
+	//todo: index-based writtenValues
+	private class ReadForm(final val columns :Unique[Column[_]],
+	                       final val read :TypedColumn[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
 		extends SQLReadForm[S] with ReadFormNullValue[S]
 	{
 		override val nulls = root.nullValue
@@ -818,7 +775,8 @@ trait SimpleMapping[S, O]
 		}.toArray
 		private[this] val forms = fastColumns.map(read)
 
-		override def readColumns :Int = fastColumns.length
+		override val columnTypes :Seq[JDBCType] = ArraySeq.unsafeWrapArray(forms.flatMap(_.columnTypes))
+		override val columnCount :Int = columnTypes.length
 
 		override def opt(res :ResultSet, position :Int) :Opt[S] = {
 			val vals = new Array[Any](fastColumns.length)
@@ -827,8 +785,8 @@ trait SimpleMapping[S, O]
 			while (i < forms.length) {
 				vals(fastColumns(i).index) = forms(i).opt(res, position + i).orNull
 				i += 1
-			}
-			val pieces = ColumnValues(root)(ArraySeq.unsafeWrapArray(vals)) {
+			} //use non-aliasing values for speed - we are an ExportMapping
+			val pieces = ColumnValues[S, O](ArraySeq.unsafeWrapArray(vals)) {
 				case col :SimpleMapping[_, _]#AbstractColumn[_] => col.index
 				case _ => -1
 			}
@@ -843,17 +801,36 @@ trait SimpleMapping[S, O]
 			}
 		}
 
+
+		override def comparable(other :SQLReadForm[_]) :Boolean = other match {
+			case _ if other eq this => true
+			case _ if columnCount != other.columnCount => false
+			case other :SimpleMapping[_, _]#ReadForm =>
+				columns.toSeq.view.map(_.form.sqlType) == other.columns.toSeq.view.map(_.form.sqlType)
+			case _ =>
+				new MappingReadForm[S, O](root, columns) comparable other
+		}
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if this eq self => true
+			case other :SimpleMapping[_, _]#ReadForm => //this function equality should work, as there is no reason for closure
+				(root identical other.root) &&
+					(columns identical other.columns) && (columns.view.map(read) == other.columns.view.map(other.read))
+			case _ => false
+		}
+		private def root = SimpleMapping.this
+		override def hashCode :Int = (root.hashCode * 31 + columns.hashCode) * 31 + read.hashCode
+
 		override def toString :String = columns.map(read).mkString(s"$root{", ",", "}>")
 	}
 
 
-	protected[schema] override val lazySelectForm :Lazy[SQLReadForm[S]] = Lazy(new ReadForm(selectedByDefault))
+	private lazy val lazySelectForm :SQLReadForm[S] = new ReadForm(selectedByDefault)
 
 	override def selectForm :SQLReadForm[S] = lazySelectForm
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] = {
 		val selected = components map {
-			case col :ColumnMapping[_, O @unchecked] => col
+			case col :TypedColumn[_, O] @unchecked => col
 			case comp => throw new IllegalArgumentException(
 				s"$comp is not a column of $this. SimpleMapping.selectForm accepts only columns."
 			)
@@ -871,8 +848,77 @@ trait SimpleMapping[S, O]
 				)
 			)
 		}
-		val extra = selected ++ ExtraSelect.Active.columns(root)
+		val extra = selected ++ SelectPreset.Active.columns(root)
 		new ReadForm(selected :++ extra)
+	}
+
+
+
+
+	/** Prefix added to given names of all created instances of this.Column[_]. Defaults to "", subclasses may override.
+	  * Overrides with a `val` or `var` (or any used in their implementation) must happen ''before'' any components
+	  * of this mapping are initialized - in practice before any column declarations.
+	  */
+	protected override def columnPrefix = ""
+
+	private final def verifiedPrefix :String = columnPrefix match {
+		case null => throw new IllegalStateException(
+			s"$this.columnPrefix is null: override with a val must happen before any component declarations.")
+		case prefix => prefix
+	}
+
+	/** Constructors of components of this mapping which couldn't be created by their 'parent' components
+	  * out of a concern for an infinite recursion caused by referencing cycles possible with foreign keys.
+	  * These typically simply return a `lazy val` of some other component.
+	  * The list is emptied (repeatedly) when any of the component/column collections of the mapping is accessed.
+	  */
+	private[this] var lateComponents   :ListBuffer[() => AbstractComponent[_]] = ListBuffer.empty
+	private[this] var componentsBuffer :ListBuffer[AbstractComponent[_]] = ListBuffer.empty
+	private[this] var columnsBuffer    :ListBuffer[AbstractColumn[_]] = ListBuffer.empty
+
+	private lazy val lazyComponents = synchronized {
+		while (lateComponents.nonEmpty) {
+			val late = lateComponents
+			lateComponents = ListBuffer.empty
+			late.foreach { f => f() }
+		}
+		lateComponents = null
+		val comps = Unique.from(componentsBuffer)
+		componentsBuffer = null
+		comps
+	}
+
+	private lazy val lazyColumns :Unique[Column[_]] = synchronized {
+		lazyComponents //: @nowarn //initialize
+		val cols = Unique.from(columnsBuffer)
+		columnsBuffer = null
+		cols
+	}
+
+	private lazy val lazyExtracts = {
+		def entry[T](component :AbstractComponent[T]) =
+			Assoc[Component, Extract, T](component, component.extract)
+		NaturalMap(lazyComponents.view.map(entry(_)).toSeq :_*)
+	}
+
+	final override def extracts      :ExtractMap = lazyExtracts
+	final override def columns       :Unique[Column[_]] = lazyColumns
+	final override def components    :Unique[Component[_]] = lazyComponents
+	final override def subcomponents :Unique[Component[_]] = lazyComponents
+
+
+	override def apply[T](component :Component[T]) :Extract[T] = component match {
+		case comp :SimpleMapping[_, _]#AbstractComponent[_] if comp belongsTo this =>
+			comp.extract.asInstanceOf[Extract[T]]
+		case _ =>
+			throw new NoSuchComponentException(s"$component is not a component of $this.")
+	}
+
+	override def apply[T](column :Column[T]) :ColumnExtract[T] = column match {
+		case comp :SimpleMapping[_, _]#AbstractComponent[_] if comp belongsTo this =>
+			comp.extract.asInstanceOf[ColumnExtract[T]]
+		case _ =>
+			throw new NoSuchComponentException(s"${column.debugString} is not a column of $this.")
 	}
 
 
@@ -939,15 +985,15 @@ trait SimpleMapping[S, O]
 
 
 
-	protected override def fkimpl[M[A] <: RefinedMapping[E, A], K, E, T, R]
+	protected override def fkimpl[M[A] <: TypedMapping[E, A], K, E, T, R]
 	                             (name :String, property :S => R, buffs :Buff[R]*)
-	                             (table :RelVar[M], key :M[_] => ColumnMapping[K, _],
+	                             (table :RelVar[M], key :M[_] => TypedColumn[K, _],
 	                              factory :RelatedEntityFactory[K, E, T, R]) :ForeignKeyColumnMapping[M, K, R, O] =
 		new FKColumn[M, K, E, T, R, Unit](property, verifiedPrefix + name, buffs)(
-			factory, table, key.asInstanceOf[M[Unit] => ColumnMapping[K, Unit]]
+			factory, table, key.asInstanceOf[M[Unit] => TypedColumn[K, Unit]]
 		)
 	//consider: should we be using columnPrefix for fk components with a rename function?
-	protected override def fkimpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R]
+	protected override def fkimpl[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R]
 	                             (property :S => R, buffs :Buff[R]*)
 	                             (table :RelVar[M], key :M[_] => C[_], factory :RelatedEntityFactory[K, E, T, R])
 	                             (rename :String => String) :ForeignKeyMapping[M, C, K, R, O] =
@@ -955,7 +1001,7 @@ trait SimpleMapping[S, O]
 			factory, table, key.asInstanceOf[M[Unit] => C[Unit]]
 		)
 
-	protected override def inverseFKImpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R]
+	protected override def inverseFKImpl[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R]
 	                       (property :S => R, key :C[O], reference :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
 	                       (table :RelVar[M], fk :M[_] => ForeignKeyMapping[MappingAt, C, K, _, _])
 			:JoinedEntityComponent[M, C, K, R, O] =
@@ -963,7 +1009,7 @@ trait SimpleMapping[S, O]
 			table, fk.asInstanceOf[M[Unit] => ForeignKeyMapping[MappingAt, C, K, _, Unit]]
 		)
 
-	protected override def kinimpl[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+	protected override def kinimpl[J[A] <: TypedMapping[JE, A], T[A] <: TypedMapping[E, A],
 		                           C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
 	                              (property :S => Kin[X], joinTable :RelVar[J],
 	                               source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
@@ -973,10 +1019,11 @@ trait SimpleMapping[S, O]
 	                              (implicit composite :X ComposedOf E, link :TypeTag[JE])
 			:JoinTableCollectionMapping[J, T, C, TC, K, TK, Kin[X], O] =
 		new ToManyKinComponent[J, T, C, TC, K, TK, JE, E, X, TR, JO](
-			property, joinTable, source, target, linkKin, targetKin, this.buffs.cascade(property).declare(buffs :_*)
+			property :S =?> Kin[X], joinTable, source, target, linkKin, targetKin,
+			this.buffs.cascade(property).declare(buffs :_*)
 		)
 
-	protected override def manyimpl[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+	protected override def manyimpl[J[A] <: TypedMapping[JE, A], T[A] <: TypedMapping[E, A],
 		                            C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
 	                               (property :S => Derived[E, X], joinTable :RelVar[J],
 	                                source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
@@ -986,7 +1033,8 @@ trait SimpleMapping[S, O]
 	                               (implicit composite :X ComposedOf E, link :TypeTag[JE])
 			:JoinTableCollectionMapping[J, T, C, TC, K, TK, Derived[E, X], O] =
 		new ToManyDerivedComponent[J, T, C, TC, K, TK, JE, E, X, TR, JO](
-			property, joinTable, source, target, linkKin, targetKin, this.buffs.cascade(property).declare(buffs :_*)
+			property :S =?> Derived[E, X], joinTable, source, target, linkKin, targetKin,
+			this.buffs.cascade(property).declare(buffs :_*)
 		)
 
 }

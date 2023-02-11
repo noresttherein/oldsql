@@ -60,6 +60,23 @@ private[oldsql] sealed abstract class ReversedList[+E] extends AbstractSeq[E] {
 			f(last)
 		}
 
+	override def exists(p :E => Boolean) :Boolean = {
+		@tailrec def rec(list :Seq[E]) :Boolean = list match {
+			case _ if list.isEmpty => false
+			case _ :ReversedList[E] => p(list.last) || rec(list.init)
+			case _ => list.exists(p)
+		}
+		rec(this)
+	}
+	override def forall(p :E => Boolean) :Boolean = {
+		@tailrec def rec(list :Seq[E]) :Boolean = list match {
+			case _ if list.isEmpty => true
+			case _ :ReversedList[E] => p(list.last) && rec(list.init)
+			case _ => list.forall(p)
+		}
+		rec(this)
+	}
+
 
 	override def copyToArray[B >: E](xs :Array[B], start :Int, len :Int) :Int = {
 		val realStart = if (start < 0) 0 else start
@@ -128,7 +145,7 @@ private[oldsql] sealed abstract class ReversedList[+E] extends AbstractSeq[E] {
 /** [[scala.collection.IterableFactory IterableFactory]] of
   * [[net.noresttherein.oldsql.collection.ReversedList ReversedList]] - linked lists with O(1) append,
   * rather than prepend.
-  */
+  */ //todo: rename to AppendingList
 private[oldsql] object ReversedList extends SeqFactory[ReversedList] {
 	/** A singleton list. */
 	def :+[A](elem :A) :ReversedList[A] = new NonEmpty(Empty, elem, 1)

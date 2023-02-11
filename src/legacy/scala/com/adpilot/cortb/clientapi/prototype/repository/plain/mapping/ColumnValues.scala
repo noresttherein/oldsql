@@ -17,45 +17,45 @@ import ColumnValues._
 trait ColumnValues {
 	def select(selection :ColumnSelection) :ColumnValues = selection(this)
 
-	def compose(before :ColumnMapping[_, _]=>ColumnMapping[_, _]) :ColumnValues =
+	def compose(before :TypedColumn[_, _]=>TypedColumn[_, _]) :ColumnValues =
 		new MappingColumnValues(this, before)
 
-	def filter(remaining :ColumnMapping[_, _]=>Boolean) :ColumnValues =
+	def filter(remaining :TypedColumn[_, _]=>Boolean) :ColumnValues =
 		new FilteringColumnValues(this, remaining)
 
-	def collector(fun :PartialFunction[ColumnMapping[_, _], ColumnMapping[_, _]]) :ColumnValues =
+	def collector(fun :PartialFunction[TypedColumn[_, _], TypedColumn[_, _]]) :ColumnValues =
 		new CollectingColumnValues(this, fun)
 
-	def apply[X](column :ColumnMapping[_, X]) :Option[X]
+	def apply[X](column :TypedColumn[_, X]) :Option[X]
 
-	def value[X](column :ColumnMapping[_, X]) :Option[ColumnValue[X]] = apply(column).map(ColumnValue(column, _))
+	def value[X](column :TypedColumn[_, X]) :Option[ColumnValue[X]] = apply(column).map(ColumnValue(column, _))
 }
 
 
-case class ColumnValue[T](column :ColumnMapping[_, T], value :T) extends ColumnValues {
+case class ColumnValue[T](column :TypedColumn[_, T], value :T) extends ColumnValues {
 	override def toString = s"$column=$value"
 
 
-	override def filter(remaining: (ColumnMapping[_, _]) => Boolean): ColumnValues =
+	override def filter(remaining: (TypedColumn[_, _]) => Boolean): ColumnValues =
 		if (remaining(column)) this
 		else EmptyValues
 
-	def apply[X](column :ColumnMapping[_, X]) :Option[X] =
+	def apply[X](column :TypedColumn[_, X]) :Option[X] =
 		value.asInstanceOf[X].providing(column==this.column)
 
-	override def value[X](column: ColumnMapping[_, X]): Option[ColumnValue[X]] =
+	override def value[X](column: TypedColumn[_, X]): Option[ColumnValue[X]] =
 		this.providing(column==this.column).asInstanceOf[Option[ColumnValue[X]]]
 }
 
 object ColumnValue {
-	implicit def apply[T](pair :(ColumnMapping[_, T], T)) :ColumnValue[T] = new ColumnValue(pair._1, pair._2)
+	implicit def apply[T](pair :(TypedColumn[_, T], T)) :ColumnValue[T] = new ColumnValue(pair._1, pair._2)
 
-	def apply[E, T](entity :E, column :ColumnMapping[E, T]) :ColumnValue[T] = new ColumnValue(column, column.value(entity))
+	def apply[E, T](entity :E, column :TypedColumn[E, T]) :ColumnValue[T] = new ColumnValue(column, column.value(entity))
 
-	def apply[T](column :ColumnMapping[_, T], res :PositionedResult) :ColumnValue[T] =
+	def apply[T](column :TypedColumn[_, T], res :PositionedResult) :ColumnValue[T] =
 		new ColumnValue(column, column(res))
 
-	def apply[T](column :ColumnMapping[_, T], values :ColumnValues) :ColumnValue[T] =
+	def apply[T](column :TypedColumn[_, T], values :ColumnValues) :ColumnValue[T] =
 		values.value(column) getOrElse {
 			throw new IllegalArgumentException(s"can't get value for $column from $values")
 		}
@@ -69,7 +69,7 @@ object ColumnValues {
 	def apply(columns :ColumnIndex, res :PositionedResult) :ColumnValues =
 		new PositionedResultValues(columns, res)
 
-	def apply(columns :Seq[ColumnMapping[_, _]], res :PositionedResult) :ColumnValues =
+	def apply(columns :Seq[TypedColumn[_, _]], res :PositionedResult) :ColumnValues =
 		apply(ColumnIndex(columns), res)
 
 	def apply(values :Seq[ColumnValue[_]]) :ColumnValues =
@@ -103,29 +103,29 @@ object ColumnValues {
 
 
 
-	private case class MappingColumnValues(values :ColumnValues, decorator :ColumnMapping[_, _]=>ColumnMapping[_, _]) extends ColumnValues {
-		override def apply[X](column: ColumnMapping[_, X]): Option[X] =
-			values(decorator(column).asInstanceOf[ColumnMapping[_, X]])
+	private case class MappingColumnValues(values :ColumnValues, decorator :TypedColumn[_, _]=>TypedColumn[_, _]) extends ColumnValues {
+		override def apply[X](column: TypedColumn[_, X]): Option[X] =
+			values(decorator(column).asInstanceOf[TypedColumn[_, X]])
 
-		override def compose(before: (ColumnMapping[_, _]) => ColumnMapping[_, _]): ColumnValues =
+		override def compose(before: (TypedColumn[_, _]) => TypedColumn[_, _]): ColumnValues =
 			values.compose(before andThen decorator)
 
-		override def collector(fun: PartialFunction[ColumnMapping[_, _], ColumnMapping[_, _]]): ColumnValues =
+		override def collector(fun: PartialFunction[TypedColumn[_, _], TypedColumn[_, _]]): ColumnValues =
 			values.collector(fun andThen decorator)
 
 		override def toString = s"Mapped($values)"
 	}
 
-	private case class FilteringColumnValues(values :ColumnValues, filter :ColumnMapping[_, _]=>Boolean) extends ColumnValues {
+	private case class FilteringColumnValues(values :ColumnValues, filter :TypedColumn[_, _]=>Boolean) extends ColumnValues {
 
-		override def apply[X](column: ColumnMapping[_, X]): Option[X] =
+		override def apply[X](column: TypedColumn[_, X]): Option[X] =
 			if (filter(column)) values(column)
 			else None
 
-		override def filter(remaining: (ColumnMapping[_, _]) => Boolean): ColumnValues =
+		override def filter(remaining: (TypedColumn[_, _]) => Boolean): ColumnValues =
 			values.filter(c => remaining(c) && filter(c))
 
-		override def collector(fun: PartialFunction[ColumnMapping[_, _], ColumnMapping[_, _]]): ColumnValues = {
+		override def collector(fun: PartialFunction[TypedColumn[_, _], TypedColumn[_, _]]): ColumnValues = {
 			val matcher = Unapply(fun)
 			values.collector({ case matcher(c) if filter(c) => c })
 		}
@@ -133,16 +133,16 @@ object ColumnValues {
 		override def toString = s"Filtered($values)"
 	}
 
-	private case class CollectingColumnValues(values :ColumnValues, collect :PartialFunction[ColumnMapping[_, _], ColumnMapping[_, _]]) extends ColumnValues {
+	private case class CollectingColumnValues(values :ColumnValues, collect :PartialFunction[TypedColumn[_, _], TypedColumn[_, _]]) extends ColumnValues {
 		private val Collect = Unapply(collect)
 
-		override def apply[X](column: ColumnMapping[_, X]): Option[X] =
-			collect.andThen(values.apply(_)).applyOrElse(column, (_:ColumnMapping[_, _]) => None).asInstanceOf[Option[X]]
+		override def apply[X](column: TypedColumn[_, X]): Option[X] =
+			collect.andThen(values.apply(_)).applyOrElse(column, (_:TypedColumn[_, _]) => None).asInstanceOf[Option[X]]
 
-		override def filter(remaining: (ColumnMapping[_, _]) => Boolean): ColumnValues =
+		override def filter(remaining: (TypedColumn[_, _]) => Boolean): ColumnValues =
 			values.collector{ case c @ Collect(res) if remaining(c) => res }
 
-		override def collector(fun: PartialFunction[ColumnMapping[_, _], ColumnMapping[_, _]]): ColumnValues = {
+		override def collector(fun: PartialFunction[TypedColumn[_, _], TypedColumn[_, _]]): ColumnValues = {
 			val matcher = Unapply(fun)
 			values.collector{ case matcher(Collect(c)) => c }
 		}
@@ -153,7 +153,7 @@ object ColumnValues {
 
 	private class PositionedResultValues(columns :ColumnIndex, res :PositionedResult) extends ColumnValues {
 
-		override def apply[X](column: ColumnMapping[_, X]): Option[X] =
+		override def apply[X](column: TypedColumn[_, X]): Option[X] =
 			columns(column).map(index => column.columnType.Getter(offset(res, index)))
 
 		override def toString = s"ColumnValues($columns), $res)"
@@ -163,10 +163,10 @@ object ColumnValues {
 
 	private class ExplicitColumnValues(columns :ColumnValueIndex) extends ColumnValues {
 
-		override def apply[X](column: ColumnMapping[_, X]): Option[X] =
+		override def apply[X](column: TypedColumn[_, X]): Option[X] =
 			columns(column).map(columns.value(_).asInstanceOf[X])
 
-		override def value[X](column: ColumnMapping[_, X]): Option[ColumnValue[X]] =
+		override def value[X](column: TypedColumn[_, X]): Option[ColumnValue[X]] =
 			columns(column).map(columns.values(_).asInstanceOf[ColumnValue[X]])
 
 		override def toString = columns.values.mkString("ColumnValues(",", ", ")")
@@ -176,8 +176,8 @@ object ColumnValues {
 
 
 	trait ColumnIndex {
-		def columns :Seq[ColumnMapping[_, _]]
-		def apply(column :ColumnMapping[_, _]) :Option[Int]
+		def columns :Seq[TypedColumn[_, _]]
+		def apply(column :TypedColumn[_, _]) :Option[Int]
 
 		override def toString = columns.toString
 	}
@@ -187,40 +187,40 @@ object ColumnValues {
 		def value(idx :Int) = values(idx).value
 	}
 
-	private class IndexedColumns(val columns :Seq[ColumnMapping[_, _]], indexOf :ColumnMapping[_, _]=>Option[Int]) extends ColumnIndex {
-		override def apply(column: ColumnMapping[_, _]): Option[Int] = indexOf(column)
+	private class IndexedColumns(val columns :Seq[TypedColumn[_, _]], indexOf :TypedColumn[_, _]=>Option[Int]) extends ColumnIndex {
+		override def apply(column: TypedColumn[_, _]): Option[Int] = indexOf(column)
 	}
 
-	private class IndexedValues(val values :Seq[ColumnValue[_]], indexOf :ColumnMapping[_, _]=>Option[Int])
+	private class IndexedValues(val values :Seq[ColumnValue[_]], indexOf :TypedColumn[_, _]=>Option[Int])
 		extends IndexedColumns(values.view.map(_.column), indexOf) with ColumnValueIndex
 
 
 
 	object ColumnIndex {
-		def apply(columns :Seq[ColumnMapping[_, _]], indexOf :ColumnMapping[_, _]=>Option[Int]) :ColumnIndex =
+		def apply(columns :Seq[TypedColumn[_, _]], indexOf :TypedColumn[_, _]=>Option[Int]) :ColumnIndex =
 			new IndexedColumns(columns, indexOf)
 
-		def apply(columns :Seq[ColumnMapping[_, _]]) :ColumnIndex = {
-			val indices = columns.view.zipWithIndex.toMap[ColumnMapping[_, _], Int]
+		def apply(columns :Seq[TypedColumn[_, _]]) :ColumnIndex = {
+			val indices = columns.view.zipWithIndex.toMap[TypedColumn[_, _], Int]
 			apply(columns, indices.get)
 		}
 
-		def NotIndexed(columns :Seq[ColumnMapping[_, _]]) :ColumnIndex =
+		def NotIndexed(columns :Seq[TypedColumn[_, _]]) :ColumnIndex =
 			new IndexedColumns(columns, columns.indexOf(_).providing(_>=0))
 
 		val Empty :ColumnIndex = new ColumnIndex {
 			def columns = Seq()
-			def apply(column: ColumnMapping[_, _]): Option[Int] = None
+			def apply(column: TypedColumn[_, _]): Option[Int] = None
 		}
 	}
 
 	object ColumnValueIndex {
 
-		def apply(values :Seq[ColumnValue[_]], indexOf :ColumnMapping[_, _]=>Option[Int]) :ColumnValueIndex =
+		def apply(values :Seq[ColumnValue[_]], indexOf :TypedColumn[_, _]=>Option[Int]) :ColumnValueIndex =
 			new IndexedValues(values, indexOf)
 
 		def apply(values :Seq[ColumnValue[_]]) :ColumnValueIndex = {
-			val indices = values.view.map(_.column).zipWithIndex.toMap[ColumnMapping[_, _], Int]
+			val indices = values.view.map(_.column).zipWithIndex.toMap[TypedColumn[_, _], Int]
 			new IndexedValues(values, indices.get)
 		}
 
@@ -230,7 +230,7 @@ object ColumnValues {
 		val Empty :ColumnValueIndex = new ColumnValueIndex {
 			def values = Seq()
 			def columns = Seq()
-			def apply(column: ColumnMapping[_, _]): Option[Int] = None
+			def apply(column: TypedColumn[_, _]): Option[Int] = None
 		}
 	}
 

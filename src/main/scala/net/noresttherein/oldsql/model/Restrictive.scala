@@ -8,7 +8,7 @@ import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.ComposedOf.{CollectionOf, DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.Restraint.Compares.{GT, GTE, LT, LTE}
 import net.noresttherein.oldsql.model.Restraint.{Compares, Equal, Exists, ForAll, IsNull, Membership, Restrainer, StringLike}
-import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, ComposedRestrictive, ConcatRestrictive, NegatedRestrictive, SizeOf, SubclassRestrictive, SwitchRestrictive, TranslableTerm}
+import net.noresttherein.oldsql.model.Restrictive.{ArithmeticRestrictive, ComposedRestrictive, ConcatRestrictive, NegatedRestrictive, SizeOf, SubclassRestrictive, SwitchRestrictive, TranslatableTerm}
 import net.noresttherein.oldsql.model.Restrictive.Arithmetic.{DIV, MINUS, MULT, Operator, PLUS, REM}
 import net.noresttherein.oldsql.model.types.{ArithmeticSupport, OrderingSupport}
 
@@ -22,8 +22,8 @@ import net.noresttherein.oldsql.model.types.{ArithmeticSupport, OrderingSupport}
   * where `T` is some constrained entity. Instances of this type are typically tested with a predicate
   * or compared with other instances to produce Boolean conditions.
   * @see [[net.noresttherein.oldsql.model.Restraint.Restrainer Restrainer]]
-  */ //todo: awkward name, think of something better. Selector?
-sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable with implicits {
+  */ //todo: awkward name, think of something better. Selector? Restricted? Restrictable?
+sealed trait Restrictive[-T, V] extends TranslatableTerm[T, V] with Serializable with implicits {
 //todo: def apply(whole :T) :V and self type to T => V. If only private classes implement T => V,
 // it will not count as an implicit conversion.
 //	/** Retrieve the value of part `V` described by this instance from the outer type `T`.*/
@@ -34,7 +34,7 @@ sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable w
 
 	def andThen[P](next :Restrictive[V, P]) :Restrictive[T, P] = next compose this
 
-	def compose[X, S <:T](nest :Restrictive[X, S]) :Restrictive[X, V] = nest match {
+	def compose[X, S <: T](nest :Restrictive[X, S]) :Restrictive[X, V] = nest match {
 		case _ :ComposedRestrictive[_, _, _] => nest andThen this
 		case _ => ComposedRestrictive(nest, this)
 	}
@@ -54,7 +54,7 @@ sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable w
 	  *             expressions
 	  * @param default the expression serving as the catch-all branch selected when no guards in `cases` matches this term.
 	  */
-	def cases[S<:T, O](cases :(TranslableTerm[S, V], Restrictive[S, O])*)(default :Restrictive[S, O]) :Restrictive[S, O] =
+	def cases[S <: T, O](cases :(TranslatableTerm[S, V], Restrictive[S, O])*)(default :Restrictive[S, O]) :Restrictive[S, O] =
 		new SwitchRestrictive[S, V, O](this, cases.map {
 			case (guard, branch) => (guard.toRestrictive, branch)
 		}, default)
@@ -63,19 +63,19 @@ sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable w
 	def unary_-(implicit math :ArithmeticSupport[V]) :Restrictive[T, V] =
 		new NegatedRestrictive(this)
 
-	def +[S <: T](other :TranslableTerm[S, V])(implicit math :ArithmeticSupport[V]) :Restrictive[S, V] =
+	def +[S <: T](other :TranslatableTerm[S, V])(implicit math :ArithmeticSupport[V]) :Restrictive[S, V] =
 		new ArithmeticRestrictive(this, PLUS, other.toRestrictive)
 
-	def -[S <: T](other :TranslableTerm[S, V])(implicit math :ArithmeticSupport[V]) :Restrictive[S, V] =
+	def -[S <: T](other :TranslatableTerm[S, V])(implicit math :ArithmeticSupport[V]) :Restrictive[S, V] =
 		new ArithmeticRestrictive(this, MINUS, other.toRestrictive)
 
-	def *[S <: T](other :TranslableTerm[S, V])(implicit math :ArithmeticSupport[V]) :Restrictive[S, V] =
+	def *[S <: T](other :TranslatableTerm[S, V])(implicit math :ArithmeticSupport[V]) :Restrictive[S, V] =
 		new ArithmeticRestrictive(this, MULT, other.toRestrictive)
 
-	def /[S <: T](other :TranslableTerm[S, V])(implicit math :ArithmeticSupport[V]) :Restrictive[S, V] =
+	def /[S <: T](other :TranslatableTerm[S, V])(implicit math :ArithmeticSupport[V]) :Restrictive[S, V] =
 		new ArithmeticRestrictive(this, DIV, other.toRestrictive)
 
-	def %[S <: T](other :TranslableTerm[S, V])(implicit math :ArithmeticSupport[V]) :Restrictive[S, V] =
+	def %[S <: T](other :TranslatableTerm[S, V])(implicit math :ArithmeticSupport[V]) :Restrictive[S, V] =
 		new ArithmeticRestrictive(this, REM, other.toRestrictive)
 
 
@@ -98,19 +98,19 @@ sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable w
 
 
 	/** Creates a `Restraint` mandating that this term be less then `other`. */
-	def < [S <: T](other :TranslableTerm[S, V])(implicit ordered :OrderingSupport[V]) :Restraint[S] =
+	def < [S <: T](other :TranslatableTerm[S, V])(implicit ordered :OrderingSupport[V]) :Restraint[S] =
 		Compares(this, LT, other.toRestrictive)
 
 	/** Creates a `Restraint` mandating that this term be less then or equal `other`. */
-	def <=[S <: T](other :TranslableTerm[S, V])(implicit ordered :OrderingSupport[V]) :Restraint[S] =
+	def <=[S <: T](other :TranslatableTerm[S, V])(implicit ordered :OrderingSupport[V]) :Restraint[S] =
 		Compares(this, LTE, other.toRestrictive)
 
 	/** Creates a `Restraint` mandating that this term be greater then `other`. */
-	def > [S <: T](other :TranslableTerm[S, V])(implicit ordered :OrderingSupport[V]) :Restraint[S] =
+	def > [S <: T](other :TranslatableTerm[S, V])(implicit ordered :OrderingSupport[V]) :Restraint[S] =
 		Compares(this, GT, other.toRestrictive)
 
 	/** Creates a `Restraint` mandating that this term be greater then or equal `other`. */
-	def >=[S <: T](other :TranslableTerm[S, V])(implicit ordered :OrderingSupport[V]) :Restraint[S] =
+	def >=[S <: T](other :TranslatableTerm[S, V])(implicit ordered :OrderingSupport[V]) :Restraint[S] =
 		Compares(this, GTE, other.toRestrictive)
 
 
@@ -132,13 +132,13 @@ sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable w
 	def ?== :Restrainer[T, V] = Equal(this)
 
 	/** Create a restraint testing this expression and another expression for equality. Equivalent to `Equal(this, other)`. */
-	def ===[S <: T](other :TranslableTerm[S, V]) :Restraint[S] = Equal(this, other.toRestrictive)
+	def ===[S <: T](other :TranslatableTerm[S, V]) :Restraint[S] = Equal(this, other.toRestrictive)
 
 //	def ===(other :V) :Restraint[T] = Equal(this, Literal[T, V](other))
 //	/** Create a restriction testing this expression for equality with the given precomputed value. */
 	//consider: renaming to <>
 	/** Create a restraint testing if this expression and another expression are unequal. Equivalent to `!(this === other)`. */
-	def =/=[S <: T](other :TranslableTerm[S, V]) :Restraint[S] = !(this === other)
+	def =/=[S <: T](other :TranslatableTerm[S, V]) :Restraint[S] = !(this === other)
 
 
 	/** Create a `Restrainer` for `T` which will test if this expression is a member of the given set of
@@ -147,13 +147,13 @@ sealed trait Restrictive[-T, V] extends TranslableTerm[T, V] with Serializable w
 	def in_? :Restrainer[T, Set[V]] = Membership(this)
 
 	/** Checks if a given collection expression - either an inlined sequence or an embedded select - contains this value. */
-	def in[C, S <: T](collection :TranslableTerm[S, C])(implicit deco :C ExtractAs V) :Restraint[S] =
+	def in[C, S <: T](collection :TranslatableTerm[S, C])(implicit deco :C ExtractAs V) :Restraint[S] =
 		Membership(this, collection.toRestrictive)
 
 	/** Create a restriction testing if the value of this expression is a member of the given collection.
 	  * Equivalent to `Membership(this, collection)`.
 	  */
-	def in[S <: T](collection :Iterable[TranslableTerm[S, V]]) :Restraint[S] = Membership(this, collection)
+	def in[S <: T](collection :Iterable[TranslatableTerm[S, V]]) :Restraint[S] = Membership(this, collection)
 
 //	/** Create a `Restriction` checking if this value is a member of the given collection of literals. */
 //	def in[C](collection :C)(implicit decomposition :C ExtractAs V) :Restraint[T] =
@@ -194,20 +194,19 @@ object Restrictive {
 
 
 	/**  A type serving as a common umbrella for `Restrictive[T, V]` and arbitrary literal values.
-	  *  It's a super type of `Restrictive[T, V]` and an implicit value exists for any value `V`.
+	  *  It's a super type of `Restrictive[T, V]` and all concrete classes must also implement `Restrictive[T, V]`.
 	  *  The name does not mean that it contains information about its mapping to SQL, or even that it can be done.
 	  *  Instead, the responsibility for ensuring this is carried by methods accepting it as an argument.
 	  *  Without mapping information only standard types like `String` and numbers can be freely used
 	  *  as SQL expressions, prohibiting creation of other literal expressions in most scenarios.
 	  *  However, when a `Restrictive[T, V]` is being compared with another value, as it already carries the mapping
-	  *  information (or serves as a witness to its existence) which can be used to translate the scala value of
+	  *  information (or serves as a witness to its existence), it can be used to translate the scala value of
 	  *  the same type into an SQL literal. Accepting values of this type instead of `Restrictive` as a method parameter
 	  *  allows both `Restrictive` instances and arbitrary literals lifted to this type by an implicit conversion.
-	  *  This is essentially equivalent to using `Either[Restrictive[T, V], V]`, but with a shorter notation,
-	  *  without the need for handling both cases individually by the method, and without creating an extra object
-	  *  as extending types are mandated to implement `Restrictive[V, T]`.
+	  *  This is essentially equivalent to using `Either[Restrictive[T, V], V]`, but with a simpler type,
+	  *  without the need for handling both cases individually by the method, and without creating an extra object.
 	  */
-	sealed trait TranslableTerm[-T, V] extends implicits { this :Restrictive[T, V] =>
+	sealed trait TranslatableTerm[-T, V] extends implicits { this :Restrictive[T, V] =>
 		@inline final private[model] def toRestrictive :Restrictive[T, V] = this
 	}
 
@@ -318,7 +317,7 @@ object Restrictive {
 		//todo: having ArithmeticSupport should mean we also have support for literals
 
 		def apply[T, N :ArithmeticSupport]
-		         (left :Restrictive[T, N], op :Operator, right :TranslableTerm[T, N]) :Restrictive[T, N] =
+		         (left :Restrictive[T, N], op :Operator, right :TranslatableTerm[T, N]) :Restrictive[T, N] =
 			new ArithmeticRestrictive(left, op, right.toRestrictive)
 
 		def apply[T, N :ArithmeticSupport](left :N, op :Operator, right :Restrictive[T, N]) :Restrictive[T, N] =
@@ -374,7 +373,7 @@ object Restrictive {
 
 	/** Concatenates two string terms and matches such expressions. */
 	object Concat {
-		def apply[T](left :Restrictive[T, String], right :TranslableTerm[T, String]) :Restrictive[T, String] =
+		def apply[T](left :Restrictive[T, String], right :TranslatableTerm[T, String]) :Restrictive[T, String] =
 			new ConcatRestrictive[T](left, right.toRestrictive)
 
 		def apply[T](left :String, right :Restrictive[T, String]) :Restrictive[T, String] =
@@ -428,11 +427,11 @@ object Restrictive {
 	  */
 	object Cases {
 
-		def apply[T :TypeTag, O](cases :(TranslableTerm[T, T], Restrictive[T, O])*)
+		def apply[T :TypeTag, O](cases :(TranslatableTerm[T, T], Restrictive[T, O])*)
 		                        (default :Restrictive[T, O]) :Restrictive[T, O] =
 			apply[T, T, O](Self())(cases :_*)(default)
 
-		def apply[X, T, O](term :Restrictive[X, T])(cases :(TranslableTerm[X, T], Restrictive[X, O])*)
+		def apply[X, T, O](term :Restrictive[X, T])(cases :(TranslatableTerm[X, T], Restrictive[X, O])*)
 		                  (default :Restrictive[X, O]) :Restrictive[X, O] =
 			new SwitchRestrictive(term, cases map { case (guard, branch) => guard.toRestrictive -> branch }, default)
 

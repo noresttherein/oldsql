@@ -1,7 +1,7 @@
 package com.adpilot.cortb.clientapi.prototype.repository.plain.mapping
 
 
-import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.ColumnMapping.ColumnOption.ColumnFlagType
+import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.TypedColumn.ColumnOption.ColumnFlagType
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.ColumnType.NullValue
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.ComponentMapping.{DirectComponentMappingAdapter, EmbeddedMappingComponent}
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.Mapping.{SetParameters}
@@ -11,7 +11,7 @@ import com.adpilot.cortb.clientapi.util.Repeat._
 import scala.collection.mutable.ListBuffer
 import scala.slick.jdbc.{PositionedParameters, PositionedResult}
 
-import ColumnMapping._
+import TypedColumn._
 import ColumnOption._
 
 
@@ -29,7 +29,7 @@ trait MappingSupport[E] extends Mapping[E] { self =>
 			def include[X](c :Column[X]) =
 				new EmbeddedCol[Column[X], T, X](c, value, None, c.options).include()
 			//todo: what if columns are reused between components/parent mapping?
-			val map = columns.map(c => c -> include(c)).toMap[ColumnMapping[_, _], ColumnMapping[_, _]]
+			val map = columns.map(c => c -> include(c)).toMap[TypedColumn[_, _], TypedColumn[_, _]]
 			ColumnSelection.Adapted(map)
 		}
 
@@ -58,7 +58,7 @@ trait MappingSupport[E] extends Mapping[E] { self =>
 	}
 
 
-	trait Column[T] extends ColumnMapping[E, T] with Component[T] {
+	trait Column[T] extends TypedColumn[E, T] with Component[T] {
 		final override private[MappingSupport] def init() = {
 //			System.err.println(s"including $this in $self")
 			if (exported)
@@ -108,7 +108,7 @@ trait MappingSupport[E] extends Mapping[E] { self =>
 		implicit def husk[M<:Embedded[C, _], C<:Mapping[_]](husk :M) :C = husk.adaptedMapping
 	}
 
-	protected class EmbeddedCol[M<:ColumnMapping[C, T], C, T](column :M, pick :E=>C, name :Option[String], options :Seq[ColumnOption[T]])
+	protected class EmbeddedCol[M<:TypedColumn[C, T], C, T](column :M, pick :E=>C, name :Option[String], options :Seq[ColumnOption[T]])
 		extends EmbeddedColumn(column, pick andThen column.value, Some(columnPrefix + (name getOrElse column.name)), options) with Column[T]
 
 	private class NestedComponent[S, T](parent :Component[S], child :Component[S]#Component[T])
@@ -211,8 +211,8 @@ trait MappingSupport[E] extends Mapping[E] { self =>
 
 
 
-	class ColumnEmbedder[C, T](source :ColumnMapping[C, T], name :Option[String], options :Seq[ColumnOption[T]]) {
-		def this(source :ColumnMapping[C, T]) = this(source, None, source.options)
+	class ColumnEmbedder[C, T](source :TypedColumn[C, T], name :Option[String], options :Seq[ColumnOption[T]]) {
+		def this(source :TypedColumn[C, T]) = this(source, None, source.options)
 
 		def apply()(implicit ev:E=:=C) :Column[T] = apply(ev(_))
 
@@ -260,37 +260,37 @@ trait MappingSupport[E] extends Mapping[E] { self =>
 //	}
 
 
-	protected def column[C, T](col :ColumnMapping[C, T]) :ColumnEmbedder[C, T] =
+	protected def column[C, T](col :TypedColumn[C, T]) :ColumnEmbedder[C, T] =
 		new ColumnEmbedder(col)
 
-	protected def column[C, T](col :ColumnMapping[C, T], name :String) :ColumnEmbedder[C, T] =
+	protected def column[C, T](col :TypedColumn[C, T], name :String) :ColumnEmbedder[C, T] =
 		new ColumnEmbedder(col, Some(name), col.options)
 
-	protected def column[C, T](col :ColumnMapping[C, T], options :Seq[ColumnOption[T]]) :ColumnEmbedder[C, T] =
+	protected def column[C, T](col :TypedColumn[C, T], options :Seq[ColumnOption[T]]) :ColumnEmbedder[C, T] =
 		new ColumnEmbedder(col, None, options)
 
-	protected def column[C, T](col :ColumnMapping[C, T], name :String, options :Seq[ColumnOption[T]]) :ColumnEmbedder[C, T] =
+	protected def column[C, T](col :TypedColumn[C, T], name :String, options :Seq[ColumnOption[T]]) :ColumnEmbedder[C, T] =
 		new ColumnEmbedder(col, Some(name), options)
 
 
 
 
-	protected def column[T](col :ColumnMapping[E, T], prefix :Option[String], options :Seq[ColumnOption[T]]) :Column[T] =
+	protected def column[T](col :TypedColumn[E, T], prefix :Option[String], options :Seq[ColumnOption[T]]) :Column[T] =
 		new ColumnEmbedder(col).prefixed(prefix).set(options:_*)()
 
-	protected def column[T](col :ColumnMapping[E, T], prefix :Option[String]) :Column[T] =
+	protected def column[T](col :TypedColumn[E, T], prefix :Option[String]) :Column[T] =
 		column(col, prefix, col.options)
 
-	protected def column[T](col :ColumnMapping[E, T], prefix :String, options :Seq[ColumnOption[T]]) :Column[T] =
+	protected def column[T](col :TypedColumn[E, T], prefix :String, options :Seq[ColumnOption[T]]) :Column[T] =
 		column(col, prefixOption(prefix), options)
 
-	protected def column[T](col :ColumnMapping[E, T], prefix :String) :Column[T] =
+	protected def column[T](col :TypedColumn[E, T], prefix :String) :Column[T] =
 		column(col, prefixOption(prefix), col.options)
 
-	protected def column[T](col :ColumnMapping[E, T], options :Seq[ColumnOption[T]]) :Column[T] =
+	protected def column[T](col :TypedColumn[E, T], options :Seq[ColumnOption[T]]) :Column[T] =
 		column(col, None, options)
 
-	protected def column[T](col :ColumnMapping[E, T]) :Column[T] =
+	protected def column[T](col :TypedColumn[E, T]) :Column[T] =
 		column(col, None, col.options)
 
 
@@ -308,7 +308,7 @@ trait MappingSupport[E] extends Mapping[E] { self =>
 
 
 
-//	protected def autoins[T :NullValue](col :ColumnMapping[E, Option[T]]) :Column[T] = {
+//	protected def autoins[T :NullValue](col :TypedColumn[E, Option[T]]) :Column[T] = {
 //		val options = AutoGen[T] +: col.options.map(_.map(_ getOrElse NullValue.Null[T])(Some(_)))
 //		column[T](col.name, col.value(_ :E).get, options :_*)(ColumnType[T](
 //			(t :T, params :PositionedParameters) => col(Some(t), params), col(_ :PositionedResult).get

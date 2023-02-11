@@ -1,6 +1,6 @@
 package com.hcore.ogre.mapping.support
 
-import com.hcore.ogre.mapping.{Mapping, ColumnMapping}
+import com.hcore.ogre.mapping.{Mapping, TypedColumn}
 import com.hcore.ogre.mapping.ComponentPath.{DirectComponent, TypedComponentPath}
 import com.hcore.ogre.mapping.MappingMorphism.{ComponentMorphism, ValueMorphism}
 import com.hcore.ogre.slang.options.extensions
@@ -22,7 +22,7 @@ object BaseMappings {
 
 	trait UniversalMapping[E] extends Mapping[E] {
 		type Component[X] = Mapping[X]
-		//		type Column[X] = ColumnMapping[X]
+		//		type Column[X] = TypedColumn[X]
 	}
 
 
@@ -110,7 +110,7 @@ object BaseMappings {
 
 
 
-	class ColumnSeqMapping[E](val columns :Seq[ColumnMapping[_]], compose :Seq[_] => E, decompose :E=>Seq[_])
+	class ColumnSeqMapping[E](val columns :Seq[TypedColumn[_]], compose :Seq[_] => E, decompose :E=>Seq[_])
 		extends FlatMapping[E]
 	{
 		override def modifiers = Seq()

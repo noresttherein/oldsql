@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.schema.bits
 
 import java.sql.{JDBCType, PreparedStatement}
 
+import scala.annotation.nowarn
+
 import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.MissingKeyException
@@ -10,12 +12,12 @@ import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom
 import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
 import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, Requisite}
-import net.noresttherein.oldsql.schema.{composeColumnExtracts, composeExtracts, Buff, Buffs, ColumnForm, ColumnMapping, MappingExtract, RelVar}
-import net.noresttherein.oldsql.schema.ColumnMapping.{OptimizedColumn, SimpleColumn, StableColumn}
+import net.noresttherein.oldsql.schema.{composeColumnExtracts, composeExtracts, Buff, Buffs, ColumnExtract, ColumnForm, ColumnMapping, Mapping, MappingExtract, RelVar}
+import net.noresttherein.oldsql.schema.ColumnMapping.{OptimizedColumn, SimpleColumn, StableColumn, TypedColumn}
 import net.noresttherein.oldsql.schema.ColumnWriteForm.SingletonColumnWriteForm
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, TypedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.{AbstractMappedForm, NullValue}
-import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping, OptimizedMappingAssembly}
+import net.noresttherein.oldsql.schema.bases.{BaseColumn, BaseMapping, LazyMapping, OptimizedMappingAssembly}
 import net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.CounterpartComponent
 import net.noresttherein.oldsql.schema.support.{CoveredMapping, MappedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.OpaqueColumnProxy
@@ -37,6 +39,10 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.OpaqueColumnProxy
   * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping ForeignKeyMapping]] and
   * [[net.noresttherein.oldsql.schema.bits.JoinTableCollectionMapping JoinTableCollectionMapping]] through
   * a single interface.
+  * @tparam T the mapping type of the referenced table.
+  * @tparam S the subject type of this mapping, typically some [[net.noresttherein.oldsql.model.Kin Kin]] subtype
+  *           or a similar reference-like type.
+  * @tparam O the [[net.noresttherein.oldsql.schema.Mapping.Origin origin]] type of this mapping.
   * @author Marcin Mościcki
   */
 trait RelationshipMapping[+T[A] <: MappingAt[A], S, O] extends BaseMapping[S, O] {
@@ -74,15 +80,19 @@ trait RelationshipMapping[+T[A] <: MappingAt[A], S, O] extends BaseMapping[S, O]
 
 /** Base trait for relationships joining two tables by matching isomorphic components between them.
   * It is a mapping for a reference-like type `S` which has two distinct, optional parts: a ''key'', which
-  * identifies a row or rows in the other table, and/or a ''value'': an object of type derived from the referenced table's
-  * entity type (the subject of the table's mapping). The latter can be simply the type mapped to a single row
+  * identifies a row or rows in the other table, and/or a ''value'': an object of type derived from the referenced
+  * table's entity type (the subject of the table's mapping). The latter can be simply the type mapped to a single row
   * of the table, or a collection combined from multiple rows. It works as an adapter to a single 'key' component
   * in the containing table, but also grants access to the referenced table matching key component.
   * It serves as an 'outside' interface of [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping ForeignKeyMapping]],
-  * providing all information required to join the two tables by matching the corresponding key values,
+  * providing all information required to join two tables by matching the corresponding key values,
   * while keeping the type signature uncluttered. Instances (if not necessarily implementations) belong
   * to one of two distinct groups: components for foreign keys, and mappings of 'inverse foreign keys':
   * components for keys in the owning tables referenced by foreign keys from target tables.
+  * @tparam T the mapping type of the referenced table.
+  * @tparam S the subject type of this mapping, typically some [[net.noresttherein.oldsql.model.Kin Kin]] subtype
+  *           or a similar reference-like type.
+  * @tparam O the [[net.noresttherein.oldsql.schema.Mapping.Origin origin]] type of this mapping.
   * @see [[net.noresttherein.oldsql.model.Kin]]
   * @author Marcin Mościcki
   */
@@ -94,7 +104,7 @@ trait DirectRelationshipMapping[+T[A] <: MappingAt[A], S, O] extends Relationshi
 	/** [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type of the referenced component, differing
 	  * from this instance's `Origin`.
 	  */
-	type TargetOrigin
+	type TargetOrigin //todo: rename to ReferentOrigin
 
 	/** Referenced table. */
 	override def table :RelVar[T]
@@ -103,8 +113,8 @@ trait DirectRelationshipMapping[+T[A] <: MappingAt[A], S, O] extends Relationshi
 	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.table table]].
 	  * It is ''not'' a component of this mapping, or any enclosing mapping, and should not be adapted
 	  * to its `Origin` type.
-	  */
-	def target :RefinedMapping[Key, TargetOrigin]
+	  */ //todo: rename to referent
+	def target :TypedMapping[Key, TargetOrigin]
 
 	/** The component for the local 'foreign' key itself, mirroring the referenced key
 	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.target target]] in
@@ -122,6 +132,12 @@ trait DirectRelationshipMapping[+T[A] <: MappingAt[A], S, O] extends Relationshi
 
 	/** Creates the mapped reference for the given key. */
 	override def forKey(key :Key) :S
+
+	override def identical(that :Mapping) :Boolean = that match {
+		case _ if this eq that => true
+		case other :DirectRelationshipMapping[MappingAt, _, _] if canEqual(other) && other.canEqual(this) =>
+			(key identical other.key) && (table isomorphic other.table) && (target identical other.target)
+	}
 }
 
 
@@ -130,7 +146,7 @@ trait DirectRelationshipMapping[+T[A] <: MappingAt[A], S, O] extends Relationshi
 
 
 /** A mapping of some reference-like type `S` which may contain values from another table. It represents a relationship
-  * between two tables defined as equality of of values of the
+  * between two tables defined as equality of of values of the local
   * [[net.noresttherein.oldsql.schema.bits.DirectRelationshipMapping.key key]] component on one side,
   * and [[net.noresttherein.oldsql.schema.bits.DirectRelationshipMapping.target target]] in the referenced
   * [[net.noresttherein.oldsql.schema.bits.DirectRelationshipMapping.table table]] on the other one. It expands
@@ -156,10 +172,19 @@ trait DirectRelationshipMapping[+T[A] <: MappingAt[A], S, O] extends Relationshi
   * @tparam T the mapping type of the referenced table.
   * @tparam C the original key mapping type defining the structure of both the referenced component
   *           and the local `key` component. For true foreign keys, it is the type of the referenced component,
-  *           but for foreign key inverses it is the key of the containing table referenced by the true foreign key.
-  * @tparam K the key type - subject type of the referenced component and its local counterpart.
-  * @tparam S a type derived from the subject type of the referenced table, referencing all rows with `target`
-  *           component's value matching the value of the local `key` component.
+  *           but for foreign key inverses it is the key in the containing table referenced by the true foreign key
+  *           in the target table. This interface doesn't require either of the local
+  *           [[net.noresttherein.oldsql.schema.bits.DirectRelationshipMapping.key key]] component or
+  *           the [[net.noresttherein.oldsql.schema.bits.DirectRelationshipMapping.target target]] component
+  *           to be of this type, nor that its subject type be the key type `K`. This opens the way
+  *           for implementations where the key types differ.
+  * @tparam K the key type - the subject type of the referenced component and its local counterpart.
+  * @tparam S the subject type of this mapping, referencing all entities in the referenced table whose
+  *           [[net.noresttherein.oldsql.schema.bits.JoinedEntityComponent.target target]] component's value
+  *           matches the value of the local component
+  *           [[net.noresttherein.oldsql.schema.bits.JoinedEntityComponent.key key]].
+  *           It will typically be [[net.noresttherein.oldsql.model.Kin Kin]]`[T[_]#Subject]`
+  *           or a similar type.
   * @tparam O the [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type of this component.
   * @see [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping]]
   */
@@ -180,10 +205,10 @@ trait JoinedEntityComponent[+T[A] <: MappingAt[A], +C[X] <: MappingAt[X], K, S, 
 	  * is a [[net.noresttherein.oldsql.schema.ColumnMapping column]], returned mapping will also be a column.
 	  * @param component a function returning some subcomponent of its argument which will be applied
 	  *                  to the original referenced key: `target` for true foreign keys and `key` for their inverses.
-	  * @param local an implicit evidence determining the returned type of this method, which will be either
-	  *              a [[net.noresttherein.oldsql.schema.Mapping.Component component]] or a
-	  *              [[net.noresttherein.oldsql.schema.Mapping.Column column]] with the same subject type as
-	  *              mapping `M` returned by the `component` function and the same origin type as this mapping.
+	  * @param local     an implicit evidence determining the returned type of this method, which will be either
+	  *                  a [[net.noresttherein.oldsql.schema.Mapping.Component component]] or a
+	  *                  [[net.noresttherein.oldsql.schema.Mapping.Column column]] with the same subject type as
+	  *                  mapping `M` returned by the `component` function and the same origin type as this mapping.
 	  */
 	def apply[M <: MappingAt[KeyOrigin]]
 	         (component :C[KeyOrigin] => M)(implicit local :CounterpartComponent[M, KeyOrigin]) :local.Component[O]
@@ -214,28 +239,28 @@ trait JoinedEntityComponent[+T[A] <: MappingAt[A], +C[X] <: MappingAt[X], K, S, 
 	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.key key]] component.
 	  * Returned component can be used in SQL expressions, in particular compared with the argument component.
 	  */
-	def local[X](subKey :RefinedMapping[X, KeyOrigin]) :Component[X]
+	def local[X](subKey :TypedMapping[X, KeyOrigin]) :Component[X]
 
 	/** Returns the alias of the given column of the referenced key component
 	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.target target]] in the local
 	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.key key]] component.
 	  * Returned column can be used in SQL expressions, in particular compared with the argument column.
 	  */
-	def local[X](subKey :ColumnMapping[X, KeyOrigin]) :Column[X]
+	def local[X](subKey :TypedColumn[X, KeyOrigin]) :Column[X]
 
 	/** Returns the alias of the given (sub)component of the local 'foreign' key component
 	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.key key]] in the referenced table's
 	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.target target]] component.
 	  * Returned component can be used in SQL expressions, in particular compared with the argument component.
 	  */
-	def foreign[X](subKey :RefinedMapping[X, KeyOrigin]) :RefinedMapping[X, TargetOrigin]
+	def foreign[X](subKey :TypedMapping[X, KeyOrigin]) :TypedMapping[X, TargetOrigin]
 
 	/** Returns the alias of the given column of the local 'foreign' key component
 	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.key key]] in the referenced table's
 	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.target target]] component.
 	  * Returned column can be used in SQL expressions, in particular compared with the argument column.
 	  */
-	def foreign[X](subKey :ColumnMapping[X, KeyOrigin]) :ColumnMapping[X, TargetOrigin]
+	def foreign[X](subKey :TypedColumn[X, KeyOrigin]) :TypedColumn[X, TargetOrigin]
 
 }
 
@@ -256,10 +281,10 @@ trait JoinedEntityComponent[+T[A] <: MappingAt[A], +C[X] <: MappingAt[X], K, S, 
   * potentially containing values of the referenced entity.
   */
 trait JoinedEntityColumn[+T[A] <: MappingAt[A], K, S, O]
-	extends JoinedEntityComponent[T, MappingOf[K]#ColumnProjection, K, S, O] with ColumnMapping[S, O]
+	extends JoinedEntityComponent[T, MappingOf[K]#ColumnProjection, K, S, O] with BaseColumn[S, O]
 {
 	override def key :Column[K]
-	override def target :ColumnMapping[K, TargetOrigin]
+	override def target :TypedColumn[K, TargetOrigin]
 }
 
 
@@ -290,7 +315,7 @@ trait JoinedEntityColumn[+T[A] <: MappingAt[A], K, S, O]
   *           component's value matching the value of the local `key` component.
   * @tparam O the [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type of this component.
   */
-trait ForeignKeyMapping[+T[A] <: MappingAt[A], +C[A] <: RefinedMapping[K, A], K, S, O]
+trait ForeignKeyMapping[+T[A] <: MappingAt[A], +C[A] <: TypedMapping[K, A], K, S, O]
 	extends JoinedEntityComponent[T, C, K, S, O]
 {
 	override def target :C[TargetOrigin]
@@ -314,7 +339,7 @@ trait ForeignKeyMapping[+T[A] <: MappingAt[A], +C[A] <: RefinedMapping[K, A], K,
 	  *                                       that is was created through `target.inverse` (or one of the similar
 	  *                                       factory methods in the companion object).
 	  */
-	def inverse[M[A] <: RefinedMapping[E, A], E, X, R]
+	def inverse[M[A] <: TypedMapping[E, A], E, X, R]
 	           (table :RelVar[M], factory :RelatedEntityFactory[K, E, X, R], buffs :Buff[R]*)
 			:JoinedEntityComponent[M, C, K, R, TargetOrigin] =
 		inverse(table, factory, Buffs(buffs :_*))
@@ -338,7 +363,7 @@ trait ForeignKeyMapping[+T[A] <: MappingAt[A], +C[A] <: RefinedMapping[K, A], K,
 	  *                                       that is was created through `target.inverse` (or one of the similar
 	  *                                       factory methods in the companion object).
 	  */
-	def inverse[M[A] <: RefinedMapping[E, A], E, X, R]
+	def inverse[M[A] <: TypedMapping[E, A], E, X, R]
 	           (table :RelVar[M], factory :RelatedEntityFactory[K, E, X, R], buffs :Buffs[R])
 			:JoinedEntityComponent[M, C, K, R, TargetOrigin]
 }
@@ -356,12 +381,12 @@ trait ForeignKeyMapping[+T[A] <: MappingAt[A], +C[A] <: RefinedMapping[K, A], K,
 trait ForeignKeyColumnMapping[+T[A] <: MappingAt[A], K, S, O]
 	extends JoinedEntityColumn[T, K, S, O] with ForeignKeyMapping[T, MappingOf[K]#ColumnProjection, K, S, O]
 {
-	override def inverse[M[A] <: RefinedMapping[E, A], E, X, R]
+	override def inverse[M[A] <: TypedMapping[E, A], E, X, R]
 	                    (table :RelVar[M], factory :RelatedEntityFactory[K, E, X, R], buffs :Buff[R]*)
 			:JoinedEntityColumn[M, K, R, TargetOrigin] =
 		inverse(table, factory, Buffs(buffs :_*))
 
-	override def inverse[M[A] <: RefinedMapping[E, A], E, X, R]
+	override def inverse[M[A] <: TypedMapping[E, A], E, X, R]
 	                    (table :RelVar[M], factory :RelatedEntityFactory[K, E, X, R], buffs :Buffs[R])
 			:JoinedEntityColumn[M, K, R, TargetOrigin]
 }
@@ -372,7 +397,7 @@ trait ForeignKeyColumnMapping[+T[A] <: MappingAt[A], K, S, O]
 
 
 object ForeignKeyMapping {
-	private type KeyColumn[K] = { type M[X] = ColumnMapping[K, X] }
+	@nowarn private type KeyColumn[K] = { type M[X] = TypedColumn[K, X] } //the compiler doesn't see it's used!
 
 	/** Create a mapping for type `R`, referencing the subjects `E` of `table` with mapping `M[_]`
 	  * as some type `X` derived from `E`. Referencing happens by matching the subjects `K` of the component
@@ -457,12 +482,12 @@ object ForeignKeyMapping {
 	  *                hold the mentioned key and/or the referenced entity from `table`.
 	  * @param buffs buffs of the created mapping.
 	  */
-	def apply[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, MO, O]
+	def apply[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, MO, O]
 	         (rename :String => String, factory :RelatedEntityFactory[K, E, T, R], buffs :Buffs[R])
 	         (table :RelVar[M], pk :M[MO] => C[MO]) :ForeignKeyMapping[M, C, K, R, O] =
 		pk(table[MO]) match {
-			case col :ColumnMapping[_, _] =>
-				val selector = pk.asInstanceOf[M[MO] => ColumnMapping[K, MO]]
+			case col :ColumnMapping =>
+				val selector = pk.asInstanceOf[M[MO] => TypedColumn[K, MO]]
 				column[M, K, E, T, R, MO, O](rename(col.name), factory, buffs)(table, selector)
 					.asInstanceOf[ForeignKeyMapping[M, C, K, R, O]]
 			case _ =>
@@ -475,7 +500,7 @@ object ForeignKeyMapping {
 	  * of the returned mapping. The key type can be any mapping, comprised of more than one column.
 	  *
 	  * This method delegates to the more generic, overloaded variant
-	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.apply[M[A]<:RefinedMapping[E,A],C[A]<:RefinedMapping[K,A],K,E,T,R,X,O](rename:String=>String* apply]].
+	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.apply[M[A]<:TypedMapping[E,A],C[A]<:TypedMapping[K,A],K,E,T,R,X,O](rename:String=>String* apply]].
 	  * See its documentation for additional documentation and examples.*
 	  * @tparam M the mapping for the referenced table, mapped to type `E`.
 	  * @tparam C the mapping for the referenced component in `table`, mapped to type `K`.
@@ -497,12 +522,12 @@ object ForeignKeyMapping {
 	  *                hold the mentioned key and/or the referenced entity from `table`.
 	  * @param buffs buffs of the created mapping.
 	  */
-	def apply[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X, O]
+	def apply[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, X, O]
 	         (rename :String => String, factory :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
 	         (table :RelVar[M], pk :M[X] => C[X]) :ForeignKeyMapping[M, C, K, R, O] =
 		pk(table[X]) match {
-			case col :ColumnMapping[_, _] =>
-				val selector = pk.asInstanceOf[M[X] => ColumnMapping[K, X]]
+			case col :ColumnMapping =>
+				val selector = pk.asInstanceOf[M[X] => TypedColumn[K, X]]
 				column[M, K, E, T, R, X, O](rename(col.name), factory, buffs :_*)(table, selector)
 					.asInstanceOf[ForeignKeyMapping[M, C, K, R, O]]
 			case _ =>
@@ -515,7 +540,7 @@ object ForeignKeyMapping {
 	  * from `table` returned by function `pk` (which needs not to be a primary key), and the single direct component
 	  * of the returned mapping. The key type can be any mapping, comprised of more than one column.
 	  * This method delegates to the more generic, overloaded variant
-	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.apply[M[A]<:RefinedMapping[E,A],C[A]<:RefinedMapping[K,A],K,E,T,R,X,O](rename:String=>String* apply]].
+	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.apply[M[A]<:TypedMapping[E,A],C[A]<:TypedMapping[K,A],K,E,T,R,X,O](rename:String=>String* apply]].
 	  * See its documentation for additional documentation and examples.
 	  * @tparam M  the mapping for the referenced table, mapped to type `E`.
 	  * @tparam C  the mapping for the referenced component in `table`, mapped to type `K`.
@@ -537,7 +562,7 @@ object ForeignKeyMapping {
 	  *                hold the mentioned key and/or the referenced entity from `table`.
 	  * @param buffs buffs of the created mapping.
 	  */
-	def apply[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, MO, O]
+	def apply[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, MO, O]
 	         (columnPrefix :String, factory :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
 	         (table :RelVar[M], pk :M[MO] => C[MO]) :ForeignKeyMapping[M, C, K, R, O] =
 		apply[M, C, K, E, T, R, MO, O](columnPrefix + _, factory, buffs :_*)(table, pk)
@@ -546,7 +571,7 @@ object ForeignKeyMapping {
 	  * as some type `X` derived from `E`. Referencing happens by matching the key type `K` of the column
 	  * from `table` returned by function `pk` (which needs not to be a primary key), and the single 'subcolumn'
 	  * of the returned column. See the documentation of
-	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.apply[M[A]<:RefinedMapping[E,A],C[A]<:RefinedMapping[K,A],K,E,T,R,X,O](rename:String=>String* apply]].
+	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.apply[M[A]<:TypedMapping[E,A],C[A]<:TypedMapping[K,A],K,E,T,R,X,O](rename:String=>String* apply]].
 	  * for additional information and examples.
 	  * @tparam M  the mapping for the referenced table, mapped to type `E`.
 	  * @tparam K  the key type: the subject type of both the local key (subcolumn of the returned column)
@@ -566,16 +591,16 @@ object ForeignKeyMapping {
 	  *                hold the mentioned key and/or the referenced entity from `table`.
 	  * @param buffs buffs for the created column.
 	  */
-	def column[M[A] <: RefinedMapping[E, A], K, E, T, R, MO, O]
+	def column[M[A] <: TypedMapping[E, A], K, E, T, R, MO, O]
 	          (name :String, factory :RelatedEntityFactory[K, E, T, R], buffs :Buffs[R])
-	          (table :RelVar[M], pk :M[MO] => ColumnMapping[K, MO]) :ForeignKeyColumnMapping[M, K, R, O] =
+	          (table :RelVar[M], pk :M[MO] => TypedColumn[K, MO]) :ForeignKeyColumnMapping[M, K, R, O] =
 		new RelatedEntityForeignKeyColumn[M, K, E, T, R, MO, O](name, factory, buffs)(table, pk)
 
 	/** Create a column mapping for type `R`, referencing the subjects `E` of `table` with mapping `M[_]`
 	  * as some type `X` derived from `E`. Referencing happens by matching the key type `K` of the column
 	  * from `table` returned by function `pk` (which needs not to be a primary key), and the single 'subcolumn'
 	  * of the returned column. See the documentation of
-	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.apply[M[A]<:RefinedMapping[E,A],C[A]<:RefinedMapping[K,A],K,E,T,R,X,O](rename:String=>String* apply]].
+	  * [[net.noresttherein.oldsql.schema.bits.ForeignKeyMapping.apply[M[A]<:TypedMapping[E,A],C[A]<:TypedMapping[K,A],K,E,T,R,X,O](rename:String=>String* apply]].
 	  * for additional information and examples.
 	  * @tparam M  the mapping for the referenced table, mapped to type `E`.
 	  * @tparam K  the key type: the subject type of both the local key (subcolumn of the returned column)
@@ -595,9 +620,9 @@ object ForeignKeyMapping {
 	  *                hold the mentioned key and/or the referenced entity from `table`.
 	  * @param buffs buffs for the created column.
 	  */
-	def column[M[A] <: RefinedMapping[E, A], K, E, T, R, MO, O]
+	def column[M[A] <: TypedMapping[E, A], K, E, T, R, MO, O]
 	          (name :String, factory :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
-	          (table :RelVar[M], pk :M[MO] => ColumnMapping[K, MO]) :ForeignKeyColumnMapping[M, K, R, O] =
+	          (table :RelVar[M], pk :M[MO] => TypedColumn[K, MO]) :ForeignKeyColumnMapping[M, K, R, O] =
 		new RelatedEntityForeignKeyColumn[M, K, E, T, R, MO, O](name, factory, buffs)(table, pk)
 
 	/** Create a mapping for the other side of a relationship defined by a foreign key mapping.
@@ -624,7 +649,7 @@ object ForeignKeyMapping {
 	  * @param table the table owning the foreign key component.
 	  * @param fk a function returning the foreign key subcomponent of the table referenced by the created mapping.
 	  */
-	def inverse[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, MO, O]
+	def inverse[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, MO, O]
 	           (key :C[O], factory :RelatedEntityFactory[K, E, T, R], buffs :Buffs[R])
 	           (table :RelVar[M], fk :M[MO] => ForeignKeyMapping[MappingAt, C, K, _, MO])
 			:JoinedEntityComponent[M, C, K, R, O] =
@@ -654,7 +679,7 @@ object ForeignKeyMapping {
 	  * @param table the table owning the foreign key component.
 	  * @param fk a function returning the foreign key subcomponent of the table referenced by the created mapping.
 	  */
-	def inverse[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, MO, O]
+	def inverse[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, MO, O]
 	           (key :C[O], factory :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
 	           (table :RelVar[M], fk :M[MO] => ForeignKeyMapping[MappingAt, C, K, _, MO])
 			:JoinedEntityComponent[M, C, K, R, O] =
@@ -684,8 +709,8 @@ object ForeignKeyMapping {
 	  * @param table the table owning the foreign key column.
 	  * @param fk a function returning the foreign key column of the table referenced by the created column.
 	  */
-	def inverseColumn[M[A] <: RefinedMapping[E, A], K, E, T, R, MO, O]
-	                 (key :ColumnMapping[K, O], factory :RelatedEntityFactory[K, E, T, R], buffs :Buffs[R])
+	def inverseColumn[M[A] <: TypedMapping[E, A], K, E, T, R, MO, O]
+	                 (key :TypedColumn[K, O], factory :RelatedEntityFactory[K, E, T, R], buffs :Buffs[R])
 	                 (table :RelVar[M], fk :M[MO] => ForeignKeyColumnMapping[MappingAt, K, _, MO])
 			:JoinedEntityColumn[M, K, R, O] =
 		new InverseForeignKeyColumnMapping[M, K, E, T, R, MO, O](key, factory, buffs)(table, fk)
@@ -693,14 +718,15 @@ object ForeignKeyMapping {
 
 
 	private[oldsql] abstract class AbstractRelatedEntityForeignKey
-	                               [M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, MO, O]
+	                               [M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, MO, O]
 	                               (factory :RelatedEntityFactory[K, E, T, R])
 	                               (override val table :RelVar[M], pk :M[MO] => C[MO])
 		extends ForeignKeyMapping[M, C, K, R, O]
 	{   //todo: rejecting/resolving non-optional refs without a key (currently we always attempt to insert null)
 		override type TargetOrigin = MO
 		override type KeyOrigin = MO
-		//todo: inline this laziness once we are comfortably sure of the implementation
+		//consider: this component being lazy means key must be lazy, meaning extracts and all components lists
+		// must be lazy, but adapters (and possibly other code) may eagerly refer to them on construction.
 		private[this] val lazyTarget = Lazy(pk(table[MO]))
 		override def target :C[MO] = lazyTarget.get
 		def references :RelatedEntityFactory[K, E, T, R] = factory
@@ -713,8 +739,8 @@ object ForeignKeyMapping {
 		                    (component :C[MO] => S)(implicit remote :CounterpartComponent[S, MO]) :remote.Component[MO] =
 			remote.foreign(this, component(target))
 
-		override def foreign[S](subKey :RefinedMapping[S, MO]) :RefinedMapping[S, MO] = subKey
-		override def foreign[S](subKey :ColumnMapping[S, MO]) :ColumnMapping[S, MO] = subKey
+		override def foreign[S](subKey :TypedMapping[S, MO]) :TypedMapping[S, MO] = subKey
+		override def foreign[S](subKey :TypedColumn[S, MO])  :TypedColumn[S, MO] = subKey
 
 
 		override def forKey(key :K) :R = factory(key)
@@ -727,7 +753,7 @@ object ForeignKeyMapping {
 		}
 
 
-		override def inverse[N[A] <: RefinedMapping[S, A], S, Y, F]
+		override def inverse[N[A] <: TypedMapping[S, A], S, Y, F]
 		                    (table :RelVar[N], factory :RelatedEntityFactory[K, S, Y, F], buffs :Buffs[F])
 				:JoinedEntityComponent[N, C, K, F, MO] =
 			ForeignKeyMapping.inverse[N, C, K, S, Y, F, O, MO](target, factory, buffs)(table, _ => this)
@@ -745,7 +771,7 @@ object ForeignKeyMapping {
 	  * [[net.noresttherein.oldsql.haul.ComponentValues ComponentValues]]).
 	  */
 	private[oldsql] class RelatedEntityForeignKey
-	                      [M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, MO, O]
+	                      [M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, MO, O]
 	                      (rename :String => String, factory :RelatedEntityFactory[K, E, T, R],
 	                       override val buffs :Buffs[R])
 	                      (table :RelVar[M], pk :M[MO] => C[MO])
@@ -755,13 +781,13 @@ object ForeignKeyMapping {
 		        (table :RelVar[M], pk :M[MO] => C[MO]) =
 			this(rename, factory, Buffs(buffs :_*))(table, pk)
 
-		private[this] val lazyKey = Lazy {
+		private[this] val lazyKey = Lazy { //todo: make target lazy in CoveredMapping instead, then it will really be initialized only when assembling
 			new CoveredMapping[C[MO], K, MO, O](target, rename, buffs.cascade(factory.forceKeyOutOf).declare())
 		}
 		override def key :Component[K] = lazyKey.get
 
-		override def local[S](subKey :RefinedMapping[S, MO]) :Component[S] = lazyKey.get.cover(subKey)
-		override def local[S](subKey :ColumnMapping[S, MO]) :Column[S] = lazyKey.get.cover(subKey)
+		override def local[S](subKey :TypedMapping[S, MO]) :Component[S] = lazyKey.get.cover(subKey)
+		override def local[S](subKey :TypedColumn[S, MO]) :Column[S] = lazyKey.get.cover(subKey)
 
 		override lazy val (extracts, columnExtracts) = {
 			val keyExtract = MappingExtract(key)(Extractor.Optional[R, K](factory.keyOf))
@@ -781,15 +807,15 @@ object ForeignKeyMapping {
 	  * values from/to key values `K` (and [[net.noresttherein.oldsql.haul.FutureValues FutureValues]]
 	  * for the referenced table of [[net.noresttherein.oldsql.haul.ComponentValues ComponentValues]]).
 	  */
-	private[oldsql] class RelatedEntityForeignKeyColumn[M[A] <: RefinedMapping[E, A], K, E, T, R, MO, O]
+	private[oldsql] class RelatedEntityForeignKeyColumn[M[A] <: TypedMapping[E, A], K, E, T, R, MO, O]
 	                      (override val name :String, factory :RelatedEntityFactory[K, E, T, R],
 	                       override val buffs :Buffs[R])
-	                      (override val table :RelVar[M], pk :M[MO] => ColumnMapping[K, MO])
+	                      (override val table :RelVar[M], pk :M[MO] => TypedColumn[K, MO])
 		extends AbstractRelatedEntityForeignKey[M, KeyColumn[K]#M, K, E, T, R, MO, O](factory)(table, pk)
 		   with ForeignKeyColumnMapping[M, K, R, O] with OptimizedColumn[R, O]
 	{
 		def this(name :String, factory :RelatedEntityFactory[K, E, T, R], buffs :Seq[Buff[R]])
-		        (table :RelVar[M], pk :M[MO] => ColumnMapping[K, MO]) =
+		        (table :RelVar[M], pk :M[MO] => TypedColumn[K, MO]) =
 			this(name, factory, Buffs(buffs :_*))(table, pk)
 
 		private[this] val lazyForm = Lazy(new ForeignKeyColumnForm[K, E, T, R](pk(table[MO]).form, factory))
@@ -804,33 +830,29 @@ object ForeignKeyMapping {
 		}
 		override def key :Column[K] = lazyKey.get
 
-
-		override def assemble(pieces :Pieces) :Opt[R] = super[AbstractRelatedEntityForeignKey].assemble(pieces)
-
-		override def local[S](subKey :RefinedMapping[S, MO]) :Component[S] =
+		override def local[S](subKey :TypedMapping[S, MO]) :Component[S] =
 			if (subKey eq target) key.asInstanceOf[Component[S]]
 			else throw new IllegalArgumentException(s"$subKey is not the referenced key column $target.")
 
-		override def local[S](subKey :ColumnMapping[S, MO]) :Column[S] =
+		override def local[S](subKey :TypedColumn[S, MO]) :Column[S] =
 			if (subKey eq target) key.asInstanceOf[Column[S]]
 			else throw new IllegalArgumentException(s"$subKey is not the referenced key column $target.")
 
-		override def apply[S](component :Component[S]) :Extract[S] = extracts(component)
-		override def apply[S](column :Column[S]) :ColumnExtract[S] = columnExtracts(column)
+		override def inverse[N[A] <: TypedMapping[S, A], S, Y, F]
+		                    (table :RelVar[N], factory :RelatedEntityFactory[K, S, Y, F], buffs :Buffs[F])
+				:JoinedEntityColumn[N, K, F, MO] =
+			ForeignKeyMapping.inverseColumn[N, K, S, Y, F, O, MO](target, factory, buffs)(table, _ => this)
 
 		override lazy val columnExtracts :NaturalMap[Column, ColumnExtract] = {
 			composeColumnExtracts(key, KeyExtractor(factory))
-				.updated[ColumnExtract, R](this, super.apply(this))
+				.updated[ColumnExtract, R](this, ColumnExtract.ident(this))
 		}
-
 		override def extracts :NaturalMap[Component, ColumnExtract] =
 			columnExtracts.asInstanceOf[NaturalMap[Component, ColumnExtract]]
 
 
-		override def inverse[N[A] <: RefinedMapping[S, A], S, Y, F]
-		                    (table :RelVar[N], factory :RelatedEntityFactory[K, S, Y, F], buffs :Buffs[F])
-				:JoinedEntityColumn[N, K, F, MO] =
-			ForeignKeyMapping.inverseColumn[N, K, S, Y, F, O, MO](target, factory, buffs)(table, _ => this)
+		override def apply[S](component :Component[S]) :ColumnExtract[S] = extracts(component)
+		override def apply[S](column :Column[S]) :ColumnExtract[S] = columnExtracts(column)
 
 		override def toString :String = super[AbstractRelatedEntityForeignKey].toString
 	}
@@ -843,7 +865,7 @@ object ForeignKeyMapping {
 	//consider: extending EffectivelyEmptyMapping - subclasses in MappingFrame and SimpleMapping already do
 	//todo: remember that the relationship will not be updated by normal means, but require additional inserts.
 	private[oldsql] abstract class AbstractInverseForeignKeyMapping
-	                               [M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, MO, O]
+	                               [M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, MO, O]
 	                               (localKey :C[O], factory :RelatedEntityFactory[K, E, T, R])
 	                               (override val table :RelVar[M],
 	                                foreignKey :M[MO] => ForeignKeyMapping[MappingAt, C, K, _, MO])
@@ -854,7 +876,7 @@ object ForeignKeyMapping {
 		private[this] val fk = Lazy { foreignKey(table[MO]).key }
 		//todo: what about buffs key has if it's virtual here?
 		//todo: key will have two conflicting extracts in the outer mapping.
-		override def target :RefinedMapping[K, MO] = fk
+		override def target :TypedMapping[K, MO] = fk
 		override def key :C[O] = localKey
 
 		override def apply[S <: MappingAt[O]]
@@ -865,15 +887,15 @@ object ForeignKeyMapping {
 		                    (component :C[O] => S)(implicit remote :CounterpartComponent[S, O]) :remote.Component[MO] =
 			remote.foreign(this, component(key))
 
-		override def local[S](subKey :RefinedMapping[S, O]) :Component[S] = subKey
-		override def local[S](subKey :ColumnMapping[S, O]) :Column[S] = subKey
+		override def local[S](subKey :TypedMapping[S, O]) :Component[S] = subKey
+		override def local[S](subKey :TypedColumn[S, O]) :Column[S] = subKey
 
-		override def foreign[S](subKey :RefinedMapping[S, O]) :RefinedMapping[S, MO] = {
+		override def foreign[S](subKey :TypedMapping[S, O]) :TypedMapping[S, MO] = {
 			val remote = foreignKey(table[MO])
 			remote.local(subKey.withOrigin[remote.KeyOrigin])
 		}
 
-		override def foreign[S](subKey :ColumnMapping[S, O]) :ColumnMapping[S, MO] = {
+		override def foreign[S](subKey :TypedColumn[S, O]) :TypedColumn[S, MO] = {
 			val remote = foreignKey(table[MO])
 			remote.local(subKey.withOrigin[remote.KeyOrigin])
 		}
@@ -905,7 +927,7 @@ object ForeignKeyMapping {
 	  * [[net.noresttherein.oldsql.schema.support.EffectivelyEmptyMapping EffectivelyEmptyMapping]].
 	  */ //consider: careful with extracts: duplicates of an independent key are bad, but lack of any extract for non-existing key is worse.
 	private[oldsql] class InverseForeignKeyMapping
-	                      [M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, MO, O]
+	                      [M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, MO, O]
 	                      (protected override val backer :C[O],
 	                       factory :RelatedEntityFactory[K, E, T, R], override val buffs :Buffs[R])
 	                      (table :RelVar[M], foreignKey :M[MO] => ForeignKeyMapping[MappingAt, C, K, _, MO])
@@ -935,23 +957,20 @@ object ForeignKeyMapping {
 	  * [[net.noresttherein.oldsql.schema.Buff.Ignored Ignored]] or mixing in
 	  * [[net.noresttherein.oldsql.schema.support.EffectivelyEmptyMapping EffectivelyEmptyMapping]].
 	  */ //consider: does an inverse FK column even make sense? Will `key` always exist independently in the table?
-	private[oldsql] class InverseForeignKeyColumnMapping[M[A] <: RefinedMapping[E, A], K, E, T, R, X, O]
-	                      (key :ColumnMapping[K, O], factory :RelatedEntityFactory[K, E, T, R],
+	private[oldsql] class InverseForeignKeyColumnMapping[M[A] <: TypedMapping[E, A], K, E, T, R, X, O]
+	                      (key :TypedColumn[K, O], factory :RelatedEntityFactory[K, E, T, R],
 	                       override val buffs :Buffs[R])
 	                      (table :RelVar[M], foreignKey :M[X] => ForeignKeyColumnMapping[MappingAt, K, _, X])
 		extends AbstractInverseForeignKeyMapping[M, KeyColumn[K]#M, K, E, T, R, X, O](key, factory)(table, foreignKey)
 		   with JoinedEntityColumn[M, K, R, O] with StableColumn[R, O]
 	{
-		def this(key :ColumnMapping[K, O], factory :RelatedEntityFactory[K, E, T, R], buffs :Seq[Buff[R]])
+		def this(key :TypedColumn[K, O], factory :RelatedEntityFactory[K, E, T, R], buffs :Seq[Buff[R]])
 		        (table :RelVar[M], foreignKey :M[X] => ForeignKeyColumnMapping[MappingAt, K, _, X]) =
 			this(key, factory, Buffs(buffs :_*))(table, foreignKey)
 
 		override val form :ColumnForm[R] = new ForeignKeyColumnForm[K, E, T, R](key.form, factory)
 		override def name :String = key.name
-		override def target :ColumnMapping[K, X] = super.target.asInstanceOf[ColumnMapping[K, X]]
-
-		override def apply[S](component :Component[S]) :Extract[S] = extracts(component)
-		override def apply[S](column :Column[S]) :ColumnExtract[S] = columnExtracts(column)
+		override def target :TypedColumn[K, X] = super.target.asInstanceOf[TypedColumn[K, X]]
 
 		override lazy val columnExtracts :NaturalMap[Column, ColumnExtract] = {
 			composeColumnExtracts(key, KeyExtractor(factory))
@@ -961,6 +980,9 @@ object ForeignKeyMapping {
 		override def extracts :NaturalMap[Component, ColumnExtract] =
 			columnExtracts.asInstanceOf[NaturalMap[Component, ColumnExtract]]
 
+
+		override def apply[S](component :Component[S]) :ColumnExtract[S] = extracts(component)
+		override def apply[S](column :Column[S]) :ColumnExtract[S] = columnExtracts(column)
 
 		override def toString :String = super[AbstractInverseForeignKeyMapping].toString
 	}
@@ -988,34 +1010,37 @@ object ForeignKeyMapping {
 		protected override def map(s :K) :R = factory.missing(s)
 		protected override def unmap(t :R) :K = factory.forceKeyOutOf(t)
 
-		override def set(statement :PreparedStatement, position :Int, value :R) :Unit =
-			factory.keyOf(value) match {
-				case Got(key) => referenced.set(statement, position, key)
+		override def set(statement :PreparedStatement, position :Int, value :R) :Unit = {
+			val key = if (value == null) Lack else factory.keyOf(value)
+			key match {
+				case Got(k) => referenced.set(statement, position, k)
 				case _ if !factory.isRequired => referenced.setNull(statement, position)
 				case _ =>
 					throw new MissingKeyException(toString + "no key in " + value + ".")
 			}
+		}
 
-
-		override def literal(value :R) :String =
+		override def literal(value :R, inline :Boolean) :String =
 			if (value == null)
-				referenced.nullLiteral
+				referenced.nullLiteral(inline)
 			else
 				factory.keyOf(value) match {
-					case Got(key) => referenced.literal(key)
-					case _ => referenced.nullLiteral
+					case Got(key) => referenced.literal(key, inline)
+					case _ => referenced.nullLiteral(inline)
 				}
 
-		override def inlineLiteral(value :R) :String =
+		override def columnLiterals(value :R) :Seq[String] =
 			if (value == null)
-				referenced.inlineNullLiteral
+				referenced.nullColumnLiterals
 			else
 				factory.keyOf(value) match {
-					case Got(key) => referenced.inlineLiteral(key)
-					case _ => referenced.inlineNullLiteral
+					case Got(key) => referenced.columnLiterals(key)
+					case _ => referenced.nullColumnLiterals
 				}
 
 		override def sqlType :JDBCType = referenced.sqlType
+
+		override def nullSafe = this
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if self eq this => true
@@ -1026,7 +1051,7 @@ object ForeignKeyMapping {
 
 		override def hashCode :Int = referenced.hashCode * 31 + factory.hashCode
 
-		override val toString = s"<FK[$factory]:$referenced>"
+		override val toString :String = s"<$factory[$referenced]FK>"
 	}
 
 
@@ -1044,31 +1069,31 @@ object ForeignKeyMapping {
 	}
 
 	implicit def counterpartComponent[T, X]
-			:CounterpartComponent[RefinedMapping[T, X], X] { type Component[O] = RefinedMapping[T, O] } =
-		new CounterpartComponent[RefinedMapping[T, X], X] {
-			override type Component[O] = RefinedMapping[T, O]
+			:CounterpartComponent[TypedMapping[T, X], X] { type Component[O] = TypedMapping[T, O] } =
+		new CounterpartComponent[TypedMapping[T, X], X] {
+			override type Component[O] = TypedMapping[T, O]
 
 			override def apply[K, S, O](ref :JoinedEntityComponent[MappingAt, MappingAt, K, S, O] { type KeyOrigin = X },
-			                            subKey :RefinedMapping[T, X]) =
+			                            subKey :TypedMapping[T, X]) =
 				ref.local(subKey)
 
 			override def foreign[K, S, O](ref :JoinedEntityComponent[MappingAt, MappingAt, K, S, O] {type KeyOrigin = X },
-			                              subKey :RefinedMapping[T, X]) =
+			                              subKey :TypedMapping[T, X]) =
 				ref.foreign(subKey)
 		}
 
 
 	implicit def counterpartColumn[T, X]
-			:CounterpartComponent[ColumnMapping[T, X], X] { type Component[O] = ColumnMapping[T, O] } =
-		new CounterpartComponent[ColumnMapping[T, X], X] {
-			override type Component[O] = ColumnMapping[T, O]
+			:CounterpartComponent[TypedColumn[T, X], X] { type Component[O] = TypedColumn[T, O] } =
+		new CounterpartComponent[TypedColumn[T, X], X] {
+			override type Component[O] = TypedColumn[T, O]
 
 			override def apply[K, S, O](ref :JoinedEntityComponent[MappingAt, MappingAt, K, S, O] { type KeyOrigin = X },
-			                            subKey :ColumnMapping[T, X]) =
+			                            subKey :TypedColumn[T, X]) =
 				ref.local(subKey)
 
 			override def foreign[K, S, O](ref :JoinedEntityComponent[MappingAt, MappingAt, K, S, O] {type KeyOrigin = X },
-			                              subKey :ColumnMapping[T, X]) =
+			                              subKey :TypedColumn[T, X]) =
 				ref.foreign(subKey)
 		}
 

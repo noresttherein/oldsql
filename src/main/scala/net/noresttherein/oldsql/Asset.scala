@@ -384,9 +384,9 @@ object Asset {
 				asset.transactional { assertSame; block(transaction) }
 
 
-		private def assertSame(implicit given :Transaction) :Unit = asset.trustedTransaction match {
-			case Some(t) if t != given => throw new IllegalArgumentException(
-				s"Transaction in progress $t for $this is not the same as the one implicitly passed: $given."
+		private def assertSame(implicit passed :Transaction) :Unit = asset.trustedTransaction match {
+			case Some(t) if t != passed => throw new IllegalArgumentException(
+				s"Transaction in progress $t for $this is not the same as the one implicitly passed: $passed."
 			)
 			case _ => ()
 		}
@@ -821,8 +821,8 @@ trait ThreadAsset extends AbstractManagedAsset {
 	protected def threadFormat :String = {
 		val thread = Thread.currentThread
 		val group = thread.getThreadGroup
-		if (group != null) group.getName + "/" + thread.getName + "#" + thread.getId
-		else thread.getName + "#" + thread.getId
+		if (group != null) group.getName + "/" + thread.getName + "#" + thread.threadId
+		else thread.getName + "#" + thread.threadId
 	}
 
 }

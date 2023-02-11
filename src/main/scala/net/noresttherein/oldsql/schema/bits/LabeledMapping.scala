@@ -2,16 +2,17 @@ package net.noresttherein.oldsql.schema.bits
 
 import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.schema.{Buffs, ColumnMapping, Mapping}
-import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.{Buffs, Mapping}
+import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, TypedColumn}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, TypedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
-import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.bases.{BaseColumn, BaseMapping}
+import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.schema.support.MappingAdapter
 import net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy
 import net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter
-import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.{SimpleColumnAdapter, ExportColumnAdapter}
+import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.{ExportColumnAdapter, SimpleColumnAdapter}
+import net.noresttherein.oldsql.OperationView
 
 
 
@@ -46,20 +47,21 @@ object LabeledMapping {
 	/** A type of string literals used to label mappings on the type level for ease of access. */
 	type Label = String with Singleton //todo: replace its usages with LabelPath.Label once we start using it
 
-	/** A base trait for labeled columns. */
-	trait LabeledColumn[N <: Label, S, O] extends ColumnMapping[S, O] with LabeledMapping[N, S, O]
-
 	type Of[S] = { type As[N <: Label] = { type P[O] = LabeledMapping[N, S, O] } }
 
-	def LabeledColumn[N <: Label, S, O](label :N, column :ColumnMapping[S, O]) :N @: ColumnMapping[S, O] =
+	/** A base trait for labeled columns. */
+	trait LabeledColumn[N <: Label, S, O] extends BaseColumn[S, O] with LabeledMapping[N, S, O]
+
+	def LabeledColumn[N <: Label, S, O](label :N, column :TypedColumn[S, O]) :N @: TypedColumn[S, O] =
 		column match {
-			case simple :SimpleColumn[S, O] => new SimpleColumnLabel[N, S, O](simple)(new ValueOf[N](label))
+			case simple :SimpleColumn[S @unchecked, O @unchecked] =>
+				new SimpleColumnLabel[N, S, O](simple)(new ValueOf[N](label))
 			case _ => new ColumnLabel[N, S, O](column)(new ValueOf[N](label))
 		}
 
 
 
-	def apply[N <: Label, M <: RefinedMapping[S, O], S, O](label :N, mapping :M) :N @: M =
+	def apply[N <: Label, M <: TypedMapping[S, O], S, O](label :N, mapping :M) :N @: M =
 		new MappingLabel[N, M, S, O](mapping)(new ValueOf[N](label))
 
 
@@ -82,8 +84,6 @@ object LabeledMapping {
 		override def mappingName :String = "'" + label + "@:" + body.mappingName
 	}
 
-
-
 	object @: {
 		def unapply(mapping :Mapping) :Opt[(Label, Mapping)] = mapping match {
 			case labeled: @:[_, _] => Got(labeled.label -> labeled.body)
@@ -104,7 +104,7 @@ object LabeledMapping {
 
 
 
-	class MappingLabel[N <: Label, M <: RefinedMapping[S, O], S, O](protected val backer :M)
+	class MappingLabel[N <: Label, M <: TypedMapping[S, O], S, O](protected val backer :M)
 	                                                               (implicit singleton :ValueOf[N])
 		extends DirectProxy[S, O] with DelegateAdapter[M, S, O] with (N @: M)
 	{
@@ -118,12 +118,12 @@ object LabeledMapping {
 
 
 
-	class ColumnLabel[N <: Label, S, O](column :ColumnMapping[S, O], name :String, buffs :Buffs[S] = Buffs.empty[S])
+	class ColumnLabel[N <: Label, S, O](column :TypedColumn[S, O], name :String, buffs :Buffs[S] = Buffs.empty[S])
 	                                   (implicit labelValue :ValueOf[N])
-		extends ExportColumnAdapter[ColumnMapping[S, O], S, O](column, name, buffs)(column.form)
-		   with LabeledColumn[N, S, O] with (N @: ColumnMapping[S, O])
+		extends ExportColumnAdapter[TypedColumn[S, O], S, O](column, name, buffs)(column.form)
+		   with LabeledColumn[N, S, O] with (N @: TypedColumn[S, O])
 	{
-		def this(column :ColumnMapping[S, O])(implicit label :ValueOf[N]) =
+		def this(column :TypedColumn[S, O])(implicit label :ValueOf[N]) =
 			this(column, column.name, column.buffs)(label)
 
 		override val label :N = labelValue.value
@@ -136,7 +136,7 @@ object LabeledMapping {
 	class SimpleColumnLabel[N <: Label, S, O](column :SimpleColumn[S, O], name :String, buffs :Buffs[S] = Buffs.empty[S])
 	                                         (implicit labelValue :ValueOf[N])
 		extends SimpleColumnAdapter[SimpleColumn[S, O], S, O](column, name, buffs)
-		   with LabeledColumn[N, S, O] with (N @: ColumnMapping[S, O])
+		   with LabeledColumn[N, S, O] with (N @: TypedColumn[S, O])
 	{
 		def this(column :SimpleColumn[S, O])(implicit label :ValueOf[N]) =
 			this(column, column.name, column.buffs)(label)

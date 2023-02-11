@@ -3,10 +3,9 @@ package net.noresttherein.oldsql.sql.mechanics
 import scala.annotation.implicitNotFound
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, FromSome, GroupBy, GroupByClause, RowProduct}
-import net.noresttherein.oldsql.sql.DecoratedFrom.{DecoratorDecomposition, ExpandingDecorator}
+import net.noresttherein.oldsql.sql.{AggregateClause, Aggregated, AndBy, FromSome, GroupBy, GroupByClause, GroupJoin, RowProduct}
+import net.noresttherein.oldsql.sql.DecoratedRow.{DecoratorDecomposition, ExpandingDecorator}
 import net.noresttherein.oldsql.sql.Expanded.ExpandedDecomposition
-import net.noresttherein.oldsql.sql.GroupBy.AndBy
 
 
 
@@ -34,13 +33,22 @@ abstract class GroupedUnder[+F <: RowProduct, -G <: RowProduct] {
 
 
 object GroupedUnder {
+	@inline def apply[F <: FromSome, G <: RowProduct](implicit grouping :F GroupedUnder G) :grouping.type = grouping
+
 	@inline def apply[F <: FromSome, G <: RowProduct](from :G)(implicit grouping :F GroupedUnder G) :F =
 		grouping(from)
 
+	def apply(from :AggregateClause) :from.Discrete GroupedUnder from.Self =
+		instance.asInstanceOf[from.Discrete GroupedUnder from.Self]
 
-	implicit def andBy[F <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
-	                   J[+C <: U, T[A] <: R[A]] <: C AndBy T, U <: GroupByClause]
-	                  (implicit decompose :ExpandedDecomposition[G, L, R, J, U], from :F GroupedUnder L)
+	def generalized(from :AggregateClause) :from.GeneralizedDiscrete GroupedUnder from.Generalized =
+		instance.asInstanceOf[from.GeneralizedDiscrete GroupedUnder from.Generalized]
+
+
+
+	implicit def groupJoin[F <: RowProduct, G <: L J R, L <: U, R[O] <: MappingAt[O],
+	                       J[+C <: U, T[A] <: R[A]] <: C GroupJoin T, U <: GroupByClause]
+	                      (implicit decompose :ExpandedDecomposition[G, L, R, J, U], from :F GroupedUnder L)
 			:F GroupedUnder G =
 		instance.asInstanceOf[F GroupedUnder G]
 

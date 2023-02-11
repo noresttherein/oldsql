@@ -7,7 +7,7 @@ import scala.collection.breakOut
 
 trait ColumnSelection extends (ColumnValues => ColumnValues) {
 	import ColumnSelection._
-//	def columns :Seq[ColumnMapping[_, _]]
+//	def columns :Seq[TypedColumn[_, _]]
 
 	def apply(values :ColumnValues) :ColumnValues
 
@@ -31,15 +31,15 @@ trait ColumnSelection extends (ColumnValues => ColumnValues) {
 
 
 object ColumnSelection {
-	case class Single(column :ColumnMapping[_, _]) extends ColumnSelection {
+	case class Single(column :TypedColumn[_, _]) extends ColumnSelection {
 		override def apply(values: ColumnValues): ColumnValues = values.filter(_==column)
 
 		override def toString = s"Single($column)"
 	}
 
 
-	case class Inverse(columns :Seq[ColumnMapping[_, _]], map :ColumnMapping[_, _]=>ColumnMapping[_, _]) extends ColumnSelection {
-		private val inverse = columns.map(c => (map(c), c)).toMap[ColumnMapping[_, _], ColumnMapping[_, _]]
+	case class Inverse(columns :Seq[TypedColumn[_, _]], map :TypedColumn[_, _]=>TypedColumn[_, _]) extends ColumnSelection {
+		private val inverse = columns.map(c => (map(c), c)).toMap[TypedColumn[_, _], TypedColumn[_, _]]
 
 		def apply(values: ColumnValues): ColumnValues = values.compose(inverse)
 
@@ -47,8 +47,8 @@ object ColumnSelection {
 	}
 
 
-	case class Adapted(selection :Map[ColumnMapping[_, _], ColumnMapping[_, _]]) extends ColumnSelection {
-		def this(adapted :ColumnMapping[_, _], adapter :ColumnMapping[_, _]) = this(Map(adapted->adapter))
+	case class Adapted(selection :Map[TypedColumn[_, _], TypedColumn[_, _]]) extends ColumnSelection {
+		def this(adapted :TypedColumn[_, _], adapter :TypedColumn[_, _]) = this(Map(adapted->adapter))
 
 		override def apply(values: ColumnValues): ColumnValues =
 			values.compose(selection)
@@ -57,22 +57,22 @@ object ColumnSelection {
 	}
 
 	object Adapted {
-		def apply(adapted :ColumnMapping[_, _], adapter :ColumnMapping[_, _]) :Adapted =
+		def apply(adapted :TypedColumn[_, _], adapter :TypedColumn[_, _]) :Adapted =
 			new Adapted(adapted, adapter)
 
-		def apply(adapters :Seq[(ColumnMapping[_, _], ColumnMapping[_, _])]) :Adapted =
-			new Adapted(adapters.toMap[ColumnMapping[_, _], ColumnMapping[_, _]])
+		def apply(adapters :Seq[(TypedColumn[_, _], TypedColumn[_, _])]) :Adapted =
+			new Adapted(adapters.toMap[TypedColumn[_, _], TypedColumn[_, _]])
 	}
 
 
-	case class Filter(filter :ColumnMapping[_, _]=>Boolean) extends ColumnSelection {
+	case class Filter(filter :TypedColumn[_, _]=>Boolean) extends ColumnSelection {
 		override def apply(values: ColumnValues): ColumnValues = values.filter(filter)
 
 		override def toString = s"Filter()"
 	}
 
 
-	case class Collect(fun :PartialFunction[ColumnMapping[_, _], ColumnMapping[_, _]]) extends ColumnSelection {
+	case class Collect(fun :PartialFunction[TypedColumn[_, _], TypedColumn[_, _]]) extends ColumnSelection {
 		override def apply(values: ColumnValues): ColumnValues = values.collector(fun)
 
 		override def toString = s"Collect()"

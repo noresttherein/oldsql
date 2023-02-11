@@ -16,8 +16,8 @@ import scala.slick.jdbc.{GetResult, PositionedParameters, PositionedResult, SetP
 import scala.util.Try
 
 
-trait ColumnMapping[T] extends Mapping[T] with SetParameter[T] { column =>
-	type Component[X] <: ColumnMapping[X]
+trait TypedColumn[T] extends Mapping[T] with SetParameter[T] { column =>
+	type Component[X] <: TypedColumn[X]
 
 	def self :Component[T]
 //	final def self = SelfPath(this)
@@ -92,15 +92,15 @@ trait ColumnMapping[T] extends Mapping[T] with SetParameter[T] { column =>
 //		DirectComponent(this :this.type)(component)(ValueMorphism.identity[T].asInstanceOf[ValueMorphism[T, X]], ComponentMorphism.homomorphism(_ => self))
 
 
-	def withOptions(opts :Seq[MappingExtension[T]]) :ColumnMapping[T] = ColumnMapping(name, opts:_*)(columnType)
+	def withOptions(opts :Seq[MappingExtension[T]]) :TypedColumn[T] = TypedColumn(name, opts:_*)(columnType)
 
-	def renamed(name :String) :ColumnMapping[T] = ColumnMapping(name, modifiers:_*)(columnType)
+	def renamed(name :String) :TypedColumn[T] = TypedColumn(name, modifiers:_*)(columnType)
 
-	override def prefixed(prefix :String) :ColumnMapping[T] = ColumnMapping(prefix+name, modifiers:_*)(columnType)
+	override def prefixed(prefix :String) :TypedColumn[T] = TypedColumn(prefix+name, modifiers:_*)(columnType)
 
-	def prefixed(prefix :Option[String]) :ColumnMapping[T] = prefix.map(prefixed) getOrElse this
+	def prefixed(prefix :Option[String]) :TypedColumn[T] = prefix.map(prefixed) getOrElse this
 
-	override def qualified(prefix :String) :ColumnMapping[T] = prefixOption(prefix).map(p => prefixed(p + ".")) getOrElse this
+	override def qualified(prefix :String) :TypedColumn[T] = prefixOption(prefix).map(p => prefixed(p + ".")) getOrElse this
 
 
 
@@ -112,30 +112,30 @@ trait ColumnMapping[T] extends Mapping[T] with SetParameter[T] { column =>
 
 
 
-object ColumnMapping {
+object TypedColumn {
 
-	def apply[T :ColumnType](name :String, opts :MappingExtension[T]*) :ColumnMapping[T] =
+	def apply[T :ColumnType](name :String, opts :MappingExtension[T]*) :TypedColumn[T] =
 		new BaseColumn(name, opts)
 
-	def adapt[T](mapping :TypedMapping[T]) :Option[ColumnMapping[T]] = mapping match {
-		case c:ColumnMapping[_] => Some(c.asInstanceOf[ColumnMapping[T]])
+	def adapt[T](mapping :TypedMapping[T]) :Option[TypedColumn[T]] = mapping match {
+		case c:TypedColumn[_] => Some(c.asInstanceOf[TypedColumn[T]])
 		case _ => Try(new ColumnView[T](mapping.asMapping)).toOption
 	}
 
 
 
-	def apply[T](mapping :Mapping[T]) :ColumnMapping[T] = new ColumnView[T](mapping)
+	def apply[T](mapping :Mapping[T]) :TypedColumn[T] = new ColumnView[T](mapping)
 
 
-//	def unapply[T](mapping :Mapping[T]) :Option[ColumnMapping[T]] = mapping.asSubclass[ColumnMapping[T]]
+//	def unapply[T](mapping :Mapping[T]) :Option[TypedColumn[T]] = mapping.asSubclass[TypedColumn[T]]
 
 
 
 
 	class BaseColumn[T](val name :String, override val modifiers :Seq[MappingExtension[T]])(implicit val columnType :ColumnType[T])
-		extends ColumnMapping[T]
+		extends TypedColumn[T]
 	{
-		type Component[X] = ColumnMapping[X]
+		type Component[X] = TypedColumn[X]
 
 		def self: Component[T] = this
 
@@ -154,12 +154,12 @@ object ColumnMapping {
 
 	}
 
-	trait ColumnSubstitute[T, S] extends ColumnMapping[T] {
-		override type Component[X] = ColumnMapping[X]
+	trait ColumnSubstitute[T, S] extends TypedColumn[T] {
+		override type Component[X] = TypedColumn[X]
 
 		override def self: Component[T] = this
 
-		val adaptee :ColumnMapping[T]
+		val adaptee :TypedColumn[T]
 
 		override def name: String = adaptee.name
 
@@ -182,7 +182,7 @@ object ColumnMapping {
 			(values :\ adaptee).result(adaptee)
 	}
 
-	class ColumnOverride[T](val adaptee :ColumnMapping[T], nameOverride :Option[String]=None, modifiersOverride :Option[Seq[MappingExtension[T]]]=None)
+	class ColumnOverride[T](val adaptee :TypedColumn[T], nameOverride :Option[String]=None, modifiersOverride :Option[Seq[MappingExtension[T]]]=None)
 		extends ColumnImpostor[T]
 	{
 		override val modifiers = modifiersOverride getOrElse adaptee.modifiers
@@ -192,8 +192,8 @@ object ColumnMapping {
 
 
 
-	class ColumnView[T](val adaptee :Mapping[T]) extends ColumnMapping[T] {
-		type Component[X] = ColumnMapping[X]
+	class ColumnView[T](val adaptee :Mapping[T]) extends TypedColumn[T] {
+		type Component[X] = TypedColumn[X]
 
 		if (adaptee.columns.size!=1 || adaptee.selectForm.readColumns!=1 || adaptee.insertForm.writtenColumns!=1 || adaptee.updateForm.writtenColumns!=1)
 			throw new IllegalArgumentException(s"Expected column, got multiple column mapping :$adaptee{${adaptee.columns}}")

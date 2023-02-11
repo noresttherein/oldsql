@@ -13,7 +13,7 @@ import java.util.concurrent.Executor
 /**
   * @author Marcin Mościcki
   */ //todo: factory methods with wrappers for other types we might want to proxy such as ResultSet, PreparedStatement, etc.
-private[sql]  class ConnectionProxy(connection :Connection) extends Connection {
+private[oldsql]  class ConnectionProxy(connection :Connection) extends Connection {
 	override def createStatement() = connection.createStatement()
 	override def createStatement(resultSetType :Int, resultSetConcurrency :Int) =
 		connection.createStatement(resultSetType, resultSetConcurrency)

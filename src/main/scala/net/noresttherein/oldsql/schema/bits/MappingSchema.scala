@@ -4,8 +4,8 @@ import scala.annotation.implicitNotFound
 import scala.reflect.runtime.universe.TypeTag
 
 import net.noresttherein.oldsql
-import net.noresttherein.oldsql.OperationType
-import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.OperationView
+import net.noresttherein.oldsql.OperationView.WriteOperationView
 import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
@@ -17,13 +17,12 @@ import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
 import net.noresttherein.oldsql.schema.{composeExtractAssoc, filterColumnExtracts, Buff, Buffs, ColumnExtract, ColumnForm, ColumnMappingExtract, Mapping, MappingExtract, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.bits.LabelPath./
+import net.noresttherein.oldsql.schema.bits.LabelPath.{/, Label}
 import net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, SchemaColumn}
-import net.noresttherein.oldsql.schema.support.{AlteredMapping, DelegateMapping}
+import net.noresttherein.oldsql.schema.support.{PatchedMapping, DelegateMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy
 
 
@@ -60,7 +59,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy
   * @see [[net.noresttherein.oldsql.schema.bits.SchemaMapping.FlatSchemaMapping]]
   */ //todo: override apply(adjustments)
 trait MappingSchema[S, V <: Chain, C <: Chain, O] extends BaseMapping[V, O] with MappingSchemaComponents {
-
+//consider: renaming; MappingShape/SchemaShape? UnpackedSchema? UnpackedMapping? ComponentsMapping? MappingComponents?
 	/** The subject type of this schema.
 	  * @see [[net.noresttherein.oldsql.schema.bits.MappingSchema.Subject]]
 	  */
@@ -168,7 +167,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends BaseMapping[V, O] with
 	  */
 	protected[schema] def columnsReversed :List[Column[_]] = columns.toList.reverse
 
-
+	//consider: these are just superfluous duplicates, remove them.
 	/** An `Extract` of the owning mapping, representing this schema's component with subject type `T`
 	  * as part of the 'packed' value `S`.
 	  */
@@ -365,6 +364,13 @@ object MappingSchema {
 
 
 
+	/** A mixin trait for both [[net.noresttherein.oldsql.schema.bits.MappingSchema MappingSchema]]
+	  * and [[net.noresttherein.oldsql.schema.bits.SchemaMapping SchemaMapping]]
+	  * (as well as its super type [[net.noresttherein.oldsql.schema.bits.SchemaMapping.|-| |-|]]),
+	  * declaring the [[net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents.Packed Packed]]
+	  * and [[net.noresttherein.oldsql.schema.bits.MappingSchema..MappingSchemaComponents.Unpacked Unpacked]] types
+	  * as well as accessors allowing the retrieval of the components declared within it.
+	  */ //todo: we should ditch type safe O(n) implementations and keep a Map inside MappingSchema, casting the result
 	trait MappingSchemaComponents extends Mapping {
 
 		/** The scala type to which the schema maps. It is the `Subject` type of the outer mapping of this schema. */
@@ -1250,9 +1256,9 @@ object MappingSchema {
 
 
 
-
-	@implicitNotFound("No ${M} <: @|-|[${N}, ${T}, _, _] present in the schema ${C}\n(with values ${V}).")
-	sealed abstract class GetLabeledComponent[P, V <: Chain, C <: Chain, T, +M <: |-|[T, _, _]] {
+	//todo: make T an inner type
+	@implicitNotFound("No ${M} <: @|-|[_, ${T}, _, _] present in the schema ${C}\n(with values ${V}).")
+	sealed abstract class GetLabeledComponent[P, V <: Chain, C <: Chain, T, +M <: |-|[T, _, _]] { //todo: make M,T member types
 		def apply[S, O](schema :MappingSchema[S, V, C, O], path :P) :M
 		def extract[S, O](schema :MappingSchema[S, V, C, O], path :P) :MappingExtract[S, T, O]
 	}
@@ -1313,7 +1319,7 @@ object MappingSchema {
 
 
 	@implicitNotFound("No ${M} <: |-|[${T}, _, _] present at index ${I} in the schema ${C}\n(with values ${V}).")
-	sealed abstract class GetSchemaComponent[I <: Numeral, V <: Chain, C <: Chain, T, +M <: |-|[T, _, _]] {
+	sealed abstract class GetSchemaComponent[I <: Numeral, V <: Chain, C <: Chain, T, +M <: |-|[T, _, _]] { //todo: make M,T member types
 		def apply[S, O](schema :MappingSchema[S, V, C, O], idx :I) :M
 		def extract[S, O](schema :MappingSchema[S, V, C, O], idx :I) :MappingExtract[S, T, O]
 	}
@@ -2459,13 +2465,47 @@ object MappingSchema {
 
 		override val members :C ~ M = init.members ~ element
 
-		@inline protected final def component :Component[T] = (element :RefinedMapping[T, element.Origin]).withOrigin[O]
+		@inline protected final def component :Component[T] = (element :TypedMapping[T, element.Origin]).withOrigin[O]
 
 		override def last[N](implicit nonEmpty :C ~ M <:< (Chain ~ N)) :N = component.asInstanceOf[N]
 
 		override def prev[I <: Chain, P <: Chain](implicit vals :L[V, E] <:< (I ~ Any), comps :C ~ M <:< (P ~ Any))
 				:MappingSchema[S, I, P, O] =
 			init.asInstanceOf[MappingSchema[S, I, P, O]]
+
+		protected override val selfExtract :Extract[V L E] = MappingExtract.ident(this)
+		private[this] val unpackSelf       :PackedExtract[V L E] = MappingExtract(this)(Extractor.Optional(unapply(_)))
+		private[this] val initExtract      :Extract[V] = MappingExtract.req(init) { vs :(V L E) => vs.init }
+		private[this] val componentExtract :Extract[T] = MappingExtract.req(component.withOrigin[O])(lastValue)
+
+		override val extracts       :NaturalMap[Component, Extract] =
+			(init.extracts.map(composeExtractAssoc(initExtract)(_)) ++
+				component.withOrigin[O].extracts.map(composeExtractAssoc(componentExtract)(_))
+			).updated(init, initExtract).updated(component.withOrigin[O], componentExtract).updated(this, selfExtract)
+
+		override val columnExtracts :NaturalMap[Column, ColumnExtract] =
+			NaturalMap.delayed(filterColumnExtracts(this)(extracts))
+
+		override val packedExtracts :NaturalMap[Component, PackedExtract] =
+			init.packedExtracts ++ component.extracts.map(composeExtractAssoc(extractor)(_))
+				.updated[PackedExtract, T](component, extractor).updated[PackedExtract, V L E](this, unpackSelf)
+
+		override val packedColumnExtracts :NaturalMap[Column, PackedColumnExtract] =
+			NaturalMap.delayed(filterColumnExtracts(toString)(packedExtracts))
+
+
+		protected[schema] override def componentsReversed :List[Component[_]] =
+			component :: init.componentsReversed
+
+		protected[schema] override def subcomponentsReversed :List[Component[_]] =
+			component :: component.subcomponents.toList reverse_::: init :: init.subcomponentsReversed
+
+		protected[schema] override def columnsReversed :List[Column[_]] =
+			component.columns.toList reverse_::: init.columnsReversed
+
+		override val components :Unique[Component[_]] = Unique.Lazy(componentsReversed.reverse)
+		override val subcomponents :Unique[Component[_]] = Unique.Lazy(subcomponentsReversed.reverse)
+		override val columns :Unique[Column[_]] = Unique.Lazy(columnsReversed.reverse)
 
 
 
@@ -2486,41 +2526,6 @@ object MappingSchema {
 		override def lastExtract[X](implicit nonEmpty :C ~ M <:< (Chain ~ |-|[X, _ <: Chain, _ <: Chain]))
 				:MappingExtract[S, X, O] =
 			extractor.asInstanceOf[MappingExtract[S, X, O]]
-
-		private[this] val unpackSelf :PackedExtract[V L E] = MappingExtract(this)(Extractor.Optional(unapply(_)))
-		private[this] val selfExtract :Extract[V L E] = MappingExtract.ident(this)
-		private[this] val initExtract :Extract[V] = MappingExtract.req(init) { vs :(V L E) => vs.init }
-		private[this] val componentExtract :Extract[T] = MappingExtract.req(component.withOrigin[O])(lastValue)
-
-		override val extracts :NaturalMap[Component, Extract] =
-			(init.extracts.map(composeExtractAssoc(initExtract)(_)) ++
-				component.withOrigin[O].extracts.map(composeExtractAssoc(componentExtract)(_))
-			).updated(init, initExtract).updated(component.withOrigin[O], componentExtract).updated(this, selfExtract)
-
-
-		override val columnExtracts :NaturalMap[Column, ColumnExtract] =
-			NaturalMap.delayed(filterColumnExtracts(this)(extracts))
-
-		override val packedExtracts :NaturalMap[Component, PackedExtract] =
-			init.packedExtracts ++ component.extracts.map(composeExtractAssoc(extractor)(_))
-				.updated[PackedExtract, T](component, extractor).updated[PackedExtract, V L E](this, unpackSelf)
-
-		override val packedColumnExtracts = NaturalMap.delayed(filterColumnExtracts(toString)(packedExtracts))
-
-
-
-		protected[schema] override def componentsReversed :List[Component[_]] =
-			component :: init.componentsReversed
-
-		protected[schema] override def subcomponentsReversed :List[Component[_]] =
-			component :: component.subcomponents.toList reverse_::: init :: init.subcomponentsReversed
-
-		protected[schema] override def columnsReversed :List[Column[_]] =
-			component.columns.toList reverse_::: init.columnsReversed
-
-		override val components :Unique[Component[_]] = Unique.Lazy(componentsReversed.reverse)
-		override val subcomponents :Unique[Component[_]] = Unique.Lazy(subcomponentsReversed.reverse)
-		override val columns :Unique[Column[_]] = Unique.Lazy(columnsReversed.reverse)
 
 	}
 
@@ -2583,7 +2588,7 @@ object MappingSchema {
 		override val filterForm = init.filterForm ~ last.filterForm
 		override val insertForm = init.insertForm ~ last.insertForm
 		override val updateForm = init.updateForm ~ last.updateForm
-		override def writeForm(op :WriteOperationType) :SQLWriteForm[V ~ T] = op.form(this)
+		protected override def newWriteForm(op :WriteOperationView) :SQLWriteForm[V ~ T] = op.form(this)
 
 		override def compose[X](extractor :X =?> S) :NonEmptyFlatSchema[X, V, C, T, M, O] =
 			new NonEmptyFlatSchema(init compose extractor, last, this.extractor compose extractor)
@@ -2649,17 +2654,11 @@ object MappingSchema {
 	  * @param original the mapping schema which is being altered for some operation
 	  * @param backer a mapping schema recreated from `original` by filtering its `members` chain.
 	  */
-	private class FilteredSchema[S, V <: Chain, C <: Chain, O]
+	private class FilteredSchema[S, V <: Chain, C <: Chain, O] //consider: mixing in StableMapping or creating a StableAdapter
 	                            (original :MappingSchema[S, _ <: Chain, _ <: Chain, O],
 	                             protected override val backer :MappingSchema[S, V, C, O])
 		extends ExportProxy[V, O] with MappingSchemaProxy[S, V, C, O]
 	{
-		override def apply[T](component :Component[T]) :Extract[T] = extracts(component)
-		override def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
-		override def export[T](component :Component[T]) :Component[T] = extracts(component).export
-		override def export[T](column :Column[T]) :Column[T] = columnExtracts(column).export
-
-
 		override val packedExtracts :NaturalMap[Component, PackedExtract] =
 			original.packedExtracts.updated[PackedExtract, V](
 				backer, MappingExtract(backer)(Extractor.Optional(backer.unapply(_)))
@@ -2677,20 +2676,26 @@ object MappingSchema {
 
 		override val columnExtracts = oldsql.schema.filterColumnExtracts(this)(extracts)
 
-		override val components :Unique[Component[_]] = original.components ++ backer.components
-		override val subcomponents :Unique[Component[_]] = original.subcomponents ++ backer.subcomponents
+		override val components        :Unique[Component[_]] = original.components ++ backer.components
+		override val subcomponents     :Unique[Component[_]] = original.subcomponents ++ backer.subcomponents
 
-		override val columns :Unique[Column[_]] = original.columns
-		override val selectable :Unique[Column[_]] = original.selectable
-		override val filterable :Unique[Column[_]] = original.filterable
-		override val insertable :Unique[Column[_]] = original.insertable
-		override val updatable :Unique[Column[_]] = original.updatable
-		override val autoInserted :Unique[Column[_]] = original.autoInserted
-		override val autoUpdated :Unique[Column[_]] = original.autoUpdated
+		override val columns           :Unique[Column[_]] = original.columns
+		override val selectable        :Unique[Column[_]] = original.selectable
+		override val filterable        :Unique[Column[_]] = original.filterable
+		override val insertable        :Unique[Column[_]] = original.insertable
+		override val updatable         :Unique[Column[_]] = original.updatable
+		override val autoInserted      :Unique[Column[_]] = original.autoInserted
+		override val autoUpdated       :Unique[Column[_]] = original.autoUpdated
 		override val selectedByDefault :Unique[Column[_]] = original.selectedByDefault
 		override val filteredByDefault :Unique[Column[_]] = original.filteredByDefault
 		override val insertedByDefault :Unique[Column[_]] = original.insertedByDefault
-		override val updatedByDefault :Unique[Column[_]] = original.updatedByDefault
+		override val updatedByDefault  :Unique[Column[_]] = original.updatedByDefault
+
+		override def apply[T](component :Component[T]) :Extract[T] = extracts(component)
+		override def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
+		override def export[T](component :Component[T]) :Component[T] = extracts(component).export
+		override def export[T](column :Column[T]) :Column[T] = columnExtracts(column).export
+
 
 		override def compose[X](extractor :X =?> S) :MappingSchema[X, V, C, O] =
 			new FilteredSchema(original compose extractor, backer compose extractor)
@@ -2698,18 +2703,18 @@ object MappingSchema {
 
 
 
-	private[schema] class AlteredSchema[S, V <: Chain, C <: Chain, O]
+	private[schema] class DedicatedSchema[S, V <: Chain, C <: Chain, O]
 	                                   (original :MappingSchema[S, _ <: Chain, _ <: Chain, O],
 	                                    filtered: MappingSchema[S, V, C, O],
-	                                    op :OperationType,
-	                                    include :Iterable[RefinedMapping[_, O]],
-	                                    exclude :Iterable[RefinedMapping[_, O]])
-		extends AlteredMapping[MappingSchema[S, V, C, O], V, O](
+	                                    op :OperationView,
+	                                    include :Iterable[TypedMapping[_, O]],
+	                                    exclude :Iterable[TypedMapping[_, O]])
+		extends PatchedMapping[MappingSchema[S, V, C, O], V, O](
 				new FilteredSchema[S, V, C, O](original, filtered), op, include, exclude)
 		   with MappingSchemaProxy[S, V, C, O]
 	{
 		def this(original :MappingSchema[S, _ <: Chain, _ <: Chain, O], filtered :MappingSchema[S, V, C, O],
-		         op :OperationType, include :Iterable[RefinedMapping[_, O]]) =
+		         op :OperationView, include :Iterable[TypedMapping[_, O]]) =
 			this(original, filtered, op, include, {
 				val components = original.members.toSeq.asInstanceOf[Seq[SchemaMapping[_, _, _, O]]]
 				val remaining = filtered.members.toSeq.asInstanceOf[Seq[SchemaMapping[_, _, _, O]]].toSet
@@ -2726,16 +2731,16 @@ object MappingSchema {
 		override def assemble(pieces :Pieces) :Opt[V] = filtered.assemble(pieces)
 
 		override def compose[X](extractor :X =?> S) :MappingSchema[X, V, C, O] =
-			new AlteredSchema(original compose extractor, filtered compose extractor, op, include, exclude)
+			new DedicatedSchema(original compose extractor, filtered compose extractor, op, include, exclude)
 	}
 
 
 
-	private[schema] class AlteredFlatSchema[S, V <: Chain, C <: Chain, O]
+	private[schema] class DedicatedFlatSchema[S, V <: Chain, C <: Chain, O]
 	                      (original :FlatMappingSchema[S, _ <: Chain, _ <: Chain, O],
 	                       filtered :FlatMappingSchema[S, V, C, O],
-	                       op :OperationType, include :Iterable[RefinedMapping[_, O]])
-		extends AlteredSchema[S, V, C, O](original, filtered, op, include)
+	                       op :OperationView, include :Iterable[TypedMapping[_, O]])
+		extends DedicatedSchema[S, V, C, O](original, filtered, op, include)
 		   with FlatMappingSchema[S, V, C, O]
 	{
 		override def prev[I <: Chain, P <: Chain](implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any))
@@ -2743,7 +2748,7 @@ object MappingSchema {
 			filtered.prev
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[X, V, C, O] =
-			new AlteredFlatSchema(original compose extractor, filtered compose extractor, op, include)
+			new DedicatedFlatSchema(original compose extractor, filtered compose extractor, op, include)
 	}
 
 

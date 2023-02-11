@@ -1,6 +1,6 @@
 package com.adpilot.cortb.clientapi.prototype.repository.plain.mapping
 
-import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.ColumnMapping._
+import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.TypedColumn._
 import com.adpilot.cortb.clientapi.prototype.repository.plain.mapping.Mapping._
 
 import scala.slick.jdbc.PositionedResult
@@ -28,10 +28,10 @@ object ComponentMapping {
 		lazy val generated = adaptColumns(_.generated)
 
 		//TODO FIXME:  this will return duplicate columns for every column that is a part of a component.
-		protected def adaptColumns(columns :ComponentMapping[C, _]=>Seq[ColumnMapping[_, _]]) =
+		protected def adaptColumns(columns :ComponentMapping[C, _]=>Seq[TypedColumn[_, _]]) =
 			components.flatMap(c => columns(c).map(adapt(_)))
 
-		protected def adapt[T, X](c :ColumnMapping[T, X]) :Column[X]
+		protected def adapt[T, X](c :TypedColumn[T, X]) :Column[X]
 	}
 */
 

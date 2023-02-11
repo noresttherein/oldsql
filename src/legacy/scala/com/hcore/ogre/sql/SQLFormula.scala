@@ -1132,7 +1132,7 @@ object SQLFormula {
 			  * @param formula sql formula providing value for the column
 			  * @param name column name (sqlName) and suggested alias for the column in the select clause
 			  */
-			case class Component[T](formula :SQLFormula[R, T], name :String) extends ColumnMapping[T] with Column[T] { component =>
+			case class Component[T](formula :SQLFormula[R, T], name :String) extends TypedColumn[T] with Column[T] { component =>
 				override type Component[X] = select.Component[X]
 				def self = this
 

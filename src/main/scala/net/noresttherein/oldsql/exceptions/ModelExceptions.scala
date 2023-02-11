@@ -16,7 +16,7 @@ import net.noresttherein.oldsql.model.Kin
   * [[net.noresttherein.oldsql.model.ComposedOf.ComposableFrom composition]] are not inverse functions.
   */
 class IncompatibleElementTypeException(msg :String, cause :Throwable = null) extends BaseOldSQLException(msg, cause) {
-	override def stackOn(msg :String) :OldSQLException = new IncompatibleElementTypeException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new IncompatibleElementTypeException(msg, this)
 }
 
 
@@ -34,7 +34,7 @@ trait KinCompositionException extends IllegalReferenceException
 class IllegalKinArityException(msg :String, cause :Throwable = null)
 	extends IllegalResultArityException(msg, cause) with KinCompositionException
 {
-	override def stackOn(msg :String) :OldSQLException = new IllegalKinArityException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new IllegalKinArityException(msg, this)
 }
 
 /** Thrown after a failure to resolve a [[net.noresttherein.oldsql.model.Kin.One One]] kin, representing a mandatory
@@ -48,7 +48,7 @@ class NonexistentEntityException(msg :String, ex :Throwable = null)
 
 	initCause(ex)
 
-	override def stackOn(msg :String) :OldSQLException = new NonexistentEntityException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new NonexistentEntityException(msg, this)
 }
 
 
@@ -64,5 +64,5 @@ class AbsentKinException(msg :String, ex :Throwable = null)
 
 	initCause(ex)
 
-	override def stackOn(msg :String) :OldSQLException = new AbsentKinException(msg, this)
+	override def addInfo(msg :String) :OldSQLException = new AbsentKinException(msg, this)
 }

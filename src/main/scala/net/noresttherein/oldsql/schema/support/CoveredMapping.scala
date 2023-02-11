@@ -1,8 +1,8 @@
 package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.schema.{Buffs, ColumnMapping}
-import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
-import net.noresttherein.oldsql.schema.Mapping.RefinedMapping
+import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, TypedColumn}
+import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.support.MappingProxy.{OpaqueColumnProxy, OpaqueProxy}
 
 
@@ -20,7 +20,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.{OpaqueColumnProxy, 
   * using additionally aliased `Pieces`.
   * @author Marcin Mościcki
   */
-class CoveredMapping[M <: RefinedMapping[S, X], S, X, O]
+class CoveredMapping[M <: TypedMapping[S, X], S, X, O]
                     (protected override val backer :M, rename :String => String = identity[String],
                      override val buffs :Buffs[S] = Buffs.empty[S])
 	extends OpaqueProxy[S, O](backer)
@@ -32,7 +32,7 @@ class CoveredMapping[M <: RefinedMapping[S, X], S, X, O]
 	val body :M = backer
 
 	protected override def adapt[T](component :backer.Component[T]) :Component[T] =
-		new CoveredMapping[RefinedMapping[T, X], T, X, O](
+		new CoveredMapping[TypedMapping[T, X], T, X, O](
 			component, rename, buffs.unsafeCascade(backer(component))
 		)
 

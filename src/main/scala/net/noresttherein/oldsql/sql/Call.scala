@@ -3,18 +3,19 @@ package net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.schema.{ColumnWriteForm, SQLForm, SQLReadForm}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.sql.Call.CallFunction.{CallFunctionNamedParamDecl, CallFunctionParamDecl, CaseFunction, FunctionVisitor}
-import net.noresttherein.oldsql.sql.Call.CallProcedure.{CallProcedureNamedParamDecl, CallProcedureParamDecl, CaseProcedure, GroundCallProcedure, ParamCallProcedure, ParamCallProcedureImpl, ProcedureVisitor}
-import net.noresttherein.oldsql.sql.Call.InOutCallFunction.{CaseInOutFunction, InOutFunctionVisitor}
-import net.noresttherein.oldsql.sql.Call.InOutCallProcedure.{CaseInOutProcedure, InOutProcedureVisitor}
+import net.noresttherein.oldsql.schema.bits.LabelPath.Label
+import net.noresttherein.oldsql.sql.Call.CallFunction.{CallFunctionNamedParamDecl, CallFunctionParamDecl, CallFunctionVisitor, CaseCallFunction}
+import net.noresttherein.oldsql.sql.Call.CallProcedure.{CallProcedureNamedParamDecl, CallProcedureParamDecl, CallProcedureVisitor, CaseCallProcedure, GroundCallProcedure, ParamCallProcedure, ParamCallProcedureImpl}
+import net.noresttherein.oldsql.sql.Call.InOutCallFunction.{CaseInOutCallFunction, InOutCallFunctionVisitor}
+import net.noresttherein.oldsql.sql.Call.InOutCallProcedure.{CaseInOutCallProcedure, InOutCallProcedureVisitor}
 import net.noresttherein.oldsql.sql.DML.{BoundDML, ComposedDML, DMLAPI, RepeatedDML}
 import net.noresttherein.oldsql.sql.DMLStatement.{AlteredResultStatement, BoundStatement, ComposedStatement, DMLStatementAPI, StatementResult, StatementVisitor}
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult.NoResult
-import net.noresttherein.oldsql.sql.RowProduct.{As, JoinedMappings, ParameterizedFrom, ParameterizedWith, ParamlessFrom, PureParamFrom}
+import net.noresttherein.oldsql.sql.FromClause.EmptyFromSome
+import net.noresttherein.oldsql.sql.RowProduct.{As, JoinedMappings, NoParams, ParameterizedWith, ParamlessRow, ParamsRow}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.GlobalScope
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
+import net.noresttherein.oldsql.sql.SQLExpression.Single
+import net.noresttherein.oldsql.sql.ast.ChainTuple
 import net.noresttherein.oldsql.sql.mechanics.{ProcedureSignature, SpelledSQL}
 import net.noresttherein.oldsql.sql.mechanics.ProcedureSignature.ProcedureInOutSignature
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization
@@ -31,16 +32,16 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.Parameterization
   *   1. [[net.noresttherein.oldsql.sql.Call Call]] - a [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]],
   *      parameterized or not, which executes a stored procedure/function once passing a chain of arguments given
   *      as an [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]];
-  *   2. [[net.noresttherein.oldsql.sql.DML.RepeatedDML RepeatedDML with CallDML]] - a JDBC batch statement,
+  *      2. [[net.noresttherein.oldsql.sql.DML.RepeatedDML RepeatedDML with CallDML]] - a JDBC batch statement,
   *      keeping a parameterized `Call` statement and a sequence of matching parameter sets;
-  *   3. [[net.noresttherein.oldsql.sql.DMLStatement.BoundStatement BoundStatement with Call]] - a parameterized
+  *      3. [[net.noresttherein.oldsql.sql.DMLStatement.BoundStatement BoundStatement with Call]] - a parameterized
   *      `Call[X, Y]` applied to a concrete value of `X`. This is different from the first case in that the value
   *      of the arguments for the call is stored as a plain Scala object and the expression arguments are based
   *      on a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] with
   *      [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters, while in a `Call[(), Y]` the values would be
   *      built in into the argument expressions themselves as
-  *      [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters.
-  */
+  *      [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters.
+  */ //todo: rename to Calls
 trait CallDML[-Args, +Res] extends DML[Args, Res] with DMLAPI[Args, Res, CallDML] {
 	/** Types of the formal parameters of the called procedure in a [[net.noresttherein.oldsql.collection.Chain Chain]].
 	  * These are in principle unrelated to the parameters of this DML.
@@ -66,7 +67,7 @@ trait CallDML[-Args, +Res] extends DML[Args, Res] with DMLAPI[Args, Res, CallDML
 	protected[sql] trait DerivedDML[-X, +Y] extends CallDML[X, Y] {
 		override type Params = CallDML.this.Params
 		override type Result = CallDML.this.Result
-		override val procedure = CallDML.this.procedure
+		override val procedure :SQLExecutable[Params, Result] = CallDML.this.procedure
 	}
 }
 
@@ -77,11 +78,12 @@ trait CallDML[-Args, +Res] extends DML[Args, Res] with DMLAPI[Args, Res, CallDML
 
 /** A statement for a single stored [[net.noresttherein.oldsql.sql.StoredProcedure procedure]]
   * (or [[net.noresttherein.oldsql.sql.StoredFunction function]]) call. It is the root of the hierarchy of statements
-  * executing a single procedure/function once. All standard implementations currently extend either of its subtypes:
+  * executing a single procedure/function once. All standard implementations currently extend one of its subtypes:
   *   1. [[net.noresttherein.oldsql.sql.Call.CallProcedure CallProcedure]],
   *   1. [[net.noresttherein.oldsql.sql.Call.CallFunction CallFunction]],
   *   1. [[net.noresttherein.oldsql.sql.Call.InOutCallProcedure InOutCallProcedure]] and
   *   1. [[net.noresttherein.oldsql.sql.Call.InOutCallFunction InOutCallFunction]],
+  *
   * but it is also a point of integration for custom or future extensions.
   * @tparam Args the type(s) of the parameter or parameters of the call statement itself, translating
   *              ot the parameters of the [[net.noresttherein.oldsql.sql.Incantation Incantation]] created based
@@ -227,7 +229,7 @@ object Call {
 	  * Note that the parameter(s) `Args` of this class need not correspond in general to the parameters
 	  * of the stored procedure: the latter can be arbitrary SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]]
 	  * based on a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] with `Args` as
-	  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] parameters. The result type is specified as `Any`
+	  * [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] parameters. The result type is specified as `Any`
 	  * rather than `Unit` for better interoperability with subclasses.
 	  * @tparam Args the parameter or parameters of this statement.
 	  * @see [[net.noresttherein.oldsql.sql.Call.CallFunction]]
@@ -237,7 +239,7 @@ object Call {
 		override val procedure :StoredProcedure[Params]
 		override def result :StatementResult[Nothing, Any] = NoResult
 
-		protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Any] =
+		protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Any] =
 			visitor.procedure(this)
 	}
 
@@ -247,7 +249,7 @@ object Call {
 	  * to the parameters of the function: the latter can be arbitrary
 	  * SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]]
 	  * based on a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] with `Args` as
-	  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] parameters.
+	  * [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] parameters.
 	  * @tparam Args the parameter or parameters of this statement.
 	  * @tparam Res  the return type of the called function and the result type of the statement.
 	  * @see [[net.noresttherein.oldsql.sql.Call.InOutCallFunction]]
@@ -263,7 +265,7 @@ object Call {
 		override def result :StatementResult[Nothing, Res] =
 			StatementResult.ProcedureResult[Res](CallFunction.returnIndex)(function.readForm)
 
-		protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
+		protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
 			visitor.function(this)
 
 		protected override def doChant(implicit dialect :SQLDialect) :Incantation[Args, Res] = dialect(this)
@@ -275,7 +277,7 @@ object Call {
 	  * Note that the parameter(s) `Args` of this class need not correspond in general to the parameters
 	  * of the stored procedure: the latter can be arbitrary SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]]
 	  * based on a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] with `Args` as
-	  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] parameters.
+	  * [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] parameters.
 	  * @tparam Args the parameter or parameters of this statement.
 	  * @tparam Out  all ''OUT'' parameters returned by the call as a single value.
 	  *              A [[net.noresttherein.oldsql.collection.Chain Chain]] subtype in the standard implementation.
@@ -298,7 +300,7 @@ object Call {
 		  */
 		implicit protected def outParamsForm :SQLReadForm[Out]
 
-		protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Out] =
+		protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Out] =
 			visitor.inOutProcedure(this)
 	}
 
@@ -308,7 +310,7 @@ object Call {
 	  * Note that the parameter(s) `Args` of this class need not correspond in general to the parameters
 	  * of the stored function: the latter can be arbitrary SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]]
 	  * based on a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] with `Args` as
-	  * [[net.noresttherein.oldsql.sql.UnboundParam UnboundParam]] parameters. The result type is a chain
+	  * [[net.noresttherein.oldsql.sql.ParamClause ParamClause]] parameters. The result type is a chain
 	  * `Out ~ Y` following the types of ''OUT'' parameters with the actual return type of the function.
 	  * @tparam Args the parameter or parameters of this statement.
 	  * @tparam Out  all ''OUT'' parameters returned by the call as a `Chain`.
@@ -340,7 +342,7 @@ object Call {
 		  */
 		implicit protected def outParamsForm :SQLReadForm[Out]
 
-		protected override def applyTo[R[-_, +_]](visitor :StatementVisitor[R]) :R[Args, Out ~ Y] =
+		protected override def visit[R[-_, +_]](visitor :StatementVisitor[R]) :R[Args, Out ~ Y] =
 			visitor.inOutFunction(this)
 	}
 
@@ -350,7 +352,7 @@ object Call {
 	/** The simplest call of a [[net.noresttherein.oldsql.sql.StoredProcedure stored procedure]],
 	  * passing JDBC statement parameters directly as arguments to the procedure using syntax:
 	  * {{{
-	  *     "{call <procedure>(?, ?, ?, ?)}
+	  *     "{call <procedure>(?, ?, ?, ?)}"
 	  * }}}
 	  * (with the number of parameters equaling the number of columns in the procedure's
 	  * [[net.noresttherein.oldsql.sql.StoredProcedure.paramForm parameter form]].
@@ -367,7 +369,7 @@ object Call {
 		  * or only - parameter. Subsequent, named an anonymous parameters can be introduced by chaining `apply` calls
 		  * with only type parameter lists, each introducing a single parameter: `this[P][Q][R]`, `this[P]["Q", Q][R]`.
 		  * At any point, the process can be finalized by passing a
-		  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]] SQL expression with a value of `X`, either
+		  * [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]] SQL expression with a value of `X`, either
 		  * [[net.noresttherein.oldsql.sql.Call.CallProcedure.CallProcedureParams.apply(args:JoinedMappings[F]=>ChainTuple[F,GlobalScope,X])* apply(domain => args)]]
 		  * or [[net.noresttherein.oldsql.sql.Call.CallProcedure.CallProcedureParams.apply(args:ChainTuple[F,GlobalScope,X]) apply(args)]].
 		  * The tuple expression must be based on a [[net.noresttherein.oldsql.sql.FromClause FromClause]] consisting
@@ -386,7 +388,7 @@ object Call {
 		  *           used by the future SQL expression with arguments for the procedure.
 		  */
 		def apply[P] :CallProcedureParamDecl[FromSome, @~, P, Args] =
-			new CallProcedureParamDecl(From.template, procedure)
+			new CallProcedureParamDecl(NoParams, procedure)
 
 		/** Initiates the preparation of a parameterized stored procedure call ending with the creation of
 		  * a [[net.noresttherein.oldsql.sql.Call Call]] statement with `P` as its first - or only -
@@ -395,7 +397,7 @@ object Call {
 		  * with procedure's arguments are created. Subsequent, named an anonymous parameters can be introduced by chaining
 		  * `apply` calls with only type parameter lists, each introducing a single parameter: `this[N, P][Q][R]`,
 		  * `this[N, P]["Q", Q][R]`. At any point, the process can be finalized by passing a
-		  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]] SQL expression with a value of `X`, either
+		  * [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]] SQL expression with a value of `X`, either
 		  * [[net.noresttherein.oldsql.sql.Call.CallProcedure.CallProcedureParams.apply(args:JoinedMappings[F]=>ChainTuple[F,GlobalScope,X])* apply(domain => args)]]
 		  * or [[net.noresttherein.oldsql.sql.Call.CallProcedure.CallProcedureParams.apply(args:ChainTuple[F,GlobalScope,X]) apply(args)]].
 		  * The tuple expression must be based on a [[net.noresttherein.oldsql.sql.FromClause FromClause]] consisting only
@@ -418,7 +420,7 @@ object Call {
 		  *           when creating the SQL expression with the arguments for the procedure.
 		  */
 		def apply[N <: Label, P] :CallProcedureNamedParamDecl[FromSome, @~, N, P, Args] =
-			new CallProcedureNamedParamDecl(From.template, procedure)
+			new CallProcedureNamedParamDecl(NoParams, procedure)
 
 		/** Factory method for statements invoking this procedure and returning some combination of the values
 		  * of its declared ''OUT'' parameters. All ''OUT'' parameters of a procedure are declared as type
@@ -453,7 +455,7 @@ object Call {
 		  * @return a statement invoking the procedure using the JDBC procedure call syntax.
 		  */
 		def apply[F <: RowProduct, In <: Chain]
-		         (args :ChainTuple[F, GlobalScope, In])
+		         (args :ChainTuple[F, Single, In])
 		         (implicit signature :ProcedureSignature[Args, In] { type Domain <: F })
 				:Call[signature.CallParams, signature.Out] =
 			signature(procedure, args)
@@ -466,11 +468,11 @@ object Call {
 
 		override type Params = Args
 
-		protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Any] =
+		protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Any] =
 			visitor.directProcedure(this)
 
-		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
-			"{call " +: (procedure.paramSpellingForwarder(spelling) + "}")
+		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] =
+			"{call " +: (procedure.`->paramSpelling`(spelling) + "}")
 
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[DirectCallProcedure[_]]
@@ -510,7 +512,7 @@ object Call {
 		  * or only - parameter. Subsequent, named an anonymous parameters can be introduced by chaining `apply` calls
 		  * with only type parameter lists, each introducing a single parameter: `this[P][Q][R]`, `this[P]["Q", Q][R]`.
 		  * At any point, the process can be finalized by passing a
-		  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]] SQL expression with a value of `X`, either
+		  * [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]] SQL expression with a value of `X`, either
 		  * [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams.apply(args:JoinedMappings[F]=>ChainTuple[F,GlobalScope,X])* apply(domain => args)]]
 		  * or [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams.apply(args:ChainTuple[F,GlobalScope,X]) apply(args)]].
 		  * The tuple expression must be based on a [[net.noresttherein.oldsql.sql.FromClause FromClause]] consisting
@@ -538,7 +540,7 @@ object Call {
 		  * with procedure's arguments are created. Subsequent, named an anonymous parameters can be introduced by chaining
 		  * `apply` calls with only type parameter lists, each introducing a single parameter: `this[N, P][Q][R]`,
 		  * `this[N, P]["Q", Q][R]`. At any point, the process can be finalized by passing a
-		  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]] SQL expression with a value of `X`, either
+		  * [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]] SQL expression with a value of `X`, either
 		  * [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams.apply(args:JoinedMappings[F]=>ChainTuple[F,GlobalScope,X])* apply(domain => args)]]
 		  * or [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams.apply(args:ChainTuple[F,GlobalScope,X]) apply(args)]].
 		  * The tuple expression must be based on a [[net.noresttherein.oldsql.sql.FromClause FromClause]] consisting only
@@ -597,7 +599,7 @@ object Call {
 		  * @return a statement invoking the procedure using the JDBC procedure call syntax.
 		  */
 		def apply[F <: RowProduct, In <: Chain]
-		         (args :ChainTuple[F, GlobalScope, In])
+		         (args :ChainTuple[F, Single, In])
 		         (implicit signature :ProcedureSignature[Args, In] { type Domain <: F })
 				:Call[signature.CallParams, signature.FunctionResult[Res]] =
 			signature(procedure, args)
@@ -610,12 +612,12 @@ object Call {
 
 		override type Params = Args
 
-		protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
+		protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
 			visitor.directFunction(this)
 
-		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] = {
-			val sql = procedure.paramSpellingForwarder(spelling)
-			SpelledSQL("{?= call " +: (sql.sql + "}"), sql.context, ColumnWriteForm.gap +: sql.params)
+		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] = {
+			val sql = procedure.`->paramSpelling`(spelling)
+			SpelledSQL("{?= call " +: (sql.sql + "}"), ColumnWriteForm.gap + sql.setter, sql.context)
 		}
 
 
@@ -638,7 +640,7 @@ object Call {
 	/** A mix-in trait for `Call` implementations passing arbitrary SQL expressions not requiring statement parameters.
 	  * This refers only to [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameters of the
 	  * [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] the argument tuple expression is based on; the argument
-	  * can still include [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions
+	  * can still include [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameter expressions
 	  * translating to JDBC statement parameters, meaning that created [[java.sql.CallableStatement CallableStatement]]
 	  * can be cached by the driver, but the values for the parameters are included in this instance.
 	  * It stores the tuple expression [[net.noresttherein.oldsql.sql.Call.GroundCall.args args]], matching
@@ -651,7 +653,7 @@ object Call {
 		/** An SQL [[net.noresttherein.oldsql.sql.SQLExpression expression]] for a tuple with the arguments
 		  * for the called procedure.
 		  */
-		val args :ChainTuple[RowProduct, GlobalScope, Params]
+		val args :ChainTuple[RowProduct, Single, Params]
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroundCall[_]]
 
@@ -687,7 +689,7 @@ object Call {
 		override type Params <: Chain
 
 		/** A [[net.noresttherein.oldsql.collection.Chain chain]] with the types of all parameters of this statement
-		  * as used by the [[net.noresttherein.oldsql.sql.Call.ParamCallProcedure.args argument]]
+		  * as used by the [[net.noresttherein.oldsql.sql.Call.ParamCall.args argument]]
 		  * expressions provided for the procedure. It is the type parameter `Args` provided when this instance was
 		  * created (due to contra variance).
 		  */
@@ -697,9 +699,9 @@ object Call {
 		  * [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] 'joins' with parameter (or parameters)
 		  * of this statement, on which the SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]]
 		  * of the arguments for the procedure are based on. It can be completely unrelated to the
-		  * [[net.noresttherein.oldsql.sql.Call.CallProcedure.Params types of parameters]] of the procedure.
+		  * [[net.noresttherein.oldsql.sql.Call.ParamCall.Params types of parameters]] of the procedure.
 		  */
-		type Domain <: PureParamFrom[Bound]
+		type Domain <: ParamsRow[Bound]
 
 		/** A join or joins of mappings for unbound parameters used by the SQL
 		  * [[net.noresttherein.oldsql.sql.SQLExpression expressions]] provided as the arguments for the procedure.
@@ -710,7 +712,7 @@ object Call {
 		/** An SQL [[net.noresttherein.oldsql.sql.SQLExpression expression]] for a tuple with the arguments
 		  * for the called procedure.
 		  */
-		def args :ChainTuple[domain.Self, GlobalScope, Params]
+		def args :ChainTuple[domain.Self, Single, Params]
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamCall[_, _]]
 
@@ -734,7 +736,7 @@ object Call {
 	object CallProcedure {
 		/** Factory method for statements invoking `procedure` and returning no result.
 		  * This method variant requires the values for all the arguments to be known (to be literals,
-		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters or expressions built on them)
+		  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters or expressions built on them)
 		  * and creates a parameterless `Call` instance.
 		  * @tparam Params   types of the formal parameters of the called procedure.
 		  * @param procedure the invoked stored procedure or function.
@@ -743,29 +745,29 @@ object Call {
 		  * @return a statement invoking the procedure using the JDBC procedure call syntax.
 		  */
 		def GroundCallProcedure[Params <: Chain]
-		                       (procedure :StoredProcedure[Params], args :ChainTuple[RowProduct, GlobalScope, Params])
+		                       (procedure :StoredProcedure[Params], args :ChainTuple[RowProduct, Single, Params])
 				:GroundCallProcedure =
 			new GroundCallProcedureImpl(procedure, args)
 
 		/** A parameterless statement invoking a [[net.noresttherein.oldsql.sql.StoredProcedure stored procedure]].
 		  * Note that ''parameterless'' here means that no arguments need be provided to execute this statement;
 		  * the actual JDBC [[java.sql.CallableStatement CallableStatement]] may still be parameterized using
-		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions.
+		  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameter expressions.
 		  */
 		trait GroundCallProcedure extends CallProcedure[Unit] with GroundCall[Any] {
-			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Unit, Any] =
+			protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Unit, Any] =
 				visitor.groundProcedure(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Unit, RowProduct] =
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Unit] =
 				(("{call " + spelling.function(procedure.name) + '(') +:
-					spelling.inline(args)(spelling.newContext, Parameterization.paramless[ParamlessFrom])) + ")}"
+					spelling.inCall(args)(Dual, spelling.newContext, Parameterization.paramless[ParamlessRow])) + ")}"
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroundCallProcedure]
 		}
 
 		private[Call] class GroundCallProcedureImpl[Xs <: Chain]
 		                                           (override val procedure :StoredProcedure[Xs],
-		                                            override val args :ChainTuple[RowProduct, GlobalScope, Xs])
+		                                            override val args :ChainTuple[RowProduct, Single, Xs])
 			extends GroundCallProcedure// with CallProcedure[Any] with GroundDML.Impl[Any]
 		{
 			override type Params = Xs
@@ -787,8 +789,8 @@ object Call {
 		  * @return a statement invoking the procedure using the JDBC procedure call syntax.
 		  */
 		def ParamCallProcedure[Args <: Chain, Params <: Chain]
-		                      (domain :PureParamFrom[Args]) //todo: type which enforces only JoinParam joins
-		                      (procedure :StoredProcedure[Params], args :ChainTuple[domain.Self, GlobalScope, Params])
+		                      (domain :ParamsRow[Args]) //todo: type which enforces only JoinParam joins
+		                      (procedure :StoredProcedure[Params], args :ChainTuple[domain.Self, Single, Params])
 				:ParamCallProcedure[Args] =
 			new ParamCallProcedureImpl[domain.type, domain.Self, Args, Params](domain, procedure, args)
 
@@ -796,20 +798,20 @@ object Call {
 		  * providing arbitrary SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] as arguments.
 		  */
 		trait ParamCallProcedure[-Args <: Chain] extends CallProcedure[Args] with ParamCall[Args, Any] {
-			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Any] =
+			protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Any] =
 				visitor.paramProcedure(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] =
 				(("{call " + spelling.function(procedure.name) + '(') +:
-					spelling.inline(args)(domain.spellingContext, domain.parameterization)) + ")}"
+					spelling.inCall(args)(domain.self, domain.spellingContext, domain.parameterization)) + ")}"
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamCallProcedure[_]]
 		}
 
-		private[Call] class ParamCallProcedureImpl[D <: PureParamFrom[Args] { type Self <: F },
-		                                           F <: ParameterizedFrom[Args], Args <: Chain, Xs <: Chain]
+		private[Call] class ParamCallProcedureImpl[D <: ParamsRow[Args] { type Self <: F },
+		                                           F <: ParamsRow[Args], Args <: Chain, Xs <: Chain]
 		                                          (override val domain :D, override val procedure :StoredProcedure[Xs],
-		                                           override val args :ChainTuple[F, GlobalScope, Xs])
+		                                           override val args :ChainTuple[F, Single, Xs])
 			extends ParamCallProcedure[Args]
 		{
 			override type Bound = Args
@@ -822,7 +824,7 @@ object Call {
 
 		/** An intermediate object adding a new [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameter `P`
 		  * to the `F &lt;: `[[net.noresttherein.oldsql.sql.RowProduct RowProduct]] domain serving as a base
-		  * for the [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple parameter set]] of the call,
+		  * for the [[net.noresttherein.oldsql.sql.ast.ChainTuple parameter set]] of the call,
 		  * implicitly convertible to
 		  * [[net.noresttherein.oldsql.sql.Call.CallProcedure.CallProcedureParams CallProcedureParams]]`[F WithParam P, Ps ~ P, Xs]`
 		  * It has the following (extension) methods for adding additional parameters and creating an expression using them:
@@ -854,7 +856,7 @@ object Call {
 		                             protected val procedure :StoredProcedure[Xs])
 
 		object CallProcedureParamDecl {
-			implicit def domain[F <: PureParamFrom[Ps], Ps <: Chain, P :SQLForm, Xs <: Chain]
+			implicit def domain[F <: ParamsRow[Ps], Ps <: Chain, P :SQLForm, Xs <: Chain]
 			                   (param :CallProcedureParamDecl[F, Ps, P, Xs])
 					:CallProcedureParams[F WithParam P, Ps ~ P, Xs] =
 				new CallProcedureParams(JoinParam(param.domain, ?:[P]), param.procedure)
@@ -862,7 +864,7 @@ object Call {
 
 		/** An intermediate object adding a new [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameter `P`
 		  * to the `F &lt;: `[[net.noresttherein.oldsql.sql.RowProduct RowProduct]] domain serving as a base
-		  * for the [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple parameter set]] of the call,
+		  * for the [[net.noresttherein.oldsql.sql.ast.ChainTuple parameter set]] of the call,
 		  * implicitly convertible to
 		  * [[net.noresttherein.oldsql.sql.Call.CallProcedure.CallProcedureParams CallProcedureParams]]`[F WithParam P As N, Ps ~ P, Xs]`
 		  * It has the following (extension) methods for adding additional parameters and creating an expression using them:
@@ -895,7 +897,7 @@ object Call {
 		                                  protected val procedure :StoredProcedure[Xs])
 
 		object CallProcedureNamedParamDecl {
-			implicit def domain[F <: PureParamFrom[Ps], Ps <: Chain, N <: Label :ValueOf, P :SQLForm, Xs <: Chain]
+			implicit def domain[F <: ParamsRow[Ps], Ps <: Chain, N <: Label :ValueOf, P :SQLForm, Xs <: Chain]
 			                   (param :CallProcedureNamedParamDecl[F, Ps, N, P, Xs])
 					:CallProcedureParams[F WithParam P As N, Ps ~ P, Xs] =
 				new CallProcedureParams(JoinParam(param.domain, ?:[N, P]), param.procedure)
@@ -903,7 +905,7 @@ object Call {
 
 		/** A factory of [[net.noresttherein.oldsql.sql.Call.CallProcedure CallProcedure]] SQL statements which execute
 		  * this stored procedure. It accepts an SQL
-		  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple ChainTuple]]`[F, GlobalScope, Ps]` expression
+		  * [[net.noresttherein.oldsql.sql.ast.ChainTuple ChainTuple]]`[F, GlobalScope, Ps]` expression
 		  * containing all arguments for the procedure - either directly, or as a function of
 		  * [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]]`[F]`.
 		  * It also allows to introduce additional parameters by chaining parameterless calls of
@@ -912,8 +914,8 @@ object Call {
 		  * behaving identically to the counterpart methods of the executed `StoredProcedure`.
 		  * @tparam F  a [[net.noresttherein.oldsql.sql.FromClause FromClause]] consisting ''solely'' of
 		  *            [[net.noresttherein.oldsql.sql.WithParam WithParam]] expressions - each possibly with an
-		  *            [[net.noresttherein.oldsql.sql.RowProduct.As As]] clause. It is the ''from'' clause on which
-		  *            S
+		  *            [[net.noresttherein.oldsql.sql.RowProduct.As As]] clause. Serves as the domain
+		  *            of argument expression of the created statement.
 		  * @tparam Ps a chain consisting of types of all unbound parameters of `F`, forming the parameters of the
 		  *            created SQL statement. Any wildcard prefix type of `F` is ignored and only unbound parameters
 		  *            following it are included in `Ps`, which always starts with `@~`.
@@ -922,7 +924,7 @@ object Call {
 		  *            [[net.noresttherein.oldsql.sql.SQLExpression expressions]] using `F` as their base.
 		  * @tparam Xs a chain listing the types of all formal type parameters of the executed procedure.
 		  */
-		class CallProcedureParams[F <: PureParamFrom[Ps], Ps <: Chain, Xs <: Chain]
+		class CallProcedureParams[F <: ParamsRow[Ps], Ps <: Chain, Xs <: Chain]
 		                         (domain :F ParameterizedWith Ps, procedure :StoredProcedure[Xs])
 		{
 			/** Add another unbound parameter to the parameters of the created
@@ -954,13 +956,13 @@ object Call {
 			  * by the tuple expression created by the passed function from the facade to the domain `F` with all
 			  * previously declared unbound parameters.
 			  */
-			def apply(args :JoinedMappings[F] => ChainTuple[F, GlobalScope, Xs]) :CallProcedure[Ps] =
+			def apply(args :JoinedMappings[F] => ChainTuple[F, Single, Xs]) :CallProcedure[Ps] =
 				apply(args(new JoinedMappings(domain)))
 
 			/** Creates an SQL statement for a procedure call of this stored procedure using the arguments listed
 			  * by the tuple expression.
 			  */
-			def apply(args :ChainTuple[F, GlobalScope, Xs]) :CallProcedure[Ps] =
+			def apply(args :ChainTuple[F, Single, Xs]) :CallProcedure[Ps] =
 				ParamCallProcedure(domain)(procedure, args)
 
 			/** Creates an SQL statement for a procedure call of this stored procedure and returning the values
@@ -973,7 +975,7 @@ object Call {
 			  * @param args a function accepting as its argument a facade to the domain type `F` with all previously
 			  *             declared parameters used in creation of the call argument(s).
 			  */
-			def out[In <: Chain](args :JoinedMappings[F] => ChainTuple[F, GlobalScope, In])
+			def out[In <: Chain](args :JoinedMappings[F] => ChainTuple[F, Single, In])
 			                    (implicit signature :ProcedureSignature[Xs, In]) :Call[Ps, signature.Out] =
 				out(args(new JoinedMappings(domain)))
 
@@ -984,7 +986,7 @@ object Call {
 			  * `signature.`[[net.noresttherein.oldsql.sql.mechanics.ProcedureSignature.Out Out]] provided
 			  * by the implicit parameter matching the formal parameter types `Xs` to the arguments tuple type `In`.
 			  */
-			def out[In <: Chain](args :ChainTuple[F, GlobalScope, In])(implicit signature :ProcedureSignature[Xs, In])
+			def out[In <: Chain](args :ChainTuple[F, Single, In])(implicit signature :ProcedureSignature[Xs, In])
 					:Call[Ps, signature.Out] =
 				signature(domain, procedure)(args)
 		}
@@ -1000,26 +1002,26 @@ object Call {
 		  * @tparam R the return type of this visitor, parameterized with the type of the parameters of the statement
 		  *           (the `Args` argument of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]])
 		  *           and its return type (the `Res` argument of the visited statement).
-		  * @see [[net.noresttherein.oldsql.sql.Call.CallProcedure.CaseProcedure]]
+		  * @see [[net.noresttherein.oldsql.sql.Call.CallProcedure.CaseCallProcedure]]
 		  * @see [[net.noresttherein.oldsql.sql.Call.CallVisitor]]
 		  */
-		trait ProcedureVisitor[R[-X, +Y]] {
+		trait CallProcedureVisitor[R[-X, +Y]] {
 			def procedure[X](stmt :CallProcedure[X])                                    :R[X, Any]
 			def directProcedure[X <: Chain](stmt :DirectCallProcedure[X])               :R[X, Any]
 			def paramProcedure[X <: Chain](stmt :ParamCallProcedure[X])                 :R[X, Any]
 			def groundProcedure(stmt :GroundCallProcedure)                              :R[Unit, Any]
 		}
 
-		/** An alias for [[net.noresttherein.oldsql.sql.Call.CallProcedure.ProcedureVisitor ProcedureVisitor]]
+		/** An alias for [[net.noresttherein.oldsql.sql.Call.CallProcedure.CallProcedureVisitor ProcedureVisitor]]
 		  * introduced for consistency with the 'assembled' ''visitor'' pattern, as there are no intermediate
 		  * types between [[net.noresttherein.oldsql.sql.Call.CallProcedure CallProcedure]] and its full
 		  * (if not concrete) implementations.
 		  */
-		type MatchProcedure[R[-X, +Y]] = ProcedureVisitor[R]
+		type MatchCallProcedure[R[-X, +Y]] = CallProcedureVisitor[R]
 
 		/** A mix-in trait for [[net.noresttherein.oldsql.sql.DMLStatement.StatementVisitor StatementVisitor]]
 		  * ''visitors'' of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]] type hierarchy. It implements
-		  * all methods of [[net.noresttherein.oldsql.sql.Call.CallProcedure.ProcedureVisitor ProcedureVisitor]]
+		  * all methods of [[net.noresttherein.oldsql.sql.Call.CallProcedure.CallProcedureVisitor ProcedureVisitor]]
 		  * for concrete [[net.noresttherein.oldsql.sql.Call.CallProcedure CallProcedure]] implementations
 		  * ''which, as an exception, do not extend any of ''
 		  * [[net.noresttherein.oldsql.sql.Call.CallFunction CallFunction]],
@@ -1030,7 +1032,7 @@ object Call {
 		  *           (the `Args` argument of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]])
 		  *           and its return type (the `Res` argument of the visited statement).
 		  */
-		trait CaseProcedure[R[-X, +Y]] extends ProcedureVisitor[R] {
+		trait CaseCallProcedure[R[-X, +Y]] extends CallProcedureVisitor[R] {
 			override def directProcedure[X <: Chain](stmt :DirectCallProcedure[X]) :R[X, Any]  = procedure(stmt)
 			override def paramProcedure[X <: Chain](stmt :ParamCallProcedure[X])   :R[X, Any]  = procedure(stmt)
 			override def groundProcedure(stmt :GroundCallProcedure)                :R[Unit, Any] = procedure(stmt)
@@ -1043,7 +1045,7 @@ object Call {
 	object CallFunction {
 		/** Factory method for statements invoking `function` and returning its result.
 		  * This method variant requires the values for all the arguments to be known (to be literals,
-		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters or expressions built on them)
+		  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters or expressions built on them)
 		  * and creates a parameterless `Call` instance.
 		  * @tparam Params   types of the formal parameters of the called function.
 		  * @tparam Y        return type of the called function.
@@ -1053,7 +1055,7 @@ object Call {
 		  * @return a statement invoking the function using the JDBC function call syntax.
 		  */
 		def GroundCallFunction[Params <: Chain, Y]
-		                      (function :StoredFunction[Params, Y], args :ChainTuple[RowProduct, GlobalScope, Params])
+		                      (function :StoredFunction[Params, Y], args :ChainTuple[RowProduct, Single, Params])
 				:GroundCallFunction[Y] =
 			new GroundCallFunctionImpl(function, args)
 
@@ -1061,17 +1063,16 @@ object Call {
 		  * (or a standard SQL function), returning its result.
 		  * Note that ''parameterless'' here means that no arguments need be provided to execute this statement;
 		  * the actual JDBC [[java.sql.CallableStatement CallableStatement]] may still be parameterized using
-		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions.
+		  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameter expressions.
 		  */
 		trait GroundCallFunction[Res] extends CallFunction[Unit, Res] with GroundCall[Res] {
-			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Unit, Res] =
+			protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Unit, Res] =
 				visitor.groundFunction(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Unit, RowProduct] = {
-				val gap = Parameterization.paramless[ParamlessFrom] :+ ColumnWriteForm.gap
-				val call = spelling.inline(args)(spelling.newContext, gap)
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Unit] = {
+				val call = spelling.inCall(args)(Dual, spelling.newContext, Parameterization.paramless)
 				val sql = ("{?= call " + spelling.function(procedure.name) + '(') +: (call.sql + ")}")
-				SpelledSQL(sql, call.context, call.params)
+				SpelledSQL(sql, ColumnWriteForm.gap + call.setter, call.context)
 			}
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroundCallFunction[_]]
@@ -1079,7 +1080,7 @@ object Call {
 
 		private class GroundCallFunctionImpl[Args <: Chain, Res]
 		                                    (override val procedure :StoredFunction[Args, Res],
-		                                     override val args :ChainTuple[RowProduct, GlobalScope, Args])
+		                                     override val args :ChainTuple[RowProduct, Single, Args])
 			extends GroundCallFunction[Res] //with CallFunction[Any, Res] with GroundDML.Impl[Res]
 		{
 			override type Params = Args
@@ -1103,8 +1104,8 @@ object Call {
 		  * @return a statement invoking the function using the JDBC function call syntax.
 		  */
 		def ParamCallFunction[Args <: Chain, Params <: Chain, Y]
-		                     (domain :PureParamFrom[Args])
-		                     (function :StoredFunction[Params, Y], args :ChainTuple[domain.Self, GlobalScope, Params])
+		                     (domain :ParamsRow[Args])
+		                     (function :StoredFunction[Params, Y], args :ChainTuple[domain.Self, Single, Params])
 				:ParamCallFunction[Args, Y] =
 			new ParamCallFunctionImpl[domain.type, domain.Self, Args, Params, Y](domain, function, args)
 
@@ -1113,21 +1114,22 @@ object Call {
 		  * and returning its return value.
 		  */
 		trait ParamCallFunction[-Args <: Chain, Res] extends CallFunction[Args, Res] with ParamCall[Args, Res] {
-			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
+			protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
 				visitor.paramFunction(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] = {
-				val call = spelling.inline(args)(domain.spellingContext, domain.parameterization :+ ColumnWriteForm.gap)
-				(("{?= call " + spelling.function(procedure.name) + '(') +: call) + ")}"
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] = {
+				val call = spelling.inCall(args)(domain.self, domain.spellingContext, domain.parameterization)
+				val sql = (("{?= call " + spelling.function(procedure.name) + '(') +: call.sql) + ")}"
+				SpelledSQL(sql, ColumnWriteForm.gap + call.setter, call.context)
 			}
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamCallFunction[_, _]]
 		}
 
-		private class ParamCallFunctionImpl[D <: PureParamFrom[Args] { type Self <: F },
-		                                    F <: ParameterizedFrom[Args], Args <: Chain, Xs <: Chain, Res]
+		private class ParamCallFunctionImpl[D <: ParamsRow[Args] { type Self <: F },
+		                                    F <: ParamsRow[Args], Args <: Chain, Xs <: Chain, Res]
 		                                   (override val domain :D, override val procedure :StoredFunction[Xs, Res],
-		                                    override val args :ChainTuple[F, GlobalScope, Xs])
+		                                    override val args :ChainTuple[F, Single, Xs])
 			extends ParamCallFunction[Args, Res]
 		{
 			override type Bound = Args
@@ -1143,7 +1145,7 @@ object Call {
 
 		/** An intermediate object adding a new [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameter `P`
 		  * to the `F &lt;: `[[net.noresttherein.oldsql.sql.RowProduct RowProduct]] domain serving as a base
-		  * for the [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple parameter set]] of the call,
+		  * for the [[net.noresttherein.oldsql.sql.ast.ChainTuple parameter set]] of the call,
 		  * implicitly convertible to
 		  * [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams CallFunctionParams]]`[F WithParam P, Ps ~ P, Xs, Y]`
 		  * It has the following (extension) methods for adding additional parameters and creating
@@ -1177,12 +1179,10 @@ object Call {
 
 		object CallFunctionParamDecl {
 			def apply[P, Xs <: Chain, Y](function :StoredFunction[Xs, Y])
-					:CallFunctionParamDecl[PureParamFrom[@~], @~, P, Xs, Y] =
-				new CallFunctionParamDecl[PureParamFrom[@~], @~, P, Xs, Y](
-					PureParamFrom.empty.asInstanceOf[PureParamFrom[@~] ParameterizedWith @~], function
-				)
+					:CallFunctionParamDecl[ParamsRow[@~], @~, P, Xs, Y] =
+				new CallFunctionParamDecl[ParamsRow[@~], @~, P, Xs, Y](NoParams, function)
 
-			implicit def domain[F <: PureParamFrom[Ps], Ps <: Chain, P :SQLForm, Xs <: Chain, Y]
+			implicit def domain[F <: ParamsRow[Ps], Ps <: Chain, P :SQLForm, Xs <: Chain, Y]
 			                   (param :CallFunctionParamDecl[F, Ps, P, Xs, Y])
 					:CallFunctionParams[F WithParam P, Ps ~ P, Xs, Y] =
 				new CallFunctionParams(JoinParam(param.domain, ?:[P]), param.function)
@@ -1190,7 +1190,7 @@ object Call {
 
 		/** An intermediate object adding a new [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameter `P`
 		  * to the `F &lt;: `[[net.noresttherein.oldsql.sql.RowProduct RowProduct]] domain serving as a base
-		  * for the [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple parameter set]] of a stored function call,
+		  * for the [[net.noresttherein.oldsql.sql.ast.ChainTuple parameter set]] of a stored function call,
 		  * implicitly convertible to
 		  * [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams CallFunctionParams]]`[F WithParam P As N, Ps ~ P, Xs, Y]`
 		  * It has the following (extension) methods for adding additional parameters and creating
@@ -1225,12 +1225,10 @@ object Call {
 
 		object CallFunctionNamedParamDecl {
 			def apply[N <: Label, P, Xs <: Chain, Y](function :StoredFunction[Xs, Y])
-					:CallFunctionNamedParamDecl[PureParamFrom[@~], @~, N, P, Xs, Y] =
-				new CallFunctionNamedParamDecl[PureParamFrom[@~], @~, N, P, Xs, Y](
-					PureParamFrom.empty.asInstanceOf[PureParamFrom[@~] ParameterizedWith @~], function
-				)
+					:CallFunctionNamedParamDecl[ParamsRow[@~], @~, N, P, Xs, Y] =
+				new CallFunctionNamedParamDecl[ParamsRow[@~], @~, N, P, Xs, Y](NoParams, function)
 
-			implicit def domain[F <: PureParamFrom[Ps], Ps <: Chain, N <: Label :ValueOf, P :SQLForm, Xs <: Chain, Y]
+			implicit def domain[F <: ParamsRow[Ps], Ps <: Chain, N <: Label :ValueOf, P :SQLForm, Xs <: Chain, Y]
 			                   (param :CallFunctionNamedParamDecl[F, Ps, N, P, Xs, Y])
 					:CallFunctionParams[F WithParam P As N, Ps ~ P, Xs, Y] =
 				new CallFunctionParams(JoinParam(param.domain, ?:[N, P]), param.function)
@@ -1238,7 +1236,7 @@ object Call {
 
 		/** A factory of [[net.noresttherein.oldsql.sql.Call.CallFunction CallFunction]] SQL statements which execute
 		  * a stored function carried by this object. It accepts an SQL
-		  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple ChainTuple]]`[F, GlobalScope, Ps]` expression
+		  * [[net.noresttherein.oldsql.sql.ast.ChainTuple ChainTuple]]`[F, GlobalScope, Ps]` expression
 		  * containing all arguments for the function - either directly, or as a function of
 		  * [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]]`[F]`.
 		  * It also allows to introduce additional parameters by chaining parameterless calls of
@@ -1256,7 +1254,7 @@ object Call {
 		  * @tparam Xs a chain listing the types of all formal parameters of the invoked function
 		  * @tparam Y  return type of the function.
 		  */
-		class CallFunctionParams[F <: PureParamFrom[Ps], Ps <: Chain, Xs <: Chain, Y]
+		class CallFunctionParams[F <: ParamsRow[Ps], Ps <: Chain, Xs <: Chain, Y]
 		                        (domain :F ParameterizedWith Ps, procedure :StoredFunction[Xs, Y])
 		{
 			/** Add another unbound parameter to the parameters of the created
@@ -1288,13 +1286,13 @@ object Call {
 			  * by the tuple expression created by the passed function from the facade to the domain `F` with all
 			  * previously declared unbound parameters.
 			  */
-			def apply(args :JoinedMappings[F] => ChainTuple[F, GlobalScope, Xs]) :CallFunction[Ps, Y] =
+			def apply(args :JoinedMappings[F] => ChainTuple[F, Single, Xs]) :CallFunction[Ps, Y] =
 				apply(args(new JoinedMappings(domain)))
 
 			/** Creates an SQL statement for a function call of this stored Function using the arguments listed
 			  * by the tuple expression.
 			  */
-			def apply(args :ChainTuple[F, GlobalScope, Xs]) :CallFunction[Ps, Y] =
+			def apply(args :ChainTuple[F, Single, Xs]) :CallFunction[Ps, Y] =
 				ParamCallFunction(domain)(procedure, args)
 
 			/** Creates an SQL statement for a call of this stored function, returning its return value and the values
@@ -1307,7 +1305,7 @@ object Call {
 			  * @param args a function accepting as its argument a facade to the domain type `F` with all previously
 			  *             declared parameters used in creation of the call argument(s).
 			  */
-			def out[In <: Chain](args :JoinedMappings[F] => ChainTuple[F, GlobalScope, In])
+			def out[In <: Chain](args :JoinedMappings[F] => ChainTuple[F, Single, In])
 			                    (implicit signature :ProcedureSignature[Xs, In]) :Call[Ps, signature.FunctionResult[Y]] =
 				out(args(new JoinedMappings(domain)))
 
@@ -1318,7 +1316,7 @@ object Call {
 			  * `signature.`[[net.noresttherein.oldsql.sql.mechanics.ProcedureSignature.Out Out]] provided
 			  * by the implicit parameter matching the formal parameter types `Xs` to the arguments tuple type `In`.
 			  */
-			def out[In <: Chain](args :ChainTuple[F, GlobalScope, In])
+			def out[In <: Chain](args :ChainTuple[F, Single, In])
 			                    (implicit signature :ProcedureSignature[Xs, In]) :Call[Ps, signature.FunctionResult[Y]] =
 				signature(domain, procedure)(args)
 		}
@@ -1332,26 +1330,26 @@ object Call {
 		  * @tparam R the return type of this visitor, parameterized with the type of the parameters of the statement
 		  *           (the `Args` argument of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]])
 		  *           and its return type (the `Res` argument of the visited statement).
-		  * @see [[net.noresttherein.oldsql.sql.Call.CallFunction.CaseFunction]]
+		  * @see [[net.noresttherein.oldsql.sql.Call.CallFunction.CaseCallFunction]]
 		  * @see [[net.noresttherein.oldsql.sql.Call.CallVisitor]]
 		  */
-		trait FunctionVisitor[R[-X, +Y]] {
+		trait CallFunctionVisitor[R[-X, +Y]] {
 			def function[X, Y](stmt :CallFunction[X, Y])                      :R[X, Y]
 			def directFunction[X <: Chain, Y](stmt :DirectCallFunction[X, Y]) :R[X, Y]
 			def paramFunction[X <: Chain, Y](stmt :ParamCallFunction[X, Y])   :R[X, Y]
 			def groundFunction[Y](stmt :GroundCallFunction[Y])                :R[Unit, Y]
 		}
 
-		/** An alias for [[net.noresttherein.oldsql.sql.Call.CallFunction.FunctionVisitor FunctionVisitor]]
+		/** An alias for [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionVisitor AnyFunctionVisitor]]
 		  * introduced for consistency with the 'assembled' ''visitor'' pattern, as there are no intermediate
 		  * types between [[net.noresttherein.oldsql.sql.Call.CallFunction CallFunction]] and its full
 		  * (if not concrete) implementations.
 		  */
-		type MatchFunction[R[-X, +Y]] = FunctionVisitor[R]
+		type MatchCallFunction[R[-X, +Y]] = CallFunctionVisitor[R]
 
 		/** A mix-in trait for [[net.noresttherein.oldsql.sql.DMLStatement.StatementVisitor StatementVisitor]]
 		  * ''visitors'' of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]] type hierarchy. It implements
-		  * all methods of [[net.noresttherein.oldsql.sql.Call.CallFunction.FunctionVisitor FunctionVisitor]]
+		  * all methods of [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionVisitor AnyFunctionVisitor]]
 		  * for concrete [[net.noresttherein.oldsql.sql.Call.CallFunction CallFunction]] implementations -
 		  * statements calling a [[net.noresttherein.oldsql.sql.StoredFunction stored function]] and returning only
 		  * the value it returns - by delegating them to method for `CallFunction` itself,
@@ -1360,9 +1358,9 @@ object Call {
 		  *           (the `Args` argument of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]])
 		  *           and its return type (the `Res` argument of the visited statement).
 		  */
-		trait CaseFunction[R[-X, +Y]] extends MatchFunction[R] {
-			override def directFunction[X <: Chain, Y](stmt :DirectCallFunction[X, Y]) :R[X, Y]  = function(stmt)
-			override def paramFunction[X <: Chain, Y](stmt :ParamCallFunction[X, Y])   :R[X, Y]  = function(stmt)
+		trait CaseCallFunction[R[-X, +Y]] extends MatchCallFunction[R] {
+			override def directFunction[X <: Chain, Y](stmt :DirectCallFunction[X, Y]) :R[X, Y]    = function(stmt)
+			override def paramFunction[X <: Chain, Y](stmt :ParamCallFunction[X, Y])   :R[X, Y]    = function(stmt)
 			override def groundFunction[Y](stmt :GroundCallFunction[Y])                :R[Unit, Y] = function(stmt)
 		}
 	}
@@ -1389,7 +1387,7 @@ object Call {
 		  * is a [[net.noresttherein.oldsql.collection.Chain Chain]] listing all parameters `X` declared as `Out[X]`
 		  * in `In`, in the order of their appearance.
 		  * This method variant requires the values for all the arguments to be known (to be literals,
-		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters or expressions built on them)
+		  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters or expressions built on them)
 		  * and creates a parameterless `Call` instance.
 		  * @tparam Params   types of the formal parameters of the called procedure.
 		  * @tparam In       types of the arguments given as a tuple.
@@ -1402,23 +1400,25 @@ object Call {
 		  * @return a statement invoking the procedure using the JDBC procedure call syntax.
 		  */
 		def GroundInOutCallProcedure[Params <: Chain, In <: Chain]
-		                            (procedure :StoredProcedure[Params], args :ChainTuple[RowProduct, GlobalScope, In])
+		                            (procedure :StoredProcedure[Params], args :ChainTuple[RowProduct, Single, In])
 		                            (implicit signature :ProcedureInOutSignature[Params, In])
 				:GroundInOutCallProcedure[signature.Out] =
-			new GroundInOutCallProcedureImpl(procedure, signature(args), signature.outParamIndices(procedure))(
-				signature.outForm(procedure.paramForm)
-			)
+		{
+			val params = signature(args, procedure.paramForm)
+			val indices = signature.outParamIndices(NoParams, procedure)(params)
+			new GroundInOutCallProcedureImpl(procedure, params, indices)(signature.outForm(procedure.paramForm))
+		}
 
 		/** A parameterless statement invoking a [[net.noresttherein.oldsql.sql.StoredProcedure stored procedure]],
 		  * returning the values of (some of) its ''OUT'' parameters.
 		  * Note that ''parameterless'' here means that no arguments need be provided to execute this statement;
 		  * the actual JDBC [[java.sql.CallableStatement CallableStatement]] may still be parameterized using
-		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions.
+		  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameter expressions.
 		  */
 		trait GroundInOutCallProcedure[+Res]
 			extends InOutCallProcedure[Unit, Res] with GroundCallProcedure with GroundCall[Res]
 		{
-			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Unit, Res] =
+			protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Unit, Res] =
 				visitor.inOutGroundProcedure(this)
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroundInOutCallProcedure[_]]
@@ -1426,7 +1426,7 @@ object Call {
 
 		private class GroundInOutCallProcedureImpl[Xs <: Chain, Res]
 		                                          (override val procedure :StoredProcedure[Xs],
-		                                           override val args :ChainTuple[RowProduct, GlobalScope, Xs],
+		                                           override val args :ChainTuple[RowProduct, Single, Xs],
 		                                           override val outParamIndices :Seq[Int])
 		                                          (implicit override val outParamsForm :SQLReadForm[Res])
 			extends GroundInOutCallProcedure[Res]// with InOutCallProcedure[Any, Res] with GroundDML.Impl[Res]
@@ -1470,13 +1470,17 @@ object Call {
 		  * @return a statement invoking the procedure using the JDBC procedure call syntax.
 		  */
 		def ParamInOutCallProcedure[Args <: Chain, Params <: Chain, In <: Chain]
-		                           (domain :PureParamFrom[Args])
-		                           (procedure :StoredProcedure[Params], args :ChainTuple[domain.Self, GlobalScope, In])
+		                           (domain :ParamsRow[Args])
+		                           (procedure :StoredProcedure[Params], args :ChainTuple[domain.Self, Single, In])
 		                           (implicit signature :ProcedureInOutSignature[Params, In])
 				:ParamInOutCallProcedure[Args, signature.Out] =
+		{
+			val params = signature(args, procedure.paramForm)
+			val indices = signature.outParamIndices(domain, procedure)(params)
 			new ParamInOutCallProcedureImpl[domain.type, domain.Self, Args, Params, signature.Out](
-				domain, procedure, signature(args), signature.outParamIndices(procedure)
+				domain, procedure, params, indices
 			)(signature.outForm(procedure.paramForm))
+		}
 
 		/** A parameterized call of a [[net.noresttherein.oldsql.sql.StoredProcedure stored procedure]]
 		  * providing arbitrary SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] as arguments
@@ -1485,16 +1489,16 @@ object Call {
 		trait ParamInOutCallProcedure[-Args <: Chain, +Res]
 			extends ParamCallProcedure[Args] with InOutCallProcedure[Args, Res]
 		{
-			protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
+			protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
 				visitor.inOutParamProcedure(this)
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamInOutCallProcedure[_, _]]
 		}
 
-		private class ParamInOutCallProcedureImpl[D <: PureParamFrom[Args] { type Self <: F; type Params = Args },
-		                                          F <: ParameterizedFrom[Args], Args <: Chain, Xs <: Chain, Res <: Chain]
+		private class ParamInOutCallProcedureImpl[D <: ParamsRow[Args] { type Self <: F; type Params = Args },
+		                                          F <: ParamsRow[Args], Args <: Chain, Xs <: Chain, Res <: Chain]
 		                                         (domain :D, procedure :StoredProcedure[Xs],
-		                                          params :ChainTuple[F, GlobalScope, Xs],
+		                                          params :ChainTuple[F, Single, Xs],
 		                                          override val outParamIndices :Seq[Int])
 		                                         (implicit override val outParamsForm :SQLReadForm[Res])
 			extends ParamCallProcedureImpl[D, F, Args, Xs](domain, procedure, params)
@@ -1511,25 +1515,25 @@ object Call {
 		  * @tparam R the return type of this visitor, parameterized with the type of the parameters of the statement
 		  *           (the `Args` argument of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]])
 		  *           and its return type (the `Res` argument of the visited statement).
-		  * @see [[net.noresttherein.oldsql.sql.Call.InOutCallProcedure.CaseInOutProcedure]]
+		  * @see [[net.noresttherein.oldsql.sql.Call.InOutCallProcedure.CaseInOutCallProcedure]]
 		  * @see [[net.noresttherein.oldsql.sql.Call.CallVisitor]]
 		  */
-		trait InOutProcedureVisitor[R[-X, +Y]] {
+		trait InOutCallProcedureVisitor[R[-X, +Y]] {
 			def inOutProcedure[X, Y](stmt :InOutCallProcedure[X, Y])                    :R[X, Y]
 			def inOutParamProcedure[X <: Chain, Y](stmt :ParamInOutCallProcedure[X, Y]) :R[X, Y]
 			def inOutGroundProcedure[Y](stmt :GroundInOutCallProcedure[Y])              :R[Unit, Y]
 		}
 
-		/** An alias for [[net.noresttherein.oldsql.sql.Call.InOutCallProcedure.InOutProcedureVisitor InOutProcedureVisitor]]
+		/** An alias for [[net.noresttherein.oldsql.sql.Call.InOutCallProcedure.InOutCallProcedureVisitor InOutProcedureVisitor]]
 		  * introduced for consistency with the 'assembled' ''visitor'' pattern, as there are no intermediate
 		  * types between [[net.noresttherein.oldsql.sql.Call.InOutCallProcedure InOutCallProcedure]] and its full
 		  * (if not concrete) implementations.
 		  */
-		type MatchInOutProcedure[R[-X, +Y]] = InOutProcedureVisitor[R]
+		type MatchInOutCallProcedure[R[-X, +Y]] = InOutCallProcedureVisitor[R]
 
 		/** A mix-in trait for [[net.noresttherein.oldsql.sql.DMLStatement.StatementVisitor StatementVisitor]]
 		  * ''visitors'' of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]] type hierarchy. It implements
-		  * all methods of [[net.noresttherein.oldsql.sql.Call.InOutCallProcedure.InOutProcedureVisitor InOutProcedureVisitor]]
+		  * all methods of [[net.noresttherein.oldsql.sql.Call.InOutCallProcedure.InOutCallProcedureVisitor InOutProcedureVisitor]]
 		  * for concrete [[net.noresttherein.oldsql.sql.Call.InOutCallProcedure InOutCallProcedure]] implementations -
 		  * statements calling a [[net.noresttherein.oldsql.sql.StoredProcedure stored procedure]] and returning
 		  * its ''OUT'' parameters - by delegating them to method for `InOutCallProcedure` itself, leaving it
@@ -1538,7 +1542,7 @@ object Call {
 		  *           (the `Args` argument of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]])
 		  *           and its return type (the `Res` argument of the visited statement).
 		  */
-		trait CaseInOutProcedure[R[-X, +Y]] extends InOutProcedureVisitor[R] {
+		trait CaseInOutCallProcedure[R[-X, +Y]] extends InOutCallProcedureVisitor[R] {
 			override def inOutParamProcedure[X <: Chain, Y](stmt :ParamInOutCallProcedure[X, Y]) :R[X, Y] =
 				inOutProcedure(stmt)
 			override def inOutGroundProcedure[Y](stmt :GroundInOutCallProcedure[Y])              :R[Unit, Y] =
@@ -1568,7 +1572,7 @@ object Call {
 		  * is a [[net.noresttherein.oldsql.collection.Chain Chain]] listing all parameters `X` declared as `Out[X]`
 		  * in `In`, in the order of their appearance, followed by the value returned by the whole function.
 		  * This method variant requires the values for all the arguments to be known (to be literals,
-		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters or expressions built on them)
+		  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters or expressions built on them)
 		  * and creates a parameterless `Call` instance.
 		  * @tparam Params   types of the formal parameters of the called function.
 		  * @param function  the invoked stored function.
@@ -1581,28 +1585,29 @@ object Call {
 		  * @return a statement invoking the function using the JDBC function call syntax.
 		  */
 		def GroundInOutCallFunction[Params <: Chain, In <: Chain, Y]
-		                           (function :StoredFunction[Params, Y], args :ChainTuple[RowProduct, GlobalScope, In])
+		                           (function :StoredFunction[Params, Y], args :ChainTuple[RowProduct, Single, In])
 		                           (implicit signature :ProcedureInOutSignature[Params, In])
 				:GroundInOutCallFunction[signature.Out, Y] =
-			new GroundInOutCallFunctionImpl(function, signature(args), signature.outParamIndices(function))(
-				signature.outForm(function.paramForm)
-			)
+		{
+			val params = signature(args, function.paramForm)
+			val indices = signature.outParamIndices(NoParams, function)(params)
+			new GroundInOutCallFunctionImpl(function, params, indices)(signature.outForm(function.paramForm))
+		}
 
 		/** A parameterless statement invoking a [[net.noresttherein.oldsql.sql.StoredProcedure stored function]],
 		  * returning its result together with the ''OUT'' parameters declared by the function.
 		  * Note that ''parameterless'' here means that no arguments need be provided to execute this statement;
 		  * the actual JDBC [[java.sql.CallableStatement CallableStatement]] may still be parameterized using
-		  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameter expressions.
+		  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameter expressions.
 		  */
 		trait GroundInOutCallFunction[+Out <: Chain, Y] extends InOutCallFunction[Unit, Out, Y] with GroundCall[Out ~ Y] {
-			protected override def applyTo[R[-_, +_]](visitor :StatementVisitor[R]) :R[Unit, Out ~ Y] =
+			protected override def visit[R[-_, +_]](visitor :StatementVisitor[R]) :R[Unit, Out ~ Y] =
 				visitor.inOutGroundFunction(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Unit, RowProduct] = {
-				val gap = Parameterization.paramless[ParamlessFrom] :+ ColumnWriteForm.gap
-				val call = spelling.inline(args)(spelling.newContext, gap)
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Unit] = {
+				val call = spelling.inCall(args)(Dual, spelling.newContext, Parameterization.paramless)
 				val sql = ("{?= call " + spelling.function(procedure.name) + '(') +: (call.sql + ")}")
-				SpelledSQL(sql, call.context, call.params)
+				SpelledSQL(sql, ColumnWriteForm.gap + call.setter, call.context)
 			}
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[GroundInOutCallFunction[_, _]]
@@ -1610,7 +1615,7 @@ object Call {
 
 		private class GroundInOutCallFunctionImpl[Args <: Chain, Out <: Chain, Res]
 		                                         (override val procedure :StoredFunction[Args, Res],
-		                                          override val args :ChainTuple[RowProduct, GlobalScope, Args],
+		                                          override val args :ChainTuple[RowProduct, Single, Args],
 		                                          override val outParamIndices :Seq[Int])
 		                                         (implicit override val outParamsForm :SQLReadForm[Out])
 			extends GroundInOutCallFunction[Out, Res] //with InOutCallFunction[Any, Out, Res] with GroundDML.Impl[Out ~ Res]
@@ -1653,13 +1658,17 @@ object Call {
 		  * @return a statement invoking the function using the JDBC function call syntax.
 		  */
 		def ParamInOutCallFunction[Args <: Chain, Params <: Chain, In <: Chain, Y]
-		                          (domain :PureParamFrom[Args])
-		                          (function :StoredFunction[Params, Y], args :ChainTuple[domain.Self, GlobalScope, In])
+		                          (domain :ParamsRow[Args])
+		                          (function :StoredFunction[Params, Y], args :ChainTuple[domain.Self, Single, In])
 		                          (implicit signature :ProcedureInOutSignature[Params, In])
 				:ParamInOutCallFunction[Args, signature.Out, Y] =
+		{
+			val params = signature(args, function.paramForm)
+			val indices = signature.outParamIndices(domain, function)(params)
 			new ParamInOutCallFunctionImpl[domain.type, domain.Self, Args, Params, signature.Out, Y](
-				domain, function, signature(args), signature.outParamIndices(function)
+				domain, function, params, indices
 			)(signature.outForm(function.paramForm))
+		}
 
 		/** A parameterized call of a [[net.noresttherein.oldsql.sql.StoredFunction stored function]]
 		  * providing arbitrary SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] as arguments
@@ -1668,21 +1677,22 @@ object Call {
 		trait ParamInOutCallFunction[-Args <: Chain, +Out <: Chain, Y]
 			extends InOutCallFunction[Args, Out, Y] with ParamCall[Args, Out ~ Y]
 		{
-			protected override def applyTo[R[-_, +_]](visitor :StatementVisitor[R]) :R[Args, Out ~ Y] =
+			protected override def visit[R[-_, +_]](visitor :StatementVisitor[R]) :R[Args, Out ~ Y] =
 				visitor.inOutParamFunction(this)
 
-			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] = {
-				val call = spelling.inline(args)(domain.spellingContext, domain.parameterization :+ ColumnWriteForm.gap)
-				(("{?= call " + spelling.function(procedure.name) + '(') +: call) + ")}"
+			protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] = {
+				val call = spelling.inCall(args)(domain.self, domain.spellingContext, domain.parameterization)
+				val sql = (("{?= call " + spelling.function(procedure.name) + '(') +: call.sql) + ")}"
+				SpelledSQL(sql, ColumnWriteForm.gap + call.setter, call.context)
 			}
 
 			override def canEqual(that :Any) :Boolean = that.isInstanceOf[ParamInOutCallFunction[_, _, _]]
 		}
 
-		private class ParamInOutCallFunctionImpl[D <: PureParamFrom[Args] { type Self <: F },
-		                                         F <: ParameterizedFrom[Args], Args <: Chain, Xs <: Chain, Out <: Chain, Res]
+		private class ParamInOutCallFunctionImpl[D <: ParamsRow[Args] { type Self <: F },
+		                                         F <: ParamsRow[Args], Args <: Chain, Xs <: Chain, Out <: Chain, Res]
 		                                        (override val domain :D, override val procedure :StoredFunction[Xs, Res],
-		                                         override val args :ChainTuple[F, GlobalScope, Xs],
+		                                         override val args :ChainTuple[F, Single, Xs],
 		                                         override val outParamIndices :Seq[Int])
 		                                        (implicit override val outParamsForm :SQLReadForm[Out])
 			extends ParamInOutCallFunction[Args, Out, Res]
@@ -1703,25 +1713,25 @@ object Call {
 		  * @tparam R the return type of this visitor, parameterized with the type of the parameters of the statement
 		  *           (the `Args` argument of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]])
 		  *           and its return type (the `Res` argument of the visited statement).
-		  * @see [[net.noresttherein.oldsql.sql.Call.InOutCallFunction.CaseInOutFunction]]
+		  * @see [[net.noresttherein.oldsql.sql.Call.InOutCallFunction.CaseInOutCallFunction]]
 		  * @see [[net.noresttherein.oldsql.sql.Call.CallVisitor]]
 		  */
-		trait InOutFunctionVisitor[R[-X, +Y]] {
+		trait InOutCallFunctionVisitor[R[-X, +Y]] {
 			def inOutFunction[X, Out <: Chain, Y](stmt :InOutCallFunction[X, Out, Y])                    :R[X, Out ~ Y]
 			def inOutParamFunction[X <: Chain, Out <: Chain, Y](stmt :ParamInOutCallFunction[X, Out, Y]) :R[X, Out ~ Y]
 			def inOutGroundFunction[Out <: Chain, Y](stmt :GroundInOutCallFunction[Out, Y])              :R[Unit, Out ~ Y]
 		}
 
-		/** An alias for [[net.noresttherein.oldsql.sql.Call.InOutCallFunction.InOutFunctionVisitor InOutFunctionVisitor]]
+		/** An alias for [[net.noresttherein.oldsql.sql.Call.InOutCallFunction.InOutCallFunctionVisitor AnyInOutFunctionVisitor]]
 		  * introduced for consistency with the 'assembled' ''visitor'' pattern, as there are no intermediate
 		  * types between [[net.noresttherein.oldsql.sql.Call.InOutCallFunction InOutCallFunction]] and its full
 		  * (if not concrete) implementations.
 		  */
-		type MatchInOutFunction[R[-X, +Y]] = InOutFunctionVisitor[R]
+		type MatchInOutCallFunction[R[-X, +Y]] = InOutCallFunctionVisitor[R]
 
 		/** A mix-in trait for [[net.noresttherein.oldsql.sql.DMLStatement.StatementVisitor StatementVisitor]]
 		  * ''visitors'' of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]] type hierarchy. It implements
-		  * all methods of [[net.noresttherein.oldsql.sql.Call.InOutCallFunction.InOutFunctionVisitor InOutFunctionVisitor]]
+		  * all methods of [[net.noresttherein.oldsql.sql.Call.InOutCallFunction.InOutCallFunctionVisitor AnyInOutFunctionVisitor]]
 		  * for concrete [[net.noresttherein.oldsql.sql.Call.InOutCallFunction InOutCallFunction]] implementations -
 		  * statements calling a [[net.noresttherein.oldsql.sql.StoredFunction stored function]] and returning
 		  * its result together with (some of) its ''OUT'' parameters - by delegating them to method
@@ -1730,9 +1740,11 @@ object Call {
 		  *           (the `Args` argument of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]])
 		  *           and its return type (the `Res` argument of the visited statement).
 		  */
-		trait CaseInOutFunction[R[-X, +Y]] extends MatchInOutFunction[R] {
-			override def inOutParamFunction[X <: Chain, Out <: Chain, Y](stmt :ParamInOutCallFunction[X, Out, Y]) :R[X, Out ~ Y] =
+		trait CaseInOutCallFunction[R[-X, +Y]] extends MatchInOutCallFunction[R] {
+			override def inOutParamFunction[X <: Chain, Out <: Chain, Y]
+			                               (stmt :ParamInOutCallFunction[X, Out, Y]) :R[X, Out ~ Y] =
 				inOutFunction(stmt)
+
 			override def inOutGroundFunction[Out <: Chain, Y](stmt :GroundInOutCallFunction[Out, Y]) :R[Unit, Out ~ Y] =
 				inOutFunction(stmt)
 		}
@@ -1756,7 +1768,8 @@ object Call {
 	  * @see [[net.noresttherein.oldsql.sql.Call.CaseCall]]
 	  */
 	trait CallVisitor[R[-X, +Y]]
-		extends ProcedureVisitor[R] with InOutProcedureVisitor[R] with FunctionVisitor[R] with InOutFunctionVisitor[R]
+		extends CallProcedureVisitor[R] with InOutCallProcedureVisitor[R]
+		   with CallFunctionVisitor[R] with InOutCallFunctionVisitor[R]
 	{
 		def call[X, Y](call :Call[X, Y]) :R[X, Y]
 	}
@@ -1776,13 +1789,13 @@ object Call {
 	  *           and its return type (the `Res` argument of the visited statement).
 	  * @see [[net.noresttherein.oldsql.sql.Call.CaseCall]]
 	  */
-	trait MatchCall[R[-X, +Y]]
-		extends CallVisitor[R]
-		   with CaseProcedure[R] with CaseInOutProcedure[R] with CaseFunction[R] with CaseInOutFunction[R]
+	trait MatchCall[R[-X, +Y]] extends CallVisitor[R]
+		with CaseCallProcedure[R] with CaseInOutCallProcedure[R]
+		with CaseCallFunction[R] with CaseInOutCallFunction[R]
 
 	/** A mix-in trait for [[net.noresttherein.oldsql.sql.DMLStatement.StatementVisitor StatementVisitor]] ''visitors''
 	  * of [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]] type hierarchy. It expands on
-	  * [[net.noresttherein.oldsql.sql.Call.MatchCall MatchCall]] by further delegating the remaining open cases
+	  * [[net.noresttherein.oldsql.sql.Call.MatchCall MatchAnyCall]] by further delegating the remaining open cases
 	  * to the method for [[net.noresttherein.oldsql.sql.Call Call]] trait itself. Note that this scheme means
 	  * that overriding [[net.noresttherein.oldsql.sql.Call.CaseCall.procedure procedure]] method will not 'catch'
 	  * the cases of any of the not-really-a-procedure-call, which instead dispatch directly

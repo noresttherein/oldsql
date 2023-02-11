@@ -6,10 +6,10 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, ColumnMappingExtract, MappingExtract}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, ChainPrefixSchema, NonEmptyChainMapping}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
+import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.schema.bits.MappingSchema.{EmptySchema, FlatMappingSchema, NonEmptyFlatSchema, NonEmptySchema}
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, SchemaColumn}
-import net.noresttherein.oldsql.schema.support.MappingProxy.{DirectProxy, ExportProxy}
+import net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy
 
 
 

@@ -1,7 +1,7 @@
 package com.hcore.ogre.mapping.ties
 
 import com.hcore.ogre.deeds.Haul
-import com.hcore.ogre.mapping.ColumnMapping
+import com.hcore.ogre.mapping.TypedColumn
 import com.hcore.ogre.mapping.support.StaticMapping
 import com.hcore.ogre.model.Reference
 import com.hcore.ogre.model.Reference.{Satisfying, Unknown, Full}
