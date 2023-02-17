@@ -7,7 +7,7 @@ import net.noresttherein.oldsql.exceptions.MismatchedExpressionsException
 import net.noresttherein.oldsql.morsels.{generic, Extractor}
 import net.noresttherein.oldsql.morsels.generic.{=>:, Self}
 import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm}
-import net.noresttherein.oldsql.slang.mappingMethods
+import net.noresttherein.oldsql.slang.{cast2TypeParams, mappingMethods}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, RowShape, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{AnyExpressionVisitor, ConvertibleSQL, Grouped, Single, SpecificExpressionVisitor}
@@ -19,7 +19,7 @@ import net.noresttherein.oldsql.sql.ast.SeqSQL.{AnySeqVisitor, CaseAnySeq, CaseS
 import net.noresttherein.oldsql.sql.mechanics.{Reform, SpelledSQL, SQLConversion, SQLScribe, SQLTransformation}
 import net.noresttherein.oldsql.sql.mechanics.Reform.PassCount
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
-import net.noresttherein.oldsql.sql.mechanics.SQLConversion.ConvertSeq
+import net.noresttherein.oldsql.sql.mechanics.SQLConversion.{ConvertSeq, Upcast}
 
 
 
@@ -259,55 +259,98 @@ trait SeqSQL[-F <: RowProduct, -S >: Grouped <: Single, T] extends InlineSQL[F, 
 	                                         spelling :SQLSpelling)
 			:SpecificExpressionVisitor
 			 [F2, S2, V2, (leftResult.SQLResult[F1, S1, SQLExpression[F1, S1, U]], rightResult.SQLResult[F2, S2, EC2[U]])] =
-		new BaseReformer[F1, S1, F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](other)(reform, passCount) {
+		new BaseReformer[F1, S1, F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](
+			other)(reform, passCount)(leftResult, rightResult, spelling
+		) {
 
 			override def seq[I](e :SeqSQL[F2, S2, I])(implicit isSeq :V2 =:= Seq[I]) = {
 				implicit val rightSeqRes =
 					isSeq.substituteCo[({ type T[B] = SQLTransformation[B, U]#Into[rightResult.SQLResult] })#T](rightResult)
 
+				type SplitResult[X, Y, Z, Res[-f <: RowProduct, -s >: Grouped <: Single, +e <: SQLExpression[f, s, Z]]] =
+					(SQLConversion[X, Y], SQLTransformation[Seq[Y], Z]#Into[Res])
+
 				/** Splits a conversion for a `SeqSQL` into a conversion for the individual elements and one applied
 				  * to the whole reformed expression. */
 				def splitSeqConversion[X, Z](conversion :SQLTransformation[Seq[X], Z])
-						:Opt[(SQLConversion[X, Y], SQLTransformation[Seq[Y], Z]#Into[conversion.SQLResult]) forSome { type Y }] =
+						:Opt[SplitResult[X, _, Z, conversion.SQLResult]] =
+//						:Opt[(SQLConversion[X, Y], SQLTransformation[Seq[Y], Z]#Into[conversion.SQLResult]) forSome { type Y }] =
 				{
-					type Second[A, B] = SQLTransformation[Seq[A], B]#Into[conversion.SQLResult]
+					type End[A] = SQLTransformation[A, Z]#Into[conversion.SQLResult]
+					//this function exists because type checker can't handle existentials involved in the return type.
+					def result[Y](item :SQLConversion[X, Y], seq :End[Seq[Y]]) :Opt[(SQLConversion[X, Y], End[Seq[Y]])] =
+						Got((item, seq))
 					conversion match {
 						case seq :ConvertSeq[X, y] =>
 //						case ConvertSeq(item, _, )
-							Got((seq.item, SQLConversion.toSelf.asInstanceOf[Second[y, Z]]))
+							result(seq.item, SQLConversion.toSelf.asInstanceOf[End[Seq[y]]])
 						case _ if conversion.isIdentity => //possible really only at the start of recursion
-							Got((SQLConversion.toSelf[X], SQLConversion.toSelf.asInstanceOf[Second[X, Z]]))
+							result(SQLConversion.toSelf[X], conversion)
+						case _ if conversion.isUpcast =>
+							result(SQLConversion.toSelf[X], conversion)
+						case _ if conversion == SQLConversion.toRows =>
+							result(SQLConversion.toSelf[X], conversion.asInstanceOf[End[Seq[X]]])
 //									case _ if lift == Lift.toRows => //unlikely
 //										Got((Lift.self, lift).asInstanceOf[(Lift[X, Any], Lift[Seq[Any], U])])
 						case _ =>
-							type Split[A, B, C] = (SQLConversion[A, B], Second[B, C])
-							type Composed[Y] = (SQLTransformation[Seq[X], Y], Second[Y, Z])
+							//The weird unapply use is to be able to instantiate type y, as otherwise Scala won't
+							// track the compatibility of the first and second component in conversion
+							type Composed[Y] = (SQLTransformation[Seq[X], Y], End[Y])
 							SQLTransformation.Composition.unapply(conversion) match {
 								case composed :Opt[Composed[y]] if composed.isDefined =>
 									type Y = y
-									splitSeqConversion[X, Y](composed.get._1) match {
-										case first :Opt[Split[X, a, Y]] if first.isDefined && first.get._2.isIdentity =>
+									val first  :SQLTransformation[Seq[X], Y] = composed.get._1
+									val second :End[Y] = composed.get._2
+									type SplitFirst[A, B, C] = SplitResult[A, B, C, first.SQLResult]
+									type SplitSecond[A, B]   = SplitResult[A, B, Z, second.SQLResult]
+									splitSeqConversion[X, Y](first) match {
+										case firstSplit :Opt[SplitFirst[X, a, Y]] if firstSplit.isDefined =>
 											type A = a
-											//if first.get._2 was a conversion we could just use first.get._2 andThen composed.get._2
-											splitSeqConversion(composed.get._2.asInstanceOf[Second[A, Z]]) match {
-												case second :Opt[Split[A, b, Z]] if second.isDefined =>
-													Got((first.get._1 andThen second.get._1, second.get._2))
-												case _ => Lack
+											val itemInFirst :SQLConversion[X, A] = firstSplit.get._1//.castParam2[Y]
+											(firstSplit.get._2 :SQLTransformation[Seq[A], Y]) match {
+												//we 'cast' to SQLConversion in order to statically compose it with second
+												case identity :SQLConversion[Seq[A], Y] if identity.isIdentity =>
+													//If the whole seq conversion in the composed._1 is identity, it is possible
+													// that second still includes a ConvertSeq with an item conversion
+													splitSeqConversion(identity andThen second) match {
+														case secondSplit :Opt[SplitSecond[A, b]] if secondSplit.isDefined =>
+															val itemPart :SQLConversion[A, b] = secondSplit.get._1
+															val seqPart  :End[Seq[b]] = secondSplit.get._2
+															Got((itemInFirst andThen itemPart, seqPart))
+														case _ => //Ok, so first contained the whole items part
+															result(itemInFirst, identity andThen second)
+													}
+												/* Theoretically, if firstSplit.get._2 is upcast, then second split
+												 * can still succeed, although we would have to forgo the nice
+												 * type safety of identity andThen second because that leads
+												 * to an infinite recursion. We would also have to cast the input type
+												 * of second to a Seq[_] in order to call ourselves again, and we don't
+												 * know if it is true. It doesn't matter, because we don't rely
+												 * on that fact in the actual implementation other than providing
+												 * the correct output type, but in the end we compose everything again
+												 * the same way anyway. Probably not worth it, it would be such
+												 * a corner case when what we primarily are interested in are just
+												 * cases of identity and SeqConversion.
+												 */
+												case seqInFirst =>
+													//composition doesn't type check because seqInFirst isn't a SQLConversion
+													val seqPart = (seqInFirst andThen second).asInstanceOf[End[Seq[A]]]
+													result(itemInFirst, seqPart)
 											}
-										case first :Opt[Split[X, a, Y]] if first.isDefined =>
-											Got((first.get._1, first.get._2 andThen composed.get._2))
+										//if first doesn't have an items part, no need to try splitting second
 										case _ => Lack
 									}
 								case _ => Lack
 							}
 					}
 				}
+				//Aaand we are back to actually structurally comparing this and e, losing all that precious type safety from earlier.
 				type SecondLeft[X]  = SQLTransformation[Seq[X], U]#Into[leftResult.SQLResult]
 				type SecondRight[X] = SQLTransformation[Seq[X], U]#Into[rightResult.SQLResult]
 				(splitSeqConversion(leftResult), splitSeqConversion(rightSeqRes)) match {
 					case (Got((leftItems :SQLConversion[T, Any @unchecked], leftRes :SecondLeft[Any] @unchecked)),
 					      Got((rightItems :SQLConversion[I, Any @unchecked], rightRes :SecondRight[Any] @unchecked)))
-						if leftRes == rightRes
+						if leftRes == rightRes || leftRes.isUpcast && rightRes.isUpcast
 					=>
 						/* We can unify leftItems and rightItems only if they convert to the same type.
 						 * Without using TypeTags in every SQLConversion, this is of course impossible to check.
@@ -317,7 +360,6 @@ trait SeqSQL[-F <: RowProduct, -S >: Grouped <: Single, T] extends InlineSQL[F, 
 						 * but it holds for all actual implementations we use. In practice this means that
 						 * both conversions are most likely identity, anyway.
 						 */
-//						implicit val itemCompat = SQLTypeUnification(leftItems, rightItems)
 						val these = parts; val those = e.parts
 						if (these.length != those.length)
 							throw new MismatchedExpressionsException(
@@ -470,7 +512,7 @@ object SeqSQL {
 		}
 
 	implicit def literalSeq[T :SQLForm](items :Seq[T]) :SeqSQL[RowProduct, Single, T] =
-		new Impl(items.map(SQLLiteral(_)))
+		new Impl(items.map(SQLTerm(_)))
 
 	implicit def expressionSeq[F <: RowProduct, S >: Grouped <: Single, T]
 	                          (items :Seq[SQLExpression[F, S, T]]) :SeqSQL[F, S, T] =

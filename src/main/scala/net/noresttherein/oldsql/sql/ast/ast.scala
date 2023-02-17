@@ -6,8 +6,9 @@ import net.noresttherein.oldsql.schema.ColumnMapping.TypedColumn
 import net.noresttherein.oldsql.schema.Mapping.MappingOf
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{Single, Grouped}
+import net.noresttherein.oldsql.sql.SQLExpression.{ConvertibleSQL, ConvertingTemplate, Grouped, Single}
 import net.noresttherein.oldsql.sql.mechanics.RelationCount
+import net.noresttherein.oldsql.sql.ColumnSQL.{ConvertibleColumn, ConvertingColumnTemplate}
 
 
 
@@ -55,11 +56,19 @@ package object ast {
 
 
 
-	def denullify[F <: RowProduct, S >: Grouped <: Single, V](e :SQLExpression[F, S, V]) :SQLExpression[F, S, V] =
+	@inline def denullify[F <: RowProduct, S >: Grouped <: Single, V](e :SQLExpression[F, S, V]) :SQLExpression[F, S, V] =
 		if (e == null) MultiNull[V](1) else e
 
-	def denullify[F <: RowProduct, S >: Grouped <: Single, V](e :ColumnSQL[F, S, V]) :ColumnSQL[F, S, V] =
+	@inline def denullify[F <: RowProduct, S >: Grouped <: Single, V, EC[v] <: ConvertibleSQL[F, S, v, EC]]
+	             (e :ConvertingTemplate[F, S, V, EC]) :SQLExpression[F, S, V] =
+		if (e == null) MultiNull[V](1) else e.toConvertibleSQL
+
+	@inline def denullify[F <: RowProduct, S >: Grouped <: Single, V](e :ColumnSQL[F, S, V]) :ColumnSQL[F, S, V] =
 		if (e == null) SQLNull[V]() else e
+
+	@inline def denullify[F <: RowProduct, S >: Grouped <: Single, V, EC[v] <: ConvertibleColumn[F, S, v, EC]]
+	             (e :ConvertingColumnTemplate[F, S, V, EC]) :ColumnSQL[F, S, V] =
+		if (e == null) SQLNull[V]() else e.toConvertibleSQL
 
 
 }

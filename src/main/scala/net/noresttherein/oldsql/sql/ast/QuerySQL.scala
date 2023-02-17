@@ -710,7 +710,7 @@ trait ColumnQuery[-F <: RowProduct, R]
 	def union[E <: F, X](other :ColumnQuery[E, X])(implicit equiv :R =~= X) :ColumnQuery[E, equiv.Unified] =
 		Union(this.rowsTo(equiv.left), other.rowsTo(equiv.right))
 
-	def unionAll[E <: F, X](other :ColumnQuery[E, X])(implicit equiv :R =~ X) :ColumnQuery[E, equiv.Unified] =
+	def unionAll[E <: F, X](other :ColumnQuery[E, X])(implicit equiv :R =~= X) :ColumnQuery[E, equiv.Unified] =
 		UnionAll(this.rowsTo(equiv.left), other.rowsTo(equiv.right))
 
 	def minus[E <: F, X](other :ColumnQuery[E, X])(implicit equiv :R =~= X) :ColumnQuery[E, equiv.Unified] =

@@ -57,7 +57,7 @@ class AliasedSQL[-F <: RowProduct, -S >: Grouped <: Single, V]
 	                             (implicit leftResult  :SQLTransformation[V, U],
 	                                       rightResult :SQLTransformation[V2, U], spelling :SQLSpelling)
 			:(leftResult.SQLResult[F1, S1, SQLExpression[F1, S1, U]], rightResult.SQLResult[F2, S2, EC2[U]]) =
-		passReform(other)(reform.prohibitReformLeft, passCount)
+		passReform[F1, S1, F2, S2, V2, EC2, U](other)(reform.prohibitReformLeft, passCount)
 
 
 //	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])

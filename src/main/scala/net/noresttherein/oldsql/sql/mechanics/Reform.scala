@@ -1876,8 +1876,7 @@ object Reform {
 	  * @see [[net.noresttherein.oldsql.sql.mechanics.Reform.SimpleReform]]
 	  * @see [[net.noresttherein.oldsql.sql.mechanics.Reform.TunedReform]]
 	  */
-	abstract class AbstractReform[LV[-F <: RowProduct, M[O] <: MappingAt[O], V] <: SQLExpression[F, Single, V]]
-	               (wrap :Reform => Reform, constructor :(Reform => Reform) => Reform)
+	abstract class AbstractReform(wrap :Reform => Reform, constructor :(Reform => Reform) => Reform)
 		extends BaseDecorable[Reform](wrap, constructor) with BaseReform
 	{
 		override def swap :Reform = _swap

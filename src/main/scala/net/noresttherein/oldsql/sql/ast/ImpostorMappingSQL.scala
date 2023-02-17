@@ -25,7 +25,7 @@ trait ImpostorMappingSQL[-F <: RowProduct, -S >: Grouped <: Single, M[O] <: Mapp
 	extends MappingSQL[F, S, M, M[Unit]#Subject]
 {
 	type Origin >: F <: RowProduct
-	def values[C >: Grouped <: S] :NaturalMap[MappingAt[Origin]#Column, ColumnSQL.from[Origin]#rows[C]#apply]
+	def values[C >: Grouped <: S] :NaturalMap[MappingAt[Origin]#Column, ColumnSQL.from[Origin]#rows[C]#E]
 }
 
 

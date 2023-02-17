@@ -928,7 +928,7 @@ object SQLDialect {
 						def condition[V](column :TypedColumn[V, O]) = {
 							val anchored = (origin.anchored :TypedMapping[_, O]).export(column)
 							WherePreset.Value(anchored).map { preset =>
-								val expr = (origin \ column).toColumnSQL === BoundColumnParam(preset)(anchored.form)
+								val expr = (origin \ column).toColumnSQL === BoundColumnParam(anchored.form, preset)
 								apply(expr)(from.generalized, ctx, params)
 							} orElse ExtraWhere.unapply(anchored).map { buff =>
 								val expr = (origin \ column).toColumnSQL === buff.expr
@@ -1388,6 +1388,7 @@ object SQLDialect {
 		def AND          :String = operator("and")
 		def OR           :String = operator("or")
 		def XOR          :String = operator("xor")
+		def IS           :String = operator("is")
 		def UNION        :String = operator("union")
 		def UNION_ALL    :String = operator("union all")
 		def INTERSECT    :String = operator("intersect")
@@ -1428,6 +1429,7 @@ object SQLDialect {
 		def _AND_        :String = " " + AND + " "
 		def _OR_         :String = " " + OR + " "
 		def _XOR_        :String = " " + XOR + " "
+		def _IS_         :String = " " + IS + " "
 		def _UNION_      :String = " " + UNION + " "
 		def _UNION_ALL_  :String = " " + UNION_ALL + " "
 		def _INTERSECT_  :String = " " + INTERSECT + " "
@@ -1996,6 +1998,7 @@ object SQLDialect {
 			override def AND          :String = operator("and")
 			override def OR           :String = operator("or")
 			override def XOR          :String = operator("xor")
+			override def IS           :String = operator("is")
 			override def UNION        :String = operator("union")
 			override def UNION_ALL    :String = operator("union all")
 			override def INTERSECT    :String = operator("intersect")
@@ -2036,6 +2039,7 @@ object SQLDialect {
 			override def _AND_        :String = " " + AND + " "
 			override def _OR_         :String = " " + OR + " "
 			override def _XOR_        :String = " " + XOR + " "
+			override def _IS_         :String = " " + IS + " "
 			override def _UNION_      :String = " " + UNION + " "
 			override def _UNION_ALL_  :String = " " + UNION_ALL + " "
 			override def _INTERSECT_  :String = " " + INTERSECT + " "
@@ -2080,6 +2084,7 @@ object SQLDialect {
 			override val AND          :String = operator("and")
 			override val OR           :String = operator("or")
 			override val XOR          :String = operator("xor")
+			override val IS           :String = operator("is")
 			override val UNION        :String = operator("union")
 			override val UNION_ALL    :String = operator("union all")
 			override val INTERSECT    :String = operator("intersect")
@@ -2120,6 +2125,7 @@ object SQLDialect {
 			override val _AND_        :String = " " + AND + " "
 			override val _OR_         :String = " " + OR + " "
 			override val _XOR_        :String = " " + XOR + " "
+			override val _IS_         :String = " " + IS + " "
 			override val _UNION_      :String = " " + UNION + " "
 			override val _UNION_ALL_  :String = " " + UNION_ALL + " "
 			override val _INTERSECT_  :String = " " + INTERSECT + " "
@@ -2165,6 +2171,7 @@ object SQLDialect {
 			override def AND          :String = decorated.AND
 			override def OR           :String = decorated.OR
 			override def XOR          :String = decorated.XOR
+			override def IS           :String = decorated.IS
 			override def UNION        :String = decorated.UNION
 			override def UNION_ALL    :String = decorated.UNION_ALL
 			override def INTERSECT    :String = decorated.INTERSECT
@@ -2195,45 +2202,46 @@ object SQLDialect {
 			override def MERGE        :String = decorated.MERGE
 			override def DELETE       :String = decorated.DELETE
 
-			override def _NULL_       :String =  decorated._NULL_
-			override def _TRUE_       :String =  decorated._TRUE_
-			override def _FALSE_      :String =  decorated._FALSE_
-			override def _CONCAT_     :String =  decorated._CONCAT_
-			override def _LIKE_       :String =  decorated._LIKE_
-			override def _BETWEEN_    :String =  decorated._BETWEEN_
-			override def _NOT_        :String =  decorated._NOT_
-			override def _AND_        :String =  decorated._AND_
-			override def _OR_         :String =  decorated._OR_
-			override def _XOR_        :String =  decorated._XOR_
-			override def _UNION_      :String =  decorated._UNION_
-			override def _UNION_ALL_  :String =  decorated._UNION_ALL_
-			override def _INTERSECT_  :String =  decorated._INTERSECT_
-			override def _MINUS_      :String =  decorated._MINUS_
-			override def _SELECT_     :String =  decorated._SELECT_
-			override def _FROM_       :String =  decorated._FROM_
-			override def _WHERE_      :String =  decorated._WHERE_
-			override def _GROUP_BY_   :String =  decorated._GROUP_BY_
-			override def _HAVING_     :String =  decorated._HAVING_
-			override def _AS_         :String =  decorated._AS_
-			override def _INNER_JOIN_ :String =  decorated._INNER_JOIN_
-			override def _OUTER_JOIN_ :String =  decorated._OUTER_JOIN_
-			override def _LEFT_JOIN_  :String =  decorated._LEFT_JOIN_
-			override def _RIGHT_JOIN_ :String =  decorated._RIGHT_JOIN_
-			override def _ON_         :String =  decorated._ON_
-			override def _INTO_       :String =  decorated._INTO_
-			override def _VALUES_     :String =  decorated._VALUES_
-			override def _SET_        :String =  decorated._SET_
-			override def CASE_        :String =  decorated.CASE_
-			override def _WHEN_       :String =  decorated._WHEN_
-			override def _THEN_       :String =  decorated._THEN_
-			override def _ELSE_       :String =  decorated._ELSE_
-			override def _END         :String =  decorated._END
-			override def WITH_        :String =  decorated.WITH_
-			override def SELECT_      :String =  decorated.SELECT_
-			override def INSERT_      :String =  decorated.INSERT_
-			override def UPDATE_      :String =  decorated.UPDATE_
-			override def MERGE_       :String =  decorated.MERGE_
-			override def DELETE_      :String =  decorated.DELETE_
+			override def _NULL_       :String = decorated._NULL_
+			override def _TRUE_       :String = decorated._TRUE_
+			override def _FALSE_      :String = decorated._FALSE_
+			override def _CONCAT_     :String = decorated._CONCAT_
+			override def _LIKE_       :String = decorated._LIKE_
+			override def _BETWEEN_    :String = decorated._BETWEEN_
+			override def _NOT_        :String = decorated._NOT_
+			override def _AND_        :String = decorated._AND_
+			override def _OR_         :String = decorated._OR_
+			override def _XOR_        :String = decorated._XOR_
+			override def _IS_         :String = decorated._IS_
+			override def _UNION_      :String = decorated._UNION_
+			override def _UNION_ALL_  :String = decorated._UNION_ALL_
+			override def _INTERSECT_  :String = decorated._INTERSECT_
+			override def _MINUS_      :String = decorated._MINUS_
+			override def _SELECT_     :String = decorated._SELECT_
+			override def _FROM_       :String = decorated._FROM_
+			override def _WHERE_      :String = decorated._WHERE_
+			override def _GROUP_BY_   :String = decorated._GROUP_BY_
+			override def _HAVING_     :String = decorated._HAVING_
+			override def _AS_         :String = decorated._AS_
+			override def _INNER_JOIN_ :String = decorated._INNER_JOIN_
+			override def _OUTER_JOIN_ :String = decorated._OUTER_JOIN_
+			override def _LEFT_JOIN_  :String = decorated._LEFT_JOIN_
+			override def _RIGHT_JOIN_ :String = decorated._RIGHT_JOIN_
+			override def _ON_         :String = decorated._ON_
+			override def _INTO_       :String = decorated._INTO_
+			override def _VALUES_     :String = decorated._VALUES_
+			override def _SET_        :String = decorated._SET_
+			override def CASE_        :String = decorated.CASE_
+			override def _WHEN_       :String = decorated._WHEN_
+			override def _THEN_       :String = decorated._THEN_
+			override def _ELSE_       :String = decorated._ELSE_
+			override def _END         :String = decorated._END
+			override def WITH_        :String = decorated.WITH_
+			override def SELECT_      :String = decorated.SELECT_
+			override def INSERT_      :String = decorated.INSERT_
+			override def UPDATE_      :String = decorated.UPDATE_
+			override def MERGE_       :String = decorated.MERGE_
+			override def DELETE_      :String = decorated.DELETE_
 		}
 
 

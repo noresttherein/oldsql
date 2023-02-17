@@ -600,7 +600,7 @@ object SQLScribe {
 			e match {
 				case UnboundParamSQL(param, _, idx) =>
 					val shift = followingParams(followingParams.length - 1 - idx)
-						BoundParam(param.form)(params(params.length - shift).asInstanceOf[E])
+						BoundParam(param.form, params(params.length - shift).asInstanceOf[E])
 				case _ =>
 					val shift = followingParams(followingParams.length - 1 - e.index)
 					e.moveTo(RelationOffset.unsafe[G, e.FromLast, e.position.Rel, T](e.index - shift))
@@ -614,7 +614,7 @@ object SQLScribe {
 					val rank = params.length - shift
 					val param = params(rank)
 					extract.opt(param.asInstanceOf[E]) match {
-						case Got(v) => BoundParam(extract.export.form)(v)
+						case Got(v) => BoundParam(extract.export.form, v)
 						case _ => MultiNull[V](extract.export.form)
 					}
 				case _ =>
@@ -631,7 +631,7 @@ object SQLScribe {
 				case UnboundParamSQL(_, extract, idx) =>
 					val shift = followingParams(followingParams.length - 1 - idx)
 					extract.opt(params(params.length - shift).asInstanceOf[E]) match {
-						case Got(v) => BoundColumnParam(v)(extract.export.form)
+						case Got(v) => BoundColumnParam(extract.export.form, v)
 						case _ => SQLNull[V](extract.export.form)
 					}
 				case _ =>
@@ -692,7 +692,7 @@ object SQLScribe {
 				case _ if idx < 0 => //the last parameter is in a from clause under grouping, it doesn't change indexing
 					e.asInstanceOf[RelationSQL[G, T, E, L]]
 				case UnboundParamSQL(param, _, this.idx) =>
-					BoundParam(param.form)(this.param.asInstanceOf[E])
+					BoundParam(param.form, this.param.asInstanceOf[E])
 				case _ if e.index < idx =>
 					e.asInstanceOf[SingleSQL[G, E]]
 				case _ =>
@@ -713,7 +713,7 @@ object SQLScribe {
 					e.asInstanceOf[TypedComponentSQL[G, T, E, M, V, L]]
 				case UnboundParamSQL(_, extract, this.idx) =>
 					extract.opt(param.asInstanceOf[E]) match {
-						case Got(v) => BoundParam(extract.export.form)(v)
+						case Got(v) => BoundParam(extract.export.form, v)
 						case _ => MultiNull[V](extract.export.form)
 					}
 				case _ if e.origin.index < idx =>
@@ -729,7 +729,7 @@ object SQLScribe {
 					e.asInstanceOf[TypedColumnComponentSQL[G, T, E, M, V, L]]
 				case UnboundParamSQL(_, extract, this.idx) =>
 					extract.opt(param.asInstanceOf[E]) match {
-						case Got(v) => BoundColumnParam(v)(extract.export.form)
+						case Got(v) => BoundColumnParam(extract.export.form, v)
 						case _ => SQLNull[V](extract.export.form) :SQLNull[V]
 					}
 				case _ if e.origin.index < idx =>

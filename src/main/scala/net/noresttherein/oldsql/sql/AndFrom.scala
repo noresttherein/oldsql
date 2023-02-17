@@ -52,7 +52,10 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
   * @see [[net.noresttherein.oldsql.sql.Join]]
   * @see [[net.noresttherein.oldsql.sql.Subselect]]
   * @see [[net.noresttherein.oldsql.sql.JoinParam]]
-  */ //consider: this is now really used only in FromLast, can have a less fancy name, and maybe use AndFrom for NonSubselect with FromClause
+  */
+//Consider: this is now really used only in FromLast, can have a less fancy name,
+// and maybe use AndFrom for NonSubselect with FromClause. Alternatively, we can use it for SelectFrom.
+// We also always have PseudoJoin, although it is quite similar to JoinLike
 @showAsInfix
 trait AndFrom[+L <: RowProduct, R[O] <: MappingAt[O]]
 	extends Expanded[L, R] with FromSome with AndFromTemplate[L, R, L AndFrom R]

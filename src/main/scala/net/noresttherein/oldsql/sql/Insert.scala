@@ -1376,7 +1376,7 @@ object Insert {
 						def addParam[T](column :TypedColumn[T, Unit]) =
 							mapping(column).opt(value) match {
 								case Got(x) => separator +
-									(spelling(BoundParam(x)(column.form))(Dual, _, Parameterization.paramless))
+									(spelling(BoundParam(column.form, x))(Dual, _, Parameterization.paramless))
 								case _ => separator + spelling.NULL
 							}
 						addParam(col)

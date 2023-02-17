@@ -103,7 +103,7 @@ object CanGroup extends CanGroupColumnImplicits {
 		new CanGroup[U, F, C] {
 			override type Result = F GroupBy projection.WithOrigin
 
-			override def apply(clause :F, expr :C) = clause groupBy[C, S, O] expr
+			override def apply(clause :F, expr :C) = clause.groupBy[C, S, O](expr)
 //			{ //todo: clause groupBy expr <- requires Generalized <: O
 //				val relation = clause.fullTableStack(shift.offset).toRelationSQL
 //				                     .asInstanceOf[RelationSQL[U, MappingOf[Any]#TypedProjection, Any, U]]
@@ -140,7 +140,7 @@ object CanGroup extends CanGroupColumnImplicits {
 		new CanGroup[F, G, C] {
 			override type Result = G By projection.WithOrigin
 
-			override def apply(clause :G, expr :C) = clause by[C, S, O] expr //(origin, shift, projection)
+			override def apply(clause :G, expr :C) = clause.by[C, S, O](expr)
 		}
 
 	implicit def byComponent[F <: FromSome, G <: GroupingOfGeneralized[F], M[O] <: BaseMapping[S, O], S]

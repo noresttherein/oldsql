@@ -5,7 +5,7 @@ import net.noresttherein.oldsql.sql.{CompoundSelect, Query, RowProduct, Select, 
 import net.noresttherein.oldsql.sql.Query.SingleQuery
 import net.noresttherein.oldsql.sql.Select.SelectOperator
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{ConvertibleSQL, ConvertingTemplate, Grouped, Single, SQLShape, SQLTypeUnification}
+import net.noresttherein.oldsql.sql.SQLExpression.{ConvertibleSQL, ConvertingTemplate, Grouped, Single, SQLShape}
 import net.noresttherein.oldsql.sql.ast.{AdaptedSQL, ChainSQL, ComponentSQL, CompoundSelectSQL, InlineSQL, LabeledSQL, LValueSQL, QuerySQL, SelectIdSQL, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.SingleQuerySQL
 
@@ -82,12 +82,13 @@ private[sql] trait PreprocessorReform extends Reform {
 //			case (_ :CompositeSQL[_, _, _], _ :CompositeSQL[_, _, _]) => super.apply(left, right)
 //			case (_ :ComponentLValueSQL[_, _, _], _) => ???
 //			case (_, _ :ComponentLValueSQL[_, _, _]) => ???
-			case (_ :LabeledSQL[_, _, _], _ :LabeledSQL[_, _, _]) => super.apply(left, right)
+			case (_ :LabeledSQL[_, _, _], _ :LabeledSQL[_, _, _]) =>
+				super.apply[LF, LS, LV, LE, RF, RS, RV, RE, U](left, right)
 			case (_ :InlineSQL[_, _, _] | _ :ChainSQL[_, _, _, _] | _ :SelectIdSQL[_, _, _],
 			      _ :InlineSQL[_, _, _] | _ :ChainSQL[_, _, _, _] | _ :SelectIdSQL[_, _, _]) =>
 				super.apply(left, right)
-			case (_ :AdaptedSQL[_, _, _, _], _) => super.apply(left, right)
-			case (_, _ :AdaptedSQL[_, _, _, _]) => super.apply(left, right)
+			case (_ :AdaptedSQL[_, _, _, _], _) => super.apply[LF, LS, LV, LE, RF, RS, RV, RE, U](left, right)
+			case (_, _ :AdaptedSQL[_, _, _, _]) => super.apply[LF, LS, LV, LE, RF, RS, RV, RE, U](left, right)
 			case _ => fallback(left, right) //ColumnSQL, CompositeSQL, MappingSQL, SQLTerm, QuerySQL
 		}
 
@@ -119,6 +120,7 @@ private[sql] trait PreprocessorReform extends Reform {
 //		apply(left :SQLExpression[L, Single, A[Unit]#Subject], right :SQLExpression[R, Single, B[Unit]#Subject])
 
 
+/*
 	override def apply[F <: RowProduct, V](left :QuerySQL[F, V], right :QuerySQL[F, V])
 	                                      (implicit spelling :SQLSpelling) :(QuerySQL[F, V], QuerySQL[F, V]) =
 		fallback(left, right)
@@ -158,6 +160,7 @@ private[sql] trait PreprocessorReform extends Reform {
 	override def apply[X, Y, V](left :Query[X, V], right :Select[Y, V])(implicit spelling :SQLSpelling)
 			:(Query[X, V], Query[Y, V]) =
 		fallback(left, right)
+*/
 
 
 //	override def fallback[LF <: RowProduct, LS >: Grouped <: Single, LV, LE[v] <: ConvertibleSQL[LF, LS, v, LE],
@@ -173,6 +176,7 @@ private[sql] trait PreprocessorReform extends Reform {
 	                              rightResult :SQLTransformation[right.Subject, U], spelling :SQLSpelling)
 			:(leftResult.SQLResult[LF, Single, LValueSQL[LF, LM, U]], rightResult.SQLResult[RF, Single, LValueSQL[RF, RM, U]]) =
 		fallback(left, right)
+/*
 
 	override def fallback[F <: RowProduct, V](left :QuerySQL[F, V], right :QuerySQL[F, V])
 	                                         (implicit spelling :SQLSpelling) :(QuerySQL[F, V], QuerySQL[F, V]) =
@@ -203,6 +207,7 @@ private[sql] trait PreprocessorReform extends Reform {
 		val selectClause = compoundSelectClause(leftSelectClause, rightSelectClause)
 		CompoundSelect.reformed(left, operator, right, selectClause)(self)
 	}
+*/
 
 	protected def compoundSelectClause[V](left :SQLShape[V], right :SQLShape[V]) :SQLShape[V] = left
 /*
@@ -229,6 +234,7 @@ private[sql] trait PreprocessorReform extends Reform {
 
 //	override def validate[X, Y, V](left :Query[X, V], right :Query[Y, V])(implicit spelling :SQLSpelling) :Unit = ()
 //
+/*
 	override def compatible[X, Y, V](left :Query[X, V], right :Query[Y, V])(implicit spelling :SQLSpelling) :Boolean =
 		true
 
@@ -268,9 +274,11 @@ private[sql] trait PreprocessorReform extends Reform {
 
 	override def subreform[F <: RowProduct, V](query :CompoundSelectSQL[F, V])(implicit spelling :SQLSpelling) :Reform =
 		query.operator.prevent(self)
+*/
 
-	override def left(implicit spelling :SQLSpelling)  :Reform = self //:ReformTo[LValue] = this
-	override def right(implicit spelling :SQLSpelling) :Reform = self //:ReformTo[LValue] = this
+//	override def left(implicit spelling :SQLSpelling)  :Reform = self //:ReformTo[LValue] = this
+//	override def right(implicit spelling :SQLSpelling) :Reform = self //:ReformTo[LValue] = this
+//	override def left
 }
 
 

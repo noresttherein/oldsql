@@ -478,7 +478,7 @@ object Query {
 		  * @return a query of the same kind, with the ''select'' clauses of constituting selects being converted
 		  *         with `selectClause.to[X]`.
 		  */
-		def rowsTo[X](implicit conversion :SQLConversion[R, X]) :Q[X]// { type RowMapping[O] <: QueryTemplate.this.RowMapping[O] }
+		def rowsTo[X](implicit conversion :SQLAdaptation[R, X]) :Q[X]// { type RowMapping[O] <: QueryTemplate.this.RowMapping[O] }
 
 		//Transform is not here because SQLTransformation doesn't always translate a column to a column,
 		// so SelectColumn cannot return a SelectColumn
@@ -486,7 +486,7 @@ object Query {
 
 		//Todo: rename either these or SQLExpression.map as, even if they won't have conflicting erasures due to
 		// different return types, will break inference of type arguments. Same for overload with the other Query.map
-		def map[X](f :R => X) :Q[X] = rowsTo(SQLConversion(f))// { type RowMapping[O] <: QueryTemplate.this.RowMapping[O] }
+		def map[X](f :R => X) :Q[X] = rowsTo(SQLAdaptation(".map", f))// { type RowMapping[O] <: QueryTemplate.this.RowMapping[O] }
 
 		def map[Fun, C <: Chain, X](f :Fun)(implicit application :ChainApplication[C, Fun, X], isChain :R <:< C) :Q[X] = // { type RowMapping[O] <: QueryTemplate.this.RowMapping[O] } =
 			map(applyFun(f))
@@ -603,7 +603,7 @@ object Query {
 		override def transform[X](transformation :SQLTransformation[V, X]) :Query[Args, X] =
 			query.transform(transformation).compose(argmap)
 
-		override def rowsTo[X](implicit conversion :SQLConversion[V, X]) :Query[Args, X] =
+		override def rowsTo[X](implicit conversion :SQLAdaptation[V, X]) :Query[Args, X] =
 			query.rowsTo[X].compose(argmap)
 
 //		override def map[X](f :V => X) :Query[Args, X] = query.map(f).compose(argmap)
@@ -689,7 +689,7 @@ object Query {
 	{
 		override def transform[X](transformation :SQLTransformation[V, X]) :SingleQuery[Args, X] =
 			query.transform(transformation).compose(argmap)
-		override def rowsTo[X](implicit conversion :SQLConversion[V, X]) :SingleQuery[Args, X] =
+		override def rowsTo[X](implicit conversion :SQLAdaptation[V, X]) :SingleQuery[Args, X] =
 			query.rowsTo[X].compose(argmap)
 //		override def map[X](f :V => X) :SingleQuery[Args, X] = query.map(f).compose(argmap)
 
@@ -895,8 +895,8 @@ trait Select[P, R] extends SingleQuery[P, R] with SelectTemplate[R, ({ type Q[X]
 	override def transform[X](transformation :SQLTransformation[R, X]) :Select[P, X] =
 		selectOther(transformation(selectClause))
 
-	override def rowsTo[X](implicit conversion :SQLConversion[R, X]) :Select[P, X] =
-		if (conversion.isIdentity) conversion(this)
+	override def rowsTo[X](implicit conversion :SQLAdaptation[R, X]) :Select[P, X] =
+		if (conversion.isIdentity) this.castParam2[X]
 		else selectOther(selectClause.to[X])
 		//ArbitrarySelect[P, From, X](from, selectClause.to[X], isDistinct)
 
@@ -907,7 +907,7 @@ trait Select[P, R] extends SingleQuery[P, R] with SelectTemplate[R, ({ type Q[X]
 	//order by will be problematic here
 	def selectOther[X](selectClause :SQLExpression[From, Grouped, X]) :Select[P, X] =
 		if (isDistinct)
-			(selectClause paramSelectFrom[P, From] from).distinct
+			selectClause.paramSelectFrom[P, From](from).distinct
 		else
 			selectClause paramSelectFrom from
 
@@ -1587,7 +1587,7 @@ trait CompoundSelect[P, R]
 //	protected def construct[X](left :Query[P, X], operator :SelectOperator, right :Query[P, X]) :CompoundSelect[P, X] =
 //		CompoundSelect(left, operator, right)
 
-	override def rowsTo[X](implicit conversion :SQLConversion[R, X]) :CompoundSelect[P, X] =
+	override def rowsTo[X](implicit conversion :SQLAdaptation[R, X]) :CompoundSelect[P, X] =
 		if (conversion.isIdentity) this.castFrom[CompoundSelect[P, R], CompoundSelect[P, X]]
 		else CompoundSelect(left.rowsTo[X], operator, right.rowsTo[X])
 

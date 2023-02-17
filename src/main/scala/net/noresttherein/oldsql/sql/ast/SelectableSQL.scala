@@ -4,9 +4,9 @@ import net.noresttherein.oldsql.schema.ColumnMapping.TypedColumn
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
 import net.noresttherein.oldsql.schema.bases.BaseColumn
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, Select, SQLExpression}
-import net.noresttherein.oldsql.sql.RowProduct.{Complete, GroundRow, NonEmptyRow, ProperSubselectOf, TopRow}
+import net.noresttherein.oldsql.sql.RowProduct.{Complete, GroundRow, NonEmptyRow, SubselectOf, TopRow}
 import net.noresttherein.oldsql.sql.Select.SelectMapping
-import net.noresttherein.oldsql.sql.SQLExpression.{Single, Grouped}
+import net.noresttherein.oldsql.sql.SQLExpression.{Grouped, Single}
 import net.noresttherein.oldsql.sql.ast.SelectableSQL.SelectableSQLTemplate
 import net.noresttherein.oldsql.sql.ast.SelectAs.{SubselectAs, TopSelectAs}
 import net.noresttherein.oldsql.sql.ast.SelectColumnAs.{SubselectColumnAs, TopSelectColumnAs}
@@ -58,8 +58,11 @@ trait SelectableSQL[-F <: RowProduct, -S >: Grouped <: Single, V]
 	override def topSelectFrom[E <: F with GroundRow { type Complete  <: E }](from :E) :TopSelectSQL[V] =
 		SelectSQL(from, this)
 
-	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectSQL[B, V] =
-		SelectSQL.subselect(from, this)
+	override def subselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B]) :SubselectSQL[B, V] =
+		SelectSQL.subselect[B, F with SubselectOf[B], V](from, this)
+//
+//	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectSQL[B, V] =
+//		SelectSQL.subselect(from, this)
 
 	override def paramSelectFrom[P, E <: F with TopRow { type Complete <: E; type Params = P }](from :E) :Select[P, V] =
 		Select(from)(this)
@@ -98,15 +101,17 @@ object SelectableSQL {
 					s"Cannot use a parameterized clause as a basis for select $this: $from."
 				)
 			else if (from.isSubselect) {
-				subselectFrom(from.asInstanceOf[ProperSubselectOf[from.type, NonEmptyRow]]).asInstanceOf[Sel[from.Base]]
+				subselectFrom[NonEmptyRow](from.asInstanceOf[F with SubselectOf[NonEmptyRow]]).asInstanceOf[Sel[from.Base]]
 			} else
 				(this :SelectableSQLTemplate[F, V, Sel]) topSelectFrom from.asInstanceOf[Complete[F with GroundRow]]
 
 		override def topSelectFrom[E <: F with GroundRow { type Complete  <: E }](from :E) :Sel[RowProduct] =
 			throw new UnsupportedOperationException("Expression " + this + " cannot be used as a select clause.")
 
-		override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :Sel[B] =
+		override def subselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B]) :Sel[B] =
 			throw new UnsupportedOperationException("Expression " + this + " cannot be used as a select clause.")
+//		override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :Sel[B] =
+//			throw new UnsupportedOperationException("Expression " + this + " cannot be used as a select clause.")
 	}
 
 	/** A mixin trait for [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]] which overrides methods
@@ -201,8 +206,11 @@ trait SelectableMappingSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 	override def topSelectFrom[E <: F with GroundRow { type Complete  <: E }](from :E) :TopSelectAs[M] =
 		throw new UnsupportedOperationException("Expression " + this + " cannot be used as a select clause.")
 
-	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectAs[B, M] =
+//	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectAs[B, M] =
+//		throw new UnsupportedOperationException("Expression " + this + " cannot be used as a select clause.")
+	override def subselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B]) :SubselectAs[B, M] =
 		throw new UnsupportedOperationException("Expression " + this + " cannot be used as a select clause.")
+
 
 	override def paramSelectFrom[P, E <: F with TopRow { type Complete <: E; type Params = P }](from :E)
 			:SelectMapping[P, M] =
@@ -285,9 +293,12 @@ trait SelectableColumnMappingSQL[-F <: RowProduct, M[A] <: BaseColumn[V, A], V]
 	override def topSelectFrom[E <: F with GroundRow { type Complete  <: E }](from :E) :TopSelectColumnAs[M, V] =
 		throw new UnsupportedOperationException("Expression " + this + " cannot be used as a select clause.")
 
-	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectColumnAs[B, M, V] =
+	override def subselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B]) :SubselectColumnAs[B, M, V] =
 		throw new UnsupportedOperationException("Expression " + this + " cannot be used as a select clause.")
 
+//	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectColumnAs[B, M, V] =
+//		throw new UnsupportedOperationException("Expression " + this + " cannot be used as a select clause.")
+//
 	override def paramSelectFrom[P, E <: F with TopRow { type Complete <: E; type Params = P }](from :E)
 			:SelectMapping[P, M] =
 		throw new UnsupportedOperationException("Expression " + this + " cannot be used as a select clause.")

@@ -8,14 +8,15 @@ import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.MismatchedExpressionsException
 import net.noresttherein.oldsql.morsels.{generic, Extractor}
 import net.noresttherein.oldsql.morsels.generic.=>:
-import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm}
+import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.LabelPath
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
+import net.noresttherein.oldsql.slang.{cast2TypeParams, cast3TypeParams}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, RowShape, SQLExpression}
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{AnyExpressionVisitor, ConvertibleSQL, Grouped, Single, SpecificExpressionVisitor}
-import net.noresttherein.oldsql.sql.ast.ChainSQL.{splitChainTransformation, CaseSpecificChain}
+import net.noresttherein.oldsql.sql.ast.ChainSQL.{splitChainTransformation, upcastListing, CaseSpecificChain}
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.{BinaryCompositeSQL, GroundingCompositeSQLTemplate}
 import net.noresttherein.oldsql.sql.ast.ChainTuple.{CaseAnyChainTuple, CaseSpecificChainTuple, ChainEntry}
 import net.noresttherein.oldsql.sql.ast.EmptySQL.{AnyEmptyVisitor, SpecificEmptyVisitor}
@@ -24,7 +25,7 @@ import net.noresttherein.oldsql.sql.ast.LabeledSQL.{splitListingTransformation, 
 import net.noresttherein.oldsql.sql.mechanics.{sql_=>, Reform, SpelledSQL, SQLConversion, SQLScribe, SQLTransformation}
 import net.noresttherein.oldsql.sql.mechanics.Reform.PassCount
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
-import net.noresttherein.oldsql.sql.mechanics.SQLConversion.ConvertChain
+import net.noresttherein.oldsql.sql.mechanics.SQLConversion.{ConvertChain, Upcast}
 
 
 
@@ -81,8 +82,20 @@ case class ChainSQL[-F <: RowProduct, -S >: Grouped <: Single, I <: Chain, L] pr
 		                 other)(reform, passCount)(leftResult, rightResult, spelling)
 			with CaseSpecificChain[F2, S2, V2, Reformed] with MatchSpecificLabeled[F2, S2, V2, Reformed]
 		{
+			private def isUpcast(conversion :SQLTransformation[_, _]) =
+				conversion.isIdentity || conversion.isInstanceOf[Upcast[_, _]]
+
 			override def empty(implicit isEmpty :V2 =:= @~) =
 				throw new MismatchedExpressionsException("Tuple " + ChainSQL.this + " matched with an empty tuple.")
+
+			override def multiNull(e :MultiNull[V2]) =
+				if (reform.mayReformRight ||
+					reform.mayAddNullRight && rightResult.isDecorator && e.form.columnCount < selectForm.columnCount)
+				{
+					val rightNull = MultiNull(selectForm <> SQLWriteForm.nulls(selectForm.columnCount))
+					(left, rightResult(rightNull.asInstanceOf[EC2[V2]]))
+				} else
+					fallback
 
 			override def chain[I2 <: Chain, L2](e :ChainSQL[F2, S2, I2, L2])(implicit isChain :V2 =:= (I2 ~ L2)) = {
 				type RightResult[A] = SQLTransformation[A, U]#Into[rightResult.SQLResult]
@@ -107,16 +120,20 @@ case class ChainSQL[-F <: RowProduct, -S >: Grouped <: Single, I <: Chain, L] pr
 					case (
 						Got(leftInitResult :(I sql_=> Chain) @unchecked, leftLastResult :(L sql_=> Any) @unchecked, leftPost :LeftResult[Chain ~ Any] @unchecked),
 						Got(rightInitResult :(I2 sql_=> Chain) @unchecked, rightLastResult :(L2 sql_=> Any @unchecked), rightPost :LeftResult[Chain ~ Any] @unchecked)
-					) =>
-//					if left.get._3.isIdentity && right.get._3.isIdentity =>
-//						implicit val (leftInitResult, leftLastResult, leftPost) = left.get
-//						implicit val (rightInitResult, rightLastResult, rightPost) = right.get
+					) if (leftPost == rightPost || isUpcast(leftPost) && isUpcast(rightPost)) =>
+						/* The equality check approximates that leftPost and rightPost have the same input type, so
+						 * leftInitResult/rightInitResult and leftLastResult/rightLastResult have the same output types.
+						 * OTH if unification of this and other is through upcasting, we can always unify
+						 * this.init with e.init and this.last with e.last by applying upcasting
+						 * on top of whatever conversions they have.
+						 */
 						val (leftInit, rightInit) = reform(self.init, e.init)(leftInitResult, rightInitResult, spelling)
 						val (leftLast, rightLast) = reform(self.last, e.last)(leftLastResult, rightLastResult, spelling)
 						val leftReformed = leftInit ~ leftLast
 						val rightReformed = rightInit ~ rightLast
 						(leftPost(leftReformed), rightPost(rightReformed))
 				}
+
 			}
 
 			override def labeledItem[I2 <: Listing, K <: Label, L2]
@@ -130,7 +147,9 @@ case class ChainSQL[-F <: RowProduct, -S >: Grouped <: Single, I <: Chain, L] pr
 					(I sql_=> YI, L sql_=> YL, SQLTransformation[YI ~ YL, U]#Into[leftResult.SQLResult])
 				type RightSplit[YI <: Listing, YL] =
 					(I2 sql_=> YI, L2 sql_=> YL, SQLTransformation[YI |~ (K :~ YL), U]#Into[rightResult.SQLResult])
-				(splitChainTransformation(leftResult), splitListingTransformation(listingResult)) match {
+				(splitChainTransformation(leftResult) :Opt[LeftSplit[_, _]],
+					splitListingTransformation(listingResult) :Opt[RightSplit[_, _]]
+				) match {
 					case (Lack, _) =>
 						throw new MismatchedExpressionsException(
 							ChainSQL.this, other, "unsupported left conversion type " + leftResult + "."
@@ -139,15 +158,22 @@ case class ChainSQL[-F <: RowProduct, -S >: Grouped <: Single, I <: Chain, L] pr
 						throw new MismatchedExpressionsException(
 							ChainSQL.this, other, "unsupported right conversion type " + rightResult + "."
 						)
-					//init and last are converted separately, no conversion applied on top of init~last
-					case (left :Opt[LeftSplit[Chain, Any]] @unchecked, right :Opt[RightSplit[Listing, Any]] @unchecked) =>
-//					if left.get._3.isIdentity && right.get._3.isIdentity =>
+					case (left :Opt[LeftSplit[Chain, Any]] @unchecked, right :Opt[RightSplit[Listing, Any]] @unchecked)
+					if left.isDefined && right.isDefined && isUpcast(left.get._3) && isUpcast(right.get._3) &&
+						right.get._1.isIdentity => //the last condition is so we can cast reformed rightInit to Listing
+
 						implicit val (leftInitResult, leftLastResult, leftPost) = left.get
 						implicit val (rightInitResult, rightLastResult, rightPost) = right.get
-						val (leftLast, rightLast) = reform(self.last, e.last)
-						val (leftInit, rightInit) = reform(self.init, e.init)
+						val (leftLast, rightLast) = reform(self.last, e.last)(leftLastResult, rightLastResult, spelling)
+						val (leftInit, rightInit) = reform(self.init, e.init)(
+							leftInitResult, rightInitResult andThen upcastListing, spelling
+						)
 						val leftReformed = leftInit ~ leftLast
-						val rightReformed = LabeledSQL.attempt(rightInit, e.lastKey, rightLast) match {
+						val rightRebuildAttempt = LabeledSQL.attempt[F2, S2, I2, K, Any](
+							//the cast is safe-ish because rightInitResult.isIdentity
+							rightInit.asInstanceOf[SQLExpression[F2, S2, I2]], e.lastKey, rightLast
+						)
+						val rightReformed = rightRebuildAttempt match {
 							case Lack if !rightInit.isInstanceOf[LabeledSQL[_, _, _]] =>
 								throw new MismatchedExpressionsException(thisExpression, e,
 									"received a non-LabeledSQL expression " + rightInit +
@@ -158,10 +184,10 @@ case class ChainSQL[-F <: RowProduct, -S >: Grouped <: Single, I <: Chain, L] pr
 									"Reformed last expression " + rightLast +
 										" is neither a ColumnSQL nor a LabeledValueSQL."
 								)
-							case res => res
+							case Got(res) => res
 
 						}
-						(leftPost(leftReformed), rightPost(rightReformed))
+						(leftPost(leftReformed), rightPost[F2, S2, EC2](rightReformed.asInstanceOf[EC2[V2]]))
 				}
 			}
 		}
@@ -299,8 +325,11 @@ object ChainSQL {
 		type Composed[Y] = (SQLTransformation[XI ~ XL, Y], Result[Y])
 		conversion match {
 			case _ if conversion.isIdentity =>
-				Got((SQLConversion.toSelf[XI], SQLConversion.toSelf[XL], conversion))
-			case chain :ConvertChain[xi, xl, yi, yl] =>
+				Got((SQLConversion.toSelf[XI], SQLConversion.toSelf[XL], conversion :Result[XI ~ XL]))
+			case _ :Upcast[XI ~ XL, Z] =>
+				Got((upcastChain.castParams[XI, XI], upcastAny.castParams[XL, XL], conversion :Result[XI ~ XL]))
+//				Got((SQLConversion.toSelf[XI], SQLConversion.toSelf[XL], conversion :conversion.type))
+			case chain :ConvertChain[XI, XL, yi, yl] =>
 				Got((chain.init, chain.last, SQLConversion.toSelf.asInstanceOf[Result[yi ~ yl]]))
 			//if conversion is composed of only ConvertChain, we can split each and compose each item individually
 			case _ => SQLTransformation.Composition.unapply(conversion) match {
@@ -308,19 +337,19 @@ object ChainSQL {
 				case composed :Opt[Composed[y]] if composed.isDefined =>
 					type Y = y
 					type SplitFirst[YI <: Chain, YL, Y] = (XI sql_=> YI, XL sql_=> YL, SQLTransformation[YI ~ YL, Y])
-					splitChainTransformation(composed.get._1) match {
+					splitChainTransformation(composed.get._1 :SQLTransformation[XI ~ XL, Y]) match {
 						case splitFirst :Opt[SplitFirst[yi, yl, Y]] if splitFirst.isDefined =>
 							type YI = yi; type YL = yl
 							type SplitSecond[ZI, ZL] = (YI sql_=> ZI, YL sql_=> ZL, Result[ZI ~ ZL])
 							//if there was need, we could drop this assert, but we'd need to check in reformer
 							// if the last transformations for both expressions are equal
-							assert(splitFirst.get._3.isIdentity, splitFirst.get._3 + " is not identity")
+//							assert(splitFirst.get._3.isIdentity, splitFirst.get._3.toString + " is not identity")
 							splitChainTransformation(composed.get._2.asInstanceOf[Result[YI ~ YL]]) match {
 								case splitSecond :Opt[SplitSecond[zi, zl]] if splitSecond.isDefined =>
-									val initResult     = splitFirst.get._1 andThen splitSecond.get._1
-									val lastResult     = splitFirst.get._2 andThen splitSecond.get._2
+									val initResult     = (splitFirst.get._1 :XI sql_=> YI) andThen splitSecond.get._1
+									val lastResult     = (splitFirst.get._2 :XL sql_=> YL) andThen splitSecond.get._2
 									val combinedResult = splitSecond.get._3
-									Got(initResult, lastResult, combinedResult)
+									Got((initResult, lastResult, combinedResult))
 								case _ => Lack
 							}
 						case _ => Lack
@@ -329,6 +358,11 @@ object ChainSQL {
 			}
 		}
 	}
+
+	//used in reforming
+	private val upcastChain   = SQLConversion.supertype[Chain, Chain]
+	private val upcastListing = SQLConversion.supertype[Listing, Chain]
+	private val upcastAny     = SQLConversion.supertype[Any, Any]
 
 	trait SpecificChainVisitor[+F <: RowProduct, +S >: Grouped <: Single, X, +Y] extends SpecificEmptyVisitor[X, Y] {
 		def chain[I <: Chain, L](e :ChainSQL[F, S, I, L])(implicit isChain :X =:= (I ~ L)) :Y
@@ -742,20 +776,24 @@ object EmptySQL
 			val fields = suffixes.groupBy(_._1.head)//.view.mapValues { case (path, expr) => (path.tail, expr) }
 
 			val orderedFields = keyOrder.map(key => (key, fields(key)))
-			((EmptySQL :LabeledSQL[E, A, _]) /: orderedFields) { (acc, field) =>
+			((EmptySQL :LabeledSQL[E, A, _ <: Listing]) /: orderedFields) { (acc, field) =>
 				val (key, paths) = field
 				val topLevel = paths.filter(_._1.isEmpty)
 				if (topLevel.sizeIs >= 1 && paths.sizeIs > 1)
 					throw new IllegalArgumentException("Duplicate paths or a prefix path present in " + paths + ".")
-				if (topLevel.sizeIs == 1)
-					acc |~ ((key, paths.head._2))
-				else
-					acc |~ ((key, reformed(paths.map { case (path, placeholder) => (path.tail, placeholder) })))
+				val expanded =
+					if (topLevel.sizeIs == 1)
+						(acc |~ :~[key.type](paths.head._2))(new ValueOf(key))
+					else {
+						val pathTails = paths.map { case (path, placeholder) => (path.tail, placeholder) }
+						(acc  |~ :~[key.type](reformed(pathTails)))(new ValueOf(key))
+					}
+				expanded
 			}
 		}
 		val expr = reformed(paths.map { case (path, placeholder) => (path.toList, placeholder) })
 			.asInstanceOf[LabeledValueSQL[E, A, Listing]]
-		val conversion = SQLConversion(".return(@~)", (_ :Listing) => @~, (_: @~) => expr.nullValue)
+		val conversion = SQLConversion.opt[Listing, @~](".return(@~)", (_ :Listing) => @~, (_: @~) => expr.nullValue)
 		conversion(expr)
 	}
 

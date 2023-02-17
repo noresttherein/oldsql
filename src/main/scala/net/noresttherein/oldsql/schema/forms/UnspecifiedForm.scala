@@ -103,7 +103,9 @@ trait UnspecifiedForm extends SQLForms with Serializable {
 	  * as an identifier, in order to make use of, likely already defined, `text` property.
 	  */
 	protected def text :Opt[String] = Lack
-	private[schema] final def textOf(other :UnspecifiedForm) :Opt[String] = other.text
+	/** Returns `other.`[[net.noresttherein.oldsql.schema.forms.UnspecifiedForm.text text]]. */
+	protected final def textOf(other :UnspecifiedForm) :Opt[String] = other.text
+	private[schema] final def `->text` :Opt[String] = text
 
 	/** An optional name used to help identify the form. This is meant both as textual, visual representation
 	  * in `toString` as well as an actual identifier serving as a sort of 'virtual class'.
@@ -111,7 +113,7 @@ trait UnspecifiedForm extends SQLForms with Serializable {
 	  * equal solely based on their name equality, regardless of other properties, or if their names
 	  * and some subset of properties are equal. Form equality plays a part in determining equality and other
 	  * equivalence relations of SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] and a form lacking
-	  * a defined equality may cause some features to become unavailable or not working as intended.
+	  * a defined equality may cause restriction to some features.
 	  * In particular, it is expected that two [[net.noresttherein.oldsql.schema.ColumnForm column forms]]
 	  * created by the same factory method with the same arguments will compare equal.
 	  *
@@ -122,8 +124,8 @@ trait UnspecifiedForm extends SQLForms with Serializable {
 	  */
 	def name :Opt[String] = Lack
 
-	/** Grants access to `name` property to all other forms. */
-	@inline private[schema] final def `->name` :Opt[String] = name
+//	/** Grants access to `name` property to all other forms. */
+//	@inline private[schema] final def `->name` :Opt[String] = name
 
 	/** A compact textual representation of this form, with focus on brevity rather then being exhaustive and WYSIWYG.
 	  * In general, for differentiation, [[net.noresttherein.oldsql.schema.SQLReadForm read]] forms tend to end
@@ -203,7 +205,7 @@ object UnspecifiedForm {
 
 		override def equals(that :Any) :Boolean = that match {
 			case self :AnyRef if this eq self => true
-			case other :UnspecifiedNamedForm if other canEqual this => name == other.`->name`
+			case other :UnspecifiedNamedForm if other canEqual this => name == other.name
 			case _ => false
 		}
 		override def hashCode :Int = name.hashCode

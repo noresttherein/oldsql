@@ -248,8 +248,8 @@ trait ColumnMapping extends Mapping with ColumnMappingTemplate[TypedColumn] {
 
 	override def as[X](there :Subject =?> X, back :X =?> Subject)(implicit nulls :NullValue[X]) :TypedColumn[X, Origin]
 
-	override def apply(value :Subject) :ColumnLiteral[Subject] = ColumnLiteral(value)(form)
-	override def ?(value :Subject) :BoundColumnParam[Subject] = BoundColumnParam(value)(form)
+	override def apply(value :Subject) :ColumnLiteral[Subject] = ColumnLiteral(form, value)
+	override def ?(value :Subject) :BoundColumnParam[Subject] = BoundColumnParam(form, value)
 
 
 	/** Two columns are homomorphic ''iff'' their forms are equal.

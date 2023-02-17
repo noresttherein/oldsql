@@ -4,11 +4,12 @@ import scala.annotation.implicitAmbiguous
 
 import net.noresttherein.oldsql.schema.{ColumnForm, SQLForm}
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
-import net.noresttherein.oldsql.sql.{SingleBoolean, RowProduct}
+import net.noresttherein.oldsql.sql.{RowProduct, SingleBoolean, SQLExpression}
 import net.noresttherein.oldsql.sql.SQLBoolean.{False, True}
-import net.noresttherein.oldsql.sql.ast.{BoundParam, ColumnTerm, SQLNull, SQLTerm}
+import net.noresttherein.oldsql.sql.ast.{BoundParam, ColumnTerm, SeqSQL, SQLNull, SQLTerm}
 import net.noresttherein.oldsql.sql.ast.BoundParam.BoundParamFactory
 import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.{boundParameterSQL, nullSQL}
+import net.noresttherein.oldsql.sql.SQLExpression.{Grouped, Single}
 import net.noresttherein.oldsql.sql.With.CTEName
 
 
@@ -32,6 +33,9 @@ object implicitSQLLiterals extends SQLLiteralImplicits
 
 private[sql] sealed trait Rank1SQLLiteralImplicits {
 	implicit def implicitLiteral[T :SQLForm](value :T) :SQLTerm[T] = SQLTerm(value)
+
+	implicit def literalSeq[T:SQLForm](items :Seq[T]) :SeqSQL[RowProduct, Single, T] =
+		SeqSQL(items.map(SQLTerm(_)) :_*)
 }
 
 
@@ -73,6 +77,11 @@ private[sql] trait SQLLiteralImplicits extends Rank1SQLLiteralImplicits {
 	  * [[net.noresttherein.oldsql.sql.ast.SQLTerm SQLTerm]]`[X]` expressions representing the SQL NULL value.
 	  */
 	implicit def nullSQL(n :Null) :nullSQL = new nullSQL {}
+
+
+	implicit def expressionSeq[F <: RowProduct, S >: Grouped <: Single, T]
+	                          (items :Seq[SQLExpression[F, S, T]]) :SeqSQL[F, S, T] =
+		SeqSQL(items :_*)
 
 }
 

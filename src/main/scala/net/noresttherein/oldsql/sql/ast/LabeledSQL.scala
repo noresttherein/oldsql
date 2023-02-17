@@ -11,21 +11,22 @@ import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.{Bug, IllegalExpressionException, MismatchedExpressionsException}
 import net.noresttherein.oldsql.morsels.{generic, Extractor}
+import net.noresttherein.oldsql.morsels.abacus.Numeral
 import net.noresttherein.oldsql.morsels.generic.=>:
 import net.noresttherein.oldsql.schema.bits.{IndexedMapping, LabelPath}
 import net.noresttherein.oldsql.schema.bits.LabelPath.{~/, Label, LabelPathPrefix, SplitLabelPath}
-import net.noresttherein.oldsql.schema.SQLReadForm
-import net.noresttherein.oldsql.slang.{cast2TypeParams, downcastTypeParam, mappingMethods, SeqExtension}
+import net.noresttherein.oldsql.schema.{SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.slang.{cast2TypeParams, castTypeParam, downcastTypeParam, mappingMethods, SeqExtension}
 import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, RowShape, Select, SQLExpression, TypedListingColumnSQLMapping, TypedListingSQLMapping}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AnyColumnVisitor, SpecificColumnVisitor}
-import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundRow, NonEmptyRow, PartOf, ProperSubselectOf, TopRow}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundRow, NonEmptyRow, PartOf, SubselectOf, TopRow}
 import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{AnyExpressionVisitor, ConvertibleSQL, Grouped, Single, SpecificExpressionVisitor, VariantGroundingTemplate}
-import net.noresttherein.oldsql.sql.ast.ChainTuple.{EmptyChain, EmptyChainSQL}
+import net.noresttherein.oldsql.sql.ast.ChainTuple.EmptyChain
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.GroundingCompositeSQLTemplate
 import net.noresttherein.oldsql.sql.ast.LabeledSQL.{EmptyListing, LabeledColumnSQL, LabeledEntry, LabeledItem, LabeledValueSQL}
-import net.noresttherein.oldsql.sql.ast.RecordSQL.{RecordItem, RecordProjection, RecordShuffle, SubRecord}
+import net.noresttherein.oldsql.sql.ast.RecordSQL.{RecordItem, RecordProjection, RecordShuffle}
 import net.noresttherein.oldsql.sql.ast.SelectAs.{SubselectAs, TopSelectAs}
 import net.noresttherein.oldsql.sql.ast.CompositeColumnSQL.GenericColumnDecoratorTemplate
 import net.noresttherein.oldsql.sql.ast.EmptySQL.{AnyEmptyVisitor, SpecificEmptyVisitor}
@@ -34,7 +35,7 @@ import net.noresttherein.oldsql.sql.ast.LabeledSQL.LabeledColumnSQL.{AnyLabeledC
 import net.noresttherein.oldsql.sql.ast.SelectColumnAs.{SubselectColumnAs, TopSelectColumnAs}
 import net.noresttherein.oldsql.sql.mechanics.{sql_=>, Reform, SQLAdaptation, SQLConversion, SQLScribe, SQLTransformation}
 import net.noresttherein.oldsql.sql.mechanics.Reform.PassCount
-import net.noresttherein.oldsql.sql.mechanics.SQLConversion.{ConvertRecord, ReorderRecord}
+import net.noresttherein.oldsql.sql.mechanics.SQLConversion.{ConvertRecord, ReorderRecord, Upcast}
 
 
 
@@ -63,443 +64,70 @@ import net.noresttherein.oldsql.sql.mechanics.SQLConversion.{ConvertRecord, Reor
   * Note that, in order to provide unambiguous cases when pattern matching, this type does not extend the standard
   * `ChainTuple`.
   */
-/*
-trait ListingSQL[-F <: RowProduct, -S >: Grouped <: GlobalScope, V <: Listing] extends InlineSQL[F, S, V] {
-	override type Item[-E <: RowProduct, -D >: Grouped <: GlobalScope, X] = LabeledItem[E, D, _ <: Label, X]
-
-	def init[I <: Listing](implicit nonEmpty: V <:< (I |~ Listing.Item)) :ListingSQL[F, S, I]
-
-	def last[L](implicit nonEmpty: V <:< (Listing |~ (Label :~ L))) :SQLExpression[F, S, L]
-
-	def lastKey[K <: Label](implicit nonEmpty: V <:< (Listing |~ (K :~ Any))) :K
-
-	def lastItem[K <: Label, L](implicit notEmpty :V <:< (Listing |~ (K :~ L))) :LabeledItem[F, S, K, L]
-
-	def |~[E <: F, O >: Grouped <: S, K <: Label :ValueOf, H]
-	      (entry :K :~ SQLExpression[E, O, H]) :ListingSQL[E, O, V |~ (K :~ H)] =
-		new ListingEntry(this, entry.value)
-
-	def |~[E <: F, O >: Grouped <: S, K <: Label, H]
-	      (entry :(K, SQLExpression[E, O, H])) :ListingSQL[E, O, V |~ (K :~ H)] =
-		new ListingEntry(this, entry._2)(new ValueOf[K](entry._1))
-
-	//declared here due to overloading rules
-	def |~[K <: Label :ValueOf, X :SQLForm](n :Null) :ListingLayout[V |~ (K :~ X)] =
-		this |~ :~[K](SQLNull[X])
-
-
-	def keys :Seq[Label] = {
-		@tailrec def rec(e :ListingSQL[F, S, _], acc :List[Label] = Nil) :Seq[Label] =
-			e match {
-				case entry :ListingEntry[F, S, _, _, _] => rec(entry.prev, entry.key::acc)
-				case _ => acc
-			}
-		rec(this)
-	}
-
-
-	protected override lazy val parts :Seq[SQLExpression[F, S, _]] = {
-		@tailrec def rec(e :ListingSQL[F, S, _], acc :List[SQLExpression[F, S, _]] = Nil) :Seq[SQLExpression[F, S, _]] =
-			e match {
-				case entry :ListingEntry[F, S, _, _, _] => rec(entry.prev, entry.value::acc)
-				case _ => acc
-			}
-		rec(this)
-	}
-
-	override def toSeq :Seq[SQLExpression[F, S, _]] = parts
-
-	def toMap :Map[String, SQLExpression[F, S, _]] = {
-		@tailrec def rec(e :ListingSQL[F, S, _], acc :Map[String, SQLExpression[F, S, _]])
-				:Map[String, SQLExpression[F, S, _]] =
-			e match {
-				case entry :ListingEntry[F, S, _, _, _] => rec(entry.prev, acc.updated(entry.key, entry.value))
-				case _ => acc
-			}
-		rec(this, Map.empty)
-	}
-
-	override def asGlobal :Option[ListingSQL[F, GlobalScope, V]] =
-		if (isGlobal) Some(this.asInstanceOf[ListingSQL[F, GlobalScope, V]])
-		else None
-
-	override def anchor(from :F) :ListingSQL[F, S, V] = rephrase(SQLScribe.anchor(from))
-
-
-	//overridden to narrow down the result type
-	override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ListingSQL[E, S, V]
-
-	//overridden to narrow down the result type
-	override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :U PartOf E) :ListingSQL[E, S, V] =
-		rephrase(SQLScribe.expand(base))
-
-	//overridden to narrow down the result type
-	override def expand[U <: F, E <: RowProduct]
-	             (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S) :ListingSQL[E, S, V] =
-		rephrase(SQLScribe.expand(base))
-
-
-	override def topSelectFrom[E <: F with GroundRow { type Complete <: E }](from :E)
-			:TopSelectAs[IndexedMapping.of[V]#Mapping] =
-		SelectSQL[E, V](from, this)
-
-	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectAs[B, IndexedMapping.of[V]#Mapping] =
-		SelectSQL.subselect[B, F ProperSubselectOf B, V](from, this)
-
-	override def paramSelectFrom[P, E <: F with TopRow { type Complete <: E; type Params = P }](from :E)
-			:SelectMapping[P, IndexedMapping.of[V]#Mapping] =
-		Select(from)(this)
-
-
-//		/** Creates a `ListingSQL` expression by reordering the items of this listing to match the argument key sequence,
-//		  * and wraps it in a [[net.noresttherein.oldsql.sql.ast.ConversionSQL ConversionSQL]] which maps
-//		  * the new order back to the value type of this listing.
-//		  */
-	@throws[IllegalArgumentException]("if keys is not a permutation of this listing's keys")
-	@throws[IllegalStateException]("if this listing contains duplicate keys.")
-	def reorder(keys :Unique[String]) :SQLExpression[F, S, V]
-
-	protected override def visit[Y[-_ >: Grouped <: GlobalScope, _]]
-	                            (visitor :AnyExpressionVisitor[F, Y]) :Y[S, V] =
-		visitor.listing(this)
-
-	protected override def visit[Y](visitor :ExpressionVisitor[F, S, V, Y]) :Y = visitor.listing(this)
-
-	override def toString :String = {
-		def rec(e :ListingSQL[_, _, _], res :StringBuilder) :StringBuilder = e match {
-			case tuple :ListingEntry[_, _, _, _, _] =>
-				rec(tuple.prev, res) ++= " |~ " ++= tuple.key ++= ":~" ++= tuple.value.toString
-			case EmptyListing => res ++= "@~"
-		}
-		rec(this, new StringBuilder).toString
-	}
-}
-
-
-
-
-object ListingSQL {
-	def apply() :ListingSQL[RowProduct, GlobalScope, @~] = EmptyListing
-
-	def apply[F <: RowProduct, S >: Grouped <: GlobalScope, N <: Label, T]
-	         (e :LabeledColumnSQL[F, S, N, T]) :ListingSQL[F, S, @~ |~ (N :~ T)] =
-		new ListingEntry(EmptyListing, e)(new ValueOf(e.alias))
-
-	def apply[F <: RowProduct, S >: Grouped <: GlobalScope, N <: Label :ValueOf, T]
-	         (e :N :~ SQLExpression[F, S, T]) :ListingSQL[F, S, @~ |~ (N :~ T)] =
-		new ListingEntry(EmptyListing, e.value)
-
-	def apply[F <: RowProduct, S >: Grouped <: GlobalScope, N <: Label, T]
-	         (key :N, value :SQLExpression[F, S, T]) :ListingSQL[F, S, @~ |~ (N :~ T)] =
-		new ListingEntry(EmptyListing, value)(new ValueOf(key))
-
-
-	class ListingItem[-F <: RowProduct, -S >: Grouped <: GlobalScope, K <: Label, X]
-	                 (override val index :Int, val key :K, override val value :SQLExpression[F, S, X])
-		extends TupleItem[F, S, X]
-
-//		/** A type alias of [[net.noresttherein.oldsql.sql.ast.InlineSQL.ListingSQL ListingSQL]] used in cases
-//		  * when the actual value of the expression does not matter, but only its type and, in particular, structure.
-//		  * It is closely related to both [[net.noresttherein.oldsql.sql.RowShape RowShape]]
-//		  * and [[net.noresttherein.oldsql.schema.SQLForm SQLForm]], but enforces an additinal level of compatibility
-//		  * coming from the `Listing` type, especially its keys, in order to prevent accidental shape matching
-//		  * of otherwise incompatible expressions.
-//		  */
-	type ListingShape[V <: Listing] = ListingSQL[RowProduct, Grouped, V]
-
-
-
-	//todo: make it package private after moving to ast
-	private[ast] final class ListingEntry[-F <: RowProduct, -S >: Grouped <: GlobalScope, I <: Listing, K <: Label :ValueOf, L]
-	                                     (val prev :ListingSQL[F, S, I], val value :SQLExpression[F, S, L])
-		extends ListingSQL[F, S, I |~ (K :~ L)] with SQLShapeCache
-	{
-		override type Item[-A <: RowProduct, -B >: Grouped <: GlobalScope, V] = ListingItem[A, B, _ <: Label, V]
-
-		def key :K = valueOf[K]
-		override def size :Int = items.last.index + 1
-		val item = new ListingItem(prev.size, key, value)
-		override lazy val items :Seq[Item[F, S, _]] = prev.items :+ item
-
-		override def init[A <: Listing](implicit nonEmpty: (I |~ (K :~ L)) <:< (A |~ Listing.Item)) =
-			prev.asInstanceOf[ListingSQL[F, S, A]]
-
-		override def last[A](implicit nonEmpty: (I |~ (K :~ L)) <:< (Listing |~ (Label :~ A))) =
-			value.asInstanceOf[SQLExpression[F, S, A]]
-
-		override def lastKey[A <: Label](implicit nonEmpty: (I |~ (K :~ L)) <:< (Listing |~ (A :~ Any))) =
-			key.asInstanceOf[A]
-
-		override def lastItem[A <: Label, B](implicit notEmpty :(I |~ (K :~ L)) <:< (Listing |~ (A :~ B))) =
-			item.asInstanceOf[ListingItem[F, S, A, B]]
-
-		override def extracts[E <: F, A >: Grouped <: S]
-				:Seq[Assoc[SQLExpression.curry[E]#x[A]#E, Extractor.curry[I |~ (K :~ L)]#T, _]] =
-			_extracts.asInstanceOf[Seq[Assoc[SQLExpression.curry[E]#x[A]#E, Extractor.curry[I |~ (K :~ L)]#T, _]]]
-
-		private[this] lazy val _extracts :Seq[Assoc[SQLExpression.curry[F]#x[S]#E, Extractor.curry[I |~ (K :~ L)]#T, _]] = {
-			def map[X](entry :Assoc[SQLExpression.curry[F]#x[S]#E, Extractor.curry[I]#T, X]) =
-				Assoc[SQLExpression.curry[F]#x[S]#E, Extractor.curry[I |~ (K :~ L)]#T, X](
-					entry._1, entry._2 compose Chain.init[I] _
-				)
-			prev.extracts.map {
-				entry :Assoc[SQLExpression.curry[F]#x[S]#E, Extractor.curry[I]#T, _] => map(entry)
-			} :+ Assoc[SQLExpression.curry[F]#x[S]#E, Extractor.curry[I |~ (K :~ L)]#T, L](
-				value, { tuple :(I |~ (K :~ L)) => tuple.last.value }
-			)
-		}
-
-		override def construct(items :({ type T[X] = ListingItem[F, S, _ <: Label, X] })#T =>: generic.Self)
-				:I |~ (K :~ L) =
-			prev.construct(items) |~ :~[K](items(item))
-
-		override lazy val keys  :Seq[Label] = super.keys
-		override lazy val toMap :Map[String, SQLExpression[F, S, _]] = prev.toMap.updated(key, value)
-
-		if (toMap.size == prev.toMap.size)
-			throw new IllegalArgumentException(
-				"Cannot add " + value + " to " + this + ": Label" + key + " already used for " + toMap(key) + "."
-			)
-
-		override lazy val selectForm :SQLReadForm[I |~ (K :~ L)] = (prev.selectForm, value.selectForm) match {
-			case (i :SQLForm[I @unchecked], l :SQLForm[L @unchecked]) => i |~ :~[K](l)
-			case _ => prev.selectForm |~ :~[K](value.selectForm)
-		}
-
-
-		override def isGlobal   :Boolean = value.isGlobal && prev.isGlobal
-		override def isGround   :Boolean = value.isGround && prev.isGround
-
-		override def groundValue :Opt[I |~ (K :~ L)] =
-			for { i <- prev.groundValue; l <- value.groundValue } yield i |~ :~[K](l)
-
-		override def isAnchored :Boolean = value.isAnchored && prev.isAnchored
-		override def isAnchored(from :F) :Boolean = value.isAnchored(from) && prev.isAnchored(from)
-
-		override def anchor(from :F) :ListingSQL[F, S, I |~ (K :~ L)] =
-			(prev.anchor(from), value.anchor(from)) match {
-				case (i, l) if (i eq prev) && (l eq value) => this
-				case (i, l) => new ListingEntry(i, l)
-			}
-
-		override def basedOn[U <: F, E <: RowProduct]
-		                    (base :E)(implicit ext :U PartOf E) :ListingSQL[E, S, I |~ (K :~ L)] =
-			prev.basedOn(base) |~ :~[K](value.basedOn(base))
-
-		override def expand[U <: F, E <: RowProduct]
-		                   (base :E)(implicit ev :U ExpandedBy E, global :GlobalScope <:< S)
-				:ListingSQL[E, S, I |~ (K :~ L)] =
-			prev.expand(base) |~ :~[K](value.expand(base))
-
-		//this short-circuits the call, resulting in no-callbacks for the prefixes. Lets call it a feature.
-		override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ListingSQL[E, S, I |~ (K :~ L)] =
-			prev.rephrase(mapper) |~ :~[K](mapper(value))
-
-
-		override def reorder(keys :Unique[String]) :SQLExpression[F, S, I |~ (K :~ L)] = {
-			if (items.view.map(_.key) == keys)
-				this
-			else if (items.length != keys.size)
-				throw new IllegalArgumentException(
-					"There are " + items.length + " items in listing " + this + ", but the key permutation given " +
-						keys + " is counts " + keys.size + " elements."
-				)
-			else {
-				val newKeys = keys.downcastParam[Label]
-				val ourKeys = items.view.map(_.key :Label).to(Unique)
-				if (ourKeys.size != items.length)
-					throw new IllegalStateException(
-						"Cannot reorder listing " + this + " to key order " + keys + " because it contains key duplicates."
-					)
-				if (ourKeys.toSet != keys.toSet)
-					throw new IllegalArgumentException(
-						"Cannot reorder listing " + this + " to key order " + keys + " because the keys do not match."
-					)
-				def reorder(itemNo :Int) :ListingSQL[F, S, _ <: Listing] =
-					if (itemNo < 0)
-						EmptyListing
-					else {
-						val init = reorder(itemNo - 1)
-						val key = keys(itemNo)
-						init |~ (key, toMap(key))
-					}
-				val reordered = reorder(ourKeys.size - 1).asInstanceOf[ListingSQL[F, S, Listing]]
-				val convert = new ReorderListing[Listing, I |~ (K :~ L)](
-					SublistingOf.untyped[I |~ (K :~ L), Listing](newKeys, ourKeys),
-					SublistingOf.untyped[Listing, I |~ (K :~ L)](ourKeys, newKeys)
-				)
-				convert(reordered)
-			}
-		}
-
-
-		//todo: reforming of expressions for different tuple sizes: a listing of columns vs a listing of components
-		protected override def reformer[E <: RowProduct, C >: Grouped <: GlobalScope, X, U]
-		                       (other :SQLExpression[E, C, X])(reform :Reform, passesAllowed :Int)
-		                       (implicit leftResult :Lift[I |~ (K :~ L), U], rightResult :Lift[X, U], spelling :SQLSpelling)
-				:ExpressionVisitor[E, C, X, (SQLExpression[F, S, U], SQLExpression[E, C, U])] =
-			new BaseReformer[E, C, X, U](other)(reform, passesAllowed)
-				with MatchListing[E, C, X, (SQLExpression[F, S, U], SQLExpression[E, C, U])]
-			{
-				override def emptyChain =
-					throw new MismatchedExpressionsException(
-						"Record " + ListingSQL.this + " matched with an empty record."
-					)
-
-				override def listingItem[OI <: Listing, OK <: Label, OL]
-				                        (e :ListingSQL[E, C, OI |~ (OK :~ OL)],
-				                         init :ListingSQL[E, C, OI], last :LabeledItem[E, C, OK, OL])
-				                        (implicit isListing :X =:= (OI |~ (OK :~ OL))) =
-				{
-//						/*  We could conceivably accept listings with different key sets and add matching null columns
-//						 *  if reform.mayAddNullLeft/reform.mayAddNullRight, but it would lead to bugs.
-//						 *  Listings are created explicitly and are not represented by a higher abstraction
-//						 *  such ComponentSQL, so one can always simply add null items for the missing keys explicitly.
-//						 */
-					implicit val rightRes = isListing.substituteCo[({ type T[A] = Lift[A, U] })#T](rightResult)
-					if (!leftResult.isDerived || !rightResult.isDerived)
-						reform(leftResult(ListingEntry.this), rightRes(e))
-					else {
-						//fixme: Doesn't handle reordered listings from above due to unsupported lifts.
-						//  The only way to make it work is to have a reform method without lifts,
-						//  which validates itself that the expression types are equal.
-						//  This is definitely not worth it for simple reordering, as we can just expect
-						//  the application to use consistent ordering. What would be useful though
-						//  are missing items and inserting null columns.
-						//  The least we could do is try to check if the shapes af the expressions with matching labels are equal
-						//attempt reforming in the exact order, ignoring keys
-						//Splits a Lift[W |~ (A :~ V), Z] into
-						// Lift[W, X], Lift[V, Y] and Lift[W |~ (A :~ Y), Z] forSome {type X <: Listing; type Y}
-						type Split[W <: Listing, A <: Label, V, Z] =
-							(Lift[W, Listing], Lift[V, Any], Lift[Listing |~ (A :~ Any), Z])
-
-						//split the lift we were given for the whole expression into lifts for init and last
-						def split[W <: Listing, A <: Label, V, Z](lift :Lift[W |~ (A :~ V), Z]) :Split[W, A, V, Z] =
-							lift match {
-								case _ if lift.isIdentity =>
-									(lift, lift, lift).asInstanceOf[Split[W, A, V, Z]]
-								case chain :LiftListing[xi, xl, yi, yl, k] =>
-									(chain.init, chain.last, Lift.self).asInstanceOf[Split[W, A, V, Z]]
-								case composed :ComposedLift[W |~ (A :~ V), y, Z] =>
-									try {
-										val (init, last, combined) = split[W, A, V, y](composed.first)
-										(init, last, combined andThen composed.second)
-									} catch {
-										case e :MismatchedExpressionsException =>
-											e.addSuppressed(new RethrowContext("unsupported lift type " + lift + "."))
-											throw e
-									}
-								case _ =>
-									throw new MismatchedExpressionsException(
-										ListingEntry.this, e, "unsupported lift type " + lift + "."
-									)
-							}
-						//attempt to recreate a ListingSQL by casting down the expressions obtained
-						// by reforming init and last
-						def listing[G <: RowProduct, D >: Grouped <: GlobalScope, W <: Listing, A <: Label, Z]
-						           (i :SQLExpression[G, D, W], key :A, l :SQLExpression[G, D, Z]) =
-							i match {
-								case listing :ListingSQL[G, D, W] => l match {
-									case value :LabeledValueSQL[G, D, Z] =>
-										(listing |~ :~[A](value))(new ValueOf(key))
-									case _ =>
-										throw new MismatchedExpressionsException(ListingEntry.this, e,
-											"received a non-LabeledValueSQL " + l + " as one of the values"
-										)
-								}
-								case _ =>
-									throw new MismatchedExpressionsException(ListingEntry.this, e,
-										"received a non-ListingSQL expression " + i +
-											": " + i.getClass.getName + " as a partial result."
-									)
-							}
-						var liftOk = false
-						try {
-							val (leftInit, leftLast, leftPost)    = split(leftResult)
-							val (rightInit, rightLast, rightPost) = split(rightRes)
-							implicit val initCompat = leftInit vs rightInit
-							implicit val lastCompat = leftLast vs rightLast
-							liftOk = true
-							val (thisInit, otherInit) = reform(prev, e.init)
-							val (thisLast, otherLast) = reform(value, e.last)
-							val left  = listing(thisInit, key, thisLast).to(leftPost) //these should be ok
-							val right = listing(otherInit, e.lastKey :OK, otherLast).to(rightPost)
-							(left.to[U], right.to[U])
-//									fallback[F, S](isListing.liftContra[({ type T[A] = SQLExpression[E, C, A] })#T](e))(left, right)
-						} catch {
-							case e1 @ (_ :MismatchedExpressionsException | _ :UnsupportedOperationException) =>
-								try {
-									//todo: skip unmatched columns if mayAddNullLeft/mayAddNullRight
-									//todo: reorder:
-									fallback
-								} catch {
-									case e2 :Exception =>
-										e2.addSuppressed(e1)
-										if (e2.getSuppressed.length != 0)
-											throw e2
-										else {
-											e1.addSuppressed(e2); throw e1
-										}
-								}
-						}
-					}
-				}
-			}
-
-		protected override def split(implicit spelling :SQLSpelling) :Seq[ColumnSQL[F, S, _]] =
-			spelling.split(prev) ++ spelling.split(value)
-
-		protected override def shape(implicit spelling :SQLSpelling) :RowShape =
-			spelling.shape(init) + spelling.shape(value)
-
-		override def equals(that :Any) :Boolean = that match {
-			case self  :AnyRef if this eq self => true
-			case other :ListingEntry[_, _, _, _, _] if other.canEqual(this) =>
-				value == other.value && key == other.key && prev == other.prev
-			case _ => false
-		}
-		override def hashCode :Int = (prev.hashCode * 31 + key.hashCode) * 31 + value.hashCode
-	}
-}
-*/
 object RecordSQL {
-	trait RecordTransformation[X <: Listing, Ks <: Chain] extends Serializable  {
-		type Out <: Listing
+	/** Implicit evidence used to project and reorder a [[net.noresttherein.oldsql.sql.ast.LabeledSQL record]]
+	  * expression to another record, containing the specified fields.
+	  * It witnesses that [[net.noresttherein.oldsql.sql.ast.RecordSQL.RecordTransformation.Out Out]]
+	  * is the result of taking fields at [[net.noresttherein.oldsql.schema.bits.LabelPath.Label keys]]
+	  * (or [[net.noresttherein.oldsql.schema.bits.LabelPath key paths]] listed in `Ks` from a record of type `X`.
+	  * @tparam X  $X
+	  * @tparam Ks $Ks
+	  * @define X  the input record.
+	  * @define Ks a tuple of [[net.noresttherein.oldsql.schema.bits.LabelPath.Label Label]]s
+	  *            or [[net.noresttherein.oldsql.schema.bits.LabelPath LabelPath]]s specifying the fields
+	  *            of the input record, in case of the latter indirect fields of some its subrecord,
+	  *            which should be taken to form the output record.
+	  *  */
+	trait RecordTransformation[X, Ks <: Chain] extends Serializable {
+		type Out
+		type OutSQL[-F <: RowProduct, -S >: Grouped <: Single] <: LabeledValueSQL[F, S, Out]
 		def apply(record :X) :Out
 //		def inverse(record :Out) :X
-		def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X]) :LabeledSQL[F, S, Out]
+		def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X]) :OutSQL[F, S]
 //		def inverse[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, Out]) :LabeledSQL[F, S, X]
 	}
 
 
+	/** Evidence that `Ks` is a tuple containing keys of all fields of record `X`, in any order. */
 	@implicitNotFound("${Ks} does not form a complete list of keys in ${X}.")
 	sealed abstract class RecordShuffle[X <: Listing, Ks <: Chain] extends RecordTransformation[X, Ks]
 
 	object RecordShuffle {
-
-		implicit def reorder[X <: Listing, Ks <: Chain](implicit select :SubRecord[X, Ks], size :ChainLength[Ks, _])
+		implicit def reorder[X <: Listing, Ks <: Chain, N <: Numeral]
+		                    (implicit select :RecordProjection[X, Ks], inSize :ChainLength[X, N], outSize :ChainLength[Ks, N])
 				:RecordShuffle[X, Ks] { type Out = select.Out } =
 			new RecordShuffle[X, Ks] {
 				override type Out = select.Out
+				override type OutSQL[-F <: RowProduct, -S >: Grouped <: Single] = select.OutSQL[F, S]
 				override def apply(record :X) = select(record)
-				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X]) = select(record)
+				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X]) =
+					select(record)
 				override def toString = (select.toString(new StringBuilder ++= "RecordShuffle(") += ')').result()
 			}
 	}
 
 
+	/** Implicit evidence that `this.`[[net.noresttherein.oldsql.sql.ast.RecordSQL.RecordTransformation.Out Out]]
+	  * is a projection of input record `X` to fields listed in `Ks`.
+	  * @tparam X  $X
+      * @tparam Ks $Ks
+	  */
 	@implicitNotFound("${Ks} contains keys not present in ${X} (or at least one of the types is abstract).")
 	@implicitAmbiguous("${Ks} contain duplicate keys or at least one of the keys appears in ${X} more than once.")
-	sealed abstract class SubRecord[X <: Listing, Ks <: Chain] extends RecordTransformation[X, Ks] {
+	sealed abstract class RecordProjection[X <: Listing, Ks <: Chain] extends RecordTransformation[X, Ks] { subRecord =>
+		override type Out <: Listing
+		override type OutSQL[-F <: RowProduct, -S >: Grouped <: Single] = LabeledSQL[F, S, Out]
 		def size :Int
-		def andThen[C <: Chain](projection :SubRecord[Out, C]) :SubRecord[X, C] { type Out = projection.Out } =
-			new SubRecord[X, C] {
+
+		def andThen[C <: Chain](projection :RecordProjection[Out, C]) :RecordProjection[X, C] { type Out = projection.Out } =
+			new RecordProjection[X, C] {
 				override type Out = projection.Out
+				override type OutSQL[-F <: RowProduct, -S >: Grouped <: Single] = projection.OutSQL[F, S]
 				override def size = projection.size
 
-				override def apply(record :X) :Out = record(SubRecord.this(record))
-				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X]) =
-					record(SubRecord.this(record))
+				override def apply(record :X) :Out = projection(subRecord(record))
+				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X]) =
+					projection(subRecord(record))
 
 				override def toString(res :StringBuilder) = projection.toString(res)
 			}
@@ -508,40 +136,72 @@ object RecordSQL {
 		override def toString :String = (toString(new StringBuilder ++= "SubRecord(") += ')').result()
 	}
 
-	object SubRecord {
-		type SubRecordOf[Y <: Listing, X <: Listing] = SubRecord[X, _] { type Out = Y }
+	private[RecordSQL] sealed abstract class OutOfOrderProjections {
+		implicit def lastValueAtKey[X <: Listing, Ks <: Chain, K <: Label]
+		                           (implicit item :RecordItem[X, K], preceding :RecordProjection[X, Ks])
+		        :RecordProjection[X, Ks ~ K] { type Out = preceding.Out |~ (K :~ item.Value) } =
+			new RecordProjection[X, Ks ~ K] {
+				override type Out = preceding.Out |~ (K :~ item.Value)
+				override def size = preceding.size + 1
+				override def apply(record :X) = preceding(record) |~ :~[K](item(record))
 
-		implicit def emptySubRecord[X <: Listing] :SubRecord[X, @~] { type Out = @~ } =
-			new SubRecord[X, @~] {
+				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X]) =
+					(preceding(record) |~ :~[K](item(record)))(new ValueOf[K](item.path(record)))
+
+				override def toString(res :StringBuilder) = preceding.size match {
+					case 0 => res += '0'
+					case n => res += ',' ++= n.toString
+				}
+			}
+	}
+
+	object RecordProjection extends OutOfOrderProjections {
+		type SubRecordOf[Y <: Listing, X <: Listing] = RecordProjection[X, _] { type Out = Y }
+
+		implicit def emptyProjection[X <: Listing] :RecordProjection[X, @~] { type Out = @~ } =
+			new RecordProjection[X, @~] {
 				override type Out = @~
 				override def size = 0
 				override def apply(record :X): @~ = @~
-				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X]) = EmptyListing
+				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X]) =
+					EmptyListing
 				override def toString(res :StringBuilder) :StringBuilder = res
 			}
-		implicit def nonEmptySubRecord[X <: Listing, Ks <: Chain, K <: Label]
-		                              (implicit item :RecordItem[X, K], subRecord :SubRecord[X, Ks])
-		        :SubRecord[X, Ks ~ K] { type Out = subRecord.Out |~ (K :~ item.Value) } =
-			new SubRecord[X, Ks ~ K] {
-				override type Out = subRecord.Out |~ (K :~ item.Value)
-				override def size = subRecord.size + 1
-				override def apply(record :X) = subRecord(record) |~ :~[K](item(record))
+		implicit def includeLast[X <: Listing, Ks <: Chain, K <: Label, V](implicit preceding :RecordProjection[X, Ks])
+				:RecordProjection[X |~ (K :~ V), Ks ~ K] { type Out = preceding.Out |~ (K :~ V) } =
+			new RecordProjection[X |~ (K :~ V), Ks ~ K] {
+				override type Out = preceding.Out |~ (K :~ V)
+				override def size = preceding.size
+				override def apply(record :X |~ (K :~ V)) =
+					preceding(record.init) |~ :~[K](record.last.value)
 
-				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X]) =
-					(subRecord(record) |~ :~[K](item(record)))(new ValueOf[K](item.path(record)))
+				override def apply[F <: RowProduct, S >: Grouped <: Single]
+				                  (record :LabeledValueSQL[F, S, X |~ (K :~ V)]) :LabeledSQL[F, S, Out] =
+					(preceding(record.init) |~ :~[K](record.last))(new ValueOf[K](record.lastKey))
 
-				override def toString(res :StringBuilder) = subRecord.size match {
+				override def toString(res :StringBuilder) :StringBuilder = preceding.toString(res)
+			}
+		implicit def excludeLast[X <: Listing, Ks <: Chain, K <: Label, V](implicit preceding :RecordProjection[X, Ks])
+				:RecordProjection[X |~ (K :~ V), Ks ~ K] { type Out = preceding.Out } =
+			new RecordProjection[X |~ (K :~ V), Ks ~ K] {
+				override type Out = preceding.Out
+				override def size = preceding.size + 1
+				override def apply(record :X |~ (K :~ V)) = preceding(record.init)
+				override def apply[F <: RowProduct, S >: Grouped <: Single]
+				                  (record :LabeledValueSQL[F, S, X |~ (K :~ V)]) = preceding(record.init)
+
+				override def toString(res :StringBuilder) = preceding.size match {
 					case 0 => res += '0'
 					case n => res += ',' ++= n.toString
 				}
 			}
 		private[ast] def unsafe[X <: Listing, Ks <: Chain, Y <: Listing]
-		                       (superOrder :Unique[String], subOrder :Unique[String]) :SubRecord[X, Ks] { type Out = Y } =
-			new UntypedSubRecord[X, Ks, Y](superOrder, subOrder)
+		                       (superOrder :Unique[String], subOrder :Unique[String]) :RecordProjection[X, Ks] { type Out = Y } =
+			new UntypedRecordProjection[X, Ks, Y](superOrder, subOrder)
 
-		private class UntypedSubRecord[X <: Listing, Ks <: Chain, Y <: Listing]
+		private class UntypedRecordProjection[X <: Listing, Ks <: Chain, Y <: Listing]
 		                              (val oldOrder :Unique[String], val newOrder :Unique[String])
-			extends SubRecord[X, Ks]
+			extends RecordProjection[X, Ks]
 		{
 			type Out = Y
 
@@ -562,35 +222,35 @@ object RecordSQL {
 			override def apply[F <: RowProduct, S >: Grouped <: Single](listing :LabeledSQL[F, S, X]) = {
 				val items = listing.toMap
 				((EmptyListing :LabeledSQL[F, S, _]) /: newOrder) {
-					(res, key) => (res |~ (key, items(key)))
+					(res, key) => (res |~ (key :Label, items(key)))
 				}.asInstanceOf[LabeledSQL[F, S, Y]]
 			}
 
-			//			override def inverse[F <: RowProduct, S >: Grouped <: Single](listing :LabeledSQL[F, S, X]) = {
-			//				val items = listing.toMap
-			//				(EmptyListing.asInstanceOf[LabeledSQL[F, S, Listing]] /: oldOrder) { (res, key) =>
-			//					(items.get(key) match {
-			//						case Some(value) => res |~ (key, value)
-			//						case _ => res |~ LabeledColumnSQL(key, SQLNull[Any]())
-			//					}).asInstanceOf[LabeledSQL[F, S, Listing]]
-			//				}.asInstanceOf[LabeledSQL[F, S, Y]]
-			//			}
-			//
-			//			override def compose[O <: Listing](other :Y SublistingOf O) :X SublistingOf O = other match {
-			//				case untyped :UntypedSublistingOf[Y, O] =>
-			//					if (untyped.newOrder != oldOrder)
-			//						throw new IllegalArgumentException(
-			//							"Cannot compose (" + this + ") with (" + untyped + "): output key order " +
-			//								"of the second conversion does not match the input key order of the first one."
-			//						)
-			//					new UntypedSublistingOf(newOrder, untyped.oldOrder)
-			//				case _ => super.compose(other)
-			//			}
-			//
-			override def andThen[C <: Chain](projection :SubRecord[Y, C]) :SubRecord[X, C] { type Out = projection.Out } =
+//			override def inverse[F <: RowProduct, S >: Grouped <: Single](listing :LabeledSQL[F, S, X]) = {
+//				val items = listing.toMap
+//				(EmptyListing.asInstanceOf[LabeledSQL[F, S, Listing]] /: oldOrder) { (res, key) =>
+//					(items.get(key) match {
+//						case Some(value) => res |~ (key, value)
+//						case _ => res |~ LabeledColumnSQL(key, SQLNull[Any]())
+//					}).asInstanceOf[LabeledSQL[F, S, Listing]]
+//				}.asInstanceOf[LabeledSQL[F, S, Y]]
+//			}
+//
+//			override def compose[O <: Listing](other :Y SublistingOf O) :X SublistingOf O = other match {
+//				case untyped :UntypedSublistingOf[Y, O] =>
+//					if (untyped.newOrder != oldOrder)
+//						throw new IllegalArgumentException(
+//							"Cannot compose (" + this + ") with (" + untyped + "): output key order " +
+//								"of the second conversion does not match the input key order of the first one."
+//						)
+//					new UntypedSublistingOf(newOrder, untyped.oldOrder)
+//				case _ => super.compose(other)
+//			}
+//
+			override def andThen[C <: Chain](projection :RecordProjection[Y, C]) :RecordProjection[X, C] { type Out = projection.Out } =
 				projection match {
-					case untyped :UntypedSubRecord[_, _] =>
-						new UntypedSubRecord[X, C, projection.Out](oldOrder, untyped.newOrder)
+					case untyped :UntypedRecordProjection[_, _, _] =>
+						new UntypedRecordProjection[X, C, projection.Out](oldOrder, untyped.newOrder)
 					case _ =>
 						super.andThen(projection)
 				}
@@ -606,53 +266,52 @@ object RecordSQL {
 				}
 		}
 	}
+//
+//
+//	@implicitNotFound("Keys ${Ks} do not appear in ${X} in the same order (or contain absent keys). " +
+//	                  "Did you want to use SubRecord[${X}, ${Ks}] instead?")
+//	@implicitAmbiguous("Either ${Ks} or ${X} contain duplicate keys.")
+//	sealed abstract class RecordProjection[X <: Listing, Ks <: Chain] extends RecordTransformation[X, Ks] {
+//		override type Out <: Listing
+//		override type OutSQL[-F <: RowProduct, -S >: Grouped <: Single] = LabeledSQL[F, S, X]
+//	}
+//
+//	object RecordProjection {
+//		implicit def emptyProjection[X <: Listing] :RecordProjection[X, @~] { type Out = @~ } =
+//			new RecordProjection[X, @~] {
+//				override type Out = @~
+//				override def apply(record :X) = @~
+//				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X]) = EmptyListing
+//			}
+//		implicit def includeLast[X <: Listing, Ks <: Chain, K <: Label, V](implicit preceding :RecordProjection[X, Ks])
+//				:RecordProjection[X |~ (K :~ V), Ks ~ K] { type Out = preceding.Out |~ (K :~ V) } =
+//			new RecordProjection[X |~ (K :~ V), Ks ~ K] {
+//				override type Out = preceding.Out |~ (K :~ V)
+//				override def apply(record :X |~ (K :~ V)) =
+//					preceding(record.init) |~ :~[K](record.last.value)
+//
+//				override def apply[F <: RowProduct, S >: Grouped <: Single]
+//				                  (record :LabeledSQL[F, S, X |~ (K :~ V)]) :LabeledSQL[F, S, Out] =
+//					(preceding(record.init) |~ :~[K](record.last))(new ValueOf[K](record.lastKey))
+//			}
+//		implicit def excludeLast[X <: Listing, Ks <: Chain, K <: Label, V](implicit preceding :RecordProjection[X, Ks])
+//				:RecordProjection[X |~ (K :~ V), Ks ~ K] { type Out = preceding.Out } =
+//			new RecordProjection[X |~ (K :~ V), Ks ~ K] {
+//				override type Out = preceding.Out
+//				override def apply(record :X |~ (K :~ V)) = preceding(record.init)
+//				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X |~ (K :~ V)]) =
+//					preceding(record.init)
+//			}
+//	}
 
 
-	@implicitNotFound("Keys ${Ks} do not appear in ${X} in the same order (or contain absent keys). " +
-	                  "Did you want to use SubRecord[${X}, ${Ks}] instead?")
-	@implicitAmbiguous("Either ${Ks} or ${X} contain duplicate keys.")
-	sealed abstract class RecordProjection[X <: Listing, Ks <: Chain] extends RecordTransformation[X, Ks]
-
-	object RecordProjection {
-		implicit def emptyProjection[X <: Listing] :RecordProjection[X, @~] { type Out = @~ } =
-			new RecordProjection[X, @~] {
-				override type Out = @~
-				override def apply(record :X) = @~
-				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X]) = EmptyListing
-			}
-		implicit def includeLast[X <: Listing, Ks <: Chain, K <: Label, V](implicit preceding :RecordProjection[X, Ks])
-				:RecordProjection[X |~ (K :~ V), Ks ~ K] { type Out = preceding.Out |~ (K :~ V) } =
-			new RecordProjection[X |~ (K :~ V), Ks ~ K] {
-				override type Out = preceding.Out |~ (K :~ V)
-				override def apply(record :X |~ (K :~ V)) =
-					preceding(record.init) |~ :~[K](record.last.value)
-
-				override def apply[F <: RowProduct, S >: Grouped <: Single]
-				                  (record :LabeledSQL[F, S, X |~ (K :~ V)]) :LabeledSQL[F, S, preceding.Out |~ (K :~ V)] =
-					(preceding(record.init) |~ :~[K](record.last))(new ValueOf[K](record.lastKey))
-			}
-		implicit def excludeLast[X <: Listing, Ks <: Chain, K <: Label, V](implicit preceding :RecordProjection[X, Ks])
-				:RecordProjection[X |~ (K :~ V), Ks ~ K] { type Out = preceding.Out } =
-			new RecordProjection[X |~ (K :~ V), Ks ~ K] {
-				override type Out = preceding.Out
-				override def apply(record :X |~ (K :~ V)) = preceding(record.init)
-				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X |~ (K :~ V)]) =
-					preceding(record.init)
-			}
-	}
-
-
-	trait DoubleRecordTransformation[X <: Listing, Y <: Listing] extends Serializable {
+	trait RecordUnification[X <: Listing, Y <: Listing] extends Serializable {
 		type Out <: Listing
 		type Keys <: Chain
-		val left  :RecordTransformation[X, Keys] { type Out = DoubleRecordTransformation.this.Out }
-		val right :RecordTransformation[Y, Keys] { type Out = DoubleRecordTransformation.this.Out }
+		val left  :RecordTransformation[X, Keys] { type Out = RecordUnification.this.Out }
+		val right :RecordTransformation[Y, Keys] { type Out = RecordUnification.this.Out }
 	}
 
-	sealed abstract class DoubleRecordProjection[X <: Listing, Y <: Listing] extends DoubleRecordTransformation[X, Y]
-
-	object DoubleRecordProjection {
-	}
 /*
 	sealed abstract class RecordSum[X <: Listing, Y <: Listing] {
 		type Out <: Listing
@@ -708,19 +367,19 @@ object RecordSQL {
 
 	@implicitNotFound("Path ${P} does not appear in ${X}.")
 	@implicitAmbiguous("Multiple entries with path ${P} present in ${X}.")
-	sealed abstract class RecordItem[X <: Listing, P] extends Serializable {
+	sealed abstract class RecordItem[X, P] extends Serializable {
 		type Value
 		type Updated[T] <: Listing
 		def posFromTheRight :Int
 		def isTopLevel :Boolean
 		def apply(record :X) :Value
-		def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X]) :LabeledValueSQL[F, S, Value]
-		def path[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X]) :P
+		def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X]) :LabeledValueSQL[F, S, Value]
+		def path[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X]) :P
 
 		def set(record :X, value :Value) :X
 
 		def set[F <: RowProduct, S >: Grouped <: Single]
-		       (record :LabeledSQL[F, S, X], value :LabeledValueSQL[F, S, Value]) :LabeledSQL[F, S, X]
+		       (record :LabeledValueSQL[F, S, X], value :LabeledValueSQL[F, S, Value]) :LabeledValueSQL[F, S, X]
 
 		override def toString :String = "RecordItem(-" + posFromTheRight + ')'
 	}
@@ -737,16 +396,18 @@ object RecordSQL {
 				override def apply(record :X |~ (K :~ V)) :V = record.last.value
 
 				override def apply[F <: RowProduct, S >: Grouped <: Single]
-				                  (record :LabeledSQL[F, S, X |~ (K :~ V)]) :LabeledValueSQL[F, S, V] =
+				                  (record :LabeledValueSQL[F, S, X |~ (K :~ V)]) :LabeledValueSQL[F, S, V] =
 					record.last
 
-				override def path[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X |~ (K :~ V)]) :K =
+				override def path[F <: RowProduct, S >: Grouped <: Single]
+				                 (record :LabeledValueSQL[F, S, X |~ (K :~ V)]) :K =
 					record.lastKey
 
-				override def set(record :X |~ (K :~ V), value :V) :X |~ (K :~ V) = record.last.value
+				override def set(record :X |~ (K :~ V), value :V) :X |~ (K :~ V) =
+					record.init |~ :~[K](record.last.value)
 
 				override def set[F <: RowProduct, S >: Grouped <: Single]
-				                (record :LabeledSQL[F, S, X |~ (K :~ V)], value :LabeledValueSQL[F, S, V]) =
+				                (record :LabeledValueSQL[F, S, X |~ (K :~ V)], value :LabeledValueSQL[F, S, V]) =
 					record.last
 			}
 		//todo: I don't know if Scala can infer these types.
@@ -760,18 +421,18 @@ object RecordSQL {
 				override def posFromTheRight = preceding.posFromTheRight + 1
 				override def isTopLevel = true
 
-				override def apply(record :X |~ (A :~ B)) :V = preceding(record.init)
-				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X |~ (A :~ B)]) =
+				override def apply(record :X |~ (A :~ B)) :Value = preceding(record.init)
+				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X |~ (A :~ B)]) =
 					preceding(record.init)
 
-				override def path[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X |~ (A :~ B)]) :K =
+				override def path[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X |~ (A :~ B)]) :K =
 					preceding.path(record.init)
 
 				override def set(record :X |~ (A :~ B), value :preceding.Value) :X |~ (A :~ B) =
 					preceding.set(record.init, value) |~ record.last
 
 				override def set[F <: RowProduct, S >: Grouped <: Single]
-				                (record :LabeledSQL[F, S, X |~ (A :~ B)], value :LabeledValueSQL[F, S, preceding.Value]) =
+				                (record :LabeledValueSQL[F, S, X |~ (A :~ B)], value :LabeledValueSQL[F, S, preceding.Value]) =
 					preceding.set(record.init, value) |~ record.lastItem
 			}
 
@@ -779,24 +440,24 @@ object RecordSQL {
 		                       (implicit split :SplitLabelPath[P] { type First = H; type Suffix = T },
 		                                 topLevel :RecordItem[X, H] { type Value = V }, nested :RecordItem[V, T])
 				:RecordItem[X, P] {
-					type Value = nested.Value; type Updated[T] = topLevel.Updated[nested.Updated[T]]
+					type Value = nested.Value; type Updated[V] = topLevel.Updated[nested.Updated[V]]
 				} =
 			new RecordItem[X, P] {
 				override type Value = nested.Value
-				override type Updated[T] = topLevel.Updated[nested.Updated[T]]
+				override type Updated[V] = topLevel.Updated[nested.Updated[V]]
 				override def posFromTheRight = topLevel.posFromTheRight
 				override def isTopLevel = false
 
 				override def apply(record :X) :Value = nested(topLevel(record))
-				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X]) =
+				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X]) =
 					nested(topLevel(record))
 
-				override def path[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X]) =
-					split.join(topLevel.path(record), nested.path(topLevel(record)))
+				override def path[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X]) =
+					split.join(topLevel.path(record), nested.path(topLevel(record))).path
 
 				override def set(record :X, value :Value) = topLevel.set(record, nested.set(topLevel(record), value))
 				override def set[F <: RowProduct, S >: Grouped <: Single]
-				                (record :LabeledSQL[F, S, X], value :LabeledValueSQL[F, S, Value]) =
+				                (record :LabeledValueSQL[F, S, X], value :LabeledValueSQL[F, S, Value]) =
 					topLevel.set(record, nested.set(topLevel(record), value))
 			}
 	}
@@ -805,20 +466,20 @@ object RecordSQL {
 	@implicitNotFound("Cannot determine the full list of keys for ${X} - is the type partially abstract?")
 	sealed abstract class RecordKeys[X <: Listing] {
 		type Out <: Chain
-		def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, X]) :Out
+		def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X]) :Out
 	}
 
 	object RecordKeys {
 		implicit val emptyRecordKeys :RecordKeys[@~] { type Out = @~ } =
 			new RecordKeys[@~] {
 				override type Out = @~
-				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, @~]) = @~
+				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, @~]) = @~
 			}
-		implicit def nonEmptyRecordKeys[X <: Listing, K <: Label, V](implicit preceding :RecordKeys[X])
-				:RecordKeys[@~] { type Out = preceding.Out ~ K } =
-			new RecordKeys[@~] {
+		implicit def nonEmptyRecordKeys[X <: Listing, K <: Label](implicit preceding :RecordKeys[X])
+				:RecordKeys[X |~ (K :~ Any)] { type Out = preceding.Out ~ K } =
+			new RecordKeys[X |~ (K :~ Any)] {
 				override type Out = preceding.Out ~ K
-				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledSQL[F, S, @~]) =
+				override def apply[F <: RowProduct, S >: Grouped <: Single](record :LabeledValueSQL[F, S, X |~ (K :~ Any)]) =
 					preceding(record.init) ~ record.lastKey
 			}
 	}
@@ -863,29 +524,17 @@ sealed trait LabeledSQL[-F <: RowProduct, -S >: Grouped <: Single, V <: Listing]
 	override def mapping[O](columnPrefix :String) :TypedListingSQLMapping[F, S, V, O] =
 		TypedListingSQLMapping(this, columnPrefix)
 
-	def init[I <: Listing](implicit nonEmpty: V <:< (I |~ Listing.Item)) :LabeledSQL[F, S, I] =
-		this.asInstanceOf[LabeledEntry[F, S, I, Label, Any]].left
-
-	def last[L](implicit nonEmpty: V <:< (Listing |~ (Label :~ L))) :LabeledValueSQL[F, S, L] =
-		this.asInstanceOf[LabeledEntry[F, S, Listing, Label, L]].right
-
-	def lastKey[K <: Label](implicit nonEmpty: V <:< (Listing |~ (K :~ Any))) :K =
-		this.asInstanceOf[LabeledEntry[F, S, Listing, K, Any]].key
-
-	def lastItem[K <: Label, L](implicit notEmpty :V <:< (Listing |~ (K :~ L))) :LabeledItem[F, S, K, L] =
-		this.asInstanceOf[LabeledEntry[F, S, Listing, K, L]].lastItem
-
 	def |~[E <: F, O >: Grouped <: S, K <: Label :ValueOf, L]
 	      (entry :K :~ LabeledValueSQL[E, O, L]) :LabeledSQL[E, O, V |~ (K :~ L)] =
 		new LabeledEntry(this, entry.value)
 
 	def |~[E <: F, O >: Grouped <: S, K <: Label, L]
 	      (entry :LabeledColumnSQL[E, O, K, L]) :LabeledSQL[E, O, V |~ (K :~ L)] =
-		new LabeledEntry(this, entry)(new ValueOf(entry.alias))
+		LabeledEntry(this, entry.alias, entry)
 
 	def |~[E <: F, O >: Grouped <: S, K <: Label :ValueOf, L]
 	       (entry :K :~ ColumnSQL[E, O, L]) :LabeledSQL[E, O, V |~ (K :~ L)] =
-		new LabeledEntry(this, new LabeledColumnSQL(entry.value, valueOf[K]))
+		LabeledEntry(this, valueOf[K], new LabeledColumnSQL(entry.value, valueOf[K]))
 
 	def |~[E <: F, O >: Grouped <: S, K <: Label, L]
 	      (entry :(K, LabeledValueSQL[E, O, L])) :LabeledSQL[E, O, V |~ (K :~ L)] =
@@ -896,11 +545,11 @@ sealed trait LabeledSQL[-F <: RowProduct, -S >: Grouped <: Single, V <: Listing]
 					" to " + this + "."
 				)
 			case _ =>
-				new LabeledEntry(this, entry._2)(new ValueOf[K](entry._1))
+				LabeledEntry(this, entry._1, entry._2)
 		}
 
 	def |~[E <: F, O >: Grouped <: S, K <: Label, L](entry :LabeledItem[E, O, K, L]) :LabeledSQL[E, O, V |~ (K :~ L)] =
-		new LabeledEntry(this, entry.value)(new ValueOf[K](entry.key))
+		LabeledEntry(this, entry.key, entry.value)
 
 	//declared here due to overloading rules
 //	def |~[K <: Label :ValueOf, X :ColumnForm](n :Null) :LabeledShape[V |~ (K :~ X)] =
@@ -908,9 +557,6 @@ sealed trait LabeledSQL[-F <: RowProduct, -S >: Grouped <: Single, V <: Listing]
 
 //		def |~[K <: Label :ValueOf, X <: Listing](entry :K :~ ListingLayout[X]) :ListingLayout[T |~ (K :~ X)] =
 //			this |~[Nothing, Grouped, K, X] :~[K](entry.value)
-
-	def apply[K <: Label](key :K)(implicit get :RecordItem[V, K])    :LabeledValueSQL[F, S, get.Value] = get(this)
-	def apply[P](path :LabelPath[P])(implicit get :RecordItem[V, P]) :LabeledValueSQL[F, S, get.Value] = get(this)
 
 	/** A list of (direct) keys/entry labels in this record, in order from left to right. */
 	def keys :Seq[Label] = {
@@ -944,7 +590,7 @@ sealed trait LabeledSQL[-F <: RowProduct, -S >: Grouped <: Single, V <: Listing]
 					def dfs(path :LabelPath[_], e :LabeledValueSQL[F, S, _], res :List[LabelPath[_]]) :List[LabelPath[_]] =
 						e match {
 							case _ :LabeledColumnSQL[F, S, l, _] => path::res
-							case tuple :LabeledSQL[F, S, _] => rec(Got(path), tuple, res)
+							case tuple :LabeledSQL[F, S, _] => rec(path, tuple, res)
 						}
 					val down = path / entry.key
 					rec(path, entry.left, dfs(down, entry.right, acc))
@@ -1083,8 +729,10 @@ sealed trait LabeledSQL[-F <: RowProduct, -S >: Grouped <: Single, V <: Listing]
 			:TopSelectAs[IndexedMapping.of[V]#Mapping] =
 		SelectSQL[E, V](from, this)
 
-	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectAs[B, IndexedMapping.of[V]#Mapping] =
-		SelectSQL.subselect[B, F ProperSubselectOf B, V](from, this)
+	override def subselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B]) :SubselectAs[B, IndexedMapping.of[V]#Mapping] =
+		SelectSQL.subselect[B, F with SubselectOf[B], V](from, this)
+//	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectAs[B, IndexedMapping.of[V]#Mapping] =
+//		SelectSQL.subselect[B, F ProperSubselectOf B, V](from, this)
 
 	override def paramSelectFrom[P, E <: F with TopRow { type Complete <: E; type Params = P }](from :E)
 			:SelectMapping[P, IndexedMapping.of[V]#Mapping] =
@@ -1125,19 +773,19 @@ object LabeledSQL {
 
 	def apply[F <: RowProduct, S >: Grouped <: Single, N <: Label, T]
 	         (item :LabeledColumnSQL[F, S, N, T]) :LabeledSQL[F, S, @~ |~ (N :~ T)] =
-		new LabeledEntry(EmptyListing, item)(new ValueOf(item.alias))
+		LabeledEntry(EmptyListing, item.alias, item)
 
 	def apply[F <: RowProduct, S >: Grouped <: Single, N <: Label :ValueOf, T]
 	         (item :N :~ ColumnSQL[F, S, T]) :LabeledSQL[F, S, @~ |~ (N :~ T)] =
-		new LabeledEntry(EmptyListing, new LabeledColumnSQL(item.value, valueOf[N]))
+		LabeledEntry(EmptyListing, valueOf[N], new LabeledColumnSQL(item.value, valueOf[N]))
 
 	def apply[F <: RowProduct, S >: Grouped <: Single, N <: Label, T]
 	         (item :LabeledItem[F, S, N, T]) :LabeledSQL[F, S, @~ |~ (N :~ T)] =
-		new LabeledEntry(EmptyListing, new LabeledColumnSQL(item.value, item.key))
+		LabeledEntry(EmptyListing, item.key, new LabeledColumnSQL(item.value, item.key))
 
 	def apply[F <: RowProduct, S >: Grouped <: Single, N <: Label, T]
 	         (key :N, value :ColumnSQL[F, S, T]) :LabeledSQL[F, S, @~ |~ (N :~ T)] =
-		new LabeledEntry(EmptyListing, key @: value)(new ValueOf(key))
+		LabeledEntry(EmptyListing, key, key @: value)
 
 
 	class LabeledItem[-F <: RowProduct, -S >: Grouped <: Single, K <: Label, X]
@@ -1184,12 +832,30 @@ object LabeledSQL {
 	  * trough [[net.noresttherein.oldsql.sql.Select.SelectOperator set operators]] such as
 	  * [[net.noresttherein.oldsql.sql.Select.Union union]] or [[net.noresttherein.oldsql.sql.Select.Minus minus]].
 	  */
+	//Todo: we must disallow using a Listing type as the value type for a LabeledColumnSQL.
+	// This will be possible in Scala 3 with match types.
+	// We'll then be able to safely casat a LabeledValueSQL to LabeledSQL if V <: Listing
 	sealed trait LabeledValueSQL[-F <: RowProduct, -S >: Grouped <: Single, V]
 		extends SQLExpression[F, S, V] //consider: a ConvertedLabeledValueSQL would help with reordering
 		   with VariantGroundingTemplate[F, S, V, ({ type E[-f <: RowProduct] = LabeledValueSQL[f, S, V] })#E]
 	{
 		def mapping[O] :TypedListingSQLMapping[F, S, V, O] = mapping[O]("")
 		def mapping[O](columnPrefix :String) :TypedListingSQLMapping[F, S, V, O]
+
+		def init[I <: Listing](implicit nonEmpty: V <:< (I |~ Listing.Item)) :LabeledSQL[F, S, I] =
+			this.asInstanceOf[LabeledEntry[F, S, I, Label, Any]].left
+
+		def last[L](implicit nonEmpty: V <:< (Listing |~ (Label :~ L))) :LabeledValueSQL[F, S, L] =
+			this.asInstanceOf[LabeledEntry[F, S, Listing, Label, L]].right
+
+		def lastKey[K <: Label](implicit nonEmpty: V <:< (Listing |~ (K :~ Any))) :K =
+			this.asInstanceOf[LabeledEntry[F, S, Listing, K, Any]].key
+
+		def lastItem[K <: Label, L](implicit notEmpty :V <:< (Listing |~ (K :~ L))) :LabeledItem[F, S, K, L] =
+			this.asInstanceOf[LabeledEntry[F, S, Listing, K, L]].lastItem
+
+		def apply[K <: Label](key :K)(implicit get :RecordItem[V, K]) :LabeledValueSQL[F, S, get.Value] = get(this)
+		def apply[P](path :LabelPath[P])(implicit get :RecordItem[V, P]) :LabeledValueSQL[F, S, get.Value] = get(this)
 
 		override def asSingleRow :Option[LabeledValueSQL[F, Single, V]]
 //
@@ -1211,6 +877,15 @@ object LabeledSQL {
 	}
 
 	object LabeledValueSQL {
+		//exists so that we can use |~ on a value in a LabeledSQL.
+		implicit def toLabeledSQL[F <: RowProduct, S >: Grouped <: Single, V <: Listing]
+		                         (e :LabeledValueSQL[F, S, V]) :LabeledSQL[F, S, V] =
+			e match {
+				case record :LabeledSQL[F, S, V] => record
+				case column :LabeledColumnSQL[F, S, _, V] =>
+					throw new IllegalArgumentException("Cannot convert a LabeledColumnSQL " + column + " to a LabeledSQL.")
+			}
+
 		trait SpecificLabeledValueVisitor[+F <: RowProduct, +S >: Grouped <: Single, V, +Y]
 			extends SpecificLabeledVisitor[F, S, V, Y] with SpecificLabeledColumnVisitor[F, S, V, Y]
 
@@ -1247,7 +922,9 @@ object LabeledSQL {
 	//consider: we could make *all* columns LabeledValueSQL. We'd still need this class for single column selects.
 	//  problem: LabeledValueSQL.rephrase is needed to rephrase LabeledEntry, but we can't assume
 	/** A bottom expression in a [[net.noresttherein.oldsql.sql.ast.LabeledSQL LabeledSQL]] - a single column expression
-	  * with an associated key value `alias`.
+	  * with an associated key value `alias`. Converting a `LabeledColumnSQL` always produces another `LabeledColumnSQL`,
+	  * wrapping converted underlying column of the former - the result is not
+	  * a [[net.noresttherein.oldsql.sql.ast.ConvertedColumnSQL ConvertedColumnSQL]].
 	  */
 	final class LabeledColumnSQL[-F <: RowProduct, -S >: Grouped <: Single, N <: Label, V] private[LabeledSQL]
 	                            (override val value :ColumnSQL[F, S, V], override val alias :N)
@@ -1283,15 +960,18 @@ object LabeledSQL {
 				:TopSelectColumnAs[IndexedMapping.of[V]#Column, V] =
 			SelectSQL(from, this)
 
-		override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B)
+//		override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B)
+//				:SubselectColumnAs[B, IndexedMapping.of[V]#Column, V] =
+//			SelectSQL.subselect[B, F ProperSubselectOf B, N, V](from, this)
+		override def subselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B])
 				:SubselectColumnAs[B, IndexedMapping.of[V]#Column, V] =
-			SelectSQL.subselect[B, F ProperSubselectOf B, N, V](from, this)
+			SelectSQL.subselect[B, F with SubselectOf[B], N, V](from, this)
 
 		override def paramSelectFrom[P, E <: F with TopRow { type Complete <: E; type Params = P }](from :E)
 				:SelectMapping[P, IndexedMapping.of[V]#Column] =
 			Select(from)[N, V](this)
 
-		override def visit[R[-_]](visitor :SpecificColumnVisitor[F, S, V, R]) :R = visitor.labeledColumn(this)
+		override def visit[R](visitor :SpecificColumnVisitor[F, S, V, R]) :R = visitor.labeledColumn(this)
 		override def visit[R[-_ >: Grouped <: Single, _]](visitor :AnyColumnVisitor[F, R]) :R[S, V] =
 			visitor.labeledColumn(this)
 	}
@@ -1326,6 +1006,10 @@ object LabeledSQL {
 	}
 
 
+
+	private def LabeledEntry[F <: RowProduct, S >: Grouped <: Single, I <: Listing, K <: Label, L]
+	                        (prefix :LabeledSQL[F, S, I], key :K, value :LabeledValueSQL[F, S, L]) =
+		new LabeledEntry[F, S, I, K, L](prefix, value)(new ValueOf(key))
 
 	private final class LabeledEntry[-F <: RowProduct, -S >: Grouped <: Single, I <: Listing, K <: Label :ValueOf, L]
 	                                (val left :LabeledSQL[F, S, I], val right :LabeledValueSQL[F, S, L])
@@ -1418,8 +1102,8 @@ object LabeledSQL {
 						init |~ (key, toMap(key))
 					}
 				val reordered = reorder(ourKeys.size - 1).asInstanceOf[LabeledSQL[F, S, Listing]]
-				val convert = ReorderRecord[Listing, I |~ (K :~ L)](
-					SubRecord.unsafe(newKeys, ourKeys), SubRecord.unsafe(ourKeys, newKeys)
+				val convert = ReorderRecord[Listing, Chain, I |~ (K :~ L), Chain](
+					RecordProjection.unsafe(newKeys, ourKeys), RecordProjection.unsafe(ourKeys, newKeys)
 				)
 				convert(reordered)
 			}
@@ -1584,10 +1268,10 @@ object LabeledSQL {
 							)
 						//Also the first recursion step, there are non empty paths under prefix
 						case (key::path, alternative)::tail if current.isEmpty =>
-							buildSrcIndex(tail, prefix, key, current += (path, alternative), res)
+							buildSrcIndex(tail, prefix, key, current += ((path, alternative)), res)
 						//The first label in the current path is the same as in the previous one
 						case (First::path, alternative)::tail =>
-							buildSrcIndex(tail, prefix, First, current += (path, alternative), res)
+							buildSrcIndex(tail, prefix, First, current += ((path, alternative)), res)
 						//The current path diverges from the previous one on this level
 						case (key::path, alternative)::tail =>
 							if (res.lastIndexWhere(_._1 == key) >= 0)
@@ -1597,7 +1281,7 @@ object LabeledSQL {
 							val lastIndex = buildSrcIndex(current.toList, lastValuePath)
 							val last = (First, Right(lastIndex))
 							//and now continue the recursion on the same level
-							buildSrcIndex(tail, prefix, key, ListBuffer.empty[Entry] += (path, alternative), res += last)
+							buildSrcIndex(tail, prefix, key, ListBuffer.empty[Entry] += ((path, alternative)), res += last)
 						case Nil =>
 							res.toList
 					}
@@ -1605,8 +1289,8 @@ object LabeledSQL {
 				def buildNewExpr(keys :List[(String, Either[LabeledValueSQL[E, A, _], List[_]])]) :LabeledSQL[E, A, _] =
 					((EmptyListing :LabeledSQL[F, S, _]) /: keys) {
 						case (acc, (key, index)) => index match {
-							case Left(expr) => acc |~ (key, expr)
-							case Right(tree :Index @unchecked) => acc |~ (key, buildNewExpr(tree))
+							case Left(expr) => acc |~ ((key :Label, expr))
+							case Right(tree :Index @unchecked) => acc |~ ((key :Label, buildNewExpr(tree)))
 						}
 					}
 
@@ -1614,9 +1298,9 @@ object LabeledSQL {
 				val srcIndex = buildSrcIndex(pathList, ~/)
 				val dstIndex = buildDstIndex(this)
 				val result = buildNewExpr(srcIndex).asInstanceOf[LabeledSQL[E, A, Listing]]
-				val name = this.paths.mkString("." + name + "(", ", ", ")")
+				val conversionName = this.paths.mkString("." + name + "(", ", ", ")")
 				val conversion = SQLConversion(
-					name, convert(srcIndex, dstIndex), convert(dstIndex, srcIndex)
+					conversionName, convert(srcIndex, dstIndex), convert(dstIndex, srcIndex)
 				).castParam2[I |~ (K :~ L)]
 				conversion(result)
 			}
@@ -1659,17 +1343,45 @@ object LabeledSQL {
 		                                         rightResult :SQLTransformation[V2, U], spelling :SQLSpelling)
 				:SpecificExpressionVisitor
 				 [F2, S2, V2, (leftResult.SQLResult[F1, S1, SQLExpression[F1, S1, U]], rightResult.SQLResult[F2, S2, EC2[U]])] =
-			new BaseReformer[F1, S1, F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](other)(reform, passCount)
-				with MatchSpecificLabeled[F2, S2, V2, (leftResult.SQLResult[F1, S1, SQLExpression[F1, S1, U]],
-				                                       rightResult.SQLResult[F2, S2, EC2[U]])]
+			new BaseReformer[F1, S1, F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](
+				other)(reform, passCount)(leftResult, rightResult, spelling
+			) with MatchSpecificLabeled[F2, S2, V2, (leftResult.SQLResult[F1, S1, SQLExpression[F1, S1, U]],
+			                                         rightResult.SQLResult[F2, S2, EC2[U]])]
 			{
+				private def forceNullValue(x: @~) = nullValue match {
+					case Got(e) => e
+					case _ => throw new UnsupportedOperationException(
+						keys.mkString(
+							"Cannot convert EmptySQL to Listing(", ",", ") because the matched expression " +
+								self + " does not define a null value."
+						)
+					)
+				}
+
+				override def multiNull(e :MultiNull[V2]) =
+					if (reform.mayReformRight ||
+						reform.mayAddNullRight && rightResult.isDecorator && e.form.columnCount < selectForm.columnCount)
+					{
+						val rightNull = MultiNull(selectForm <> SQLWriteForm.nulls(selectForm.columnCount))
+						(left, rightResult(rightNull.asInstanceOf[EC2[V2]]))
+					} else
+						fallback
+
 				override def empty(implicit isEmpty :V2 =:= @~) =
 					if (passCount.secondTime && reform.mayAddNullRight) {
-						val emptyConversion = SQLConversion("to[@~]", (_:(I |~ (K :~ L))) => @~ : @~, (_: @~) => nullValue)
-						(left, rightResult(emptyConversion(nullSQL)))
+						val nullConversion =
+							SQLConversion.opt("to[@~]", (_:(I |~ (K :~ L))) => @~ : @~, (_: @~) => nullValue)
+						val toV2 = isEmpty.flip.liftCo[SQLConversion.from[I |~ (K :~ L)]#to](nullConversion)
+						(left, rightResult(toV2(nullSQL.asInstanceOf[EC2[I |~ (K :~ L)]])))
 					} else if (passCount.secondTime && reform.mayExcludeLeft) {
-						val nullConversion = SQLConversion(keys.mkString(".to[", ",", "]"), (_: @~) => nullValue, (_:(I |~ (K :~ L))))
-						(leftResult(EmptyListing))
+						/* Two options here: either we fail fast in case of lack of nullValue as an early warning,
+						 * or we hope that the method never gets called. Ideally we would report a warning
+						 * in the latter case, but we do not have SQLContext here. Perhaps we will just log
+						 * it here and now ourselves. */
+						val nullConversion = SQLAdaptation(
+							keys.mkString(".to[", ",", "]"), forceNullValue, (_:(I |~ (K :~ L))) => Got(@~)
+						)
+						(leftResult(nullConversion.convert(EmptyListing)), right)
 					} else
 						fallback
 
@@ -1807,30 +1519,32 @@ object LabeledSQL {
 											e.paths.map { path => (path, rightColumns(path).nullSQL) } ++
 												paths.filterNot(rightPaths).map { path => (path, leftColumns(path).nullSQL) }
 										val right = e.reform(order).asInstanceOf[ConvertibleSQL[F2, S2, V2, EC2]]
-										(leftResult(reform(order)), rightResult(right))
+										(leftResult(self.reform(order)), rightResult(right))
 									} else if (reform.mayReorderRight) {
 										val order =
 											paths.map { path => (path, leftColumns(path).nullSQL) } ++
 												e.paths.filterNot(leftPaths).map { path => (path, rightColumns(path).nullSQL) }
 										val right = e.reform(order).asInstanceOf[ConvertibleSQL[F2, S2, V2, EC2]]
-										(leftResult(reform(order)), rightResult(right))
+										(leftResult(self.reform(order)), rightResult(right))
 									} else
 										fallback
 								else
 									fallback
+							else
+								fallback
 						}
 					}
 
 				override def emptyLabeled =
 					if (reform.mayAddNullRight) {
 						val forceEmpty = SQLAdaptation(".return(@~)", (_ :I |~ (K :~ L)) => @~)
-						(leftResult(thisExpression), //this cast can be removed by delegating this case to EmptyListing
+						(leftResult(self), //this cast can be removed by delegating this case to EmptyListing
 						 rightResult(forceEmpty(nullSQL).asInstanceOf[ConvertibleSQL[F2, S2, V2, EC2]]))
 					} else if (reform.mayExcludeLeft)
 						try {
 							val nullValue = LabeledEntry.this.nullValue
-							val forceNull = SQLAdaptation(".return(" + nullValue + ")", (_: @~) => nullValue)
-							(leftResult(forceNull(nullSQL)), rightResult(other))
+							val forceNull = SQLAdaptation(".return(" + nullValue + ")", forceNullValue)
+							(leftResult.convert(forceNull.convert(nullSQL)), rightResult(other))
 						} catch {
 							case e1 :NullPointerException => try {
 								fallback
@@ -1849,7 +1563,7 @@ object LabeledSQL {
 				{
 					implicit val listingResult = isListing.substituteCo[RightResult](rightResult)
 
-					//attempt to recreate a LabeledSQL by casting down the expressions obtained
+					//Attempt to recreate a LabeledSQL by casting down the expressions obtained
 					// by reforming init and last
 					def listing[G <: RowProduct, D >: Grouped <: Single, W <: Listing, A <: Label, Z]
 					           (i :SQLExpression[G, D, W], key :A, l :SQLExpression[G, D, Z]) =
@@ -1863,14 +1577,19 @@ object LabeledSQL {
 								throw new MismatchedExpressionsException(LabeledEntry.this, e,
 									"Reformed last expression " + l + " is neither a ColumnSQL nor a LabeledValueSQL."
 								)
-							case res => res
+							case Got(res) => res
 						}
+					def isUpcast(conversion :SQLTransformation[_, _]) =
+						conversion.isIdentity || conversion.isInstanceOf[Upcast[_, _]]
+
 					type LeftSplit[YI <: Listing, YL] =
 						(I sql_=> YI, L sql_=> YL, SQLTransformation[YI |~ (K :~ YL), U]#Into[leftResult.SQLResult])
 					type RightSplit[YI <: Listing, YL] =
 						(I2 sql_=> YI, L2 sql_=> YL, SQLTransformation[YI |~ (K :~ YL), U]#Into[rightResult.SQLResult])
 
-					(splitListingTransformation(leftResult), splitListingTransformation(listingResult)) match {
+					(splitListingTransformation[I, K, L, U](leftResult),
+						splitListingTransformation[I2, K2, L2, U](listingResult)
+					) match {
 						case (Lack, _) =>
 							throw new MismatchedExpressionsException(
 								self, other, "unsupported left conversion type " + leftResult + "."
@@ -1880,15 +1599,42 @@ object LabeledSQL {
 								self, other, "unsupported right conversion type " + rightResult + "."
 							)
 						//init and last are converted separately, no conversion applied on top of init |~ key :~ last
-						case (left :Opt[LeftSplit[Listing, Any]]@unchecked, right :Opt[RightSplit[Listing, Any]]@unchecked) =>
-	//					if left.get._3.isIdentity && right.get._3.isIdentity =>
-							implicit val (leftInitResult, leftLastResult, leftPost) = left.get
-							implicit val (rightInitResult, rightLastResult, rightPost) = right.get
-							val (leftLast, rightLast) = reform(self.last, e.last)
-							val (leftInit, rightInit) = reform(self.init, e.init)
+//						case (left :Opt[LeftSplit[Listing, Any]]@unchecked, right :Opt[RightSplit[Listing, Any]]@unchecked) =>
+//	//					if left.get._3.isIdentity && right.get._3.isIdentity =>
+////							implicit val (leftInitResult, leftLastResult, leftPost) = left.get
+////							implicit val (rightInitResult, rightLastResult, rightPost) = right.get
+//							val leftInitResult  = left.get._1
+//							val leftLastResult  = left.get._2
+//							val leftPost        = left.get._3
+//							val rightInitResult = right.get._1
+//							val rightLastResult = right.get._2
+//							val rightPost       = right.get._3
+						case (Got(leftInitResult :(I sql_=> Listing) @unchecked, leftLastResult :(L sql_=> Any) @unchecked,
+						      leftPost :SQLTransformation[Listing |~ (K :~ Any), U]#Into[leftResult.SQLResult] @unchecked),
+						      Got(rightInitResult :(I2 sql_=> Listing) @unchecked, rightLastResult :(L2 sql_=> Any) @unchecked,
+						      rightPost :SQLTransformation[Listing |~ (K2 :~ Any), U]#Into[rightResult.SQLResult]@unchecked))
+						/* This check approximates the condition that the input types of leftPost and rightPost are the same.
+						 * 1. We know the outputs are equal, so if the conversions are also equal, we assume the same for inputs.
+						 * 2. We know both expressions before conversions have Listing as value types, so if both
+						 *    conversions are upcasts/identities, then the conversions can be split into components
+						 *    for init and last. Function splitListingTransformation has already helpfully wrapped
+						 *    the expressions in suitable upcast conversions, which will at least generate more
+						 *    informative errors if we fail to convert value from one expression to the type in the other.
+						 * This is all with fingers crossed, but there is much more usefulness in the ability to
+						 * unify two records than providing strict guarantees about Scala type safety,
+						 * because if the only thing we need to do is convert it to SQL, without interchanging values
+						 * with the application, then it all doesn't matter anyway.
+						 */
+						if leftPost == rightPost || isUpcast(leftPost) && isUpcast(rightPost) =>
+							val (leftLast, rightLast) = reform(self.last, e.last)(
+								leftLastResult, rightLastResult, spelling
+							)
+							val (leftInit, rightInit) = reform(self.init, e.init)(
+								leftInitResult, rightInitResult, spelling
+							)
 							val leftReformed  = listing(leftInit, key, leftLast)
 							val rightReformed = listing(rightInit, e.lastKey, rightLast)
-							(leftPost(leftReformed), rightPost(rightReformed))
+							(leftPost.convert(leftReformed), rightPost.convert(rightReformed))
 					}
 				}
 			}
@@ -1995,9 +1741,9 @@ object LabeledSQL {
 		i match {
 			case listing :LabeledSQL[F, S, I] => l match {
 				case value :LabeledValueSQL[F, S, L] =>
-					Got(listing |~ :~[K](value))(new ValueOf(key))
+					Got((listing |~ :~[K](value))(new ValueOf(key)))
 				case value :ColumnSQL[F, S, L] =>
-					Got(listing |~ :~[K](value))(new ValueOf(key))
+					Got((listing |~ :~[K](value))(new ValueOf(key)))
 				case _ => Lack
 //					throw new MismatchedExpressionsException(LabeledEntry.this, e,
 //						"Reformed last expression " + l + " is neither a ColumnSQL nor a LabeledValueSQL."
@@ -2021,37 +1767,83 @@ object LabeledSQL {
 	{
 		type Result[Y] = SQLTransformation[Y, Z]#Into[conversion.SQLResult]
 		type Composed[Y] = (SQLTransformation[XI |~ (K :~ XL), Y], Result[Y])
+		def result[YI, YL](init :XI sql_=> YI, last :XL sql_=> YL, post :Result[YI |~ (K :~ YL)])
+				:Opt[(XI sql_=> YI, XL sql_=> YL, SQLTransformation[YI |~ (K :~ YL), Z]#Into[conversion.SQLResult])] =
+			Got((init, last, post))
 		conversion match {
 			case _ if conversion.isIdentity =>
-				Got(SQLConversion.toSelf[XI], SQLConversion.toSelf[XL], conversion)
+				result(SQLConversion.toSelf[XI], SQLConversion.toSelf[XL], conversion)
+//				Got((SQLConversion.toSelf[XI], SQLConversion.toSelf[XL], conversion :Result[XI |~ (K :~ XL)]))
+			case _ :Upcast[XI |~ (K :~ XL), Z] =>
+				result(upcastListing.castParams[XI, XI], upcastAny.castParams[XL, XL], conversion)
+//				Got((upcastListing.castParams[XI, XI], upcastAny.castParams[XL, XL], conversion :conversion.type))
+//				Got((SQLConversion.toSelf[XI], SQLConversion.toSelf[XL], conversion))
 			case chain :ConvertRecord[xi, xl, yi, yl, k] =>
-				Got(chain.init, chain.last, SQLConversion.toSelf.asInstanceOf[Result[yi |~ (k :~ yl)]])
+				Got((chain.init, chain.last, SQLConversion.toSelf.asInstanceOf[Result[yi |~ (k :~ yl)]]))
 			//if conversion is composed of only ConvertChain, we can split each and compose each item individually
 			case _ => SQLTransformation.Composition.unapply(conversion) match {
 				//a way of ensuring the intermediate existential types match and we can recompose
 				case composed :Opt[Composed[y]] if composed.isDefined =>
 					type Y = y
+//					val first  = composed.get._1
+					val second :Result[Y] = composed.get._2
 					type SplitFirst[YI <: Listing, YL, Y] =
 						(XI sql_=> YI, XL sql_=> YL, SQLTransformation[YI |~ (K :~ YL), Y])
 					splitListingTransformation(composed.get._1) match {
 						case splitFirst :Opt[SplitFirst[yi, yl, Y]] if splitFirst.isDefined =>
 							type YI = yi; type YL = yl
-							type SplitSecond[ZI, ZL] = (YI sql_=> ZI, YL sql_=> ZL, Result[ZI |~ (K :~ ZL)])
-							assert(splitFirst.get._3.isIdentity, splitFirst.get._3 + " is not identity")
-							splitListingTransformation(composed.get._2.asInstanceOf[Result[YI |~ (K :~ YL)]]) match {
-								case splitSecond :Opt[SplitSecond[zi, zl]] if splitSecond.isDefined =>
-									val initResult     = splitFirst.get._1 andThen splitSecond.get._1
-									val lastResult     = splitFirst.get._2 andThen splitSecond.get._2
-									val combinedResult = splitSecond.get._3
-									Got(initResult, lastResult, combinedResult)
-								case _ => Lack
+							implicitly[YI <:< Listing]
+//							val (firstInit, firstLast, firstPost) = splitFirst.get
+							val firstInit  :XI sql_=> YI = splitFirst.get._1
+							val firstLast  :XL sql_=> YL = splitFirst.get._2
+							val firstWhole :SQLTransformation[YI |~ (K:~YL), Y] = splitFirst.get._3
+							firstWhole match {
+								case conversion :SQLConversion[YI |~ (K:~YL), Y] if conversion.isIdentity =>
+									type SplitSecond[ZI, ZL] =
+										(YI sql_=> ZI, YL sql_=> ZL, SQLTransformation[ZI |~ (K :~ ZL), Z]#Into[second.SQLResult])
+									splitListingTransformation(firstWhole andThen second) match {
+										case splitSecond :Opt[SplitSecond[zi, zl]] if splitSecond.isDefined =>
+											val secondInit  :YI sql_=> zi = splitSecond.get._1
+											val secondLast  :YL sql_=> zl = splitSecond.get._2
+											val secondWhole :Result[zi |~ (K :~ zl)] = splitSecond.get._3
+											val initResult     = firstInit andThen secondInit
+											val lastResult     = firstLast andThen secondLast
+		//									Got((initResult, lastResult, combinedResult))
+											type ZI = Listing
+											result(initResult.castParam2[ZI], lastResult, secondWhole.castParam[ZI |~ (K :~ zl)])
+										case _ =>
+											//The compiler doesn't know that SQLResult is preserved  during composition
+											// because the functions were already composed in conversion to start with.
+											val whole = (firstWhole andThen second).asInstanceOf[Result[YI |~ (K:~YL)]]
+											result(firstInit, firstLast, whole)
+									}
+								/* Technically, if firstWhole is Upcast, then the second split might still
+										 * succeed. We can't just reuse the nice type checking code above, because
+										 * firstWhole andThen second would cause an infinite recursion, so we'd
+										 * need to cast the input type of second, and to a Listing in order to
+										 * call splitListingTransformation again, which we can't know if is true.
+										 * The current implementation will handle it, because the presence
+										 * of an Upcast makes the whole conversions irreversible anyway,
+										 * so spliting second :Upcast into init and last Upcast doesn't change
+										 * much for us. All those types in this function are more documentation
+										 * than anything else.
+										 */
+//								case conversion :SQLConversion[YI |~ (K:~YL), Y] if conversion.isUpcast =>
+								case _ =>
+									val whole = (firstWhole andThen second).asInstanceOf[Result[YI |~ (K :~ YL)]]
+									result(firstInit, firstLast, whole)
+
 							}
+//							assert(splitFirst.get._3.isIdentity, splitFirst.get._3 + " is not identity")
 						case _ => Lack
 					}
 				case _ => Lack
 			}
 		}
 	}
+
+	private val upcastListing = SQLConversion.supertype[Listing, Listing]
+	private val upcastAny     = SQLConversion.supertype[Any, Any]
 
 
 

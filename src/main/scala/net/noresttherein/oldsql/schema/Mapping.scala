@@ -887,6 +887,43 @@ trait Mapping extends MappingTemplate[TypedMapping, TypedColumn] { self =>
 		else
 			Nil
 
+	/* Todo: what we need:
+	 *   1. identical    - 'deep equals', obvious, universally useful.
+	 *   1. sameType     - (or same/compatible?) we can substitute one for another without causing any typing errors in the future:
+	 *                     same class, type parameters, in particular Subject, same column set,
+	 *                     but possibly different column names, buffs and whatever else. Same or different column order?
+	 *                     This is meant to be a fast check (unlike homomorphic...)
+	 *   1. equivalent   - (sameSQL?) same column sets, names, include/exclude buffs - same generated SQL.
+	 *                     May be a proxy. Has limited use though, only things like export components in a MappingFrame?
+	 *   1. isomorphic   - same column sets, same *effective* 'projecting' buffs, possibly different column names.
+	 *                     May be a deep proxy. Means 'type compatible in SQL'.
+	 *   1. homomorphic  - same column sets, possibly different buffs and column names, all export components in one
+	 *                     have an export component in the other. Used by proxies. Different column order?
+	 *   1  submetaOf    - (or extensionOf?) deep equals, but may have extra columns. Same order of shared columns,
+	 *                     new columns at the end? Guaranteed subtyping of Subjects.
+	 *   1. subtypeOf    - extending class, includes all the columns of the other, doesn't care about names, buffs -
+	 *                     like typeEquals.
+	 *   1. epimorphic   - homomorphic with extra columns.
+	 *   1. related      - share non empty subset of columns, obviously different buffs, order, name, no subtyping (proxies).
+	 *                     Basically just a way of declaratively informing that we can union select them.
+	 * Would be still useful to have a way to compare just column sets, with different mapping Subjects.
+	 * It is important to remember that buff equality is very tricky: some are simply incomparable (GeneratingBuff),
+	 * Some may have irrelevant info (constraints)?
+	 * And once we start adding programmatically 'include'/'exclude', there is no telling how they look.
+	 * What we need is meaningful comparison of SQLExpression and Clause, and we should start with semantically
+	 * defining those:
+	 *    1. SQL.equals      - deep equals, but uses eq/equals for Mappings
+	 *    1. SQL.equivalent  - deep equals, uses Mapping.equivalent. Same SQL a must.
+	 *    1. SQL.compatible  - same signature, i.e. the column types in a ResultSet. Mappings isomorphic.
+	 *    1. SQL.homomorphic - will equal after anchoring in the same clause (with all group by quirkiness).
+	 * In Clause, we mainly need equality, type compatibility (same mapping types) and whatever needed for SQL:
+	 *    1. Clause.equals      - Exact same relations (including alterations), SQL.equals for where/having/group by.
+	 *    1. Clause.equivalent  - Same SQL, whatever it takes.
+	 *    1. Clause.compatible  - nominal mappings of relations are sameType, isomorphic/homomorphic column sets
+	 *
+	 */
+
+
 	/** If a mapping `m1` is a submapping of a mapping `m2`, then
 	  *   1. `m1.Subject <:< m2.Subject`, and
 	  *   1. for every column of `m2` there is a column in `m1` of the same type, such that their extractors
@@ -2190,6 +2227,9 @@ object Mapping extends Rank1MappingImplicits {
 		  * and `original.original == original`. Typically, this is a domain model class (or an instance
 		  * directly created by the application for dynamically created mappings), unwrapped of all framework decorators.
 		  */
+		//Consider: renaming to nominal and make it official that for any stack of proxies, any transformations,
+		// it is the original from which we started, in particular
+		// ComponentSQL.{anchored, altered, export).original == ComponentSQL.mapping.
 		def original :Component[Subject] = refine
 
 		/** An identity extract for this very mapping. */

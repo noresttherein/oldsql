@@ -16,11 +16,11 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProj
 import net.noresttherein.oldsql.schema.bases.{BaseColumn, BaseMapping}
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.sql.ColumnSQL.{AnyColumnVisitor, SpecificColumnVisitor}
-import net.noresttherein.oldsql.sql.RowProduct.{As, Complete, ExpandedBy, GroundRow, JoinedMappings, NonEmptyRow, NoParams, ParamsRow, PartOf, ProperSubselectOf, TopRow}
+import net.noresttherein.oldsql.sql.RowProduct.{As, Complete, ExpandedBy, GroundRow, JoinedMappings, NonEmptyRow, NoParams, ParamsRow, PartOf, SubselectOf, TopRow}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{ConvertingTemplate, Grouped, Single, VariantGroundingTemplate}
 import net.noresttherein.oldsql.sql.StoredProcedure.Out
-import net.noresttherein.oldsql.sql.ast.{denullify, AdaptedSQL, AggregateSQL, ChainSQL, ChainTuple, ColumnLValueSQL, ColumnMappingSQL, ComparisonSQL, CompositeSQL, ConvertedSQL, EqualitySQL, HasNulls, HasRowShape, InequalitySQL, IsNull, LabeledSQL, LooseComponent, LValueSQL, MappingSQL, QuerySQL, SelectableSQL, SelectSQL, SeqSQL, SQLNull, SQLTerm}
+import net.noresttherein.oldsql.sql.ast.{denullify, AdaptedSQL, AggregateSQL, ChainSQL, ChainTuple, ColumnLValueSQL, ColumnMappingSQL, ComparisonSQL, CompositeSQL, ConvertedSQL, EqualitySQL, HasNulls, HasRowShape, InequalitySQL, IsNull, LabeledSQL, LooseComponent, LValueSQL, MappingSQL, NullEqualitySQL, NullInequalitySQL, QuerySQL, SelectableSQL, SelectSQL, SeqSQL, SQLNull, SQLTerm}
 import net.noresttherein.oldsql.sql.ast.ChainTuple.EmptyChain
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL.{CaseAnyComponent, CaseSpecificComponent}
@@ -174,20 +174,20 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
 	  * The argument value will be rendered as a parameter of the created [[java.sql.PreparedStatement PreparedStatement]],
 	  * but must be nevertheless known at this place.
-	  * @param value  a value of any type `X` such that `V` and `X` can be automatically promoted by the database
-	  *               to the same type `U` for the purpose of the comparison, and for which an implicit
-	  *               [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] exists.
-	  * @param compat a witness to the fact that the values of the two expressions can be automatically promoted
-	  *               to some unspecified type `U` for the purpose of the comparison by the database.
-	  *               Implicit values provided in its companion object depend on the existence of
-	  *               [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]]
-	  *               evidence for `V -> U` and `X -> U`.
-	  * @param form   an [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] used to set the value of the parameter
-	  *               in the `PreparedStatement` using this expression.
+	  * @param value A value of any type `X` such that `V` and `X` can be automatically promoted by the database
+	  *              to the same type `U` for the purpose of the comparison, and for which an implicit
+	  *              [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] exists.
+	  * @param unify A witness to the fact that the values of the two expressions can be automatically promoted
+	  *              to some unspecified type `U` for the purpose of the comparison by the database.
+	  *              Implicit values provided in its companion object depend on the existence of
+	  *              [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]]
+	  *              evidence for `V -> U` and `X -> U`.
+	  * @param form  An [[net.noresttherein.oldsql.schema.SQLForm SQLForm]] used to set the value of the parameter
+	  *              in the `PreparedStatement` using this expression.
 	  * @see [[net.noresttherein.oldsql.sql.ast.BoundParam]] the expression for ''bound'' SQL parameters.
 	  * @see [[net.noresttherein.oldsql.sql.ParamClause]] an ''unbound'' parameter introduced to the underlying `RowProduct`.
 	  */ //todo: a type class to avoid this huge overloading repetition with all related methods
-	def ==?[X](value :X)(implicit compat :Interoperable[V, X], form :SQLForm[X]) :ColumnSQL[F, S, Boolean] =
+	def ==?[X](value :X)(implicit unify :Interoperable[V, X], form :SQLForm[X]) :ColumnSQL[F, S, Boolean] =
 		this === value.? //todo: try to get rid of the form parameter
 
 	//consider: if we get rid of the null case and return EqualitySQL, then we can have an implicit conversion
@@ -199,13 +199,13 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * with this expression (or vice versa), an exception will be thrown. This can happen as the result of this call,
 	  * but typically will be delayed until rendering by an
 	  * [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-	  * @param that   another expression, which value type is comparable in the database with the value type
-	  *               of this expression.
-	  * @param compat a witness to the fact that the values of the two expressions can be automatically promoted
-	  *               to some unspecified type `U` for the purpose of the comparison by the database.
-	  *               Implicit values provided in its companion object depend on the existence of
-	  *               [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
-	  *               for `V -> U` and `X -> U`.
+	  * @param that  Another expression, which value type is comparable in the database with the value type
+	  *              of this expression.
+	  * @param unify A witness to the fact that the values of the two expressions can be automatically promoted
+	  *              to some unspecified type `U` for the purpose of the comparison by the database.
+	  *              Implicit values provided in its companion object depend on the existence of
+	  *              [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
+	  *              for `V -> U` and `X -> U`.
 	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]]
 	  *         literal, than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being the greatest lower bound of the bases
@@ -213,10 +213,10 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  *         of which is the intersection of the scopes of the two expressions.
 	  */
 	def ===[E <: F, O >: Grouped <: S, X]
-	       (that :SQLExpression[E, O, X])(implicit compat :Interoperable[V, X]) :ColumnSQL[E, O, Boolean] =
+	       (that :SQLExpression[E, O, X])(implicit unify :Interoperable[V, X]) :ColumnSQL[E, O, Boolean] =
 		that match {
 			case SQLNull() => SQLNull[Boolean]
-			case _ => EqualitySQL(compat.left(this), denullify(compat.right(that)))
+			case _ => EqualitySQL(unify.left(this), denullify(unify.right(that)))
 		}
 
 	/** An SQL expression comparing if this expression equals a given value. Multi-column expressions
@@ -230,7 +230,7 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * become a [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameter instead.
 	  * @param that   a Scala value of a type which can be promoted to the same type `U` as the value type
 	  *               of this expression. It will translate to an SQL literal.
-	  * @param compat a witness to the fact that the values of the two expressions can be automatically promoted
+	  * @param unify a witness to the fact that the values of the two expressions can be automatically promoted
 	  *               to some unspecified type `U` for the purpose of the comparison by the database.
 	  *               Implicit values provided in its companion object depend on the existence of
 	  *               [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
@@ -240,7 +240,7 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.==? ==?]]
 	  */
-	def ===[X](that :X)(implicit compat :Interoperable[V, X], form :SQLForm[X]) :ColumnSQL[F, S, Boolean] =
+	def ===[X](that :X)(implicit unify :Interoperable[V, X], form :SQLForm[X]) :ColumnSQL[F, S, Boolean] =
 		this === SQLTerm(that)
 
 	/** An SQL expression comparing the value of this expression with the value of a given relation component.
@@ -287,13 +287,13 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * with this expression (or vice versa), an exception will be thrown. This can happen as the result of this call,
 	  * but typically will be delayed until rendering by an
 	  * [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-	  * @param that     another expression, which value type is comparable in the database with the value type
-	  *                 of this expression.
-	  * @param compat   a witness to the fact that the values of the two expressions can be automatically promoted
-	  *                 to some unspecified type `U` for the purpose of the comparison by the database.
-	  *                 Implicit values provided in its companion object depend on the existence of
-	  *                 [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
-	  *                 for `V -> U` and `X -> U`.
+	  * @param that  Another expression, which value type is comparable in the database with the value type
+	  *              of this expression.
+	  * @param unify A witness to the fact that the values of the two expressions can be automatically promoted
+	  *              to some unspecified type `U` for the purpose of the comparison by the database.
+	  *              Implicit values provided in its companion object depend on the existence of
+	  *              [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
+	  *              for `V -> U` and `X -> U`.
 	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal,
 	  *         than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         a [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] being the greatest lower bound of the bases
@@ -301,10 +301,10 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  *         of which is the intersection of the scopes of the two expressions.
 	  */
 	def <>[E <: F, O >: Grouped <: S, X]
-	      (that :SQLExpression[E, O, X])(implicit compat :Interoperable[V, X]) :ColumnSQL[E, O, Boolean] =
+	      (that :SQLExpression[E, O, X])(implicit unify :Interoperable[V, X]) :ColumnSQL[E, O, Boolean] =
 		that match {
 			case SQLNull() => SQLNull[Boolean]
-			case _ => InequalitySQL(compat.left(this), denullify(compat.right(that)))
+			case _ => InequalitySQL(unify.left(this), denullify(unify.right(that)))
 		}
 
 	/** An SQL expression comparing if this expression is unequal to a given value. Multi-column expressions
@@ -312,18 +312,18 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * If the other expression cannot be represented by a compatible column set with this expression (or vice versa),
 	  * an exception will be thrown. This can happen as the result of this call, but typically will be delayed until
 	  * rendering by an [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-	  * @param that     a Scala value of a type which can be promoted to the same type `U` as the value type
-	  *                 of this expression. It will translate to an SQL literal.
-	  * @param compat   a witness to the fact that the values of the two expressions can be automatically promoted
-	  *                 to some unspecified type `U` for the purpose of the comparison by the database.
-	  *                 Implicit values provided in its companion object depend on the existence of
-	  *                 [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
-	  *                 for `V -> U` and `X -> U`.
+	  * @param that  A Scala value of a type which can be promoted to the same type `U` as the value type
+	  *              of this expression. It will translate to an SQL literal.
+	  * @param unify A witness to the fact that the values of the two expressions can be automatically promoted
+	  *              to some unspecified type `U` for the purpose of the comparison by the database.
+	  *              Implicit values provided in its companion object depend on the existence of
+	  *              [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
+	  *              for `V -> U` and `X -> U`.
 	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal
 	  *         oor `that == null`, than `SQLNull[Boolean]`. Otherwise an `SQLExpression` based on
 	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
 	  */
-	def <>[X](that :X)(implicit compat :Interoperable[V, X], form :SQLForm[X]) :ColumnSQL[F, S, Boolean] =
+	def <>[X](that :X)(implicit unify :Interoperable[V, X], form :SQLForm[X]) :ColumnSQL[F, S, Boolean] =
 		this <> SQLTerm(that)
 
 	/** An SQL expression comparing the value of this expression with another expression with `<=`.
@@ -332,14 +332,14 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * with this expression (or vice versa), an exception will be thrown. This can happen as the result of this call,
 	  * but typically will be delayed until rendering by an
 	  * [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-	  * @param that     another expression, which value type is comparable in the database with the value type
+	  * @param that     Another expression, which value type is comparable in the database with the value type
 	  *                 of this expression.
-	  * @param compat   a witness to the fact that the values of the two expressions can be automatically promoted
+	  * @param unify    A witness to the fact that the values of the two expressions can be automatically promoted
 	  *                 to some unspecified type `U` for the purpose of the comparison by the database.
 	  *                 Implicit values provided in its companion object depend on the existence of
 	  *                 [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
 	  *                 for `V -> U` and `X -> U`.
-	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
+	  * @param ordering A witness to the fact that the magnitudes of the type to which both operands are promoted to
 	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
 	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
 	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal,
@@ -350,11 +350,11 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  */
 	def <=[E <: F, O >: Grouped <: S, X, U]
 	      (that :SQLExpression[E, O, X])
-	      (implicit compat :Interoperable[V, X] { type Unified = U }, ordering :SQLOrdering[U])
+	      (implicit unify :Interoperable[V, X] { type Unified = U }, ordering :SQLOrdering[U])
 			:ColumnSQL[E, O, Boolean] =
 		that match {
 			case SQLNull() => SQLNull[Boolean]
-			case _ => ComparisonSQL(compat.left(this), ComparisonSQL.LTE, denullify(compat.right(that)))
+			case _ => ComparisonSQL(unify.left(this), ComparisonSQL.LTE, denullify(unify.right(that)))
 		}
 
 	/** An SQL expression comparing if this expression is less than or equal to a given value. Multi-column expressions
@@ -362,14 +362,14 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * If the other expression cannot be represented by a compatible column set with this expression (or vice versa),
 	  * an exception will be thrown. This can happen as the result of this call, but typically will be delayed until
 	  * rendering by an [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-	  * @param that   a Scala value of a type which can be promoted to the same type `U` as the value type
-	  *               of this expression. It will translate to an SQL literal.
-	  * @param compat   a witness to the fact that the values of the two expressions can be automatically promoted
+	  * @param that     A Scala value of a type which can be promoted to the same type `U` as the value type
+	  *                 of this expression. It will translate to an SQL literal.
+	  * @param unify    A witness to the fact that the values of the two expressions can be automatically promoted
 	  *                 to some unspecified type `U` for the purpose of the comparison by the database.
 	  *                 Implicit values provided in its companion object depend on the existence of
 	  *                 [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
 	  *                 for `V -> U` and `X -> U`.
-	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
+	  * @param ordering A witness to the fact that the magnitudes of the type to which both operands are promoted to
 	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
 	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
 	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal
@@ -377,7 +377,7 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
 	  */
 	def <=[X, U](that :X)
-	            (implicit compat :Interoperable[V, X] { type Unified = U }, form :SQLForm[X], ordering :SQLOrdering[U])
+	            (implicit unify :Interoperable[V, X] { type Unified = U }, form :SQLForm[X], ordering :SQLOrdering[U])
 			:ColumnSQL[F, S, Boolean] =
 		this <= SQLTerm(that)
 
@@ -387,14 +387,14 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * with this expression (or vice versa), an exception will be thrown. This can happen as the result of this call,
 	  * but typically will be delayed until rendering by an
 	  * [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-	  * @param that     another expression, which value type is comparable in the database with the value type
+	  * @param that     Another expression, which value type is comparable in the database with the value type
 	  *                 of this expression.
-	  * @param compat   a witness to the fact that the values of the two expressions can be automatically promoted
+	  * @param unify    A witness to the fact that the values of the two expressions can be automatically promoted
 	  *                 to some unspecified type `U` for the purpose of the comparison by the database.
 	  *                 Implicit values provided in its companion object depend on the existence of
 	  *                 [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
 	  *                 for `V -> U` and `X -> U`.
-	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
+	  * @param ordering A witness to the fact that the magnitudes of the type to which both operands are promoted to
 	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
 	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
 	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal,
@@ -405,11 +405,11 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  */
 	def <[E <: F, O >: Grouped <: S, X, U]
 	     (that :SQLExpression[E, O, X])
-	     (implicit compat :Interoperable[V, X] { type Unified = U }, ordering :SQLOrdering[U])
+	     (implicit unify :Interoperable[V, X] { type Unified = U }, ordering :SQLOrdering[U])
 			:ColumnSQL[E, O, Boolean] =
 		that match {
 			case SQLNull() => SQLNull[Boolean]
-			case _ => ComparisonSQL(compat.left(this), ComparisonSQL.LT, denullify(compat.right(that)))
+			case _ => ComparisonSQL(unify.left(this), ComparisonSQL.LT, denullify(unify.right(that)))
 		}
 
 	/** An SQL expression comparing if this expression is less than a given value. Multi-column expressions
@@ -417,14 +417,14 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * If the other expression cannot be represented by a compatible column set with this expression (or vice versa),
 	  * an exception will be thrown. This can happen as the result of this call, but typically will be delayed until
 	  * rendering by an [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-	  * @param that     a Scala value of a type which can be promoted to the same type `U` as the value type
+	  * @param that     A Scala value of a type which can be promoted to the same type `U` as the value type
 	  *                 of this expression. It will translate to an SQL literal.
-	  * @param compat   a witness to the fact that the values of the two expressions can be automatically promoted
+	  * @param unify    A witness to the fact that the values of the two expressions can be automatically promoted
 	  *                 to some unspecified type `U` for the purpose of the comparison by the database.
 	  *                 Implicit values provided in its companion object depend on the existence of
 	  *                 [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
 	  *                 for `V -> U` and `X -> U`.
-	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
+	  * @param ordering A witness to the fact that the magnitudes of the type to which both operands are promoted to
 	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
 	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
 	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal
@@ -432,7 +432,7 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
 	  */
 	def <[X, U](that :X)
-	           (implicit form :SQLForm[X], compat :Interoperable[V, X] { type Unified = U }, ordering :SQLOrdering[U])
+	           (implicit form :SQLForm[X], unify :Interoperable[V, X] { type Unified = U }, ordering :SQLOrdering[U])
 			:ColumnSQL[F, S, Boolean] =
 		this < SQLTerm(that)
 
@@ -442,14 +442,14 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * with this expression (or vice versa), an exception will be thrown. This can happen as the result of this call,
 	  * but typically will be delayed until rendering by an
 	  * [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-	  * @param that     another expression, which value type is comparable in the database with the value type
+	  * @param that     Another expression, which value type is comparable in the database with the value type
 	  *                 of this expression.
-	  * @param compat   a witness to the fact that the values of the two expressions can be automatically promoted
+	  * @param unify    A witness to the fact that the values of the two expressions can be automatically promoted
 	  *                 to some unspecified type `U` for the purpose of the comparison by the database.
 	  *                 Implicit values provided in its companion object depend on the existence of
 	  *                 [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
 	  *                 for `V -> U` and `X -> U`.
-	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
+	  * @param ordering A witness to the fact that the magnitudes of the type to which both operands are promoted to
 	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
 	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
 	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal,
@@ -460,11 +460,11 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  */
 	def >=[E <: F, O >: Grouped <: S, X, U]
 	      (that :SQLExpression[E, O, X])
-	      (implicit compat :Interoperable[V, X] { type Unified = U }, ordering :SQLOrdering[U])
+	      (implicit unify :Interoperable[V, X] { type Unified = U }, ordering :SQLOrdering[U])
 			:ColumnSQL[E, O, Boolean] =
 		that match {
 			case SQLNull() => SQLNull[Boolean]
-			case _ => ComparisonSQL(compat.left(this), ComparisonSQL.GTE, denullify(compat.right(that)))
+			case _ => ComparisonSQL(unify.left(this), ComparisonSQL.GTE, denullify(unify.right(that)))
 		}
 
 	/** An SQL expression comparing if this expression is greater than or equal to a given value.
@@ -473,14 +473,14 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * with this expression (or vice versa), an exception will be thrown. This can happen as the result of this call,
 	  * but typically will be delayed until rendering by an
 	  * [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-	  * @param that     a Scala value of a type which can be promoted to the same type `U` as the value type
+	  * @param that     A Scala value of a type which can be promoted to the same type `U` as the value type
 	  *                 of this expression. It will translate to an SQL literal.
-	  * @param compat   a witness to the fact that the values of the two expressions can be automatically promoted
+	  * @param unify    A witness to the fact that the values of the two expressions can be automatically promoted
 	  *                 to some unspecified type `U` for the purpose of the comparison by the database.
 	  *                 Implicit values provided in its companion object depend on the existence of
 	  *                 [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
 	  *                 for `V -> U` and `X -> U`.
-	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
+	  * @param ordering A witness to the fact that the magnitudes of the type to which both operands are promoted to
 	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
 	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
 	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal
@@ -488,7 +488,7 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
 	  */
 	def >=[X, U](that :X)
-	            (implicit compat :Interoperable[V, X] { type Unified = U }, form :SQLForm[X], ordering :SQLOrdering[U])
+	            (implicit unify :Interoperable[V, X] { type Unified = U }, form :SQLForm[X], ordering :SQLOrdering[U])
 			:ColumnSQL[F, S, Boolean] =
 		this >= SQLTerm(that)
 
@@ -498,14 +498,14 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * with this expression (or vice versa), an exception will be thrown. This can happen as the result of this call,
 	  * but typically will be delayed until rendering by an
 	  * [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-	  * @param that     another expression, which value type is comparable in the database with the value type
+	  * @param that     Another expression, which value type is comparable in the database with the value type
 	  *                 of this expression.
-	  * @param compat   a witness to the fact that the values of the two expressions can be automatically promoted
+	  * @param unify    A witness to the fact that the values of the two expressions can be automatically promoted
 	  *                 to some unspecified type `U` for the purpose of the comparison by the database.
 	  *                 Implicit values provided in its companion object depend on the existence of
 	  *                 [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
 	  *                 for `V -> U` and `X -> U`.
-	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
+	  * @param ordering A witness to the fact that the magnitudes of the type to which both operands are promoted to
 	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
 	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
 	  * @return if either `this` or `that` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal,
@@ -516,11 +516,11 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  */
 	def >[E <: F, O >: Grouped <: S, X, U]
 	     (that :SQLExpression[E, O, X])
-	     (implicit compat :Interoperable[V, X] { type Unified = U }, ordering :SQLOrdering[U])
+	     (implicit unify :Interoperable[V, X] { type Unified = U }, ordering :SQLOrdering[U])
 			:ColumnSQL[E, O, Boolean] =
 		that match {
 			case SQLNull() => SQLNull[Boolean]
-			case _ => ComparisonSQL(compat.left(this), ComparisonSQL.GT, denullify(compat.right(that)))
+			case _ => ComparisonSQL(unify.left(this), ComparisonSQL.GT, denullify(unify.right(that)))
 		}
 
 	/** An SQL expression comparing if this expression is greater than a given value. Multi-column expressions
@@ -529,14 +529,14 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * an exception will be thrown. This can happen as the result of this call, but typically will be delayed until
 	  * rendering by an
 	  * [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-	  * @param that     a Scala value of a type which can be promoted to the same type `U` as the value type
+	  * @param that     A Scala value of a type which can be promoted to the same type `U` as the value type
 	  *                 of this expression. It will translate to an SQL literal.
-	  * @param compat   a witness to the fact that the values of the two expressions can be automatically promoted
+	  * @param unify    A witness to the fact that the values of the two expressions can be automatically promoted
 	  *                 to some unspecified type `U` for the purpose of the comparison by the database.
 	  *                 Implicit values provided in its companion object depend on the existence of
 	  *                 [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
 	  *                 for `V -> U` and `X -> U`.
-	  * @param ordering a witness to the fact that the magnitudes of the type to which both operands are promoted to
+	  * @param ordering A witness to the fact that the magnitudes of the type to which both operands are promoted to
 	  *                 are comparable in SQL. Implicit values exist for built in database types, they can also be
 	  *                 used to inject the relation on a preexisting type to an arbitrary Scala type.
 	  * @return If either `this` is the SQL [[net.noresttherein.oldsql.sql.ast.SQLNull SQLNull]] literal
@@ -544,7 +544,7 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  *         the same [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] as this expression.
 	  */
 	def >[X, U](that :X)
-	           (implicit compat :Interoperable[V, X] { type Unified = U }, form :SQLForm[X], ordering :SQLOrdering[U])
+	           (implicit unify :Interoperable[V, X] { type Unified = U }, form :SQLForm[X], ordering :SQLOrdering[U])
 			:ColumnSQL[F, S, Boolean] =
 		this > SQLTerm(that)
 
@@ -555,18 +555,22 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * with this expression (or vice versa), an exception will be thrown. This can happen as the result of this call,
 	  * but typically will be delayed until rendering by an
 	  * [[net.noresttherein.oldsql.sql.SQLDialect SQLDialect]]/[[net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling SQLSpelling]].
-	  * @param that   another expression, whose value type is comparable in the database with the value type
-	  *               of this expression.
-	  * @param compat a witness to the fact that the values of the two expressions can be automatically promoted
-	  *               to some unspecified type `U` for the purpose of the comparison by the database.
-	  *               Implicit values provided in its companion object depend on the existence of
-	  *               [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
-	  *               for `V -> U` and `X -> U`.
+	  * @param that  Another expression, whose value type is comparable in the database with the value type
+	  *              of this expression.
+	  * @param unify A witness to the fact that the values of the two expressions can be automatically promoted
+	  *              to some unspecified type `U` for the purpose of the comparison by the database.
+	  *              Implicit values provided in its companion object depend on the existence of
+	  *              [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]] evidence
+	  *              for `V -> U` and `X -> U`.
 	  * @return An `SQLExpression` equivalent to `this === that || this.isNull && that.isNull`
-	  */ //fixme: this works properly only for columns, as isNull checks if all columns are null
+	  */
 	def nullEq[E <: F, O >: Grouped <: S, X]
-	          (that :SQLExpression[E, O, X])(implicit compat :V Interoperable X) :SQLBoolean[F, S] =
-		this === that || isNull && that.isNull
+	          (that :SQLExpression[E, O, X])(implicit unify :V Interoperable X) :SQLBoolean[F, S] =
+		NullEqualitySQL(unify.left(this), unify.right(denullify(that)))
+
+	def nullNeq[E <: F, O >: Grouped <: S, X]
+	           (that :SQLExpression[E, O, X])(implicit unify :V Interoperable X) :SQLBoolean[F, S] =
+		NullInequalitySQL(unify.left(this), unify.right(denullify(that)))
 
 	/** An SQL expression for singleton [[net.noresttherein.oldsql.collection.Chain Chain]] (tuple)
 	  * containing this expression
@@ -658,7 +662,7 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 				s"Cannot use a parameterized clause as a basis for select $this: $from."
 			)
 		else if (from.isSubselect) {
-			subselectFrom(from.asInstanceOf[ProperSubselectOf[from.type, NonEmptyRow]]).asInstanceOf[SelectSQL[from.Base, V]]
+			subselectFrom[NonEmptyRow](from.asInstanceOf[F with SubselectOf[NonEmptyRow]]).asInstanceOf[SelectSQL[from.Base, V]]
 		} else
 			topSelectFrom(from.asInstanceOf[Complete[F with GroundRow]])
 
@@ -695,12 +699,20 @@ trait SQLExpression[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * is present for the expression type, which restricts its arguments only to selectable expressions
 	  * and specifies the appropriate return type.
 	  * @see [[net.noresttherein.oldsql.sql.SQLExpression.selectFrom]]
-	  */
+	  */ //we really want to use SubselectOf but it is volatile
 	@throws[UnsupportedOperationException]("if this expression cannot be used as a complete ''select'' clause, " +
 	                                       "which is default for all classes which do not override this method.")
-	def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectSQL[B, V] =
-		SelectSQL.subselect[B, from.type, V](from, this)
+	def subselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B]) :SubselectSQL[B, V] =
+		SelectSQL.subselect[B, F with SubselectOf[B], V](from, this)
+
+//	def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectSQL[B, V] =
+//		SelectSQL.subselect[B, from.type, V](from, this)
 //		throw new UnsupportedOperationException("Expression " + this + " cannot be used as a select clause.")
+
+	def newSubselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B]) :SubselectSQL[B, V] = {
+		implicitly[(F { type Implicit = Base; type Base >: B <: RowProduct; type DefineBase[+I <: RowProduct] = I }) <:< SubselectOf[B]]
+		SelectSQL.subselect[B, F with SubselectOf[B], V](from, this)
+	}
 
 	/** Creates an parameterized SQL ''select'' statement with this expression as its ''select'' clause.
 	  * The ''from'' and ''where'' clauses are defined by this argument, while the ''select'' clause consists
@@ -1453,7 +1465,14 @@ object SQLExpression {
 
 		/** An identity conversion designed to improve type inference where a `ConvertibleSQL` is expected. */
 		@inline final def toConvertibleSQL :EC[V] = this
-//		def upcast[X](implicit ev :V <:< X) :SQLExpression[F, S, X] = this.asInstanceOf[SQLExpression[F, S, X]]
+
+		/** Converts this expression to an expression of value type being a supertype of this expression's value type.
+		  * This conversion naturally is not, in general, reversible. Therefore care should be taken in order
+		  * to ensure that the resulting expression occurs only in covariant position (i.e, it's value might be selected,
+		  * but it cannot be written).
+		  */
+		@throws[UnsupportedOperationException]("if this expression is a BoundParam.")
+		def upcast[X](implicit ev :V <:< X, tag :ClassTag[V]) :EC[X] = to(SQLConversion.supertype[V, X])
 
 		/** Represents this expression as one of a, narrower in some sense, type `X`.
 		  * This is a reverse of promoting an expression to greater precision/a wider type, as allowed by
@@ -1912,8 +1931,8 @@ object SQLExpression {
 			protected type Left           = LR[F1, S1, EC[U]]
 			protected type Right          = RR[F2, S2, EC2[U]]
 			protected type Result         = (LR[F1, S1, EC[U]], RR[F2, S2, EC2[U]])
-			protected type LeftResult[X]  = SQLTransformation[X, V]#Into[LR]
-			protected type RightResult[X] = SQLTransformation[X, V2]#Into[RR]
+			protected type LeftResult[X]  = SQLTransformation[X, U]#Into[LR]
+			protected type RightResult[X] = SQLTransformation[X, U]#Into[RR]
 			@inline protected final def left    :LR[F1, S1, EC[U]]  = leftResult(self :ConvertibleSQL[F1, S1, V, EC])
 			@inline protected final def right   :RR[F2, S2, EC2[U]] = rightResult(other)
 			@inline protected final def mayPass :Boolean = passCount.mayPass
@@ -2180,8 +2199,6 @@ object SQLExpression {
 		                   (base :E)(implicit expansion :U ExpandedBy E, isSingle :Single <:< Single) :Same =
 			this
 	}
-
-
 
 
 	implicit class ChainSQLExpressionExtension[F <: RowProduct, S >: Grouped <: Single, T <: Chain]
@@ -2521,16 +2538,16 @@ object SQLExpression {
 /*
 	object SQLShape {
 		def apply[X, Y, Z](left :SQLLayout[X], right :SQLLayout[Y])
-		                  (implicit compat :SQLTypeUnification[X, Y, Z], spelling :SQLSpelling) :SQLShape[Z] =
+		                  (implicit unify :SQLTypeUnification[X, Y, Z], spelling :SQLSpelling) :SQLShape[Z] =
 			(left, right) match {
-				case (l :ComponentLValueSQL.Cast[Nothing, X] @unchecked, _) => l.to(compat.left)
-				case (_, r :ComponentLValueSQL.Cast[Nothing, Y] @unchecked) => r.to(compat.right)
-				case (l :MappingSQL.Cast[Nothing, X] @unchecked, _)         => l.to(compat.left)
-				case (_, r :MappingSQL.Cast[Nothing, Y] @unchecked)         => r.to(compat.right)
-				case (l :ColumnSQL[Nothing, _, X] @unchecked, _)            => l.to(compat.left)
-				case (_, r :ColumnSQL[Nothing, _, Y] @unchecked)            => r.to(compat.right)
-				case (l :CompositeSQL[Nothing, _, X] @unchecked, _)         => l.to(compat.left)
-				case (_, r :CompositeSQL[Nothing, _, Y] @unchecked)         => r.to(compat.right)
+				case (l :ComponentLValueSQL.Cast[Nothing, X] @unchecked, _) => l.to(unify.left)
+				case (_, r :ComponentLValueSQL.Cast[Nothing, Y] @unchecked) => r.to(unify.right)
+				case (l :MappingSQL.Cast[Nothing, X] @unchecked, _)         => l.to(unify.left)
+				case (_, r :MappingSQL.Cast[Nothing, Y] @unchecked)         => r.to(unify.right)
+				case (l :ColumnSQL[Nothing, _, X] @unchecked, _)            => l.to(unify.left)
+				case (_, r :ColumnSQL[Nothing, _, Y] @unchecked)            => r.to(unify.right)
+				case (l :CompositeSQL[Nothing, _, X] @unchecked, _)         => l.to(unify.left)
+				case (_, r :CompositeSQL[Nothing, _, Y] @unchecked)         => r.to(unify.right)
 				case (l :AlignedExpression[Nothing, _, X] @unchecked,
 				      r :AlignedExpression[Nothing, _, V]@unchecked) =>
 					new AlignedExpression(mergeLayouts(l.value, r.value), l.alignment)
@@ -2538,25 +2555,25 @@ object SQLExpression {
 					new AlignedExpression(mergeLayouts(l.value, right), l.alignment)
 				case (_, r :AlignedExpression[Nothing, _, V]@unchecked) =>
 					new AlignedExpression(mergeLayouts(left, r.value), r.alignment)
-				case _ => left.to(compat.left)
+				case _ => left.to(unify.left)
 			}
 
 		(left, right) match {
-				case (_ :ComponentLValueSQL.*, _) => left.to(compat.left)
-				case (_, _ :ComponentLValueSQL.*) => right.to(compat.right)
-				case (_ :MappingSQL.*, _) => left.to(compat.left)
-				case (_, _ :MappingSQL.*) => right.to(compat.right)
-				case (_ :ColumnTerm[_], _ :ColumnSQL[_, _, _]) => right.to(compat.right)
-				case (_ :ColumnSQL[_, _, _], _ :ColumnSQL[_, _, _]) => left.to(compat.left)
+				case (_ :ComponentLValueSQL.*, _) => left.to(unify.left)
+				case (_, _ :ComponentLValueSQL.*) => right.to(unify.right)
+				case (_ :MappingSQL.*, _) => left.to(unify.left)
+				case (_, _ :MappingSQL.*) => right.to(unify.right)
+				case (_ :ColumnTerm[_], _ :ColumnSQL[_, _, _]) => right.to(unify.right)
+				case (_ :ColumnSQL[_, _, _], _ :ColumnSQL[_, _, _]) => left.to(unify.left)
 				case (QuerySQL(query, equiv), _) =>
 					def lift[A](equiv :X =:= Rows[A]) = {
 						val ident = equiv.substituteContra[({ type L[V] = Lift[Rows[A], V] })#L](Lift.self)
-						Lift.toRow[A] andThen ident andThen compat.left vs compat.right
+						Lift.toRow[A] andThen ident andThen unify.left vs unify.right
 					}
 					SQLLayout(query.selectClause, right)(lift(equiv), spelling)
-				case (_, _ :QuerySQL[_, _]) => SQLLayout(right, left)(compat.swap, spelling)
-				case (_ :SQLTerm[_], _) => right.to(compat.right)
-				case (_, _ :SQLTerm[_]) => left.to(compat.left)
+				case (_, _ :QuerySQL[_, _]) => SQLLayout(right, left)(unify.swap, spelling)
+				case (_ :SQLTerm[_], _) => right.to(unify.right)
+				case (_, _ :SQLTerm[_]) => left.to(unify.left)
 				case (l :CompositeSQL[_, _, X], r :CompositeSQL[_, _, Y]) =>
 					???
 				case _ => ???

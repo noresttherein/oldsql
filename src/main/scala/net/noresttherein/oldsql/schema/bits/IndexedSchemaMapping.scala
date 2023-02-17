@@ -165,7 +165,7 @@ object IndexedMappingSchema {
 		def comp[K <: Label, T, MV <: Chain, MC <: Chain](label :K, component: |-|[T, MV, MC], value :S =?> T)
 		                                                 (implicit unique :UniqueKey[V, K])
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
-			comp(component labeled[K] label, value)
+			comp(component labeled (label :K), value)
 
 		/** Appends the given component to this schema.
 		  * @param component a labeled `SchemaMapping` of any origin type to add as the component.
@@ -255,7 +255,7 @@ object IndexedMappingSchema {
 		                                                 (implicit unique :UniqueKey[V, K])
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
 		{
-			val labeled = component labeled[K] label
+			val labeled = component labeled (label :K)
 			append(labeled, MappingExtract.req(labeled.withOrigin[O])(value))
 		}
 
@@ -363,7 +363,7 @@ object IndexedMappingSchema {
 		                                                    (implicit unique :UniqueKey[V, K])
 				:ExtensibleIndexedSchema[S, V |~ (K :~ T), C ~ @|-|[K, T, MV, MC], O] =
 		{
-			val labeled = component labeled[K] label
+			val labeled = component labeled (label :K)
 			append(labeled, MappingExtract.opt(labeled.withOrigin[O])(value))
 		}
 

@@ -595,6 +595,7 @@ object ColumnReadForm {
 	  * Note that it, being a column form, still represents a single column in the result set,
 	  * unlike [[net.noresttherein.oldsql.schema.SQLReadForm.none SQLReadForm.none]] which, by default, consists
 	  * of zero columns. As such, it only suppresses a present value rather than excludes the column from the schema.
+	  * The [[net.noresttherein.oldsql.schema.forms.UnspecifiedColumnForm.sqlType sqlType]] of the form is `JDBCType.NULL`.
 	  */ //a method rather than a val because when combining <> with a write form we must provide the type for the compiler
 	def none[T] :ColumnReadForm[T] = noneForm
 

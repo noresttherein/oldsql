@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.model
 
 import java.{lang => j}
 
+import scala.annotation.showAsInfix
+
 import net.noresttherein.oldsql.collection.{Chain, Opt}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
@@ -23,8 +25,10 @@ object types {
 
 	final val ValueTypes = new Specializable.Group(Byte, Short, Int, Long, Char, Float, Double, Boolean)
 
+	@showAsInfix
 	abstract class <%<[S, T] extends (S => T) with Serializable
 
+	@showAsInfix
 	abstract class =%=[S, T] extends (S <%< T) {
 		def apply(left :S) :T = right(left)
 		def right(left :S) :T
@@ -110,15 +114,15 @@ object types {
 
 		private def standard[V](name :String) :LiteralSupport[V] = new StandardLiteral[V](name)
 
-		implicit val ForByte = standard[Byte]("Byte")
-		implicit val ForShort = standard[Short]("Short")
-		implicit val ForInt = standard[Int]("Int")
-		implicit val ForLong = standard[Long]("Long")
-		implicit val ForFloat = standard[Float]("Float")
-		implicit val ForDouble = standard[Double]("Double")
-		implicit val ForChar = standard[Char]("Char")
-		implicit val ForBoolean = standard[Boolean]("Boolean")
-		implicit val ForString = standard[String]("String")
+		implicit val ForByte    :LiteralSupport[Byte] = standard[Byte]("Byte")
+		implicit val ForShort   :LiteralSupport[Short] = standard[Short]("Short")
+		implicit val ForInt     :LiteralSupport[Int] = standard[Int]("Int")
+		implicit val ForLong    :LiteralSupport[Long] = standard[Long]("Long")
+		implicit val ForFloat   :LiteralSupport[Float] = standard[Float]("Float")
+		implicit val ForDouble  :LiteralSupport[Double] = standard[Double]("Double")
+		implicit val ForChar    :LiteralSupport[Char] = standard[Char]("Char")
+		implicit val ForBoolean :LiteralSupport[Boolean] = standard[Boolean]("Boolean")
+		implicit val ForString  :LiteralSupport[String] = standard[String]("String")
 
 		implicit def ForOption[T](some :LiteralSupport[T]) :LiteralSupport[Option[T]] =
 			standard("Option[" + some + "]")

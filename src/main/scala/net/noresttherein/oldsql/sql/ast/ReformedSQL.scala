@@ -71,8 +71,11 @@ final class RearrangedSQL[-F <: RowProduct, -S >: Grouped <: Single, V]
 	val transformation :SQLTransformation[V, V] =
 		new ArbitraryTransformation[V, V] with SQLDecoration[V] {
 			override def apply[C <: RowProduct, A >: Grouped <: Single, E[v] <: ConvertibleSQL[C, A, v, E]]
-			                  (expr :ConvertibleSQL[C, A, V, E]) =
-				copy(expr)
+			                  (expr :ConvertingTemplate[C, A, V, E]) =
+				copy(denullify(expr))
+//			override def apply[C <: RowProduct, A >: Grouped <: Single, E[v] <: ConvertibleSQL[C, A, v, E]]
+//			                  (expr :ConvertibleSQL[C, A, V, E]) =
+//				copy(expr)
 			override def applyString(arg :String) = order + "(" + arg + ")"
 		}
 

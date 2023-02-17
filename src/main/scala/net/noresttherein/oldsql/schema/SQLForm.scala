@@ -874,8 +874,10 @@ object SQLForm {
 	  * Note that this is a ''SAM'' type, requiring only [[net.noresttherein.oldsql.schema.SQLForm.NullValue.value value]]
 	  * method to be implemented, and as such any literal `Function0[T]` expression `() => T` can be converted
 	  * to a `NullValue` implementation when used as an argument to a method expecting `NullValue[T]`.
-	  * All implementaations must be thread safe.
+	  * All implementations must be thread safe.
 	  */ //todo: move to schema; Mapping uses it, too
+	//todo: create a new type class ZeroValue/InitValue/DefaultValue which will serve as a technical,
+	// not domain-specific null value (i.e, real 0, null, etc).
 	@implicitNotFound("I do not know how to handle null values for ${T}: missing implicit NullValue[${T}].\n" +
 	                  "You can use one of the values provided in the companion object for a syntactically scoped " +
 	                  "implicit definition or import the default values from SQLForm.NotNull.Defaults.")
@@ -1021,6 +1023,11 @@ object SQLForm {
 		  * an expression which throws an exception or references a yet not initialized value.
 		  */
 		def eval[T](whenNull: => T) :NullValue[T] = new NullEval[T](() => whenNull)
+
+		/** The same as [[net.noresttherein.oldsql.schema.SQLForm.NullValue.eval eval]], but allows passing
+		  * a custom implementation of `Function0[T]` and equal any other instance using an equal generator.
+		  */
+		def generate[T](whenNull: () => T) :NullValue[T] = new NullEval[T](whenNull)
 
 		/** Create a new instance which evaluates the given expression each time its `value` method is called.
 		  * While returning different values for different calls is strongly discouraged, this allows to provide
@@ -1471,7 +1478,7 @@ object SQLForm {
 
 	/** A form with equality defined as `name` equality only.
 	  * Resets the implementations of form proxy factory methods which any class mixing in this trait might
-	  * have overriden with dedicated implementations back to their default implementations from `SQLForm`
+	  * have overridden with dedicated implementations back to their default implementations from `SQLForm`
 	  * in order to preserve a reference to this form and thus name-based, rather than property-based equality
 	  * of the created forms.
 	  */

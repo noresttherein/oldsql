@@ -15,13 +15,13 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.sql
 import net.noresttherein.oldsql.sql.DecoratedRow.ExpandingDecorator
-import net.noresttherein.oldsql.sql.Expanded.NonSubselect
+import net.noresttherein.oldsql.sql.Expanded.{ExpandedDecomposition, NonSubselect}
 import net.noresttherein.oldsql.sql.FromSome.GroundFromSome
 import net.noresttherein.oldsql.sql.RowProduct.{As, ExpandedBy, GroundRow, NonEmptyRow, ParamlessRow, PartOf, PrefixOf, RowProductTemplate}
 import net.noresttherein.oldsql.sql.SQLBoolean.True
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling.GroupingSpellingContext
-import net.noresttherein.oldsql.sql.SQLExpression.{Single, Grouped}
+import net.noresttherein.oldsql.sql.SQLExpression.{Grouped, Single}
 import net.noresttherein.oldsql.sql.ast.{ChainTuple, ColumnMappingSQL, ComponentSQL, GenericColumnComponentSQL, JoinedParam, JoinedRelation, RelationSQL, SelectAs, SelectColumn, SelectColumnAs, SelectSQL, TableSQL}
 import net.noresttherein.oldsql.sql.ast.TableSQL.LastTable
 import net.noresttherein.oldsql.sql.mechanics.{CanSelect, GroupedUnder, LastTableOf, OuterClauseOf, RelationCount, RelationOffset, RowProductVisitor, SpelledSQL}
@@ -340,7 +340,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * accepts a preceding clause type `F` and is at the same time its generalized form, replaces `F`
 	  * with `this.<prefix>.Complete`, where `<prefix> :F` is the corresponding property.
 	  * For example, given a `join :L `[[net.noresttherein.oldsql.sql.Join Join]]`R`, the type will be be defined
-	  * as `join.Complete =:= join.left.Complete Join R`. The recursion terminates with `From`:
+	  * as `join.Complete =:= join.GeneralizedJoin[join.left.Complete, R]`. The recursion terminates with `From`:
 	  * `From[T]#Complete = From[T]` (or, optionally, [[net.noresttherein.oldsql.sql.Dual Dual]]: `Dual#Complete = Dual`.
 	  *
 	  * This type is very closely related to [[net.noresttherein.oldsql.sql.RowProduct!.Generalized Generalized]]:
@@ -774,6 +774,20 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	def fullTableStack[E <: RowProduct]
 	                  (target :E)(implicit expansion :Generalized ExpandedBy E) :LazyList[RelationSQL.from[E]#__]
 
+	/* Todo: we have a lot of related types to rename here:
+	 *    1. this.JoinedWith -> JoinTo, JoinWith??? a good name, because it applies both to the join kind and the joined clause, but great for PartOf
+	 *    2. this.SelectedFrom -> GroundedIn, GroundIn
+	 *    3. this.DirectSubselect -> SubselectClause, GroundedClause. Or we could just have a common name for it and RowProduct.SubselectRow, not such a bad idea, really, as it
+	 *    4. this.SubselectSome -> SubselectFromClause? (SubselectFrom is bad as it suggests a type argument)
+	 *    5. this.FromTable -> ok
+	 *    6. this.FromSubselect (= that.AsSubselectOf) -> ok
+	 *    7. RowProduct.SubselectRow -> DependentClause
+	 *    8. FromClause.Expand -> remove
+	 *    9. FromClause.JoinWith -> MultiJoin
+	 *   10. DependantOf -> (Dependant may be a weird choice, but 'Of' suffix creates a parallel to SubselectOf)
+	 *   11. PartOf -> JoinedWith (doesn't really suggest the direction of the relation, but at least its purpose is clear)
+	 *   12. ExpandedBy -> ExpandedBy
+	 */
 	/** A join of relations from the clause `P` with relations of this clause. This is the type resulting
 	  * from substituting `Dual` in this type's signature with `P`, that is appending all mappings from this clause
 	  * in order to `P`, using the same join kinds. The join type `J` is used as the join between the last relation
@@ -804,9 +818,14 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * of a [[net.noresttherein.oldsql.sql.Subselect Subselect]] 'join' between the relations from the clause `P`
 	  * and those from this clause. It is the result of substituting the initial
 	  * [[net.noresttherein.oldsql.sql.From From]]`[T]` clause in this type's definition with `P Subselect T`.
-	  * The join kinds of both clauses are preserved.
+	  * The join kinds of both clauses are preserved. The difference from related type
+	  * `this.`[[net.noresttherein.oldsql.sql.RowProduct.AsSubselectOf AsSubselectOf]] is that this type joins
+	  * all the table listed by this clause, including those in the [[net.noresttherein.oldsql.sql.RowProduct.Outer outer]]
+	  * section, while `AsSubselectOf` joins only those in the [[net.noresttherein.oldsql.sql.RowProduct.Inner inner]]
+	  * section, i.e., the proper ''from'' clause, completely replacing the type preceding the last `Subselect`
+	  * pseudo join in this clause with the type argument.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.selectedFrom]]
-	  */ //consider: renaming to NestedIn
+	  */ //consider: renaming to NestedIn, DependentOn, GroundedIn
 	type SelectedFrom[+P <: NonEmptyRow] <: JoinedWith[P, Subselect] {
 		type Row = thisClause.Row
 		type Explicit = thisClause.Explicit
@@ -840,7 +859,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * [[net.noresttherein.oldsql.sql.FromClause.FromClauseExtension.andFrom andFrom]] which uses the more natural
 	  * prefix - suffix order rather than the inversion as in this method.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.joinedWith]]
-	  */
+	  */ //todo: rename to joinedWith (or whatever we rename joinedWith to)
 	def appendedTo[F <: FromClause](prefix :F) :JoinedWith[F, NonParam]
 
 
@@ -881,6 +900,10 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  *     in `S`, where the `S <: SubselectOf[F]` is also true for any `F` if
 	  *     `S <: `[[net.noresttherein.oldsql.sql.RowProduct.GroundRow GroundRow]].
 	  *     This makes `f.DirectSubselect` a strict subtype of `SubselectOf[f.Self]`.
+	  *
+	  * It is worth noting that the only difference from [[net.noresttherein.oldsql.sql.Dual Dual]]`.DirectSubselect`
+	  * and `GroundRow` is the upper bound on the refinement: the latter uses `RowProduct`,
+	  * while the former `NonEmptyRow`.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.Base]]
 	  */ //consider: renaming to DependentClause/Dependent/NestedClause/Nested
 	type DirectSubselect = NonEmptyRow {
@@ -988,14 +1011,14 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * this clause, in which case it equals `Nothing` (making any expression grounded in this clause unusable).
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.Implicit]]
 	  */ //todo: not defined as DefineBase[Implicit] here because of a clash with SubselectOf refinement caused by a scala bug
-	type Base <: DefineBase[Implicit] //consider: renaming to Closure, Dependencies, Ground or Root
+	type Base <: DefineBase[Implicit] //consider: renaming to Grounding /Closure, Dependencies, Ground or Root
 
 	/** A helper type used to define the type `Base`. Always parameterized with `Implicit`, all `Expanded` subclasses
 	  * define it as equal to the argument `I`, except of `ParamClause`, which defines it as `Nothing`.
 	  * This is better than defining `Base` directly, as it allows to propagate behavior of the explicit portion
 	  * (which determines whether `Base` will equal `Implicit` or `Nothing`) when rebasing it onto another
 	  * clause (and hence changing the actual `Implicit` type).
-	  */
+	  */ //consider: using Implicit is upper and lower bound on I
 	type DefineBase[+I <: RowProduct] <: I
 
 	/** The implicit prefix of this clause, that is the clause ending before the last
@@ -1351,7 +1374,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * to `subselect.`[[net.noresttherein.oldsql.sql.RowProduct.asSubselectOf asSubselectOf]].
 	  * On empty clauses it works differently: as an empty clause cannot appear on the left side
 	  * of `Subselect`, it simply returns the `subselect` argument unchanged. All non-subselect clauses conform
-	  * to [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf[Dual] ]], so the returned clause
+	  * to [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf[Dual]]], so the returned clause
 	  * is a valid subselect clause of `Generalized` (and `Self`) either way, as long as `this.Terminator =:= Dual`
 	  * (this clause is complete).
 	  *
@@ -1887,6 +1910,17 @@ object RowProduct {
 	  */
 	trait ExpandingClause[+F <: RowProduct] extends RowProduct {
 		private[sql] def concrete_ExpandingClause_subclass_must_extend_Expanded_or_ExpandedDecorator(seal :Seal) :Unit
+	}
+	//we can't have RowDecomposition at this level because we don't know the length of the expansion.
+	object ExpandingClause {
+		implicit def genericExpandedDecomposition[F <: RowProduct, J[+L <: F, R[O] <: M[O]] <: L Expanded R, M[O] <: MappingAt[O]]
+				:RowDecomposition[F J M, F, F] { type E[+A <: F] = A J M; type S[+A >: F <: F] = A J M } =
+			decomposition.asInstanceOf[
+				RowDecomposition[F J M, F, F] { type E[+A <: F] = A J M; type S[+A >: F <: F] = A J M }
+			]
+
+		private[this] val decomposition =
+			new ExpandedDecomposition[RowProduct Expanded MappingAt, RowProduct, MappingAt, Expanded, RowProduct]
 	}
 
 
@@ -2504,7 +2538,7 @@ object RowProduct {
 	  * 'joins' in its explicit portion. It is a supertype of all valid subselect clauses defined as
 	  * [[net.noresttherein.oldsql.sql.RowProduct.SubselectOf SubselectOf]]`[F]`, introduced as a result type
 	  * for functions creating subselects which can't statically guarantee the lack of unbound parameters.
-	  */ 
+	  */ //GroundedIn?
 	type DependantOf[-F <: RowProduct] = RowProduct {
 		type Implicit >: F <: RowProduct //F may still have a longer prefix hidden under RowProduct at start of Base
 	}
@@ -2515,14 +2549,16 @@ object RowProduct {
 	  *     and join types `J2...JN`, with no `Subselect` or `JoinParam` joins among them.
 	  *   - is a complete, non subselect clause: `S <: `[[net.noresttherein.oldsql.sql.RowProduct.GroundRow GroundRow]]
 	  *     with no `JoinParam` joins.
-	  * Clauses conforming to `AsSubselectOf[F]` can use all the mappings/entities
-	  * which are a part of `F`, but they are not a part of any select expressions created from that clause. This allows
-	  * the use of nested select queries which depend on values from the ''from'' clause of the outer select.
+	  *
+	  * Clauses conforming to [[net.noresttherein.oldsql.sql.RowProduct.AsSubselectOf AsSubselectOf]]`[F]` can use
+	  * all the mappings/entities which are a part of `F`, but they are not a part of any select expressions
+	  * created from that clause. This allows the use of nested select queries which depend on values
+	  * from the ''from'' clause of the outer select.
 	  *
 	  * `S <: SubselectOf[F]` does ''not'' imply that any clause `s :S` is a proper subselect of any clause  `f :F`,
 	  * in the sense that `s` contains all of the relations from `f` in its implicit portion. Instead, it witnesses
 	  * that `F` satisfies all the implicit dependencies of `S`:
-	  * a [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]] created from `s` is an `SQLExpression[F, GlobalScope, _]`.
+	  * a [[net.noresttherein.oldsql.sql.ast.SelectSQL SelectSQL]] created from `S` is an `SQLExpression[F, GlobalScope, _]`.
 	  * If `F <: GeneralizedRow`, then such a subselect expression can be used
 	  * as a part of both ''select'' and ''where'' clauses of a select from `F`. On the other hand,
 	  * an `SQLExpression[F, GlobalScope, T]` is convertible to `SQLExpression[S, GlobalScope, T]` by a call
@@ -2532,10 +2568,13 @@ object RowProduct {
 	  * as the enclosing select, without any modifications to its ''where'' clause filter.
 	  *
 	  * Perhaps counterintuitively, this type is contravariant rather than covariant. There are two reasons behind it:
-	  * one, preventing any type from becoming a subselect clause of a clause with a more abstract prefix (with fewer
-	  * relations specified), ensuring that the full implicit mapping list of the subselect clause is accounted for, and,
-	  * two, treating all join kinds as equivalent for this purpose. Note that subselects may be nested to an arbitrary
-	  * depth and only directly nested subselects of `F` conform to this type.
+	  *   1. one, preventing any type from becoming a subselect clause of a clause with a more abstract prefix
+	  *      (with fewer relations specified), ensuring that the full implicit mapping list of the subselect
+	  *      clause is accounted for, and,
+	  *   1. two, treating all join kinds as equivalent for this purpose.
+	  *
+	  * Note that subselects may be nested to an arbitrary depth and only directly nested subselects of `F`
+	  * conform to this type.
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.DependantOf]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.SubselectRow]]
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.DirectSubselect]]
@@ -2793,7 +2832,6 @@ object RowProduct {
 	  * }}}
 	  */
 	type WildcardRow = FromSome with GroupByClause
-
 
 
 
@@ -3742,7 +3780,7 @@ object RowProduct {
 	  * @tparam U the upper bound on the clauses accepted by `F`'s type constructor in place of `P`.
 	  *           If `F =:= C[P]` for some `C[X <: U]`, then `F <: C[U]` and it is the highest upper bound on `F`
 	  *           which preserves the type constructor `C` intact.
-	  */ //todo: move to mechanics; rename to ClauseDecomposition
+	  */ //todo: move to mechanics; rename to ClauseDecomposition; try to make it invariant in F
 	@implicitNotFound("I don't know how to extract a prefix clause ${P} (with an upper bound ${U}) from ${F}.\n" +
 	                  "Missing implicit RowDecomposition[${F}, ${P}, ${U}].")
 	trait RowDecomposition[-F <: RowProduct, P <: U, U <: RowProduct] {
@@ -3787,6 +3825,7 @@ object RowProduct {
 		def cast[A <: U] :RowDecomposition[E[A], A, U]
 
 	}
+
 
 
 	//todo: remove it. It's only used by Parameterization, which can just as well use RowDecomposition
@@ -3928,7 +3967,7 @@ object RowProduct {
 	  * @see [[net.noresttherein.oldsql.sql.RowProduct.PartOf]]
 	  */
 	//todo: rename to IncludedIn/UsedBy; problem: Expanded clause and various expand methods. Rename that to Include?
-	//  Could also be SubClauseOf, UsedBy, AvailableIn, ProvidedBy unless we want to reserve this name for evidence
+	//  Could also be DependentOn, DependantOf SubClauseOf, UsedBy, AvailableIn, ProvidedBy unless we want to reserve this name for evidence
 	@showAsInfix
 	@implicitNotFound("The FROM clause ${F} is not expanded by the clause ${E} (ignoring join kinds).")
 	class ExpandedBy[+F <: RowProduct, -E <: RowProduct] private[RowProduct](val length :Int) extends AnyVal {
@@ -4098,6 +4137,7 @@ object RowProduct {
 
 		implicit def itself[F <: RowProduct] :F PrefixOf F = new PrefixOf(0)
 
+		//fixme: should either use RowComposition or make RowDecomposition invariant.
 		implicit def expand[F <: RowProduct, E <: RowProduct, L <: U, U <: RowProduct]
 		                   (implicit decompose :RowDecomposition[E, L, U], prefix :F PrefixOf L) :F PrefixOf E =
 			new PrefixOf[F, E](prefix.lengthDiff + decompose.expansion.lengthDiff)

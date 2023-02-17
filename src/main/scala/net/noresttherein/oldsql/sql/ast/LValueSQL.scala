@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.ColumnMapping.ColumnAt
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.bases.{BaseColumn, BaseMapping}
 import net.noresttherein.oldsql.slang.castTypeParam
-import net.noresttherein.oldsql.sql.{ColumnSetter, ColumnSQL, ComponentSetter, RowProduct, Seal, SQLExpression}
+import net.noresttherein.oldsql.sql.{ColumnSetter, ColumnSQL, ComponentSetter, RowProduct, Seal, SingleBoolean, SingleColumn, SingleSQL, SingleString, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AnyColumnVisitor, ConvertingColumnTemplate, SpecificColumnVisitor}
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
@@ -21,6 +21,7 @@ import net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.{AnyColumnLValueVisitor,
 import net.noresttherein.oldsql.sql.ast.ColumnMappingSQL.ConvertedColumnMappingSQL
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL.{AnyComponentVisitor, CaseAnyComponent, CaseSpecificComponent, SpecificComponentVisitor}
+import net.noresttherein.oldsql.sql.ast.ConvertedSQL.ConvertedSQLTemplate
 import net.noresttherein.oldsql.sql.ast.GenericColumnComponentSQL.TypedColumnComponentSQL
 import net.noresttherein.oldsql.sql.ast.GenericColumnComponentSQL.TypedColumnComponentSQL.{AnyColumnComponentVisitor, CaseAnyColumnComponent, CaseSpecificColumnComponent, SpecificColumnComponentVisitor}
 import net.noresttherein.oldsql.sql.ast.LooseColumn.{AnyLooseColumnVisitor, CaseAnyLooseColumn, CaseSpecificLooseColumn, SpecificLooseColumnVisitor}
@@ -84,6 +85,8 @@ trait LValueSQL[-F <: RowProduct, M[O] <: MappingAt[O], V]
 	  */ //docs copied from MappingSQL; added a lower bound
 	override type Origin >: F <: RowProduct
 
+	protected def form :SQLForm[V]
+
 	/** The underlying component expression (possibly this instance). */
 	@throws[UnsupportedOperationException]("if the lvalue is not anchored (it is a LooseComponent).")
 	def component  :ComponentSQL[F, M]
@@ -94,9 +97,8 @@ trait LValueSQL[-F <: RowProduct, M[O] <: MappingAt[O], V]
 	  * with the given expression as its ''r-value'' and this instance as its ''l-value'', used to set the value
 	  * of this component as a part of an SQL ''insert'' or ''update''.
 	  */ //consider: we should not allow to lift the left side I think. If anything, an explicit downcast API may be needed
-	def :=[R <: RowProduct, Y](rvalue :SQLExpression[R, Single, Y])
-	                          (implicit compat :V =~= Y) :ComponentSetter[F, R] =
-		ComponentSetter(to(compat.left), compat.right(denullify(rvalue)))
+	def :=[R <: RowProduct, X](rvalue :SQLExpression[R, Single, X])(implicit unify :V =~= X) :ComponentSetter[F, R] =
+		ComponentSetter(to(unify.left), unify.right(denullify(rvalue)))
 
 	def :=[C <: MappingOf[V], R <: RowProduct, O <: RowProduct] //R and O are separate as R may be instantiated early from the expected type
 	      (component :C)(implicit cast :C <:< TypedMapping[V, O], //todo: SQLTypeUnification
@@ -105,15 +107,15 @@ trait LValueSQL[-F <: RowProduct, M[O] <: MappingAt[O], V]
 			:ComponentSetter[F, R] =
 		this := subtype(LooseComponent(component))
 
-	def :=[X](that :X)(implicit compat :V =~= X, form :SQLForm[X]) :ComponentSetter[F, RowProduct] =
-		this := SQLTerm(that)
+	def :=[X](that :X)(implicit unify :V =~= X) :ComponentSetter[F, RowProduct] =
+		unify.left(this) := SQLTerm(unify.left(form), unify.right(that))
 
 	//todo: we *could* get rid of the form param, as we will have one from the mapping.
 	// We do not know however if we should use insert or update form, or something else (in EditedComponentSQL)
 	// Moreover, in LooseComponent, we do not really have the final column set either.
 	// Anchoring would have to be smarter and always reform. This conceivably could be done with a form with a zero/negative number of columns
-	def :=?[Y](rvalue :Y)(implicit compat :V =~= Y, form :SQLForm[Y]) :ComponentSetter[F, RowProduct] =
-		this := BoundParam(rvalue)
+	def :=?[X](rvalue :X)(implicit unify :V =~= X) :ComponentSetter[F, RowProduct] =
+		unify.left(this) := BoundParam(unify.left(form), unify.right(rvalue))
 
 	/** Creates an expression for the given subcomponent of this component. The type of the returned expression
 	  *  - [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]]
@@ -196,7 +198,8 @@ trait LValueSQL[-F <: RowProduct, M[O] <: MappingAt[O], V]
 		substitute(substitutes)
 
 	protected override def convert[X](conversion :SQLConversion[V, X]) :LValueSQL[F, M, X] =
-		ConvertedLValueSQL(this, conversion)
+		(this.conversion andThen conversion)(component)
+//		ConvertedLValueSQL(this, conversion)
 
 	//consider moving this down, as the type itself does not implement selectFrom and is open for extension
 	override type isSelectable = true
@@ -362,7 +365,7 @@ object LValueSQL {
 	                     +Same <: LValueSQL[F, M, V]]
 		extends GroundingTemplate[F, Single, V, Cons, Same]
 		   with MappingSQLTemplate[F, Single, M, V, Same]
-	{ self :Same =>
+	{ self :Same with LValueTemplate[F, M, V, Cons, Same] =>
 		/** A [[net.noresttherein.oldsql.sql.RowProduct RowProduct]] consisting solely of this component's
 		  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL.ComponentSQLTemplate.origin origin]]'s
 		  * relation [[net.noresttherein.oldsql.sql.ast.ComponentSQL.ComponentSQLTemplate.mapping mapping]].
@@ -423,6 +426,7 @@ object LValueSQL {
 	                               (override val value :LValueSQL[F, M, M[Unit]#Subject],
 	                                override val adaptation :SQLConversion[M[Unit]#Subject, V])
 		extends ConvertedMappingSQL[F, Single, M, M[Unit]#Subject, V] with LValueSQL[F, M, V]
+		   with ConvertedSQLTemplate[F, Single, M[Unit]#Subject, V, ({ type E[v] = LValueSQL[F, M, v] })#E]
 	{
 		override type FromLast  = value.FromLast
 //		override type Entity[O] = value.Entity[O]
@@ -456,9 +460,6 @@ object LValueSQL {
 		                       (substitutes :Iterable[ColumnSetter[FromLast, E]]) :MappingSQL[E, Single, M, V] =
 			adaptation(value.substitute(substitutes))
 
-		protected override def convert[Y](conversion :SQLConversion[V, Y]) :LValueSQL[F, M, Y] =
-			(this.adaptation andThen conversion)(value)
-
 		override def anchor(from :F) :LValueSQL[F, M, V] =
 			value.anchor(from) match {
 				case same if same eq value => this
@@ -481,19 +482,19 @@ object LValueSQL {
 //		override def reorder(permutation :IndexedSeq[Int]) :ComponentLValueSQL[F, M, V] =
 //			if (permutation == permutation.indices) this
 //			else value.reorder(permutation).to(lift)
-
-		protected override def reform[F1 <: F, S1 >: Grouped <: Single, F2 <: RowProduct, S2 >: Grouped <: Single, V2,
-		                              EC2[v] <: ConvertibleSQL[F2, S2, v, EC2], U]
-		                             (other :ConvertibleSQL[F2, S2, V2, EC2])(reform :Reform, passCount :PassCount)
-		                             (implicit leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U],
-		                                       spelling :SQLSpelling)
-				:(leftResult.SQLResult[F1, S1, LValueSQL[F1, M, U]], rightResult.SQLResult[F2, S2, EC2[U]]) =
-			if (this eq other)
-				(leftResult(this), rightResult(other))
-			else if (passCount.firstTime)
-				super.reform(other)(reform, passCount)
-			else
-				reform(value, other)(adaptation andThen leftResult, rightResult, spelling)
+//
+//		protected override def reform[F1 <: F, S1 >: Grouped <: Single, F2 <: RowProduct, S2 >: Grouped <: Single, V2,
+//		                              EC2[v] <: ConvertibleSQL[F2, S2, v, EC2], U]
+//		                             (other :ConvertibleSQL[F2, S2, V2, EC2])(reform :Reform, passCount :PassCount)
+//		                             (implicit leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U],
+//		                                       spelling :SQLSpelling)
+//				:(leftResult.SQLResult[F1, S1, LValueSQL[F1, M, U]], rightResult.SQLResult[F2, S2, EC2[U]]) =
+//			if (this eq other)
+//				(leftResult(this), rightResult(other))
+//			else if (passCount.firstTime)
+//				super.reform(other)(reform, passCount)
+//			else
+//				reform[F1, S1, F2, S2, V2, EC2, U](value, other)(adaptation andThen leftResult, rightResult, spelling)
 //
 //		protected override def reform[E <: RowProduct, C >: Grouped <: Single, X, U]
 //		                             (other :SQLExpression[E, C, X])(reform :Reform, passesAllowed :Int)
@@ -541,7 +542,7 @@ object LValueSQL {
 	object ConvertedLValueSQL {
 		def apply[F <: RowProduct, M[O] <: BaseMapping[X, O], X, Y]
 		         (component :LValueSQL[F, M, X], conversion :SQLConversion[X, Y]) :ConvertedLValueSQL[F, M, Y] =
-			new ConvertedLValueSQL(component, conversion)
+			new ConvertedLValueSQL[F, M, Y](component, conversion)
 
 		def unapply[F <: RowProduct, M[O] <: MappingAt[O], V](lvalue :LValueSQL[F, M, V])
 				:Opt[(LValueSQL[F, M, M[Unit]#Subject], SQLConversion[M[Unit]#Subject, V])] =
@@ -714,115 +715,107 @@ trait ColumnLValueSQL[-F <: RowProduct, M[O] <: BaseColumn[_, O], V]
 
 	/** Implementation of `:=` left for subclasses, extracted to a different method
 	  * in order to avoid overloading problems. Impossible to implement here as we don't know the column subject type.
-	  * @return `ColumnSetter(to(compat.left), denullify(rvalue).to(promote.right))`.
+	  * @return `ColumnSetter(unify.left(this), unify.right(denullify(rvalue)))`.
 	  */
 	protected def setter[R <: RowProduct, Y]
-	                    (rvalue :ColumnSQL[R, Single, Y])(implicit compat :V =~= Y) :ColumnSetter[F, R]
+	                    (rvalue :ColumnSQL[R, Single, Y])(implicit unify :V =~= Y) :ColumnSetter[F, R]
 
 	/** Creates an assignment object [[net.noresttherein.oldsql.sql.ColumnSetter ColumnSetter]]
 	  * with the given expression as its ''r-value'' and this instance as its ''l-value'', used to set the value
 	  * of this component as a part of an SQL ''insert'' or ''update''.
 	  */
-	def :=[R <: RowProduct, Y](rvalue :ColumnSQL[R, Single, Y])(implicit compat :V =~= Y) :ColumnSetter[F, R] =
+	def :=[R <: RowProduct, Y](rvalue :ColumnSQL[R, Single, Y])(implicit unify :V =~= Y) :ColumnSetter[F, R] =
 		setter(rvalue)
 
-	def :=[E <: F, O <: RowProduct] //E and O are separate as E may be instantiated early from the expected type
-	      (component :BaseColumn[V, O]) //todo: variants for columns and literals for other assignment methods
-	      (implicit subtype :ColumnSQL[O, Single, V] <:< ColumnSQL[E, Single, V],
+	def :=[R <: RowProduct, O <: RowProduct] //R and O are separate as R may be instantiated based on the expected type
+	      (component :BaseColumn[V, O])      //todo: variants for columns and literals for other assignment methods
+	      (implicit subtype :ColumnSQL[O, Single, V] <:< ColumnSQL[R, Single, V],
 	       offset :RelationCount[O, _ <: Numeral])
-			:ColumnSetter[F, E] =
-		this := subtype(LooseColumn(component).toColumnSQL)
+			:ColumnSetter[F, R] =
+		this := subtype(LooseColumn(component, offset.offset).toColumnSQL)
 
-	override def :=[X](that :X)(implicit compat :V =~= X, form :SQLForm[X]) :ComponentSetter[F, RowProduct] =
-		to(compat.left) := SQLTerm(compat.right(that))(compat.left(this.form))
+	override def :=[X](that :X)(implicit unify :V =~= X) :ColumnSetter[F, RowProduct] =
+		unify.left(this) := ColumnTerm(unify.left(this.form), unify.right(that))
+//
+//	def :=[Y, U](that :Y)(implicit unify :(V =~= Y)#Widen[U]) :ColumnSetter[F, RowProduct] =
+//		unify.left(this) := SQLTerm(form, unify.right(that))
 
 	//todo: we *could* get rid of the form param, as we will have one from the mapping.
 	// We do not know however if we should use insert or update form, or something else (in EditedComponentSQL)
 	// Moreover, in LooseComponent, we do not really have the final column set either.
 	// Anchoring would have to be smarter and always reform. This conceivably could be done with a form with a zero/negative number of columns
-	override def :=?[Y, U](rvalue :Y)(implicit compat :(V =~= Y)#As[U], form :ColumnForm[U])
-			:ColumnSetter[F, RowProduct] =
-		this := BoundColumnParam(rvalue)
+	override def :=?[Y](rvalue :Y)(implicit unify :(V =~= Y)) :ColumnSetter[F, RowProduct] =
+		unify.left(this) := BoundColumnParam(unify.left(form), unify.right(rvalue))
 
 	def +=[R <: RowProduct, Y, U]
 	      (rvalue :ColumnSQL[R, Single, Y])
-	      (implicit compat :(V =~= Y)#As[U], math :SQLNumber[U], expansion :F ExpandedBy R)
-			:ColumnSetter[F, R] =
-		to(compat.left) := expand[R] + denullify(rvalue)
+	      (implicit unify :(V =~= Y)#Widen[U], math :SQLNumber[U], expansion :F ExpandedBy R) :ColumnSetter[F, R] =
+		unify.left(this) := unify.left(expand[R]) + unify.right(denullify(rvalue))
 
-	def +=?[Y, U](rvalue :Y)(implicit compat :(V =~= Y)#As[U], math :SQLNumber[U])
-			:ColumnSetter[F, RowProduct] =
-		this += BoundColumnParam(form)(rvalue)
+	def +=?[Y, U](rvalue :Y)(implicit unify :(V =~= Y)#Widen[U], math :SQLNumber[U]) :ColumnSetter[F, F] =
+		unify.left(this) += (BoundColumnParam(unify.left(form), unify.right(rvalue)) :SingleColumn[F, U])
 
 	def -=[R <: RowProduct, Y, U]
 	      (rvalue :ColumnSQL[R, Single, Y])
-	      (implicit compat :(V =~= Y)#As[U], math :SQLNumber[U], expansion :F ExpandedBy R)
-			:ColumnSetter[F, R] =
-		to(compat.left) := expand[R] - denullify(rvalue)
+	      (implicit unify :(V =~= Y)#As[U], math :SQLNumber[U], expansion :F ExpandedBy R) :ColumnSetter[F, R] =
+		unify.left(this) := unify.left(expand[R]) - unify.right(denullify(rvalue))
 
-	def -=?[Y, U](rvalue :Y)(implicit compat :(V =~= Y)#As[U], math :SQLNumber[U])
-			:ColumnSetter[F, RowProduct] =
-		this -= BoundColumnParam(form)(rvalue)
+	def -=?[Y, U](rvalue :Y)(implicit unify :(V =~= Y)#Widen[U], math :SQLNumber[U]) :ColumnSetter[F, F] =
+		unify.left(this) -= (BoundColumnParam(unify.left(form), unify.right(rvalue)) :SingleColumn[F, U])
 
 	def *=[R <: RowProduct, Y, U]
 	      (rvalue :ColumnSQL[R, Single, Y])
-	      (implicit compat :(V =~= Y)#As[U], math :SQLNumber[U], expansion :F ExpandedBy R)
-			:ColumnSetter[F, R] =
-		to(compat.left) := expand[R] * denullify(rvalue)
+	      (implicit unify :(V =~= Y)#Widen[U], math :SQLNumber[U], expansion :F ExpandedBy R) :ColumnSetter[F, R] =
+		unify.left(this) := unify.left(expand[R]) * unify.right(denullify(rvalue))
 
-	def *=?[Y, U](rvalue :Y)(implicit compat :(V =~= Y)#As[U], math :SQLNumber[U])
-			:ColumnSetter[F, RowProduct] =
-		this *= BoundColumnParam(form)(rvalue)
+	def *=?[Y, U](rvalue :Y)(implicit unify :(V =~= Y)#Widen[U], math :SQLNumber[U]) :ColumnSetter[F, F] =
+		unify.left(this) *= (BoundColumnParam(unify.left(form), unify.right(rvalue)) :SingleColumn[F, U])
 
 	def /=[R <: RowProduct, Y, U]
 	      (rvalue :ColumnSQL[R, Single, Y])
-	      (implicit compat :(V =~= Y)#As[U], math :SQLNumber[U], expansion :F ExpandedBy R)
-			:ColumnSetter[F, R] =
-		to(compat.left) := expand[R] / denullify(rvalue)
+	      (implicit unify :(V =~= Y)#Widen[U], math :SQLNumber[U], expansion :F ExpandedBy R) :ColumnSetter[F, R] =
+		unify.left(this) := unify.left(expand[R]) / unify.right(denullify(rvalue))
 
-	def /=?[Y, U](rvalue :Y)(implicit compat :(V =~= Y)#As[U], math :SQLNumber[U])
-			:ColumnSetter[F, RowProduct] =
-		this /= BoundColumnParam(form)(rvalue)
+	def /=?[Y, U](rvalue :Y)(implicit unify :(V =~= Y)#Widen[U], math :SQLNumber[U]) :ColumnSetter[F, F] =
+		unify.left(this) /= (BoundColumnParam(unify.left(form), unify.right(rvalue)) :SingleColumn[F, U])
 
 	def %=[R <: RowProduct, Y, U]
 	      (rvalue :ColumnSQL[R, Single, Y])
-	      (implicit compat :(V =~= Y)#As[U], math :SQLNumber[U], expansion :F ExpandedBy R)
-			:ColumnSetter[F, R] =
-		to(compat.left) := expand[R] % denullify(rvalue)
+	      (implicit unify :(V =~= Y)#Widen[U], math :SQLNumber[U], expansion :F ExpandedBy R) :ColumnSetter[F, R] =
+		unify.left(this) := unify.left(expand[R]) % unify.right(denullify(rvalue))
 
-	def %=?[Y, U](rvalue :Y)(implicit compat :(V =~= Y)#As[U], math :SQLNumber[U])
-			:ColumnSetter[F, RowProduct] =
-		this %= BoundColumnParam(form)(rvalue)
+	def %=?[Y, U](rvalue :Y)(implicit unify :(V =~= Y)#Widen[U], math :SQLNumber[U]) :ColumnSetter[F, F] =
+		unify.left(this) %= (BoundColumnParam(unify.left(form), unify.right(rvalue)) :SingleColumn[F, U])
 
 
 	def &&=[R <: RowProduct, Y](rvalue :ColumnSQL[R, Single, Y])
-	                           (implicit compat :(V =~= Y)#As[Boolean], expansion :F ExpandedBy R)
+	                           (implicit unify :(V =~= Y)#Widen[Boolean], expansion :F ExpandedBy R)
 			:ColumnSetter[F, R] =
-		to(compat.left) := expand[R].to(compat.left) && compat.right(rvalue)
+		unify.left(this) := unify.left(expand[R]) && unify.right(rvalue)
 
-	def &&=?[Y](rvalue :Y)(implicit compat :(V =~= Y)#As[Boolean]) :ColumnSetter[F, RowProduct] =
-		this &&= BoundColumnParam(form)(rvalue)
+	def &&=?[Y](rvalue :Y)(implicit unify :(V =~= Y)#Widen[Boolean]) :ColumnSetter[F, F] =
+		unify.left(this) &&= (BoundColumnParam(unify.left(form), unify.right(rvalue)) :SingleBoolean[F])
 
 	def ||=[R <: RowProduct, Y](rvalue :ColumnSQL[R, Single, Y])
-	                           (implicit compat :(V =~= Y)#As[Boolean], expansion :F ExpandedBy R)
+	                           (implicit unify :(V =~= Y)#Widen[Boolean], expansion :F ExpandedBy R)
 			:ColumnSetter[F, R] =
-		to(compat.left) := expand[R].to(compat.left) || compat.right(rvalue)
+		unify.left(this) := unify.left(expand[R]) || unify.right(rvalue)
 
-	def ||=?[Y](rvalue :Y)(implicit compat :(V =~= Y)#As[Boolean]) :ColumnSetter[F, RowProduct] =
-		this ||= BoundColumnParam(form)(rvalue)
+	def ||=?[Y](rvalue :Y)(implicit unify :(V =~= Y)#Widen[Boolean]) :ColumnSetter[F, F] =
+		unify.left(this) ||= (BoundColumnParam(unify.left(form), unify.right(rvalue)) :SingleBoolean[F])
 
 //		def ^= [R <: RowProduct, Y](rvalue :ColumnSQL[R, GlobalScope, Y])
 //		                  (implicit promote :SQLTypeUnification[V, Y, Boolean]) :ColumnSetter[F, R, Boolean] =
-//			to(compat.left) := to(compat.left) ^ promote.right(rvalue)
+//			to(unify.left) := to(unify.left) ^ promote.right(rvalue)
 
 
 	def ++=[R <: RowProduct, Y](rvalue :ColumnSQL[R, Single, Y])
-	                           (implicit compat :(V =~= Y)#As[String], expansion :F ExpandedBy R)
+	                           (implicit unify :(V =~= Y)#Widen[String], expansion :F ExpandedBy R)
 			:ColumnSetter[F, R] =
-		to(compat.left) := expand[R].to(compat.left) ++ compat.right(denullify(rvalue))
+		unify.left(this) := unify.left(expand[R]) ++ unify.right(denullify(rvalue))
 
-	def ++=?[Y](rvalue :Y)(implicit compat :(V =~= Y)#As[String]) :ColumnSetter[F, RowProduct] =
-		this ++= BoundColumnParam(form)(rvalue)
+	def ++=?[Y](rvalue :Y)(implicit unify :(V =~= Y)#Widen[String]) :ColumnSetter[F, F] =
+		unify.left(this) ++= (BoundColumnParam(unify.left(form), unify.right(rvalue)) :SingleString[F])
 
 //		override def :=?[Y, U](rvalue :Y)(implicit promote :SQLTypeUnification[V, Y, U], form :SQLForm[Y])
 //				:ComponentSetter[F, RowProduct, U] =  //overriden for correct overloading
@@ -830,7 +823,8 @@ trait ColumnLValueSQL[-F <: RowProduct, M[O] <: BaseColumn[_, O], V]
 
 
 	protected override def convert[X](conversion :SQLConversion[V, X]) :ColumnLValueSQL[F, M, X] =
-		ConvertedColumnLValue(this, conversion)
+		(this.conversion andThen conversion)[F, Single, ColumnLValueSQL.from[F]#meta[M]#E](component)
+//		ConvertedColumnLValue(this, conversion)
 
 //	override def basedOn[U <: F, E <: RowProduct](base :E)(implicit ext :PartOf[U, E]) :ColumnLValueSQL[E, M, V] =
 //		expand[E]
@@ -889,9 +883,6 @@ object ColumnLValueSQL {
 		                   excludes :Iterable[TypedMapping[_, value.Origin]]) :ColumnLValueSQL[F, M, V] =
 			adaptation(value.alter(includes, excludes))
 
-		protected override def convert[Y](conversion :SQLConversion[V, Y]) :ColumnLValueSQL[F, M, Y] =
-			(this.adaptation andThen conversion)(value)
-
 		override def anchor(from :F) :ColumnLValueSQL[F, M, V] = value.anchor(from) match {
 			case same if same eq value => this
 			case other => adaptation(other)
@@ -902,10 +893,9 @@ object ColumnLValueSQL {
 
 		override def asLast :ColumnLValueSQL[FromLast, M, V] = adaptation(value.asLast)
 
-		protected override def setter[R <: RowProduct, Y](rvalue :ColumnSQL[R, Single, Y])
-		                                                 (implicit compat :V =~= Y)
-				:ColumnSetter[F, R] =
-			ColumnSetter[F, M, S, R, compat.Unified](to(compat.left), compat.right(denullify(rvalue)))
+		protected override def setter[R <: RowProduct, Y]
+		                             (rvalue :ColumnSQL[R, Single, Y])(implicit unify :V =~= Y) :ColumnSetter[F, R] =
+			ColumnSetter[F, M, S, R, unify.Unified](unify.left(this), unify.right(denullify(rvalue)))
 
 
 		protected override def visit[R](visitor :SpecificColumnVisitor[F, Single, V, R]) :R =
@@ -931,15 +921,15 @@ object ColumnLValueSQL {
 		def unapply[F <: RowProduct, M[O] <: BaseColumn[S, O], S, V](lvalue :LValueSQL[F, M, V])
 				:Opt[(ColumnLValueSQL[F, M, S], SQLConversion[S, V])] =
 			lvalue match {
-				case set :ConvertedColumnLValue[F, M, S, V] @unchecked => Got((set.value, set.adaptation))
+				case lv :ConvertedColumnLValue[F, M, S, V] @unchecked => Got((lv.value, lv.adaptation))
 				case _ => Lack
 			}
 
 		def unapply[F <: RowProduct, V](e :SQLExpression[F, Grouped, V])
-				:Opt[(GenericColumnComponentSQL[F, m, s], SQLConversion[s, V]) forSome { type m[O] <: BaseColumn[s, O]; type s }] =
+				:Opt[(ColumnLValueSQL[F, M, S], SQLConversion[S, V]) forSome { type M[O] <: BaseColumn[S, O]; type S }] =
 			e match {
-				case set :ConvertedColumnLValue[F, MappingOf[Any]#TypedColumnProjection, Any, V] @unchecked =>
-					Got((set.value, set.adaptation))
+				case lv :ConvertedColumnLValue[F, MappingOf[Any]#TypedColumnProjection, Any, V] @unchecked =>
+					Got((lv.value, lv.adaptation))
 				case _ => Lack
 			}
 

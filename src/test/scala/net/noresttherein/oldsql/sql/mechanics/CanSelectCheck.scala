@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.sql.{Aggregated, AndFrom, ColumnSQL, From, Inner
 import net.noresttherein.oldsql.sql.ParamClause.UnboundParam
 import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.SQLExpression.{Single, Grouped}
-import net.noresttherein.oldsql.sql.ast.{ChainSQL, ChainTuple, ComponentSQL, AdapterSQL, EditedComponentSQL, EditedLooseComponent, GenericColumnComponentSQL, LabeledSQL, LooseColumn, LooseComponent, SelectAs, SelectColumn, SelectColumnAs, SelectSQL}
+import net.noresttherein.oldsql.sql.ast.{AdaptedSQL, ChainSQL, ChainTuple, ComponentSQL, EditedComponentSQL, EditedLooseComponent, GenericColumnComponentSQL, LabeledSQL, LooseColumn, LooseComponent, SelectAs, SelectColumn, SelectColumnAs, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.LabeledSQL.LabeledColumnSQL
 import net.noresttherein.oldsql.sql.ast.SelectAs.{SubselectAs, TopSelectAs}
 import net.noresttherein.oldsql.sql.ast.SelectColumn.{SubselectColumn, TopSelectColumn}
@@ -172,14 +172,14 @@ class CanSelectCheck {{
 	CanSelect[P, SQLBoolean[Q, Grouped]].returns[Select[Params, Boolean]]
 	CanSelect[p.Self, SQLBoolean[R, Single]].returns[Select[Params, Boolean]]
 
-	CanSelect[F, AdapterSQL[G, Grouped, Int, Long]].returns[TopSelectSQL[Long]]
-	CanSelect[f.Self, AdapterSQL[H, Single, Int, Long]].returns[TopSelectSQL[Long]]
-	CanSelect[S, AdapterSQL[T, Grouped, Int, Long]].returns[SubselectSQL[O, Long]]
-	CanSelect[s.Self, AdapterSQL[U, Single, Int, Long]].returns[SubselectSQL[O, Long]]
-	CanSelect[x.Self, AdapterSQL[Y, Grouped, Int, Long]].returns[SelectSQL[x.Base, Long]]
-	CanSelect[x.Self, AdapterSQL[Z, Single, Int, Long]].returns[SelectSQL[x.Base, Long]]
-	CanSelect[P, AdapterSQL[Q, Grouped, Int, Long]].returns[Select[Params, Long]]
-	CanSelect[p.Self, AdapterSQL[R, Single, Int, Long]].returns[Select[Params, Long]]
+	CanSelect[F, AdaptedSQL[G, Grouped, Int, Long]].returns[TopSelectSQL[Long]]
+	CanSelect[f.Self, AdaptedSQL[H, Single, Int, Long]].returns[TopSelectSQL[Long]]
+	CanSelect[S, AdaptedSQL[T, Grouped, Int, Long]].returns[SubselectSQL[O, Long]]
+	CanSelect[s.Self, AdaptedSQL[U, Single, Int, Long]].returns[SubselectSQL[O, Long]]
+	CanSelect[x.Self, AdaptedSQL[Y, Grouped, Int, Long]].returns[SelectSQL[x.Base, Long]]
+	CanSelect[x.Self, AdaptedSQL[Z, Single, Int, Long]].returns[SelectSQL[x.Base, Long]]
+	CanSelect[P, AdaptedSQL[Q, Grouped, Int, Long]].returns[Select[Params, Long]]
+	CanSelect[p.Self, AdaptedSQL[R, Single, Int, Long]].returns[Select[Params, Long]]
 
 	CanSelect[F, ChainSQL[H, Grouped, @~ ~ Int, String]].returns[TopSelectSQL[@~ ~ Int ~ String]]
 	CanSelect[f.Self, ChainSQL[H, Single, @~ ~ Int, String]].returns[TopSelectSQL[@~ ~ Int ~ String]]

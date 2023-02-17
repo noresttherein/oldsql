@@ -24,7 +24,7 @@ import net.noresttherein.oldsql.sql.ast.SelectAs.{AnySelectAsVisitor, AnySubsele
 import net.noresttherein.oldsql.sql.ast.SelectColumn.{AnySelectColumnVisitor, AnySubselectColumnVisitor, AnyTopSelectColumnVisitor, SpecificSelectColumnVisitor, SpecificSubselectColumnVisitor, SpecificTopSelectColumnVisitor, SubselectColumn, TopSelectColumn}
 import net.noresttherein.oldsql.sql.ast.SelectColumnAs.{AnySelectColumnAsVisitor, AnySubselectColumnAsVisitor, AnyTopSelectColumnAsVisitor, BaseSubselectColumnAs, BaseTopSelectColumnAs, SpecificSelectColumnAsVisitor, SpecificSubselectColumnAsVisitor, SpecificTopSelectColumnAsVisitor, SubselectColumnAs, TopSelectColumnAs}
 import net.noresttherein.oldsql.sql.ast.SelectSQL.{ArbitrarySubselectColumn, ArbitraryTopSelectColumn, SubselectSQL, TopSelectSQL}
-import net.noresttherein.oldsql.sql.mechanics.{QueryReform, Reform, RelationOffset, SpelledSQL, SQLConversion, SQLScribe, SQLTransformation}
+import net.noresttherein.oldsql.sql.mechanics.{QueryReform, Reform, RelationOffset, SpelledSQL, SQLAdaptation, SQLConversion, SQLScribe, SQLTransformation}
 import net.noresttherein.oldsql.sql.mechanics.Reform.PassCount
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 import net.noresttherein.oldsql.sql.mechanics.SQLConversion.ConvertRows
@@ -90,11 +90,16 @@ sealed trait SelectSQL[-F <: RowProduct, R] //can't be a MappingSQL because of R
 
 	//order by will be super problematic here
 	//we can't sadly move it to SelectTemplate, because SelectColumn cannot return SelectColumn
-	def selectOther[X](selectClause :SQLExpression[From, Grouped, X]) :SelectSQL[F, X] =
-		if (isDistinct)
-			(selectClause selectFrom from).distinct
-		else
-			selectClause selectFrom from
+	/** Creates a new `SelectSQL` expression matching this one as close as possible, but using the provided expression
+	  * as its ''select'' clause. It delegates to the expression for the creation of an object of the most proper class,
+	  * but copies over any properties like [[net.noresttherein.oldsql.Select.SelectTemplate.distinct distinct]].
+	  */
+	def selectOther[X](selectClause :SQLExpression[From, Grouped, X]) :SelectSQL[F, X] //=
+//		if (isDistinct)
+//			(selectClause selectFrom from).distinct
+//		else
+//			selectClause selectFrom from
+
 
 	override def groundValue :Opt[Rows[R]] = selectClause.groundValue.map(Rows.single)
 	override def isGround    :Boolean      = selectClause.isGround
@@ -116,9 +121,11 @@ sealed trait SelectSQL[-F <: RowProduct, R] //can't be a MappingSQL because of R
                                              rightResult :SQLTransformation[V2, U], spelling :SQLSpelling)
 			:SpecificExpressionVisitor
 			 [F2, S2, V2, (leftResult.SQLResult[F1, S1, SQLExpression[F1, S1, U]], rightResult.SQLResult[F2, S2, EC2[U]])] =
-		new SelectReformer[F1, F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](other)(reform, passCount)
+		new SelectReformer[F1, F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](
+			other)(reform, passCount)(leftResult, rightResult, spelling
+		)
 
-	protected class SelectReformer[F1 <: F, S1 >: Grouped <: Single, F2 <: RowProduct, S2 >: Grouped <: Single, V2,
+	protected class SelectReformer[F1 <: F, F2 <: RowProduct, S2 >: Grouped <: Single, V2,
 		                           EC2[v] <: ConvertibleSQL[F2, S2, v, EC2], U,
 		                           LR[-f <: RowProduct, -s >: Grouped <: Single, +e <: SQLExpression[f, s, U]] <: SQLExpression[f, s, U],
 		                           RR[-f <: RowProduct, -s >: Grouped <: Single, +e <: SQLExpression[f, s, U]] <: SQLExpression[f, s, U]]
@@ -129,10 +136,10 @@ sealed trait SelectSQL[-F <: RowProduct, R] //can't be a MappingSQL because of R
 	{
 		override def select[R2](e :SelectSQL[F2, R2])(implicit isRows :V2 =:= Rows[R2]) = {
 			implicit val rightSelectResult = isRows.liftCo[RightResult](rightResult)
-
-			(splitRowsTransformation(leftResult), splitRowsTransformation(rightSelectResult)) match { //reform the select clauses of each
-				case (Got((leftItems :SQLConversion[R, Any] @unchecked, leftRes :LeftResult[Any] @unchecked)),
-				      Got((rightItems :SQLConversion[R2, Any] @unchecked, rightRes :RightResult[Any] @unchecked)))
+			//reform the select clauses of each
+			(splitRowsTransformation[R, U](leftResult), splitRowsTransformation[R2, U](rightSelectResult)) match {
+				case (Got((leftItems :SQLConversion[R, Any] @unchecked, leftRes :LeftResult[Rows[Any]] @unchecked)),
+				      Got((rightItems :SQLConversion[R2, Any] @unchecked, rightRes :RightResult[Rows[Any]] @unchecked)))
 				if leftRes == rightRes =>
 					/* The unification below type checks only because we cast both leftItems and rightItems
 					 * to SQLConversion[R/R2, Any]. This would be dangerous in general, because we might deeper down assign
@@ -169,7 +176,7 @@ sealed trait SelectSQL[-F <: RowProduct, R] //can't be a MappingSQL because of R
 
 		override def expression(e :SQLExpression[F2, S2, V2]) =
 			if (passCount.mayPass)
-				passReform(e)(reform, passCount)
+				passReform[F1, Single, F2, S2, V2, EC2, U](other)(reform, passCount)
 			else {
 				splitRowsTransformation(leftResult) match {
 					case Got((row, rows)) if rows == SQLConversion.selectRow =>
@@ -178,7 +185,7 @@ sealed trait SelectSQL[-F <: RowProduct, R] //can't be a MappingSQL because of R
 						(select, right)
 					case _ =>
 						fallbackGuard(
-							"Non rencilable type conversions (left ends with " + rows + ", not SQLConversion.selectRow: "
+							"Non reconcilable type conversions (left ends with " + rows + ", not SQLConversion.selectRow: "
 							+ leftResult + " vs " + rightResult + "."
 						)
 				}
@@ -278,25 +285,47 @@ sealed trait SelectSQL[-F <: RowProduct, R] //can't be a MappingSQL because of R
 	{
 		type Result[A] = SQLTransformation[A, U]#Into[conversion.SQLResult]
 		type Composed[A] = (SQLTransformation[Rows[X], A], Result[A])
+
+		def result[Y](itemsPart :SQLConversion[X, Y], rowsPart :Result[Rows[Y]])
+				:Opt[(SQLConversion[X, Y], Result[Rows[Y]])] =
+			Got((itemsPart, rowsPart))
 		conversion match {
-			case ident if ident.isIdentity =>
-				Got((SQLConversion.toSelf[X], conversion))
+			case _ if conversion.isIdentity =>
+				result(SQLConversion.toSelf[X], conversion)
+//				Got((SQLConversion.toSelf[X], conversion))
+			case _ if conversion.isUpcast =>
+				result(SQLConversion.toSelf[X], conversion)
 			case rows :ConvertRows[X, y] =>
-				Got((rows.item, SQLConversion.toSelf.asInstanceOf[Result[y]]))
+				result[y](rows.item, SQLConversion.toSelf.asInstanceOf[Result[Rows[y]]])
+//				Got((rows.item, SQLConversion.toSelf.asInstanceOf[Result[y]]))
 			case _ =>
 				SQLTransformation.Composition.unapply(conversion) match {
 					case composed :Opt[Composed[y]] if composed.isDefined =>
-						type SplitFirst[A] = (SQLConversion[X, A], SQLTransformation[Rows[A], y])
-						splitRowsTransformation(composed.get._1) match {
-							case split_1 :Opt[SplitFirst[a]] if split_1.isDefined && split_1.get._2.isIdentity =>
-								type SplitSecond[A] = (SQLConversion[a, A], Result[Rows[A]])
-								splitRowsTransformation(composed.get._2.castParam1[Rows[a]]) match {
-									case split_2 :Opt[SplitSecond[b]] if split_2.isDefined =>
-										Got((split_1.get._1 andThen split_2.get._1, split_2.get._2))
-									case _ => Lack
+						type Y = y
+						type SplitFirst[A] = (SQLConversion[X, A], SQLTransformation[Rows[A], y]#Into[first.SQLResult])
+						val first = composed.get._1
+						val second = composed.get._2
+						splitRowsTransformation[X, Y](first) match {
+							case split_1 :Opt[SplitFirst[a]] if split_1.isDefined =>
+								type A = a
+								val rowPart  :SQLConversion[X, A] = split_1.get._1
+								val rowsPart :SQLTransformation[Rows[A], Y] = split_1.get._2
+								rowsPart match {
+									case identity :SQLConversion[Rows[A], Y] if identity.isIdentity =>
+										type SplitSecond[A] = (SQLConversion[a, A], SQLTransformation[Rows[A], U]#Into[second.SQLResult])
+										splitRowsTransformation[A, U](identity andThen second) match {
+											case split_2 :Opt[SplitSecond[b]] if split_2.isDefined =>
+												result(rowPart andThen split_2.get._1, split_2.get._2)
+		//										Got((split_1.get._1 andThen split_2.get._1, split_2.get._2))
+											case _ =>
+												//sadly, the composition here doesn't preserve SQLResult, but the cast is safe.
+												val whole = (rowsPart andThen second).asInstanceOf[Result[Rows[A]]]
+												result(rowPart, whole)
+										}
+									case _ =>
+										val whole = (rowsPart andThen second).asInstanceOf[Result[Rows[A]]]
+										result(rowPart, whole)
 								}
-							case split :Opt[SplitFirst[a]] if split.isDefined =>
-								Got((split.get._1, split.get._2 andThen composed.get._2))
 							case _ => Lack
 						}
 					case _ => Lack
@@ -532,7 +561,7 @@ object SelectSQL {
 		override def transform[X](transformation :SQLTransformation[R, X]) :TopSelectSQL[X] =
 			transformation(selectClause).topSelectFrom(from)
 
-		override def rowsTo[X](implicit conversion :SQLConversion[R, X]) :TopSelectSQL[X] =
+		override def rowsTo[X](implicit conversion :SQLAdaptation[R, X]) :TopSelectSQL[X] =
 			if (conversion.isIdentity) this.castParam[X]
 			else selectOther(conversion(selectClause))//new ArbitraryTopSelect[From, X](from, conversion(selectClause), isDistinct)
 
@@ -588,6 +617,19 @@ object SelectSQL {
 
 
 
+	/* Todo: this is the most glaring example of the problem of just pushing down all the type information.
+	 * Factory methods require F <: NonEmptyRow, implementation depends on it, but we don't enforce the bound here
+	 * because it would cause great problems for things like pattern matching, because there is no way to cast
+	 * down a SelectSQL[F <: RowProduct, V] to SubselectSQL[F, V], so any other objects we need related to F need
+	 * to be cast down to the same mock type as SubselectSQL, and then the result cast back to F again.
+	 * It's even worse with the visitor, because we simply can't implement it in any other way than passing
+	 * SubselectSQL[E <: NonEmptyRow, V] and E=:=F. The latter is however of no use because there is a bound on F.
+	 * The result is that it is impossible to implement many things on the interface level - such as selectOther -
+	 * because we don't have enough type constraints, so we need to move implementation down creating unnecessary
+	 * repetition. Even worse, client code having an access to a SubselectSQL instance will have no means to recreate
+	 * it based on its properties, and likely be very limited in general in what it can do. It's really a choice
+	 * between cholera and the plague, if there is an elegant solution I do not know it.
+	 */
 	/** A base trait for all SQL select expressions nested under another SQL select.
 	  * @tparam F the ''from'' clause of the outer select, forming a prefix of `S` until the last occurrence
 	  *           of a `Subselect` join kind.
@@ -597,20 +639,25 @@ object SelectSQL {
 		extends SelectSQL[F, R]
 		   with SingleRowSQLTemplate[F, Rows[R], ({ type Q[-f <: RowProduct] = SubselectSQL[f, R] })#Q]
 		   with SelectTemplate[R, ({ type Q[r] = SubselectSQL[F, r] })#Q]
-	{ //consider: why doesn't it extend SelectTemplate?
-//		override def distinct :SubselectSQL[F, R]
+	{
+		if (from.outer.isEmpty)
+			throw new IllegalArgumentException(
+				"Cannot create a dependent select with an empty outer clause: " + from + "(outer: " + from.outer + ")"
+			)
 
 		override def transform[X](transformation :SQLTransformation[R, X]) :SubselectSQL[F, X] =
 			selectOther(transformation(selectClause))
 
-		override def rowsTo[X](implicit conversion :SQLConversion[R, X]) :SubselectSQL[F, X] =
+		override def rowsTo[X](implicit conversion :SQLAdaptation[R, X]) :SubselectSQL[F, X] =
 			if (conversion.isIdentity) this.asInstanceOf[SubselectSQL[F, X]]
 			else selectOther(conversion(selectClause))
 //			else new ArbitrarySubselect[F, From, X](from, conversion(selectClause), isDistinct)
 
-		override def selectOther[X](selectClause :SQLExpression[From, Grouped, X]) :SubselectSQL[F, X] =
-			if (isDistinct) (selectClause subselectFrom from).distinct
-			else selectClause subselectFrom from
+		override def selectOther[X](selectClause :SQLExpression[From, Grouped, X]) :SubselectSQL[F, X]// =
+//			if (isDistinct)
+//				(selectClause newSubselectFrom from).distinct
+//			else
+//				selectClause newSubselectFrom[from.Base] from
 
 //		override def map[X](f :R => X) :SubselectSQL[F, X] =
 //			new ArbitrarySubselect[F, From, X](from, selectClause.map(f), isDistinct)
@@ -707,13 +754,17 @@ object SelectSQL {
 	}
 
 
-	private class SubselectComponent[-F <: RowProduct, S <: SubselectOf[F], H[A] <: BaseMapping[V, A], V]
+	private class SubselectComponent[-F <: NonEmptyRow, S <: SubselectOf[F], H[A] <: BaseMapping[V, A], V]
 	                                (subselect :S, component :ComponentSQL[S, H], override val isDistinct :Boolean)
 		extends BaseSelectComponent[F, S, H, V](subselect, component)
 		   with BaseSubselectAs[F, S, H, V]
 	{
 		override def distinct :BaseSubselectAs[F, S, H, V] =
 			if (isDistinct) this else new SubselectComponent(from, selectClause, true)
+
+		override def selectOther[X](e :SQLExpression[S, Grouped, X]) :SubselectSQL[F, X] =
+			if (isDistinct) (e newSubselectFrom[F] from).distinct
+			else e newSubselectFrom[F] from
 
 		override def anchor(from :F) :SelectAs[F, H] =
 			if (this.from.outer == from)
@@ -731,7 +782,7 @@ object SelectSQL {
 				case some :NonEmptyRow =>
 					type Ext = SubselectOf[E] //pretend this is the actual type S after rebasing to the expansion clause G
 					type Rel[O <: RowProduct] = JoinedRelation[O, selectClause.Entity] { type FromLast = selectClause.FromLast }
-					implicit val expansion = expansion.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
+					implicit val generalizedExpansion = expansion.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val subselectTables = stretched.fullSize - base.fullSize
 					val offset = selectClause.origin.index
@@ -774,7 +825,7 @@ object SelectSQL {
 	}
 
 
-	private class SubselectComponentColumn[-F <: RowProduct, S <: SubselectOf[F], H[A] <: BaseColumn[V, A], V]
+	private class SubselectComponentColumn[-F <: NonEmptyRow, S <: SubselectOf[F], H[A] <: BaseColumn[V, A], V]
 	              (override val from :S, override val selectClause :GenericColumnComponentSQL[S, H, V],
 	               override val isDistinct :Boolean)
 		extends SubselectComponent[F, S, H, V](from, selectClause, isDistinct)
@@ -801,7 +852,7 @@ object SelectSQL {
 				case some :NonEmptyRow => //todo: refactor this together with SubselectComponent; if S <: NonEmptyRow, than the casting could conceivably by omitted
 					type Ext = SubselectOf[E] //pretend this is the actual type S after rebasing to the expansion clause G
 					type Rel[O <: RowProduct] = JoinedRelation[O, selectClause.Entity] { type FromLast = selectClause.FromLast }
-					implicit val expansion = expansion.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
+					implicit val generalizedExpansion = expansion.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val subselectTables = stretched.fullSize - base.fullSize
 					val offset = selectClause.origin.index
@@ -847,6 +898,13 @@ object SelectSQL {
 		override val withClause   = selectClause.outerWithClause ++ from.withClause
 		override val columns :Seq[TypedColumnSQLMapping[S, Grouped, _, this.type]] =
 			result.columns.toSeq.withOrigin[this.type]
+
+		override def selectOther[X](selectClause :SQLExpression[From, Grouped, X]) :SelectSQL[F, X] =
+			if (isDistinct)
+				(selectClause selectFrom from).distinct
+			else
+				selectClause selectFrom from
+
 	}
 
 
@@ -854,6 +912,12 @@ object SelectSQL {
 		extends SelectSQL[F, V]
 	{ this :ArbitrarySelect[F, S, V] =>
 		override type RowMapping[O] = M[O]
+
+		override def selectOther[X](selectClause :SQLExpression[From, Grouped, X]) =
+			if (isDistinct)
+				(selectClause selectFrom from).distinct
+			else
+				selectClause selectFrom from
 
 		protected val result :M[Unit]
 		override def mapping[O] :M[O] = (this :ArbitrarySelectTemplate[F, S, M, V]).result.withOrigin[O]
@@ -873,7 +937,7 @@ object SelectSQL {
 	}
 
 
-	private class ArbitrarySubselect[-F <: RowProduct, S <: SubselectOf[F], V]
+	private class ArbitrarySubselect[-F <: NonEmptyRow, S <: SubselectOf[F], V]
 	              (subclause :S, select :GroupedSQL[S, V], override val isDistinct :Boolean)
 		extends ArbitrarySelect[F, S, V](subclause, select)
 		   with ArbitrarySelectTemplate[F, S, TypedSQLMapping.c[S]#c[Grouped]#c[V]#project, V]
@@ -881,6 +945,10 @@ object SelectSQL {
 	{
 		override def distinct :SubselectSQL[F, V] =
 			if (isDistinct) this else new ArbitrarySubselect(from, selectClause, true)
+
+		override def selectOther[X](e :SQLExpression[S, Grouped, X]) :SubselectSQL[F, X] =
+			if (isDistinct) (e newSubselectFrom[F] from).distinct
+			else e newSubselectFrom[F] from
 
 		override def anchor(from :F) :SubselectSQL[F, V] =
 			if (this.from.outer == from)
@@ -897,7 +965,7 @@ object SelectSQL {
 			from match { //would be safer to refactor this out as a RowProduct method
 				case some :NonEmptyRow =>
 					type Ext = SubselectOf[E] //RowProduct { type Implicit = G }
-					implicit val expansion = expansion.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
+					implicit val generalizedExpansion = expansion.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val substitute = SQLScribe.shiftBack[from.type, stretched.type](from, stretched)
 					new ArbitrarySubselect[E, stretched.type, V](
@@ -917,7 +985,7 @@ object SelectSQL {
 
 
 
-	private[ast] abstract
+	private[ast] abstract //todo: move outside, make package private
 	class ArbitrarySelectColumn[-F <: RowProduct, S <: SubselectOf[F], V]
 	                           (override val from :S, override val result :TypedColumnSQLMapping[S, Grouped, V, Unit])
 		extends ArbitrarySelect[F, S, V](from, result)
@@ -943,13 +1011,17 @@ object SelectSQL {
 	}
 
 
-	private[ast] class ArbitrarySubselectColumn[-F <: RowProduct, S <: SubselectOf[F], V]
+	private[ast] class ArbitrarySubselectColumn[-F <: NonEmptyRow, S <: SubselectOf[F], V]
 	                   (clause :S, override val selectClause :ColumnSQL[S, Grouped, V],
 	                    override val isDistinct :Boolean)
 		extends ArbitrarySelectColumn[F, S, V](clause, selectClause) with SubselectColumn[F, V]
 	{
 		override def distinct :SubselectColumn[F, V] =
 			if (isDistinct) this else new ArbitrarySubselectColumn(from, selectClause, true)
+
+		override def selectOther[X](e :ColumnSQL[S, Grouped, X]) :SubselectColumn[S, X] =
+			if (isDistinct) (e subselectFrom[F] from).distinct
+			else e subselectFrom[F] from
 
 		override def anchor(from :F) :SubselectColumn[F, V] =
 			if (this.from.outer == from)
@@ -966,7 +1038,7 @@ object SelectSQL {
 			from match {
 				case some :FromSome =>
 					type Ext = SubselectOf[E] //RowProduct { type Implicit = G }
-					implicit val expansion = expansion.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
+					implicit val generalizedExpansion = expansion.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val substitute = SQLScribe.shiftBack[S, stretched.type](from, stretched)
 					new ArbitrarySubselectColumn[E, stretched.type, V](
@@ -1005,13 +1077,17 @@ object SelectSQL {
 	}
 
 
-	private class IndexedSubselect[-F <: RowProduct, S <: SubselectOf[F], V]
+	private class IndexedSubselect[-F <: NonEmptyRow, S <: SubselectOf[F], V]
 	              (subclause :S, select :LabeledValueSQL[S, Grouped, V], override val isDistinct :Boolean)
 		extends IndexedSelect[F, S, V](subclause, select)
 		   with SubselectAs[F, IndexedMapping.of[V]#Mapping]
 	{
 		override def distinct :SubselectAs[F, IndexedMapping.of[V]#Mapping] =
 			if (isDistinct) this else new IndexedSubselect(from, selectClause, true)
+
+		override def selectOther[X](e :SQLExpression[S, Grouped, X]) :SubselectSQL[F, X] =
+			if (isDistinct) (e subselectFrom[F] from).distinct
+			else e subselectFrom[F] from
 
 		override def anchor(from :F) :SubselectAs[F, IndexedMapping.of[V]#Mapping] =
 			if (this.from.outer == from)
@@ -1028,7 +1104,7 @@ object SelectSQL {
 			from match { //would be safer to refactor this out as a RowProduct method
 				case some :NonEmptyRow =>
 					type Ext = SubselectOf[E] //RowProduct { type Implicit = G }
-					implicit val expansion = expansion.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
+					implicit val generalizedExpansion = expansion.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val substitute = SQLScribe.shiftBack[S, Ext](from, stretched)
 					val indexed = substitute(selectClause).asInstanceOf[LabeledValueSQL[Ext, Grouped, V]]
@@ -1075,7 +1151,7 @@ object SelectSQL {
 	}
 
 
-	private class SubselectIndexedColumn[-F <: RowProduct, S <: SubselectOf[F], A <: Label, V]
+	private class SubselectIndexedColumn[-F <: NonEmptyRow, S <: SubselectOf[F], A <: Label, V]
 	                                    (clause :S, override val selectClause :LabeledColumnSQL[S, Grouped, A, V],
 	                                     override val isDistinct :Boolean)
 		extends SelectIndexedColumn[F, S, A, V](clause, selectClause) with SubselectColumn[F, V]
@@ -1085,6 +1161,10 @@ object SelectSQL {
 
 		override def distinct :SubselectColumnAs[F, IndexedMapping.of[V]#Column, V] =
 			if (isDistinct) this else new SubselectIndexedColumn(from, selectClause, true)
+
+		override def selectOther[X](e :ColumnSQL[S, Grouped, X]) :SubselectColumn[F, X] =
+			if (isDistinct) (e subselectFrom[F] from).distinct
+			else e subselectFrom[F] from
 
 		override def anchor(from :F) :SubselectColumnAs[F, IndexedMapping.of[V]#Column, V] =
 			if (this.from.outer == from)
@@ -1101,7 +1181,7 @@ object SelectSQL {
 			from match {
 				case some :FromSome =>
 					type Ext = SubselectOf[E]
-					implicit val expansion = expansion.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
+					implicit val outerSomeExpansion = expansion.asInstanceOf[some.Implicit ExpandedBy base.Generalized]
 					val stretched = base.fromSubselect(some).asInstanceOf[Ext]
 					val substitute = SQLScribe.shiftBack[S, stretched.type](from, stretched)
 					val shift = selectClause.alias @: substitute(selectClause.value) :LabeledColumnSQL[stretched.type, Grouped, A, V]
@@ -1308,11 +1388,19 @@ trait SelectColumn[-F <: RowProduct, R]
 //	override def constituents :Seq[SelectColumn[F, V]] = this::Nil
 	override def one          :ColumnSQL[F, Single, R] = to[R]
 
-	def selectOther[X](selectClause :ColumnSQL[From, Grouped, X]) :SelectColumn[F, X] =
-		if (isDistinct)
-			(selectClause selectFrom from).distinct
-		else
-			selectClause selectFrom from
+	def selectOther[X](selectClause :ColumnSQL[From, Grouped, X]) :SelectColumn[F, X] //=
+//		if (isDistinct)
+//			(selectClause selectFrom from).distinct
+//		else
+//			selectClause selectFrom from
+
+	protected override def reformer[F1 <: F, S1 >: Grouped <: Single, F2 <: RowProduct, S2 >: Grouped <: Single, V2,
+	                                EC2[v] <: ConvertibleSQL[F2, S2, v, EC2], U]
+	                               (other :ConvertibleSQL[F2, S2, V2, EC2])(reform :Reform, passCount :PassCount)
+	                               (implicit leftResult  :SQLTransformation[Rows[R], U],
+	                                         rightResult :SQLTransformation[V2, U], spelling :SQLSpelling)
+			:SpecificExpressionVisitor[F2, S2, V2, (leftResult.SQLResult[F1, S1, ColumnSQL[F1, S1, U]], rightResult.SQLResult[F2, S2, EC2[U]])] =
+		super[ColumnSingleQuery].reformer[F1, S1, F2, S2, V2, EC2, U](other)(reform, passCount)(leftResult, rightResult, spelling)
 
 //	override def asGlobal :Option[SelectColumn[F, R]] = Some(this)
 //	override def anchor(from :F) :SelectColumn[F, R] //= this
@@ -1343,7 +1431,7 @@ object SelectColumn {
 //		override def transform[X](conversion :SQLTransformation[R, X]) :TopSelectColumn[X] =
 //			selectOther(conversion(selectClause))
 
-		override def rowsTo[X](implicit conversion :SQLConversion[R, X]) :TopSelectColumn[X] =
+		override def rowsTo[X](implicit conversion :SQLAdaptation[R, X]) :TopSelectColumn[X] =
 			if (conversion.isIdentity) this.castParam[X]
 			else selectOther(conversion(selectClause)) //new ArbitraryTopSelectColumn[From, X](from, conversion(selectClause), isDistinct)
 
@@ -1380,11 +1468,11 @@ object SelectColumn {
 	trait SubselectColumn[-F <: RowProduct, R]
 		extends SubselectSQL[F, R] with SelectColumn[F, R]
 		   with SingleRowSQLTemplate[F, Rows[R], ({ type Q[-f <: RowProduct] = SubselectColumn[f, R] })#Q]
-		   with SelectTemplate[F, ({ type Q[v] = SubselectColumn[F, v] })#Q]
+		   with SelectTemplate[R, ({ type Q[v] = SubselectColumn[F, v] })#Q]
 	{
 //		override def distinct :SubselectColumn[F, V]
 
-		override def rowsTo[X](implicit conversion :SQLConversion[R, X]) :SubselectColumn[F, X] =
+		override def rowsTo[X](implicit conversion :SQLAdaptation[R, X]) :SubselectColumn[F, X] =
 			if (conversion.isIdentity) this.asInstanceOf[SubselectColumn[F, X]]
 			else selectOther(conversion(selectClause)) //new ArbitrarySubselectColumn[F, From, X](from, conversion(selectClause), isDistinct)
 
@@ -1395,9 +1483,9 @@ object SelectColumn {
 //				:SubselectColumn[F, X] =
 //			map(applyFun(f))
 
-		override def selectOther[X](e :ColumnSQL[F, Grouped, X]) :SubselectColumn[F, X] =
-			if (isDistinct) (e subselectFrom from).distinct
-			else e subselectFrom from
+		override def selectOther[X](e :ColumnSQL[From, Grouped, X]) :SubselectColumn[F, X] //=
+//			if (isDistinct) (e subselectFrom from).distinct
+//			else e subselectFrom from
 //		override def asGlobal :Option[SubselectColumn[F, R]] = Some(this)
 
 		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit expansion :U PartOf E) :SubselectColumn[E, R] =
@@ -1675,10 +1763,15 @@ object SelectAs {
 //		override def distinct :BaseTopSelectAs[F, H, V]
 	}
 
-	private[sql] trait BaseSubselectAs[-F <: RowProduct, S <: SubselectOf[F], H[A] <: BaseMapping[V, A], V]
+	private[sql] trait BaseSubselectAs[-F <: NonEmptyRow, S <: SubselectOf[F], H[A] <: BaseMapping[V, A], V]
 		extends SubselectAs[F, H]
 	{
 		override type From = S
+
+//		override def selectOther[X](e :SQLExpression[F, Grouped, X]) :SubselectSQL[F, X] =
+//			if (isDistinct) (e subselectFrom from).distinct
+//			else (e subselectFrom from)
+
 //		override def distinct :BaseSubselectAs[F, S, H, V]
 //		override def asGlobal :Option[BaseSubselectAs[F, S, H, V]] = Some(this)
 	}
@@ -1941,7 +2034,7 @@ object SelectColumnAs {
 //		override def asGlobal :Option[BaseTopSelectColumnAs[F, H, V]] = Some(this)
 	}
 
-	private[sql] trait BaseSubselectColumnAs[-F <: RowProduct, S <: SubselectOf[F], H[A] <: BaseColumn[V, A], V]
+	private[sql] trait BaseSubselectColumnAs[-F <: NonEmptyRow, S <: SubselectOf[F], H[A] <: BaseColumn[V, A], V]
 		extends SubselectColumnAs[F, H, V] with BaseSubselectAs[F, S, H, V]
 	{
 		override def distinct :BaseSubselectColumnAs[F, S, H, V]

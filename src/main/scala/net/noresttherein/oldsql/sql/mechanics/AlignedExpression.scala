@@ -19,7 +19,8 @@ import net.noresttherein.oldsql.sql.SQLExpression.{ConvertibleSQL, ConvertingTem
 import net.noresttherein.oldsql.sql.ast.{AdaptedSQL, ColumnMappingSQL, ComponentSQL, CompoundSelectSQL, DecoratedColumnSQL, DecoratedSQL, EditedComponentSQL, LValueSQL, MappingSQL, SelectSQL}
 import net.noresttherein.oldsql.sql.ast.MappingSQL.ConvertedMappingSQL
 import net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL
-import net.noresttherein.oldsql.sql.mechanics.Reform.{AbstractReform, AbstractValidatorReform, PassCount, Permissions, TopDownReform, TunedReform}
+import net.noresttherein.oldsql.sql.mechanics.Reform.{AbstractReform, AbstractValidatorReform, PassCount, TunedReform}
+import net.noresttherein.oldsql.sql.mechanics.ReformPermissions.{MayReform, Permissions}
 
 
 
@@ -65,13 +66,13 @@ class Alignment(
 			//  for the standard expressions, but is certainly a brittle solution.
 			@tailrec def collect(e :SQLShape[_]) :Option[(MappingSQL.__, Boolean)] = e match {
 				case c :LValueSQL.__ @unchecked =>
-					Some(c.component :ComponentSQL.__, permission.mayReorder && !c.component.`->isFinal`)
+					Some((c.component :ComponentSQL.__, permission.mayReorder && !c.component.`->isFinal`))
 				case c :EditedComponentSQL[_, MappingOf[Any]#TypedProjection, Any] @unchecked =>
-					Some(c.component :ComponentSQL.__, permission.mayReorder && !c.component.`->isFinal`)
+					Some((c.component :ComponentSQL.__, permission.mayReorder && !c.component.`->isFinal`))
 				case c :ConvertedMappingSQL[_, _, MappingAt, _, _] @unchecked =>
 					collect(c.value)
 				case c :MappingSQL.__ =>
-					Some(c, permission.mayReorder)
+					Some((c, permission.mayReorder))
 				case _ => None
 			}
 			collect(expr)
@@ -297,10 +298,9 @@ class Alignment(
 	}
 
 	override def toString :String =
-		aligned.zipMap(permissions) { (e, ps) => "(" + e + " :" + ps.leftRightString + ")" }.mkString(
-			"Alignment(", ", ", ")"
-		)
-}
+		aligned.zipMap(permissions) { (e :SQLShape[_], ps :Permissions) =>
+			"(" + e + " :" + ps.leftRightString + ")" }.mkString("Alignment(", ", ", ")")
+		}
 
 
 
@@ -367,7 +367,7 @@ private[sql] class AlignedExpression[-F <: RowProduct, -S >: Grouped <: Single, 
                                            spelling :SQLSpelling)
 			:(leftResult.SQLResult[F1, S1, SQLExpression[F1, S1, U]], rightResult.SQLResult[F2, S2, EC2[U]]) =
 		if (!passCount.lastChance) //give other all chances to reform as long as we can default to our implementation
-			passReform(other)(reform, passCount)
+			passReform[F1, S1, F2, S2, V2, EC2, U](other)(reform, passCount)
 		else
 			other match {
 				case aligned :AlignedExpression[F2, S2, V2] =>
@@ -441,9 +441,9 @@ private[sql] class AlignedColumn[-F <: RowProduct, -S >: Grouped <: Single, V]
 
 
 private[sql] object AlignedExpression {
-	val BottomUp :ExpressionReform = new Aligner
-	val TopDown  :ExpressionReform = new TopDownAligner
-	def Realigner[V](selectClause :SQLShape[V]) :ExpressionReform = new Realigner(selectClause)
+	val BottomUp :Reform = new Aligner
+	val TopDown  :Reform = new TopDownAligner
+	def Realigner[V](selectClause :SQLShape[V]) :Reform = new Realigner(selectClause)
 
 
 	/** A preprocessing reform used in the process of unifying the shapes of more than two expressions.
@@ -485,29 +485,21 @@ private[sql] object AlignedExpression {
 	  * Note that after reforming a query, only its ''select'' clause contains `AlignedExpression`s listing ''all''
 	  * member ''selects'' of the query, with all its subqueries, in particular member ''selects'' themselves,
 	  * being aligned only with a subset of other ''selects''.
-	  */
-	private class Aligner(override val mayExcludeLeft :Boolean, override val mayIncludeLeft :Boolean,
-	                      override val mayReorderLeft :Boolean, override val mayAddNullLeft :Boolean)
-	                     (override val mayExcludeRight :Boolean, override val mayIncludeRight :Boolean,
-	                      override val mayReorderRight :Boolean, override val mayAddNullRight :Boolean)
+	  */ //todo: this should be also a QueryReform
+	private class Aligner(override val permissions :Permissions)
 	                     (wrap :Reform => Reform,
-	                      constructor :(Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean, Boolean,
-	                                    Reform => Reform) => Reform =
-	                        new Aligner(_, _, _, _)(_, _, _, _)(_))
-		extends TunedReform(mayExcludeLeft, mayIncludeLeft, mayReorderLeft, mayAddNullLeft)(
-		                                      mayExcludeRight, mayIncludeRight, mayReorderRight, mayAddNullRight)(
-		                                      wrap, constructor)
+	                      constructor :(Permissions, Reform => Reform) => Reform =
+	                        new Aligner(_)(_))
+		extends TunedReform(permissions)(wrap, constructor)
 		   with PreprocessorReform with Reform
 	{
-		def this() = this(true, true, true, true)(true, true, true, true)(identity)
+		def this() = this(MayReform)(identity)
 
 		override lazy val swap =
 			if ((this eq self) && isSymmetrical)
 				self
 			else
-				new Aligner(mayExcludeRight, mayIncludeRight, mayReorderRight, mayAddNullRight)(
-				            mayExcludeLeft, mayIncludeLeft, mayReorderLeft, mayAddNullLeft)(wrap, constructor)
-	            {
+				new Aligner(permissions.swap)(wrap, constructor) {
 		            override lazy val swap = Aligner.this.self
 	            }.self
 
@@ -537,7 +529,8 @@ private[sql] object AlignedExpression {
 					val rightRes = rightResult(new AlignedExpression(r.value, alignment))
 					(leftRes, rightRes)
 				//AdapterSQL will implement its reform before AlignedExpression gets to
-				case (l :AlignedExpression[LF, LS, LV], r :AdaptedSQL[RF, RS, x, RV]) => super[Reform].apply(l, r)
+				case (l :AlignedExpression[LF, LS, LV], r :AdaptedSQL[RF, RS, x, RV]) =>
+					super[Reform].apply[LF, LS, LV, LE, RF, RS, RV, RE, U](l, r)(leftResult, rightResult, spelling)
 				case (l :AlignedExpression[LF, LS, LV], _) =>
 					val all = l.aligned :+ right
 					val ps  = l.permissions :+ rightPermissions
@@ -546,7 +539,8 @@ private[sql] object AlignedExpression {
 					val rightRes  = rightResult(new AlignedExpression(right, alignment))
 					(leftRes, rightRes)
 
-				case (l :AdaptedSQL[LF, LS, x, LV], r :AlignedExpression[RF, RS, RV]) => super[Reform].apply(l, r)
+				case (l :AdaptedSQL[LF, LS, x, LV], r :AlignedExpression[RF, RS, RV]) =>
+					super[Reform].apply[LF, LS, LV, LE, RF, RS, RV, RE, U](l, r)(leftResult, rightResult, spelling)
 				case (_, r :AlignedExpression[RF, RS, RV]) =>
 					val all = left +: r.aligned
 					val ps  = leftPermissions +: r.permissions
@@ -582,34 +576,26 @@ private[sql] object AlignedExpression {
 
 		override def default[LF <: RowProduct, LM[O] <: MappingAt[O], RF <: RowProduct, RM[O] <: MappingAt[O], U]
 		                    (left :ComponentSQL[LF, LM], right :ComponentSQL[RF, RM])
-		                    (implicit leftResult  :SQLTransformation[RM[Unit]#Subject, U],
-		                              rightResult :SQLTransformation[LM[Unit]#Subject, U], spelling :SQLSpelling)
+		                    (implicit leftResult  :SQLTransformation[LM[Unit]#Subject, U],
+		                              rightResult :SQLTransformation[RM[Unit]#Subject, U], spelling :SQLSpelling)
 				:(leftResult.SQLResult[LF, Single, LValueSQL[LF, LM, U]], rightResult.SQLResult[RF, Single, LValueSQL[RF, RM, U]]) =
-			fallback
+			fallback(left, right)(leftResult, rightResult, spelling)
 
 	}
 
 
 
-	private class TopDownAligner(override val mayExcludeLeft :Boolean, override val mayIncludeLeft :Boolean,
-	                             override val mayReorderLeft :Boolean, override val mayAddNullLeft :Boolean)
-	                            (override val mayExcludeRight :Boolean, override val mayIncludeRight :Boolean,
-	                             override val mayReorderRight :Boolean, override val mayAddNullRight :Boolean)
+	private class TopDownAligner(override val permissions :Permissions)
 	                            (wrap :Reform => Reform)
-		extends Aligner(mayExcludeLeft, mayIncludeLeft, mayReorderLeft, mayAddNullLeft)(
-		                mayExcludeRight, mayIncludeRight, mayReorderRight, mayAddNullRight)(
-		                wrap, new TopDownAligner(_, _, _, _)(_, _, _, _)(_)
-		)  with TopDownReform
+		extends Aligner(permissions)(wrap, new TopDownAligner(_)(_)) //with TopDownReform
 	{
-		def this() = this(true, true, true, true)(true, true, true, true)(identity)
+		def this() = this(MayReform)(identity)
 
 		override lazy val swap =
 			if ((this eq self) && isSymmetrical)
 				self
 			else
-				new TopDownAligner(mayExcludeRight, mayIncludeRight, mayReorderRight, mayAddNullRight)(
-				                   mayExcludeLeft, mayIncludeLeft, mayReorderLeft, mayAddNullLeft)(wrap)
-				{
+				new TopDownAligner(permissions.swap)(wrap) {
 					override lazy val swap = TopDownAligner.this.self
 				}.self
 	}
@@ -647,7 +633,7 @@ private[sql] object AlignedExpression {
 		extends AbstractReform(wrap, new Realigner(selectClause, _))
 		   with AbstractValidatorReform with PreprocessorReform with Reform
 	{
-		override val swap = super[AbstractReform].swap
+//		override val swap = super[AbstractReform].swap
 
 /*
 		override def apply[E <: RowProduct, A >: Grouped <: Single, X,
@@ -699,6 +685,7 @@ private[sql] object AlignedExpression {
 			???
 
 		//we leave the default fallback simply returning the two expressions
+/*
 
 		override def default[P, V](query :Select[P, V])(implicit spelling :SQLSpelling) :Select[P, V] =
 			query.selectOther(
@@ -736,6 +723,7 @@ private[sql] object AlignedExpression {
 			val r = right.apply(query.right)(inOperand)
 			CompoundSelectSQL.reformed(l, query.operator, r, query.selectClause)(this)
 		}
+*/
 	}
 
 	/* Things to do after running Realigner on a query:

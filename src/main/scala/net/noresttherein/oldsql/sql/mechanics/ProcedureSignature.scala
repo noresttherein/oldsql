@@ -460,7 +460,7 @@ object ProcedureSignature extends Rank1ProcedureSignatureImplicits {
 				in.last match {
 					case UnboundParamSQL(_, _, _) | BoundParam(_, _) => init(in.init, form.init) ~ in.last
 					case _ => in.last.groundValue match {
-						case Got(value) => init(in.init, form.init) ~ BoundParam(form.last)(value)
+						case Got(value) => init(in.init, form.init) ~ BoundParam(form.last, value)
 						case _ =>  //todo: must convert in.last to an expression evaluated at binding time to a value.
 							throw new IllegalArgumentException(
 								"Cannot use a composite expression " + in.last + " for an OUT parameter. " +

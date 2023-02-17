@@ -212,7 +212,7 @@ object Extractor extends ImplicitExtractors {
 	  * It is a 'SAM' type, leaving only the `opt` method to be implemented by subclasses.
 	  *///todo: make OptionalExtractor extend PartialFunction
 	trait OptionalExtractor[-X, +Y] extends Extractor[X, Y] { self =>
-		override def apply(x :X) :Y = opt(x) getOrElse {
+		override def apply(x :X) :Y = this.opt(x) getOrElse {
 			throw new NoSuchElementException("No value for " + this + " in " + x)
 		}
 
@@ -225,21 +225,21 @@ object Extractor extends ImplicitExtractors {
 			case _ => andThenCallback(extractor)
 		}
 		protected def andThenCallback[Z](extractor :Y =?> Z) :X =?> Z =
-			Optional { opt(_) match {
+			Optional { this.opt(_) match {
 				case Got(y) => extractor.opt(y)
 				case _ => Lack
 			}}
 
-		override def andThen[Z](f :Y => Z) :X =?> Z = Optional { opt(_) map f }
+		override def andThen[Z](f :Y => Z) :X =?> Z = Optional { this.opt(_) map f }
 
 		override def andThenOpt[Z](f :Y => Option[Z]) :X =?> Z =
-			Extractor.opt { x :X => opt(x) match {
+			Extractor.opt { x :X => this.opt(x) match {
 				case Got(y) => f(y)
 				case _ => None
 			}}
 
 		override def compose[W](extractor :W =?> X) :W =?> Y = extractor andThenOpt this
-		override def composeOpt[W](extractor :OptionalExtractor[W, X]) :W =?> Y = extractor andThenOpt[Y] this
+		override def composeOpt[W](extractor :OptionalExtractor[W, X]) :W =?> Y = extractor.andThenOpt[Y](this)
 		override def composeReq[W](extractor :RequisiteExtractor[W, X]) :W =?> Y = extractor andThenOpt this
 
 		override def compose[W](f :W => X) :W =?> Y =
@@ -329,7 +329,7 @@ object Extractor extends ImplicitExtractors {
 		override def compose[W](extractor :W =?> X) :W =?> Y = extractor andThenReq this
 		override def composeOpt[W](extractor :OptionalExtractor[W, X]) :W =?> Y = extractor andThenReq this
 		override def composeReq[W](extractor :RequisiteExtractor[W, X]) :RequisiteExtractor[W, Y] =
-			extractor andThenReq[Y] this
+			extractor andThenReq this
 
 		override def compose[W](f :W => X) :RequisiteExtractor[W, Y] = { //Extractor.req(req andThen getter)
 			val continue = getter; Requisite { w :W => continue(f(w)) }

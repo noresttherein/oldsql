@@ -8,11 +8,13 @@ import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AnyColumnVisitor, SpecificColumnVisitor}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{AnyExpressionVisitor, Grouped, Single, SpecificExpressionVisitor}
-import net.noresttherein.oldsql.sql.ast.ComparisonSQL.{EQ, GT, GTE, LT, LTE, NEQ, OrderingOperator}
+import net.noresttherein.oldsql.sql.ast.ComparisonSQL.{EQ, GT, GTE, LT, LTE, NEQ, NULL_GT, NULL_GTE, NULL_LT, NULL_LTE, NULL_NEQ, OrderingOperator}
 import net.noresttherein.oldsql.sql.ast.CompositeSQL.BinaryCompositeSQL
 import net.noresttherein.oldsql.sql.ast.EqualitySQL.{AnyEqualityVisitor, SpecificEqualityVisitor}
 import net.noresttherein.oldsql.sql.ast.InequalitySQL.{AnyInequalityVisitor, SpecificInequalityVisitor}
 import net.noresttherein.oldsql.sql.ast.NullEqualitySQL.{AnyNullEqualityVisitor, SpecificNullEqualityVisitor}
+import net.noresttherein.oldsql.sql.ast.NullInequalitySQL.{AnyNullInequalityVisitor, SpecificNullInequalityVisitor}
+import net.noresttherein.oldsql.sql.ast.NullOrderComparisonSQL.{AnyNullOrderComparisonVisitor, SpecificNullOrderComparisonVisitor}
 import net.noresttherein.oldsql.sql.ast.OrderComparisonSQL.{AnyOrderComparisonVisitor, SpecificOrderComparisonVisitor}
 import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLConversion, SQLOrdering, SQLScribe}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
@@ -54,7 +56,11 @@ trait ComparisonSQL[-F <: RowProduct, -S >: Grouped <: Single, T]
 
 	protected def columnSpelling[P](left :SpelledSQL[P], right :SpelledSQL[P])
 	                               (implicit spelling :SQLSpelling) :SpelledSQL[P] =
-		left + (" " + spelling.operator(symbol) + " ") + right
+		columnSpelling(left, operator, right)
+
+	protected def columnSpelling[P](left :SpelledSQL[P], operator :OrderingOperator, right :SpelledSQL[P])
+	                               (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		left + (" " + spelling.operator(operator.symbol) + " ") + right
 
 	protected def columnwiseSpelling[P](connective :String)
 	                                   (from :F, context :SQLContext[P], params :Parameterization[P, F])
@@ -109,11 +115,7 @@ object ComparisonSQL {
 	def apply[F <: RowProduct, S >: Grouped <: Single, T :SQLOrdering]
 	         (left :SQLExpression[F, S, T], cmp :OrderingOperator, right :SQLExpression[F, S, T])
 			:ComparisonSQL[F, S, T] =
-		cmp match {
-			case EQ => EqualitySQL(left, right)
-			case NEQ => InequalitySQL(left, right)
-			case _ => OrderComparisonSQL(left, cmp, right)
-		}
+		cmp(left, right)
 
 	def unapply[F <: RowProduct, S >: Grouped <: Single](e :SQLExpression[F, S, _])
 			:Opt[(SQLExpression[F, S, T], OrderingOperator, SQLExpression[F, S, T]) forSome { type T }] =
@@ -124,11 +126,29 @@ object ComparisonSQL {
 		}
 
 
-	final class OrderingOperator private[ComparisonSQL](val symbol :String, cmpResult :Int, inverse :Boolean)
+	class OrderingOperator protected (val symbol :String, cmpResult :Int, inverse :Boolean = false)
 		extends Serializable
 	{
+		/** True for operators which treat all `null` values as equal. Created
+		  * [[net.noresttherein.oldsql.sql.ast.ComparisonSQL ComparisonSQL]] includes additional conditions.
+		  */
+		def areNullsEqual :Boolean = false
+
+		/** True for equality comparisons, including nullable equality
+		  * [[net.noresttherein.oldsql.sql.ast.ComparisonSQL.EQ EQ]] and
+		  * [[net.noresttherein.oldsql.sql.ast.ComparisonSQL.NULL_EQ NULL_EQ]]).
+		  */
+		def isEquality :Boolean = symbol == "="
+
+		/** True for inequality comparisons, including nullable inequality
+		  * [[net.noresttherein.oldsql.sql.ast.ComparisonSQL.NEQ NEQ]] and
+		  * [[net.noresttherein.oldsql.sql.ast.ComparisonSQL.NULL_NEQ NULL_NEQ]]).
+		  */
+		def isInequality :Boolean = symbol == "<>"
+
 		/** Strictly less than or strictly more than. Equality and inequality return `false`. */
 		def isStrict    :Boolean = !inverse && cmpResult != 0 //inverse == false && cmpResult == 0 is inequality
+
 		/** Less than or equal/greater than or equal. Equality and inequality return `false` */
 		def isNonStrict :Boolean = inverse && cmpResult != 0
 
@@ -162,7 +182,12 @@ object ComparisonSQL {
 
 		def apply[F <: RowProduct, S >: Grouped <: Single, T :SQLOrdering]
 		         (left :SQLExpression[F, S, T], right :SQLExpression[F, S, T]) :ComparisonSQL[F, S, T] =
-			ComparisonSQL(left, this, right)
+			symbol match {
+				case EQ.symbol  => EqualitySQL(denullify(left), denullify(right))
+				case NEQ.symbol => InequalitySQL(denullify(left), denullify(right))
+				case _ => OrderComparisonSQL(denullify(left), this, denullify(right))
+			}
+
 
 		def unapply[F <: RowProduct, S >: Grouped <: Single](e :SQLExpression[F, S, _])
 				:Opt[(SQLExpression[F, S, T], SQLExpression[F, S, T]) forSome { type T }] =
@@ -184,26 +209,74 @@ object ComparisonSQL {
 		override def toString :String = symbol
 	}
 
+	private object OrderingOperator {
+		def apply(symbol :String, cmpResult :Int, inverse :Boolean) :OrderingOperator =
+			new OrderingOperator(symbol, cmpResult, inverse)
+	}
+
+
+	class NullableOrderingOperator protected (override val symbol :String, cmpResult :Int, inverse :Boolean)
+		extends OrderingOperator(symbol, cmpResult, inverse)
+	{
+		override def areNullsEqual = true
+
+		override def strict :OrderingOperator = symbol match {
+			case "<" | ">" => this
+			case "<=" => NULL_GT
+			case ">=" => NULL_LT
+			case _ =>
+				throw new UnsupportedOperationException("Operator " + symbol + " does not have a strict version.")
+		}
+		override def nonStrict :OrderingOperator = symbol match {
+			case "<=" | ">=" => this
+			case "<" => NULL_LTE
+			case ">" => NULL_GTE
+			case _ =>
+				throw new UnsupportedOperationException("Operator " + symbol + " does not have a non strict version.")
+		}
+
+		override def apply[T](left :T, right :T)(implicit ordering :SQLOrdering[T]) :Boolean =
+			if (left == null & right == null) !isStrict || isEquality
+			else if (left == null | right == null) false
+			else super.apply(left, right)
+
+		override def apply[F <: RowProduct, S >: Grouped <: Single, T :SQLOrdering]
+		         (left :SQLExpression[F, S, T], right :SQLExpression[F, S, T]) :ComparisonSQL[F, S, T] =
+			symbol match {
+				case EQ.symbol  => NullEqualitySQL(denullify(left), denullify(right))
+				case NEQ.symbol => NullInequalitySQL(denullify(left), denullify(right))
+				case _ => NullOrderComparisonSQL(denullify(left), this, denullify(right))
+			}
+
+		override def canEqual(other :Any) :Boolean = other.isInstanceOf[NullableOrderingOperator]
+	}
+
+	private object NullableOrderingOperator {
+		def apply(symbol :String, cmpResult :Int, inverse :Boolean) :NullableOrderingOperator =
+			new NullableOrderingOperator(symbol, cmpResult, inverse)
+	}
+
+
 	//consider: renaming them to <, <=, >, >=, ==, <>
-	final val LT  = new OrderingOperator("<", -1, false)
-	final val LTE = new OrderingOperator("<=", 1, true)
-	final val GT  = new OrderingOperator(">", 1, false)
-	final val GTE = new OrderingOperator(">=", -1, true)
-	final val EQ  = new OrderingOperator("=", 0, false)
-	final val NEQ = new OrderingOperator("<>", 0, true)
+	final val LT  = OrderingOperator("<", -1, false)
+	final val LTE = OrderingOperator("<=", 1, true)
+	final val GT  = OrderingOperator(">", 1, false)
+	final val GTE = OrderingOperator(">=", -1, true)
+	final val EQ  = OrderingOperator("=", 0, false)
+	final val NEQ = OrderingOperator("<>", 0, true)
 	//consider: special variants handling nulls
-//
-//	final val NULL_LT  = new OrderingOperator("<", -1, false)
-//	final val NULL_LTE = new OrderingOperator("<=", 1, true)
-//	final val NULL_GT  = new OrderingOperator(">", 1, false)
-//	final val NULL_GTE = new OrderingOperator(">=", -1, true)
-//	final val NULL_EQ  = new OrderingOperator("=", 0, false)
-//	final val NULL_NEQ = new OrderingOperator("<>", 0, true)
+
+	final val NULL_LT  :OrderingOperator = NullableOrderingOperator("<", -1, false)
+	final val NULL_LTE :OrderingOperator = NullableOrderingOperator("<=", 1, true)
+	final val NULL_GT  :OrderingOperator = NullableOrderingOperator(">", 1, false)
+	final val NULL_GTE :OrderingOperator = NullableOrderingOperator(">=", -1, true)
+	final val NULL_EQ  :OrderingOperator = NullableOrderingOperator("=", 0, false)
+	final val NULL_NEQ :OrderingOperator = NullableOrderingOperator("<>", 0, true)
 
 	trait SpecificComparisonVisitor[+F <: RowProduct, +S >: Grouped <: Single, X, +Y]
-		extends SpecificOrderComparisonVisitor[F, S, X, Y]
-		   with SpecificEqualityVisitor[F, S, X, Y] with SpecificInequalityVisitor[F, S, X, Y]
-		   with SpecificNullEqualityVisitor[F, S, X, Y]
+		extends SpecificOrderComparisonVisitor[F, S, X, Y] with SpecificNullOrderComparisonVisitor[F, S, X, Y]
+		   with SpecificEqualityVisitor[F, S, X, Y] with SpecificNullEqualityVisitor[F, S, X, Y]
+		   with SpecificInequalityVisitor[F, S, X, Y] with SpecificNullInequalityVisitor[F, S, X, Y]
 	{
 		def comparison[V](e :ComparisonSQL[F, S, V])(implicit isBoolean :X =:= Boolean) :Y
 	}
@@ -214,8 +287,12 @@ object ComparisonSQL {
 	{
 		override def equality[V](e :EqualitySQL[F, S, V])(implicit isBoolean :X =:= Boolean) :Y = comparison(e)
 		override def inequality[V](e :InequalitySQL[F, S, V])(implicit isBoolean :X =:= Boolean) :Y = comparison(e)
-		override def nullEquality[V](e :NullEqualitySQL[F, S, V])(implicit isBoolean :X =:= Boolean) :Y = comparison(e)
 		override def order[V](e :OrderComparisonSQL[F, S, V])(implicit isBoolean :X =:= Boolean) :Y = comparison(e)
+		override def nullEquality[V](e :NullEqualitySQL[F, S, V])(implicit isBoolean :X =:= Boolean) :Y = comparison(e)
+		override def nullInequality[V](e :NullInequalitySQL[F, S, V])(implicit isBoolean :X =:= Boolean) :Y =
+			comparison(e)
+		override def nullOrder[V](e :NullOrderComparisonSQL[F, S, V])(implicit isBoolean :X =:= Boolean) :Y =
+			comparison(e)
 	}
 //
 //
@@ -243,8 +320,9 @@ object ComparisonSQL {
 
 
 	trait AnyComparisonVisitor[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]]
-		extends AnyOrderComparisonVisitor[F, Y] with AnyEqualityVisitor[F, Y] with AnyInequalityVisitor[F, Y]
-		   with AnyNullEqualityVisitor[F, Y]
+		extends AnyOrderComparisonVisitor[F, Y] with AnyNullOrderComparisonVisitor[F, Y]
+		   with AnyEqualityVisitor[F, Y] with AnyNullEqualityVisitor[F, Y]
+		   with AnyInequalityVisitor[F, Y] with AnyNullInequalityVisitor[F, Y]
 	{
 		def comparison[S >: Grouped <: Single, X](e :ComparisonSQL[F, S, X]) :Y[S, Boolean]
 	}
@@ -253,8 +331,12 @@ object ComparisonSQL {
 	trait CaseAnyComparison[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] extends MatchAnyComparison[F, Y] {
 		override def equality[S >: Grouped <: Single, X](e :EqualitySQL[F, S, X]) :Y[S, Boolean] = comparison(e)
 		override def inequality[S >: Grouped <: Single, X](e :InequalitySQL[F, S, X]) :Y[S, Boolean] = comparison(e)
-		override def nullEquality[S >: Grouped <: Single, X](e :NullEqualitySQL[F, S, X]) :Y[S, Boolean] = comparison(e)
 		override def order[S >: Grouped <: Single, X](e :OrderComparisonSQL[F, S, X]) :Y[S, Boolean] = comparison(e)
+		override def nullEquality[S >: Grouped <: Single, X](e :NullEqualitySQL[F, S, X]) :Y[S, Boolean] = comparison(e)
+		override def nullInequality[S >: Grouped <: Single, X](e :NullInequalitySQL[F, S, X]) :Y[S, Boolean] =
+			comparison(e)
+		override def nullOrder[S >: Grouped <: Single, X](e :NullOrderComparisonSQL[F, S, X]) :Y[S, Boolean] =
+			comparison(e)
 	}
 }
 
@@ -277,7 +359,7 @@ class OrderComparisonSQL[-F <: RowProduct, -S >: Grouped <: Single, T]
 	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
 	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
 		operator match {
-			case LT | LTE | GT | GTE =>
+			case LT | LTE | GT | GTE | NULL_LT | NULL_LTE | NULL_GT | NULL_GTE =>
 				val cmpSpelling = spelling.inOperand
 				val anchoredLeft = if (left.isAnchored(from)) left else left.anchor(from)
 				val anchoredRight = if (right.isAnchored(from)) right else right.anchor(from)
@@ -292,24 +374,29 @@ class OrderComparisonSQL[-F <: RowProduct, -S >: Grouped <: Single, T]
 					)
 				//we modify context out of order, but currently there is nothing that can go wrong
 				val rights = cmpSpelling.explode(right)(from, lefts.last.context, params)
-				val eqSQL = " " + cmpSpelling.operator(EQ.symbol) + " "
-				val cmpSQL = " " + cmpSpelling.operator(operator.symbol) + " "
+//				val eqSQL = " " + cmpSpelling.operator(EQ.symbol) + " "
+//				val cmpSQL = " " + cmpSpelling.operator(operator.symbol) + " "
 				if (lefts.length != rights.length)
 					throw new MismatchedExpressionsException(
 						"Failed to reform comparison " + this + " to compare matching column sets: final expressions " +
 						finalLeft + " and " + finalRight + " resulted in columns " + lefts + " and " + rights + "."
 					)
-				val columnPairs = (lefts zip rights)
-				val prefixes = columnPairs.view.init.map { //conjunctions of equalities between first 0,...,n-1 pairs
-					case (l, r) => l.inParens + eqSQL + r.inParens
+				val columnPairs = lefts zip rights
+//				val prefixes = columnPairs.view.init.map { //conjunctions of equalities between first 0,...,n-1 pairs
+//					case (l, r) => l.inParens + eqSQL + r.inParens
+//				}.scanLeft(SpelledSQL.empty[P]) {
+//					(prefix, pair) => prefix + cmpSpelling._AND_ + pair
+//				}
+				val prefixes = columnPairs.view.init.map {
+					case (l, r) => columnSpelling(l.inParens, EQ, r.inParens)
 				}.scanLeft(SpelledSQL.empty[P]) {
 					(prefix, pair) => prefix + cmpSpelling._AND_ + pair
 				}
 				(prefixes zip columnPairs).map { case (eqs, (l, r)) => //slap inequality behind the following pair at the end
-					if (eqs.isEmpty) l.inParens + cmpSQL + r.inParens
-					else eqs + cmpSpelling._AND_ + l.inParens + cmpSQL + r.inParens
+					if (eqs.isEmpty) columnSpelling(l.inParens, r.inParens)
+					else eqs + cmpSpelling._AND_ + columnSpelling(l.inParens, r.inParens)
 				}.reduce(_ + cmpSpelling._OR_ + _)
-			case NEQ =>
+			case NEQ | NULL_NEQ =>
 				columnwiseSpelling(spelling._OR_)(from, context, params)
 			case _ => //EQ and anything I forget in the future
 				columnwiseSpelling(spelling._AND_)(from, context, params)
@@ -341,12 +428,12 @@ class OrderComparisonSQL[-F <: RowProduct, -S >: Grouped <: Single, T]
 
 object OrderComparisonSQL {
 	def apply[F <: RowProduct, S >: Grouped <: Single, T :SQLOrdering]
-	         (left :SQLExpression[F, S, T], cmp :OrderingOperator, right :SQLExpression[F, S, T]) =
+	         (left :SQLExpression[F, S, T], cmp :OrderingOperator, right :SQLExpression[F, S, T]) :ComparisonSQL[F, S, T] =
 		new OrderComparisonSQL(left, cmp, right)
 
 	def unapply[F <: RowProduct, S >: Grouped <: Single](e :SQLExpression[F, S, _])
 			:Opt[(SQLExpression[F, S, T], OrderingOperator, SQLExpression[F, S, T]) forSome { type T }] =
-		e match {
+		e match { //consider: maybe it shouldn't match NullOrderComparisonSQL?
 			case cmp :OrderComparisonSQL[F @unchecked, S @unchecked, t] =>
 				Got((cmp.left, cmp.operator, cmp.right))
 			case _ => Lack
@@ -497,7 +584,7 @@ case class NullEqualitySQL[-F <: RowProduct, -S >: Grouped <: Single, T]
                           (left :SQLExpression[F, S, T], right :SQLExpression[F, S, T])
 	extends ComparisonSQL[F, S, T]
 {
-	override def operator :OrderingOperator = ComparisonSQL.EQ
+	override def operator :OrderingOperator = ComparisonSQL.NULL_EQ
 
 	override def groundValue :Opt[Boolean] =
 		for (l <- left.groundValue; r <- right.groundValue) yield l == r
@@ -512,9 +599,7 @@ case class NullEqualitySQL[-F <: RowProduct, -S >: Grouped <: Single, T]
 
 	protected override def columnSpelling[P](left :SpelledSQL[P], right :SpelledSQL[P])
 	                                        (implicit spelling :SQLSpelling) :SpelledSQL[P] =
-		left + " = " + right + spelling._OR_ +
-			left + (" " + spelling.operator("is") + spelling._NULL_ + spelling.AND + " ") +
-			right + (" " + spelling.operator("is") + " " + spelling.NULL)
+		NullEqualitySQL.spell(left, right)
 
 	protected override def visit[Y[-_ >: Grouped <: Single, _]]
 	                            (visitor :AnyColumnVisitor[F, Y]) :Y[S, Boolean] = visitor.nullEquality(this)
@@ -530,6 +615,12 @@ case class NullEqualitySQL[-F <: RowProduct, -S >: Grouped <: Single, T]
 
 
 object NullEqualitySQL {
+
+	private[ast] def spell[P](left :SpelledSQL[P], right :SpelledSQL[P])(implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		"(" +: (left + " = " + right + spelling._OR_ +
+			left + (spelling._IS_ + spelling.NULL + spelling._AND_) + right + (spelling._IS_ + spelling.NULL + ")"))
+
+
 	trait SpecificNullEqualityVisitor[+F <: RowProduct, +S >: Grouped <: Single, X, +Y] {
 		def nullEquality[V](e :NullEqualitySQL[F, S, V])(implicit isBoolean :X =:= Boolean) :Y
 	}
@@ -551,6 +642,165 @@ object NullEqualitySQL {
 	}
 	type MatchAnyNullEquality[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] = AnyNullEqualityVisitor[F, Y]
 	type CaseAnyNullEquality[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] = AnyNullEqualityVisitor[F, Y]
+}
+
+
+
+
+case class NullInequalitySQL[-F <: RowProduct, -S >: Grouped <: Single, T]
+                            (left :SQLExpression[F, S, T], right :SQLExpression[F, S, T])
+	extends ComparisonSQL[F, S, T]
+{
+	override def operator :OrderingOperator = ComparisonSQL.NULL_NEQ
+
+	override def groundValue :Opt[Boolean] =
+		for (l <- left.groundValue; r <- right.groundValue) yield l != r
+
+	protected override def reapply[E <: RowProduct, C >: Grouped <: Single]
+	                              (left :SQLExpression[E, C, T], right :SQLExpression[E, C, T])
+			:ComparisonSQL[E, C, T] =
+		new NullInequalitySQL(left, right)
+
+	protected override def defaultSpelling[P](from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		columnwiseSpelling(spelling._OR_)(from, context, params)
+
+	protected override def columnSpelling[P](left :SpelledSQL[P], right :SpelledSQL[P])
+	                                        (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		NullInequalitySQL.spell(left, right)
+
+	protected override def visit[Y[-_ >: Grouped <: Single, _]]
+	                            (visitor :AnyColumnVisitor[F, Y]) :Y[S, Boolean] = visitor.nullInequality(this)
+
+	protected override def visit[Y](visitor :SpecificColumnVisitor[F, S, Boolean, Y]) :Y = visitor.nullInequality(this)
+//
+//	protected override def visit[F_ <: F, S_ >: Grouped <: S,
+//	                             E >: ColumnSQL[F, S, Boolean] <: SQLExpression[F_, S_, Boolean],
+//	                             R[-s >: Grouped <: Single, v, -e <: SQLExpression[F_, s, v]]]
+//	                            (visitor :ColumnVisitor[F, R]) :R[S_, Boolean, E] =
+//		visitor.inequality(this)
+}
+
+
+object NullInequalitySQL {
+	private[ast] def spell[P](left :SpelledSQL[P], right :SpelledSQL[P])
+	                         (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		"(" +: (left + " <> " + right + spelling._OR_ +
+			left + (spelling._IS_ + spelling.NULL + spelling._AND_ +
+				spelling.NOT + " ") + right + (spelling._IS_ + spelling.NULL + spelling._OR_ +
+			spelling.NOT + " ") + left + (spelling._IS_ + spelling.NULL + spelling._AND_) +
+				right + (spelling._IS_ + spelling.NULL + ")"))
+
+	trait SpecificNullInequalityVisitor[+F <: RowProduct, +S >: Grouped <: Single, X, +Y] {
+		def nullInequality[V](e :NullInequalitySQL[F, S, V])(implicit isBoolean :X =:= Boolean) :Y
+	}
+	type MatchSpecificNullInequality[+F <: RowProduct, +S >: Grouped <: Single, V, +Y] =
+		SpecificNullInequalityVisitor[F, S, V, Y]
+	type CaseSpecificNullInequality[+F <: RowProduct, +S >: Grouped <: Single, V, +Y] =
+		SpecificNullInequalityVisitor[F, S, V, Y]
+//
+//	trait InequalityVisitor[+F <: RowProduct, +R[-S >: Grouped <: Single, V, -E <: SQLExpression[F, S, V]]] {
+//		def inequality[S >: Grouped <: Single, N]
+//		              (e :InequalitySQL[F, S, N]) :R[S, Boolean, InequalitySQL[F, S, N]]
+//	}
+//	type MatchInequality[+F <: RowProduct, +R[-S >: Grouped <: Single, V, -E <: SQLExpression[F, S, V]]] =
+//		InequalitlyVisitor[F, R]
+//	type CaseInequality[+F <: RowProduct, +R[-S >: Grouped <: Single, V, -E <: SQLExpression[F, S, V]]] =
+//		InequalitlyVisitor[F, R]
+
+	trait AnyNullInequalityVisitor[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] {
+		def nullInequality[S >: Grouped <: Single, X](e :NullInequalitySQL[F, S, X]) :Y[S, Boolean]
+	}
+	type MatchAnyNullInequality[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] = AnyNullInequalityVisitor[F, Y]
+	type CaseAnyNullInequality[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] = AnyNullInequalityVisitor[F, Y]
+}
+
+
+
+
+/** Compares two values, using alphabetic ordering of their column sets and treating two `null` values as equal.
+  * Non strict less than/greater than comparisons always return false if any of the operands is null,
+  * but strict operators treat two nulls as equal.
+  *
+  * Note that this class extends `OrderComparisonSQL`, but visitors delegate its case always directly
+  * to [[net.noresttherein.oldsql.sql.ast.ComparisonSQL ComparisonSQL]].
+  */
+class NullOrderComparisonSQL[-F <: RowProduct, -S >: Grouped <: Single, T]
+                            (override val left :SQLExpression[F, S, T], override val operator :OrderingOperator,
+                             override val right :SQLExpression[F, S, T])
+                            (implicit ordering :SQLOrdering[T])
+	extends OrderComparisonSQL[F, S, T](left, operator, right)
+{
+	override def groundValue :Opt[Boolean] =
+		for (l <- left.groundValue; r <- right.groundValue) yield
+			if (operator.isStrict)  l != null & r != null && l != r && operator(l, r)
+			else l == r || l != null & r != null && operator(l, r)
+
+	protected override def reapply[E <: RowProduct, C >: Grouped <: Single]
+	                              (left :SQLExpression[E, C, T], right :SQLExpression[E, C, T]) :ComparisonSQL[E, C, T] =
+		new NullOrderComparisonSQL(left, operator, right)
+
+	protected override def columnSpelling[P](left :SpelledSQL[P], operator :OrderingOperator, right :SpelledSQL[P])
+	                                        (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		if (operator.isEquality)
+			NullEqualitySQL.spell(left, right)
+		else if (operator.isInequality) //never occurs, but better safe than sorry
+			NullInequalitySQL.spell(left, right)
+		else if (operator.isStrict) //nulls will automatically compare unequal in SQL
+			super.columnSpelling(left, operator, right)
+		else
+			(NullEqualitySQL.spell(left, right) + spelling._OR_ + super.columnSpelling(left, operator, right)).inParens
+
+	protected override def visit[Y[-_ >: Grouped <: Single, _]]
+	                            (visitor :AnyColumnVisitor[F, Y]) :Y[S, Boolean] = visitor.nullOrder(this)
+
+	protected override def visit[Y](visitor :SpecificColumnVisitor[F, S, Boolean, Y]) :Y = visitor.nullOrder(this)
+//
+//	protected override def visit[F_ <: F, S_ >: Grouped <: S,
+//	                             E >: ColumnSQL[F, S, Boolean] <: SQLExpression[F_, S_, Boolean],
+//	                             R[-s >: Grouped <: Single, v, -e <: SQLExpression[F_, s, v]]]
+//	                            (visitor :ColumnVisitor[F, R]) :R[S_, Boolean, E] =
+//		visitor.order(this)
+
+	override def equals(that :Any) :Boolean = that match {
+		case self :AnyRef if self eq this => true
+		case other :OrderComparisonSQL[_, _, _] if other canEqual this =>
+			other.operator == operator && other.left == left && other.right == right && other.ordering == ordering
+		case _ => false
+	}
+
+	override def hashCode :Int =
+		((operator.hashCode * 31 + left.hashCode) * 31 + right.hashCode) * 31 + ordering.hashCode
+}
+
+
+object NullOrderComparisonSQL {
+	def apply[F <: RowProduct, S >: Grouped <: Single, T :SQLOrdering]
+	         (left :SQLExpression[F, S, T], cmp :OrderingOperator, right :SQLExpression[F, S, T]) :ComparisonSQL[F, S, T]=
+		new NullOrderComparisonSQL(left, cmp, right)
+
+	def unapply[F <: RowProduct, S >: Grouped <: Single](e :SQLExpression[F, S, _])
+			:Opt[(SQLExpression[F, S, T], OrderingOperator, SQLExpression[F, S, T]) forSome { type T }] =
+		e match {
+			case cmp :NullOrderComparisonSQL[F @unchecked, S @unchecked, t] =>
+				Got((cmp.left, cmp.operator, cmp.right))
+			case _ => Lack
+		}
+
+
+	trait SpecificNullOrderComparisonVisitor[+F <: RowProduct, +S >: Grouped <: Single, X, +Y] {
+		def nullOrder[V](e :NullOrderComparisonSQL[F, S, V])(implicit isBoolean :X =:= Boolean) :Y
+	}
+	type MatchSpecificNullOrderComparison[+F <: RowProduct, +S >: Grouped <: Single, X, +Y] =
+		SpecificNullOrderComparisonVisitor[F, S, X, Y]
+	type CaseSpecificNullOrderComparison[+F <: RowProduct, +S >: Grouped <: Single, X, +Y] =
+		SpecificNullOrderComparisonVisitor[F, S, X, Y]
+
+	trait AnyNullOrderComparisonVisitor[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] {
+		def nullOrder[S >: Grouped <: Single, X](e :NullOrderComparisonSQL[F, S, X]) :Y[S, Boolean]
+	}
+	type MatchAnyNullOrderComparison[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] = AnyNullOrderComparisonVisitor[F, Y]
+	type CaseAnyNullOrderComparison[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] = AnyNullOrderComparisonVisitor[F, Y]
 }
 
 

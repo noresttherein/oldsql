@@ -212,7 +212,7 @@ sealed class Dual private (override val withClause :WithClause, override val fil
 			:F { type Implicit = RowProduct; type DefineBase[+I <: RowProduct] = subselect.DefineBase[I] } =
 		subselect.asInstanceOf[F { type Implicit = RowProduct; type DefineBase[+I <: RowProduct] = subselect.DefineBase[I] }]
 
-	override type Expand[J[+L <: FromSome, R[O] <: T[O]] <: L AndFrom R, T[O] <: MappingAt[O]] = From[T]
+	override type Expand[J[+L <: Self, R[O] <: T[O]] <: L AndFrom R, T[O] <: MappingAt[O]] = From[T]
 
 	override def expand[T[O] <: BaseMapping[S, O], S]
 	                   (next :Table[T], filter :SingleBoolean[RowProduct AndFrom T], join :JoinLike.__) :From[T] =

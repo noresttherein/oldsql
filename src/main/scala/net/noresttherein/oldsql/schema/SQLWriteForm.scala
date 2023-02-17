@@ -965,7 +965,9 @@ object SQLWriteForm {
 //	def none[T :SQLWriteForm](name :String) :SQLWriteForm[Any] =
 //		new NullifiedSQLWriteForm[T](Got(name)) with NamedWriteForm[Any]
 
-	/** An `SQLWriteForm` which always sets the `columns` consecutive columns directly to `null`. */
+	/** An `SQLWriteForm` which always sets the `columns` consecutive columns directly to `null`, with a
+	  * [[net.noresttherein.oldsql.sql.RowShape RowShape]] consisting of `JDBCType.NULL` repeated `columns` times.
+	  */
 	def nulls[T](columns :Int) :SQLWriteForm[T] = new NullSQLWriteForm(columns)
 
 	/** A form which serves as a padding between other forms, shifting the starting parameter offsets of the following
@@ -1679,6 +1681,7 @@ object SQLWriteForm {
 	private[schema] class NullSQLWriteForm(columns :Int, protected override val text :Opt[String] = Lack)
 		extends GapSQLWriteForm(columns, text) with IgnoringWriteForm
 	{
+		override def columnTypes = ConstSeq(JDBCType.NULL, columnCount)
 		override def setNull(statement :PreparedStatement, position :Int) :Unit = {
 			var i = position + columnCount - 1
 			while (i >= 0) {

@@ -101,11 +101,12 @@ trait FromClause extends RowProduct with FromClauseTemplate[FromClause] { thisCl
 	  * @param filter an additional filter condition for the ''where'' clause of the created clause; defaults to `True`.
 	  * @param join   a template `JoinLike` instance used as a factory for the returned clause; defaults to `InnerJoin`.
 	  * @return `From(next)` if this clause is empty and `join.likeJoin(self, next)` for non empty clauses.
-	  */ //currently unused
+	  */ //todo: currently unused, remove and free the name
 	def expand[T[O] <: BaseMapping[S, O], S]
 	    (next :Table[T], filter :SingleBoolean[Generalized AndFrom T] = True, join :JoinLike.__ = InnerJoin.template)
 			:Expand[join.LikeJoin, T]
 
+	//todo: used only in the factory method of AndFrom, which isn't really needed. We can free the name.
 	/** Used to add any relation to any clause, creates the clause of a type depending on this clause:
 	  * empty clauses return `From[T]`, while non empty clauses create `this.type InnerJoin T`.
 	  */ //consider: renaming to andFrom/joinLike/joinWith
@@ -529,7 +530,7 @@ trait FromSome extends FromClause with NonEmptyRow with FromSomeTemplate[FromSom
 		join.likeJoin(self, suffix)
 
 
-	override type Expand[+J[+L <: FromSome, R[O] <: T[O]] <: L AndFrom R, T[O] <: MappingAt[O]] = Self J T
+	override type Expand[+J[+L <: Self, R[O] <: T[O]] <: L AndFrom R, T[O] <: MappingAt[O]] = Self J T
 
 	override def expand[T[O] <: BaseMapping[S, O], S]
 	                   (next :Table[T], filter :SingleBoolean[Generalized AndFrom T], join :JoinLike.__)

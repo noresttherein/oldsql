@@ -42,8 +42,8 @@ import net.noresttherein.oldsql.morsels.generic.Self
 trait SpecializingFactory[A[_], SA[T] <: A[T], E[_], SE[T] <: E[T], G[_], S[T] <: G[T]]
 	extends SpecializingFactoryBase[A, SA, E, SE, G, S]
 {
-	implicit def specificFactory[T :SE] = new SpecificFactory[T]
-	implicit def specificEvidenceFactory[T](ev :SE[T]) = new SpecificFactory[T]()(ev)
+	implicit def specificFactory[T :SE] :SpecificFactory[T] = new SpecificFactory[T]
+	implicit def specificEvidenceFactory[T](ev :SE[T]) :SpecificFactory[T] = new SpecificFactory[T]()(ev)
 }
 
 
@@ -157,8 +157,8 @@ object SpecializingFactory {
 			type Res = S[T]
 			def apply(arg :SA[T]) :S[T] = specificResult(arg)
 		}
-		implicit def generalFactory[T :E] = new GeneralFactory[T]
-		implicit def generalEvidenceFactory[T](ev :E[T]) = new GeneralFactory[T]()(ev)
+		implicit def generalFactory[T :E] :GeneralFactory[T] = new GeneralFactory[T]
+		implicit def generalEvidenceFactory[T](ev :E[T]) :GeneralFactory[T] = new GeneralFactory[T]()(ev)
 	}
 
 }

@@ -175,6 +175,7 @@ object ColumnForm {
 	@inline def apply[T](implicit form :ColumnForm[T]) :ColumnForm[T] = form
 
 
+
 	/** Factory method for column forms of classes supported directly by the JDBC driver.
 	  * The form will use [[java.sql.ResultSet.getObject getObject]]/[[java.sql.PreparedStatement.setObject setObject]]
 	  * to read and write the value, respectively, providing the class from the implicit `ClassTag[T]` as the argument.
@@ -187,6 +188,21 @@ object ColumnForm {
 	/** Equivalent to [[net.noresttherein.oldsql.schema.ColumnForm.jdbc(sqlType:JDBCType) jdbc]]`(`[[java.sql.JDBCType.JAVA_OBJECT JDBCType.JAVA_OBJECT]]`)`. */
 	def jdbc[T :NullValue :ClassTag] :ColumnForm[T] = new JDBCObjectForm[T]
 
+	/** Creates a [[net.noresttherein.oldsql.schema.SQLForm.NamedForm named]] column form which
+	  * reads values using [[java.sql.ResultSet.getObject getObject]]
+	  * and writes using [[java.sql.PreparedStatement.setObject setObject]],
+	  * with the specified `sqlType` as an argument. The name itself determines if the form
+	  * will equal another `ColumnForm`.
+	  */
+	def jdbc[T :NullValue :ClassTag](name :String, sqlType :JDBCType = JDBCType.JAVA_OBJECT) :ColumnForm[T] = {
+		val n = name
+		new JDBCObjectForm[T](sqlType) with NamedForm[T] {
+			override val name = Got(n)
+			override def text = name
+			override def toString = string
+			private[this] val string = if (sqlType == JDBCType.JAVA_OBJECT) text.get else text.get + "(" + sqlType + ")"
+		}
+	}
 
 
 	/** Creates a `ColumnForm` delegating all calls to the implicitly provided read and write forms.

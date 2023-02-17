@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.schema.ColumnMapping.{ColumnAt, TypedColumn}
 import net.noresttherein.oldsql.schema.bases.{BaseColumn, BaseMapping}
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.sql.ColumnSQL.ConvertingColumnTemplate
-import net.noresttherein.oldsql.sql.RowProduct.{Complete, GroundRow, NonEmptyRow, ProperSubselectOf, TopRow}
+import net.noresttherein.oldsql.sql.RowProduct.{Complete, GroundRow, NonEmptyRow, ProperSubselectOf, SubselectOf, TopRow}
 import net.noresttherein.oldsql.sql.SQLBoolean.{False, True}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{AnyExpressionVisitor, ConvertibleSQL, ConvertingTemplate, Grouped, Single, SpecificExpressionVisitor, VariantGroundingTemplate}
@@ -22,7 +22,7 @@ import net.noresttherein.oldsql.sql.ast.LabeledSQL.LabeledColumnSQL
 import net.noresttherein.oldsql.sql.ast.LooseColumn.{CaseAnyLooseColumn, CaseSpecificLooseColumn}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.Rows
 import net.noresttherein.oldsql.sql.ast.SelectColumn.{SubselectColumn, TopSelectColumn}
-import net.noresttherein.oldsql.sql.mechanics.{=~=, Reform, SpelledSQL, SQLAdaptation, SQLConversion, SQLNumber, SQLOrdering, SQLScribe, SQLTransformation}
+import net.noresttherein.oldsql.sql.mechanics.{=~=, Interoperable, Reform, SpelledSQL, SQLAdaptation, SQLConversion, SQLNumber, SQLOrdering, SQLScribe, SQLTransformation}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 import net.noresttherein.oldsql.sql.mechanics.CanSelect.{CanSelectDef, CanSelectDirect}
 import net.noresttherein.oldsql.sql.mechanics.Reform.PassCount
@@ -193,9 +193,9 @@ trait ColumnSQL[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]].
 	  */
 	def +[E <: F, O >: Grouped <: S, X, Y]
-	     (that :ColumnSQL[E, O, X])(implicit compat :(V =~= X)#As[Y], number :SQLNumber[Y])
+	     (that :ColumnSQL[E, O, X])(implicit unify :Interoperable[V, X]#As[Y], number :SQLNumber[Y])
 			:ColumnSQL[E, O, Y] =
-		ArithmeticSQL.Plus(compat.left(this), compat.right(denullify(that)))
+		ArithmeticSQL.Plus(unify.left(this), unify.right(denullify(that)))
 
 	/** An arithmetic subtraction of two numbers.
 	  * @param that a compatible numeric expression. 'Compatible' here means that both can be represented by the same
@@ -208,9 +208,9 @@ trait ColumnSQL[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]].
 	  */
 	def -[E <: F, O >: Grouped <: S, X, Y]
-	     (that :ColumnSQL[E, O, X])(implicit compat :(V =~= X)#As[Y], number :SQLNumber[Y])
+	     (that :ColumnSQL[E, O, X])(implicit unify :Interoperable[V, X]#As[Y], number :SQLNumber[Y])
 			:ColumnSQL[E, O, Y] =
-		ArithmeticSQL.Minus(compat.left(this), compat.right(denullify(that)))
+		ArithmeticSQL.Minus(unify.left(this), unify.right(denullify(that)))
 
 	/** An arithmetic multiplication of two numbers.
 	  * @param that a compatible numeric expression. 'Compatible' here means that both can be represented by the same
@@ -223,9 +223,9 @@ trait ColumnSQL[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]].
 	  */
 	def *[E <: F, O >: Grouped <: S, X, Y]
-	     (that :ColumnSQL[E, O, X])(implicit compat :(V =~= X)#As[Y], number :SQLNumber[Y])
+	     (that :ColumnSQL[E, O, X])(implicit unify :(V =~= X)#As[Y], number :SQLNumber[Y])
 			:ColumnSQL[E, O, Y] =
-		ArithmeticSQL.Times(compat.left(this), compat.right(denullify(that)))
+		ArithmeticSQL.Times(unify.left(this), unify.right(denullify(that)))
 
 	/** An arithmetic division of two numbers.
 	  * @param that a compatible numeric expression. 'Compatible' here means that both can be represented by the same
@@ -238,9 +238,9 @@ trait ColumnSQL[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]].
 	  */
 	def /[E <: F, O >: Grouped <: S, X, Y]
-	     (that :ColumnSQL[E, O, X])(implicit compat :(V =~= X)#As[Y], number :SQLNumber[Y])
+	     (that :ColumnSQL[E, O, X])(implicit unify :(V =~= X)#As[Y], number :SQLNumber[Y])
 			:ColumnSQL[E, O, Y] =
-		ArithmeticSQL.Divide(compat.left(this), compat.right(denullify(that)))
+		ArithmeticSQL.Divide(unify.left(this), unify.right(denullify(that)))
 
 	/** An arithmetic division remainder of two numbers.
 	  * @param that a compatible numeric expression. 'Compatible' here means that both can be represented by the same
@@ -253,9 +253,9 @@ trait ColumnSQL[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  *             expressions are promoted must have type class [[net.noresttherein.oldsql.sql.mechanics.SQLNumber SQLNumber]].
 	  */
 	def %[E <: F, O >: Grouped <: S, X, Y]
-	     (that :ColumnSQL[E, O, X])(implicit compat :(V =~= X)#As[Y], number :SQLNumber[Y])
+	     (that :ColumnSQL[E, O, X])(implicit unify :(V =~= X)#As[Y], number :SQLNumber[Y])
 			:ColumnSQL[E, O, Y] =
-		ArithmeticSQL.Remainder(compat.left(this), compat.right(denullify(that)))
+		ArithmeticSQL.Remainder(unify.left(this), unify.right(denullify(that)))
 
 
 
@@ -263,17 +263,17 @@ trait ColumnSQL[-F <: RowProduct, -S >: Grouped <: Single, V]
 	  * @param that an SQL tuple expression: `(a0, a1, ... an)`.
 	  */
 	def in[E <: F, O >: Grouped <: S, X]
-	      (that :SeqSQL[E, O, X])(implicit compat :(V =~= X)) :ColumnSQL[E, O, Boolean] =
-		new InSQL(compat.left(this), SeqSQL(that.toSeq.map(compat.right.apply(_)) :_*))
+	      (that :SeqSQL[E, O, X])(implicit unify :(V =~= X)) :ColumnSQL[E, O, Boolean] =
+		new InSQL(unify.left(this), SeqSQL(that.toSeq.map(unify.right.apply(_)) :_*))
 
 	/** An SQL expression checking if this value is a member of the result set returned by the given query.
 	  * @param that an SQL ''select'' or other expression returning a row cursor.
 	  */
-	def in[E <: F, X, U](that :QuerySQL[E, X])(implicit compat :V =~= X) :ColumnSQL[E, S, Boolean] =
-		if (compat.right.isIdentity)
-			new InSQL(compat.left(this), that.rows.asInstanceOf[SQLExpression[E, Single, Seq[U]]])
+	def in[E <: F, X, U](that :QuerySQL[E, X])(implicit unify :V =~= X) :ColumnSQL[E, S, Boolean] =
+		if (unify.right.isIdentity)
+			new InSQL(unify.left(this), that.rows.asInstanceOf[SQLExpression[E, Single, Seq[U]]])
 		else
-			new InSQL(compat.left(this), that.map(compat.right.apply(_ :X)).rows)
+			new InSQL(unify.left(this), that.map(unify.right.apply(_ :X)).rows)
 
 
 
@@ -317,15 +317,17 @@ trait ColumnSQL[-F <: RowProduct, -S >: Grouped <: Single, V]
 				s"Cannot use a parameterized clause as a basis for select $this: $from."
 			)
 		else if (from.isSubselect) {
-			subselectFrom(from.asInstanceOf[ProperSubselectOf[from.type, NonEmptyRow]]).asInstanceOf[SelectColumn[from.Base, V]]
+			subselectFrom[NonEmptyRow](from.asInstanceOf[F with SubselectOf[NonEmptyRow]]).asInstanceOf[SelectColumn[from.Base, V]]
 		} else
 			topSelectFrom(from.asInstanceOf[Complete[F with GroundRow]])
 
 	override def topSelectFrom[E <: F with GroundRow { type Complete <: E }](from :E) :TopSelectColumn[V] =
 		SelectSQL(from, this)
 
-	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectColumn[B, V] =
-		SelectSQL.subselect[B, from.type, V](from, this)
+//	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectColumn[B, V] =
+//		SelectSQL.subselect[B, from.type, V](from, this)
+	override def subselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B]) :SubselectColumn[B, V] =
+		SelectSQL.subselect[B, F with SubselectOf[B], V](from, this)
 
 	override def paramSelectFrom[P, E <: F with TopRow { type Complete <: E; type Params = P }](from :E) :Select[P, V] =
 		Select(from)(this)
@@ -382,7 +384,7 @@ object ColumnSQL {
 	  */
 	implicit class ColumnSQLExtension[F <: FromSome, V](private val self :ColumnSQL[F, Grouped, V]) extends AnyVal {
 		//fixme: remove abstract type projections
-		/** Represents the SQL `COUNT(this)`.
+		/** Represents SQL `COUNT(this)`.
 		  * @return a [[net.noresttherein.oldsql.sql.GroupedColumn LocalColumn]]`[G, Int]` based on clause
 		  *         `G <: RowProduct`, being the least upper bound of all aggregate expressions (`RowProduct` subtypes
 		  *         including a ''group by'' clause or [[net.noresttherein.oldsql.sql.Aggregated aggregated]]

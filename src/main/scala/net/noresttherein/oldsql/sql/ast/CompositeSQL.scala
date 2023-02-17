@@ -354,8 +354,11 @@ object CompositeSQL {
 			override type QueryResult[P, +Q <: Query[P, V]] = Query[P, V]
 
 			override def apply[f <: RowProduct, s >: Grouped <: Single, e[v] <: ConvertibleSQL[f, s, v, e]]
-			                  (expr :ConvertibleSQL[f, s, V, e]) :Ex[f, s, V] =
-				reapply(expr)
+			                  (expr :ConvertingTemplate[f, s, V, e]) :Ex[f, s, V] =
+				reapply(denullify(expr))
+//			override def apply[f <: RowProduct, s >: Grouped <: Single, e[v] <: ConvertibleSQL[f, s, v, e]]
+//			                  (expr :ConvertibleSQL[f, s, V, e]) :Ex[f, s, V] =
+//				reapply(expr)
 
 			/* Todo: see if we can enforce in composition SQLResult = second.SQLResult[f, s, Ex[f, s, Z]].
 			 * We need it for reforming, but the problem is that it conflicts with

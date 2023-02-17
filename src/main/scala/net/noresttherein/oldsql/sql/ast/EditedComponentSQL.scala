@@ -10,12 +10,12 @@ import net.noresttherein.oldsql.schema.ColumnMapping.{ColumnAt, TypedColumn}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.bases.{BaseColumn, BaseMapping}
 import net.noresttherein.oldsql.slang.castTypeParam
-import net.noresttherein.oldsql.sql.{ColumnSetter, ColumnSQL, RowProduct, RowShape, SQLExpression, WithClause}
+import net.noresttherein.oldsql.sql.{:=, ColumnSetter, ColumnSQL, RowProduct, RowShape, SQLExpression, WithClause}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AnyColumnVisitor, CaseAnyColumn, SpecificColumnVisitor}
 import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLExpression.AnyExpressionVisitor.Result
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{AnyExpressionVisitor, CaseAnyExpression, ConvertibleSQL, Grouped, Single, SingleRowSQLTemplate, SpecificExpressionVisitor}
+import net.noresttherein.oldsql.sql.SQLExpression.{AnyExpressionVisitor, CaseAnyExpression, ConvertibleSQL, ConvertingTemplate, Grouped, Single, SingleRowSQLTemplate, SpecificExpressionVisitor}
 import net.noresttherein.oldsql.sql.ast.AdaptedSQL.AbstractAdaptedSQL
 import net.noresttherein.oldsql.sql.ast.CompositeColumnSQL.UnaryCompositeColumn
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.TypedComponentSQL
@@ -80,7 +80,7 @@ trait EditedLValueSQL[-F <: RowProduct, M[A] <: BaseMapping[V, A], V]
 	  * and the [[net.noresttherein.oldsql.sql.ColumnSetter.rvalue rvalue]] is the expression which should be formatted
 	  * in its place.
 	  */
-	val substitutes :Seq[ColumnSetter[FromLast, F]]
+	val substitutes :Seq[ColumnSetter[FromLast, Origin]]
 
 	/** Maps export columns of [[net.noresttherein.oldsql.sql.ast.EditedLValueSQL.component component]]`.mapping`
 	  * to their substitutes, if present.
@@ -506,7 +506,7 @@ trait EditedComponentSQL[-F <: RowProduct, M[A] <: BaseMapping[V, A], V] extends
 		if (this eq other)
 			(leftResult(this), rightResult(other))
 		else if (passCount.firstTime)
-			super.reform(other)(reform, passCount)
+			super.reform[F1, S1, F2, S2, V2, EC2, U](other)(reform, passCount)
 		else if (passCount.secondTime) {
 			val substituteLeft = new SQLTransformation[V, U] {
 				override type BaseResult[f <: RowProduct, s >: Grouped <: Single] = leftResult.BaseResult[f, s]
@@ -515,18 +515,22 @@ trait EditedComponentSQL[-F <: RowProduct, M[A] <: BaseMapping[V, A], V] extends
 //				override type ColumnResult[f <: RowProduct, s >: Grouped <: Single, +E <: ColumnSQL[f, s, U]] = ColumnMappingSQL[f, s, ]
 
 				override def apply[f <: RowProduct, s >: Grouped <: Single, E[v] <: ConvertibleSQL[f, s, v, E]]
-				                  (expr :ConvertibleSQL[f, s, V, E]) =
+				                  (expr :ConvertingTemplate[f, s, V, E]) =
+//				override def apply[f <: RowProduct, s >: Grouped <: Single, E[v] <: ConvertibleSQL[f, s, v, E]]
+//				                  (expr :ConvertibleSQL[f, s, V, E]) =
 					expr match {
+						//We don't handle nulls because this transformation is applied to a reformed version
+						// of self.value, which is not null, so it's unlikely to be converted to null.
 						case self.component =>
 							leftResult(EditedComponentSQL.this.asInstanceOf[MappingSQL[f, s, M, V]])
-						case lvalue :LValueSQL[F, M, V] @unchecked
+						case lvalue :(LValueSQL[F, M, V] { type FromLast = self.FromLast }) @unchecked
 								if lvalue.mapping == self.component.mapping
 									&& lvalue.component.origin.mapping == self.component.origin.mapping =>
 							val setters = substitutes.filter { setter =>
-								val left = component.origin.anchored.withOrigin[FromLast].export(setter.lvalue.mapping)
+								val left = component.origin.anchored.export(setter.lvalue.mapping.withOrigin[Origin])
 								spelling.scope.isDefault(left)
 							}
-							val edited = lvalue.substitute(setters).asInstanceOf[MappingSQL[f, s, M, V]]
+							val edited = lvalue.substitute[F](setters).asInstanceOf[MappingSQL[f, s, M, V]]
 							leftResult(edited)
 						case _ =>
 							throw new IllegalExpressionException(
@@ -546,7 +550,7 @@ trait EditedComponentSQL[-F <: RowProduct, M[A] <: BaseMapping[V, A], V] extends
 			}
 			reform(component, other)(substituteLeft, rightResult, spelling)
 		} else
-			super.reform(other)(reform, passCount)
+			super.reform[F1, S1, F2, S2, V2, EC2, U](other)(reform, passCount)
 
 
 	/** A visitor which attempts to reapply the substitutions from this `EditedComponentSQL`
@@ -807,20 +811,20 @@ trait EditedLooseComponent[-F <: RowProduct, M[O] <: BaseMapping[V, O], V] exten
 
 
 object EditedLooseComponent {
-	def apply[F <: RowProduct, M[A] <: BaseMapping[S, A], S]
-	         (component :LooseComponent[F, M, S])(setters :Seq[ColumnSetter[component.FromLast, F]])
+	def apply[O <: RowProduct, F <: O, M[A] <: BaseMapping[S, A], S]
+	         (component :LooseComponent[O, M, S])(setters :Seq[ColumnSetter[component.FromLast, F]])
 			:EditedLooseComponent[F, M, S] =
-		new Impl[F, M, S, component.FromLast](component, setters)
+		new Impl[O, F, M, S, component.FromLast](component, setters)
 
 
 	type __ = EditedLooseComponent[_ <: RowProduct, M, S] forSome { type M[A] <: BaseMapping[S, A]; type S }
 
-	private class Impl[F <: RowProduct, M[A] <: BaseMapping[S, A], S, L <: RowProduct]
-	                  (override val component :LooseComponent[F, M, S] { type FromLast = L },
+	private class Impl[O <: RowProduct, F <: O, M[A] <: BaseMapping[S, A], S, L <: RowProduct]
+	                  (override val component :LooseComponent[O, M, S] { type FromLast = L },
 	                   override val substitutes :Seq[ColumnSetter[L, F]])
 		extends EditedLooseComponent[F, M, S]
 	{
-		override type Origin   = F
+		override type Origin   = O
 		override type FromLast = L
 	}
 
@@ -960,7 +964,7 @@ trait EditedColumnSQL[-F <: RowProduct, M[A] <: BaseColumn[V, A], V, X]
 		if (this eq other)
 			(leftResult(this), rightResult(other))
 		else if (passCount.firstTime)
-			super.reform(other)(reform, passCount)
+			super.reform[F1, S1, F2, S2, V2, EC2, U](other)(reform, passCount)
 		else {
 			val right = reform.prohibitReformLeft((column :LValueSQL[FromLast, M, X]).component, other)._2
 			(leftResult(this), right)

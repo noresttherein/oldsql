@@ -277,7 +277,7 @@ object ColumnSetter {
 			def filter[T](column :TypedColumn[T, RowProduct AndFrom M]) :ColumnSetter[From[M], RowProduct] = {
 				val extract = mapping(column) //this is somewhat fishy, as we create SQL for an export, not original
 				val t = extract.opt(value)
-				if (t.isDefined) domain.last \ column := BoundParam(t.get)(column.form)
+				if (t.isDefined) domain.last \ column := BoundParam(column.form, t.get)
 				else domain.last \ column := SQLNull[T](column.form)
 			}
 			filter(column)

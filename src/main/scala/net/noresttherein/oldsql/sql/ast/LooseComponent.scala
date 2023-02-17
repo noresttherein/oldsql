@@ -11,7 +11,7 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, OriginProj
 import net.noresttherein.oldsql.schema.bases.{BaseColumn, BaseMapping}
 import net.noresttherein.oldsql.sql.{Adjoin, ColumnSetter, ColumnSQL, RowProduct, RowShape, Seal, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AnyColumnVisitor, SpecificColumnVisitor}
-import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundRow, NonEmptyRow, PartOf, ProperSubselectOf, TopRow}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundRow, NonEmptyRow, PartOf, SubselectOf, TopRow}
 import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{AnyExpressionVisitor, Grouped, Single, SpecificExpressionVisitor}
@@ -282,9 +282,12 @@ class LooseComponent[F <: RowProduct, M[A] <: BaseMapping[V, A], V] private[ast]
 	override def topSelectFrom[E <: F with GroundRow { type Complete <: E }](from :E) :TopSelectAs[M] =
 		anchor(from) topSelectFrom from
 
-	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectAs[B, M] =
-		anchor(from) subselectFrom from
+	override def subselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B]) :SubselectAs[B, M] =
+		anchor(from) subselectFrom[B] from
 
+//	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectAs[B, M] =
+//		anchor(from) subselectFrom from
+//
 	override def paramSelectFrom[P, E <: F with TopRow { type Complete <: E; type Params = P }](from :E)
 			:SelectMapping[P, M] =
 		anchor(from) paramSelectFrom from
@@ -567,12 +570,12 @@ class LooseColumn[F <: RowProduct, M[A] <: BaseColumn[V, A], V] private[ast]
 			this
 		else if (substitutes.sizeIs == 1)
 			if (mapping.export(substitutes.head.lvalue.mapping.refine.withOrigin[F]) == mapping)
-				EditedLooseComponent[E, M, V, F](this)(substitutes.toSeq)
+				EditedLooseComponent[F, E, M, V](this)(substitutes.toSeq)
 			else
 				reject()
 		else if (substitutes.forall { sub => mapping.export(sub.lvalue.mapping.refine.withOrigin[F]) == mapping }) {
 			val last = substitutes.last
-			EditedLooseComponent[E, M, V, F](this)(last :: Nil)
+			EditedLooseComponent[F, E, M, V](this)(last :: Nil)
 		} else
 			reject()
 	}
@@ -584,7 +587,8 @@ class LooseColumn[F <: RowProduct, M[A] <: BaseColumn[V, A], V] private[ast]
 		val relation = from.fullTableStack(offset).asInstanceOf[
 			RelationSQL[E, MappingOf[Any]#TypedProjection, Any, RowProduct Adjoin MappingOf[Any]#TypedProjection]
 		]
-		relation.include(includes.withOrigin[E]) \ mapping.withOrigin[E]
+		implicit val projection = OriginProjection[M[F], V].isomorphism[E]
+		(relation.include(includes.withOrigin[E]) \ mapping.withOrigin[E])(projection)
 	}
 
 	override def anchor(from :F) :GenericColumnComponentSQL[F, M, V] = anchor(from, offset)
@@ -607,11 +611,15 @@ class LooseColumn[F <: RowProduct, M[A] <: BaseColumn[V, A], V] private[ast]
 
 
 	override def topSelectFrom[E <: F with GroundRow { type Complete <: E }](from :E) :TopSelectColumnAs[M, V] =
-		SelectSQL(from, anchor(from))
+		anchor(from) topSelectFrom(from)
+//		SelectSQL(from, anchor(from))
 
-	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectColumnAs[B, M, V] =
-		SelectSQL.subselect(from, anchor(from))
-
+	override def subselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B]) :SubselectColumnAs[B, M, V] =
+		anchor(from) subselectFrom[B] from
+//		SelectSQL.subselect[B, F with SubselectOf[B], M, V](from, anchor(from))
+//
+//	override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectColumnAs[B, M, V] =
+//		SelectSQL.subselect(from, anchor(from))
 
 	protected override def split(implicit spelling :SQLSpelling) :Seq[ColumnLValueSQL[F, M, _]] = PassedArray :+ this
 
@@ -622,7 +630,7 @@ class LooseColumn[F <: RowProduct, M[A] <: BaseColumn[V, A], V] private[ast]
 
 	protected override def visit[R, F_ <: F, S_ >: Grouped <: Single,
 	                             E >: LValueSQL[F_, M, V] <: SQLExpression[F_, S_, V]]
-	                            (visitor :SpecificColumnVisitor[F_, S_, V, R]) :R[E] =
+	                            (visitor :SpecificColumnVisitor[F_, S_, V, R]) :R =
 		visitor.looseColumn[F, M](this)
 //
 //	protected override def visit[F_ <: F, S_ >: Grouped <: Single,

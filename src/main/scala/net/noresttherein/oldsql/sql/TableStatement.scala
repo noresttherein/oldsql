@@ -1634,7 +1634,7 @@ object TableStatement {
 			def filter[T](column :TypedColumn[T, F]) :SingleBoolean[F] =
 				(mapping(column).opt(value) :Opt[T]) match {
 					case Got(columnValue) =>
-						(domain.last \ column).toColumnSQL === BoundColumnParam(column.form)(columnValue)
+						(domain.last \ column).toColumnSQL === BoundColumnParam(column.form, columnValue)
 					case _ => True
 				}
 			cond && filter(col)

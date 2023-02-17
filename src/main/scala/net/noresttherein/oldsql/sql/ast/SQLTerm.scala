@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.sql.ast
 
+import scala.reflect.ClassTag
+
 import net.noresttherein.oldsql.collection.{ConstSeq, Opt, PassedArray, Unique}
 import net.noresttherein.oldsql.collection.Chain.@~
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
@@ -62,7 +64,7 @@ import net.noresttherein.oldsql.slang._
 trait SQLTerm[V] //not a ConvertingTemplate[_, _, _, SQLTerm] because MappingTerm is a ConvertingTemplate[_,_,_,MappingSQL]
 	extends SQLExpression[RowProduct, Single, V]
 	   with SQLTermTemplate[V, GroundSQL, SQLTerm, ColumnTerm]
-{
+{ self =>
 //	protected def groundValue :Option[T]
 //	override def isGlobal   = true
 //	override def isGround   = true
@@ -147,6 +149,67 @@ trait SQLTerm[V] //not a ConvertingTemplate[_, _, _, SQLTerm] because MappingTer
 //					fallback
 //	}
 
+	protected override def reform[V2, U](form :SQLForm[V2],
+	                                     leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U])
+			:Opt[leftResult.SQLResult[RowProduct, Single, GroundSQL[U]]] =
+		form match {
+			case column :ColumnForm[V2] =>
+				reform(column, leftResult, rightResult)
+			case _ => leftResult match {
+				//important to know that leftResult doesn't create expressions of some incompatible type
+				case conversion :SQLConversion[V, U] =>
+					val reformed = self.reform(rightResult(form), conversion)
+					Got(reformed.asInstanceOf[leftResult.SQLResult[RowProduct, Single, GroundSQL[U]]])
+//					case _ =>
+//						//We rely on leftResult.swap and do double mapping with both leftResult and rightResult
+//						// because we hope that leftResult will actually unwrap mappedForm back to rightResult(form)
+//						// when mapping our.selectForm, and our value V will go through leftResult and rightResult inverse
+//						val mappedForm = leftResult.swap(rightResult(form))
+//						Got(leftResult(self.reform(mappedForm)))
+				/* We don't check if leftResult is reversible because we don't have any values of V2 to map.
+				 * Non reversible rightResult is however bad news, because a BoundParam would use it to write
+				 * its value with the argument form. On other terms it isn't that important.
+				 */
+				case _ if rightResult.isReversible =>
+					val mappedForm = form.bimap(
+						v2 => leftResult.inverse(rightResult(v2)))(
+						v => rightResult.inverse(leftResult(v)) //<- this is the function which really matters
+					)(self.selectForm.nulls)
+					Got(leftResult(self.reform(mappedForm)))
+				case _ =>
+					val mappedForm = form.optBimap(
+						v2 => leftResult.unapply(rightResult(v2)))(
+						v => rightResult.unapply(leftResult(v))
+					)(self.selectForm.nulls)
+					Got(leftResult(self.reform(mappedForm)))
+			}
+		}
+
+	protected override def reform[V2, U](form :ColumnForm[V2],
+	                                     leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U])
+			:Opt[leftResult.SQLResult[RowProduct, Single, GroundColumn[U]]] =
+		leftResult match {
+			//important to know that leftResult doesn't create expressions of some incompatible type
+			case conversion :SQLConversion[V, U] =>
+				val reformed = self.reform(rightResult(form), conversion)
+				Got(reformed.asInstanceOf[leftResult.SQLResult[RowProduct, Single, GroundColumn[U]]])
+//			case _ => //see the comment in the overloaded method for SQLForm
+//				val mappedForm = leftResult.swap(rightResult(form))
+//				leftResult(reform(mappedForm))
+			case _ if rightResult.isReversible =>
+				val mappedForm = form.bimap(
+					v2 => leftResult.inverse(rightResult(v2)))(
+					v => rightResult.inverse(leftResult(v))
+				)(self.selectForm.nulls)
+				Got(leftResult(self.reform(mappedForm)))
+			case _ =>
+				val mappedForm = form.optBimap(v2 => leftResult.unapply(rightResult(v2)))(
+					v => rightResult.unapply(leftResult(v))
+				)(self.selectForm.nulls)
+				Got(leftResult(self.reform(mappedForm)))
+		}
+
+
 	protected override def shape(implicit spelling :SQLSpelling)         :RowShape = selectForm.shape
 	protected override def columnCount(implicit spelling :SQLSpelling)   :Int = selectForm.columnCount
 	protected override def sqlParamCount(implicit spelling :SQLSpelling) :Int = 0
@@ -190,6 +253,12 @@ trait SQLTerm[V] //not a ConvertingTemplate[_, _, _, SQLTerm] because MappingTer
 object SQLTerm {
 	def apply[V](literal :V)(implicit factory :TermFactory.Factory[V]) :factory.Res = TermFactory(literal)
 
+	def apply[V](form :SQLForm[V], literal :V) :SQLLiteral[V] = form match {
+		case _ if literal == null  => SQLNull(form)
+		case column :ColumnForm[V] => ColumnTerm(column, literal)
+		case _ => SQLLiteral(form, literal)
+	}
+
 	type Factory[V] = TermFactory.Factory[V]
 
 	object TermFactory extends FormBasedFactory[Self, SQLTerm, ColumnTerm] {
@@ -228,10 +297,11 @@ object SQLTerm {
 
 
 
-	trait SQLTermTemplate[V, +E[v] <: ConvertibleSQL[RowProduct, Single, v, E], +T[v] <: E[v] with SQLTerm[v], +C[v] <: T[v]]
+	trait SQLTermTemplate[V, +E[v] <: ConvertibleSQL[RowProduct, Single, v, E], +T[v] <: SQLTerm[v], +C[v] <: T[v]]
 		extends ConvertingTemplate[RowProduct, Single, V, E]
-		   with GroundSQLTemplate[V, T[V]]
-	{ this :T[V] =>
+		   with GroundSQLTemplate[V, E[V]]
+	{ self :E[V] with SQLTermTemplate[V, E, T, C] =>
+
 		/** Creates a new term of the same value and kind as this one, but using the specified form to format it
 		  * as SQL/set JDBC parameters.
 		  */
@@ -258,6 +328,17 @@ object SQLTerm {
 		def reform[U](form :ColumnForm[U], conversion :SQLConversion[V, U]) :C[U]
 
 
+		//The deal with these two methods is that ColumnTerms must always reform to columns,
+		// so we can't return ourselves reformed with a non-column form.
+		protected def reform[V2, U](form :SQLForm[V2],
+		                            leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U])
+				:Opt[leftResult.SQLResult[RowProduct, Single, E[U]]]
+
+		protected def reform[V2, U](form :ColumnForm[V2],
+		                            leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U])
+				:Opt[leftResult.SQLResult[RowProduct, Single, E[U]]]
+
+
 		protected override def reformer[F1 <: RowProduct, S1 >: Grouped <: Single, F2 <: RowProduct, S2 >: Grouped <: Single, V2,
 	                                    EC2[v] <: ConvertibleSQL[F2, S2, v, EC2], U]
 	                                   (other :ConvertibleSQL[F2, S2, V2, EC2])(reform :Reform, passCount :PassCount)
@@ -265,18 +346,19 @@ object SQLTerm {
 	                                             rightResult :SQLTransformation[V2, U], spelling :SQLSpelling)
 				:SpecificExpressionVisitor
 				 [F2, S2, V2, (leftResult.SQLResult[F1, S1, E[U]], rightResult.SQLResult[F2, S2, EC2[U]])] =
-			new TermReformer[F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](other)(reform, passCount)
+			new TermReformer[F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](
+				other)(reform, passCount)(leftResult, rightResult, spelling
+			)
 
 		protected class TermReformer[F2 <: RowProduct, S2 >: Grouped <: Single, V2,
 			                         EC2[v] <: ConvertibleSQL[F2, S2, v, EC2], U,
 			                         LR[-f <: RowProduct, -s >: Grouped <: Single, +e <: SQLExpression[f, s, U]] <: SQLExpression[f, s, U],
 			                         RR[-f <: RowProduct, -s >: Grouped <: Single, +e <: SQLExpression[f, s, U]] <: SQLExpression[f, s, U]]
-		                            (form :SQLForm[V])
 		                            (other :ConvertibleSQL[F2, S2, V2, EC2])(reform :Reform, passCount :PassCount)
 			                        (implicit leftResult  :SQLTransformation[V, U]#Into[LR],
 			                                  rightResult :SQLTransformation[V2, U]#Into[RR], spelling :SQLSpelling)
 			extends BaseReformer[RowProduct, Single, F2, S2, V2, EC2, U, LR, RR](other)(reform, passCount)
-			   with CaseSpecificLValue[F2, V2, (LR[E[U]], RR[EC2[U]])]
+			   with CaseSpecificLValue[F2, V2, (LR[RowProduct, Single, E[U]], RR[F2, S2, EC2[U]])]
 		{
 			protected override def mapping[M[O] <: MappingAt[O]](e :MappingSQL[F2, S2, M, V2]) =
 				if (reform.mayAlterLeft && !passCount.firstTime)
@@ -286,44 +368,35 @@ object SQLTerm {
 
 			protected override def component[O >: F2 <: RowProduct, T[A] <: BaseMapping[R, A], R, M[A] <: BaseMapping[V2, A], L <: RowProduct]
 			                                (e :TypedComponentSQL[O, T, R, M, V2, L]) =
-				if (reform.mayAlterLeft && !passCount.firstTime)
+				if (!passCount.firstTime && reform.mayAlterLeft)
 					reformLeft(spelling.scope.termForm(e.origin.anchored, e.anchored))
 				else
 					fallback
 
 			override def rwTerm(e :RWTerm[V2]) =
-				if (reform.mayAlterLeft && e.form.isUniversal && !passCount.firstTime)
+				if (reform.mayAlterLeft && e.form.isUniversal)
 					reformLeft(e.form)
 				else
 					fallback
 
 			protected def reformLeft(form :SQLForm[V2]) :Result =
-				try {
-					if (passCount.thirdTime || passCount.secondTime && rightResult.isReversible)
-						leftResult match {
-							//important to know that leftResult doesn't create expressions of some incompatible type
-							case conversion :SQLConversion[V, U] =>
-								val reformed = SQLTermTemplate.this.reform(rightResult(form), conversion)
-								(reformed.asInstanceOf[Left], rightResult(other))
-							case _ if leftResult.isReversible =>
-								val mappedForm = form.bimap(v2 => leftResult.inverse(rightResult(v2)))(
-									v => rightResult.inverse(leftResult(v))
-								)(selectForm.nulls)
-								(leftResult(SQLTermTemplate.this.reform(mappedForm)), right)
-							case _ =>
-								val mappedForm = form.optBimap(v2 => leftResult.unapply(rightResult(v2)))(
-									v => rightResult.unapply(leftResult(v))
-								)(selectForm.nulls)
-								(leftResult(SQLTermTemplate.this.reform(mappedForm)), right)
+				if (passCount.lastChance || passCount.secondTime && rightResult.isReversible)
+					try {
+						(form match {
+							case column :ColumnForm[V2] => self.reform(column, leftResult, rightResult)
+							case _ => self.reform(form, leftResult, rightResult)
+						}) match {
+							case Got(left) => (left, right)
+							case _ => fallback
 						}
-					else
-						fallback
-				} catch {
-					case e :Exception =>
-						try { fallback } catch {
-							case e2 :Exception => e.addSuppressed(e2); throw e
-						}
-				}
+					} catch {
+						case e :Exception =>
+							try { fallback } catch {
+								case e1 :Exception => e1.addSuppressed(e); throw e1
+							}
+					}
+				else
+					fallback
 		}
 
 		protected class RWTermReformer[F2 <: RowProduct, S2 >: Grouped <: Single, V2,
@@ -337,14 +410,12 @@ object SQLTerm {
 			extends TermReformer[F2, S2, V2, EC2, U, LR, RR](other)(reform, passCount)
 		{
 			override def rwTerm(e :RWTerm[V2]) =
-				if (reform.mayAlterRight && passCount.thirdTime && form.isUniversal && leftResult.isReversible)
+				if (passCount.thirdTime && reform.mayAlterRight && form.isUniversal)// && leftResult.isReversible)
 					reformRight(e)
 				else super.rwTerm(e)
 
 			override def term(e :SQLTerm[V2]) =
-				if (!passCount.lastChance)
-					pass
-				else if (reform.mayAlterRight && form.isUniversal && leftResult.isReversible)
+				if (passCount.lastChance && reform.mayAlterRight && form.isUniversal)
 					//todo: lose the restriction on `leftResult` being reversible. We can't however
 					// just do it in general, as it involves mapping a write form with leftResult.unapply.
 					// One idea is to introduce a 'downcast' method, which would in a MappingForm remove columns
@@ -354,30 +425,24 @@ object SQLTerm {
 					fallback
 
 			protected def reformRight(e :SQLTerm[V2]) :Result =
-				try {
-					if (passCount.thirdTime || passCount.secondTime && leftResult.isReversible)
-						rightResult match {
-							case conversion :SQLConversion[V2, U] =>
-								(left, e.reform(leftResult(form), conversion).asInstanceOf[Right])
-							case _ if rightResult.isReversible =>
-								val mappedForm = form.bimap(v => rightResult.inverse(leftResult(v)))(
-									v2 => leftResult.inverse(rightResult(v2))
-								)(form.nulls)
-								(left, rightResult(e.reform(mappedForm)).asInstanceOf[Right])
-							case _ =>
-								val mappedForm = form.optBimap(v => rightResult.unapply(leftResult(v)))(
-									v2 => leftResult.unapply(rightResult(v2))
-								)(form.nulls)
-								(left, rightResult(e.reform(mappedForm)))
+				if (passCount.lastChance || !passCount.firstTime && leftResult.isReversible)
+					try {
+						(form match {
+							case column :ColumnForm[V] => e.reform(column, rightResult, leftResult)
+							case _ => e.reform(form, rightResult, leftResult)
+						}) match  {
+							case Got(r) => (left, r.asInstanceOf[Right])
+							case _ => fallback
 						}
-					else
-						fallback
-				} catch {
-					case e :Exception =>
-						try { fallback } catch {
-							case e2 :Exception => e.addSuppressed(e2); throw e
-						}
-				}
+					} catch {
+						case e :Exception =>
+							try { fallback } catch {
+								case e1 :Exception => e1.addSuppressed(e); throw e1
+							}
+					}
+
+				else
+					fallback
 		}
 	}
 
@@ -457,7 +522,9 @@ object SQLTerm {
 	                                             rightResult :SQLTransformation[V2, U], spelling :SQLSpelling)
 				:SpecificExpressionVisitor
 				 [F2, S2, V2, (leftResult.SQLResult[F1, S1, SQLExpression[F1, S1, U]], rightResult.SQLResult[F2, S2, EC2[U]])] =
-			new RWTermReformer[F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](form)(other)(reform, passCount)
+			new RWTermReformer[F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](
+				form)(other)(reform, passCount)(leftResult, rightResult, spelling
+			)
 
 //
 //		override def reform(form :SQLForm[V]) :RWTerm[V]
@@ -524,7 +591,9 @@ object SQLTerm {
 		                                             rightResult :SQLTransformation[V2, U], spelling :SQLSpelling)
 					:SpecificExpressionVisitor
 					 [F2, S2, V2, (leftResult.SQLResult[F1, S1, T[U]], rightResult.SQLResult[F2, S2, EC2[U]])] =
-				new RWTermReformer[F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](form)(other)(reform, passCount)
+				new RWTermReformer[F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](
+					form)(other)(reform, passCount)(leftResult, rightResult, spelling
+				)
 		}
 
 
@@ -761,7 +830,7 @@ object SQLTerm {
 trait ColumnTerm[V]
 	extends SQLTerm[V] with ColumnSQL[RowProduct, Single, V]
 //	   with ConvertingTemplate[RowProduct, GlobalScope, V, ColumnTerm]
-	   with SQLTermTemplate[V, GroundSQL, SQLTerm, ColumnTerm] with GroundSQLTemplate[V, ColumnTerm[V]]
+	   with SQLTermTemplate[V, GroundColumn, SQLTerm, ColumnTerm] with GroundSQLTemplate[V, ColumnTerm[V]]
 {
 //	override def reform[U](implicit form :SQLForm[U], conversion :SQLTransformation[V, U]) :SQLTerm[U] =
 //		form match {
@@ -783,6 +852,19 @@ trait ColumnTerm[V]
 //		                    (matcher :AnyColumnVisitor[RowProduct, Y]) :Y[GlobalScope, T] =
 //			matcher.term(this)
 
+	protected override def reform[V2, U](form :SQLForm[V2],
+	                                     leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U])
+			:Opt[leftResult.SQLResult[RowProduct, Single, GroundColumn[U]]] =
+		form match {
+			case column :ColumnForm[V2] => reform(column, leftResult, rightResult)
+			case _ => Lack
+		}
+
+	protected override def reform[V2, U](form :ColumnForm[V2],
+	                                     leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U])
+			:Opt[leftResult.SQLResult[RowProduct, Single, GroundColumn[U]]] =
+		super.reform(form, leftResult, rightResult)
+
 	protected[sql] override def atomicSpelling[P]
 	                            (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
 	                            (implicit spelling :SQLSpelling) :SpelledSQL[P] =
@@ -791,6 +873,14 @@ trait ColumnTerm[V]
 
 
 object ColumnTerm {
+	def apply[V :ColumnForm](value :V) :ColumnTerm[V] = apply(ColumnForm[V], value)
+
+	def apply[V](form :ColumnForm[V], value :V) :ColumnTerm[V] = value match {
+		case null => SQLNull[V](form)
+		case true  if form == True.form => True.castParam[V]
+		case false if form == False.form => False.castParam[V]
+		case _ => ColumnLiteral(form, value)
+	}
 //
 //	trait ColumnTermTemplate[V, T[v] <: SQLTerm[v] with SQLTermTemplate[v, T, C],
 //	                         C[v] <: ColumnTerm[v] with T[v] with ColumnTermTemplate[v, T, C]]
@@ -1019,9 +1109,9 @@ object ColumnTerm {
   * specific.
   */ //todo: make it a SelectableMappingSQL
 trait MappingTerm[M[A] <: BaseMapping[V, A], V]
-	extends RWTerm[V] with SQLTerm[V] with MappingSQL[RowProduct, Single, M, V]
+	extends RWTerm[V] with MappingSQL[RowProduct, Single, M, V]
 	   with MappingTermTemplate[M, V, MappingTerm[M, V]]
-{
+{ self =>
 //	@deprecated val project :IsomorphicProjection[M, V, Origin]
 
 	override val form       :SQLForm[V] = export.selectForm <> export.writeForm(export.selectedByDefault)
@@ -1068,6 +1158,18 @@ trait MappingTerm[M[A] <: BaseMapping[V, A], V]
 //	protected override def split(implicit spelling :SQLSpelling) :Seq[ColumnSQL[RowProduct, GlobalScope, _]] =
 //		spelling.scope.defaultColumns(export).toSeq.map(this \  _)
 
+	//We sadly can't reform because we are contract bound to return a MappingSQL
+	protected override def reform[V2, U](form :SQLForm[V2],
+	                                     leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U])
+			:Opt[leftResult.SQLResult[RowProduct, Single, MappingSQL[RowProduct, Single, M, U]]] =
+		Lack
+
+	protected override def reform[V2, U](form :ColumnForm[V2],
+	                                     leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U])
+			:Opt[leftResult.SQLResult[RowProduct, Single, MappingSQL[RowProduct, Single, M, U]]] =
+		Lack
+
+
 	protected override def reformer[F1 <: RowProduct, S1 >: Grouped <: Single, F2 <: RowProduct, S2 >: Grouped <: Single, V2,
                                     EC2[v] <: ConvertibleSQL[F2, S2, v, EC2], U]
                                    (other :ConvertibleSQL[F2, S2, V2, EC2])(reform :Reform, passCount :PassCount)
@@ -1075,13 +1177,15 @@ trait MappingTerm[M[A] <: BaseMapping[V, A], V]
                                              rightResult :SQLTransformation[V2, U], spelling :SQLSpelling)
 			:SpecificExpressionVisitor
 			 [F2, S2, V2, (leftResult.SQLResult[F1, S1, MappingSQL[F1, S1, M, U]], rightResult.SQLResult[F2, S2, EC2[U]])] =
-		new TermReformer[F1, S1, F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](form)(other)(reform, passCount) {
-			override def mapping[M[O] <: MappingAt[O]](e :MappingSQL[F2, S2, M, V2]) =
-				if (e.anchored isomorphic mapping)
-					asIs
-				else if (reform.mayAlterLeft && (e.mapping isomorphic mapping))
-					(leftResult(e.conversion(alter(e.anchored.castParams[V, Origin]))), rightResult(other))
-				else
+		new RWTermReformer[F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](
+			form)(other)(reform, passCount)(leftResult, rightResult, spelling
+		) {
+			override def mapping[M2[O] <: MappingAt[O]](e :MappingSQL[F2, S2, M2, V2]) =
+				if (e.anchored isomorphic MappingTerm.this.mapping)
+					asIs :Result
+				else if (reform.mayAlterLeft && (e.mapping isomorphic MappingTerm.this.mapping)) {
+					(leftResult(alter(e.anchored.castParams[V, Origin])), rightResult(other))
+				} else
 					super.mapping(e)
 		}
 
@@ -1138,24 +1242,25 @@ object MappingTerm extends Rank1MappingTermImplicits {
 	/** A mixin trait for [[net.noresttherein.oldsql.sql.ast.MappingTerm MappingTerm]] subclasses introducing
 	  * methods returning another `MappingTerm` of the same type.
 	  */
-	trait MappingTermTemplate[M[A] <: BaseMapping[V, A], V, +E <: MappingTerm[M, V]]
-		extends SQLTerm[V]
-		   with GroundSQLTemplate[V, E] with MappingSQLTemplate[RowProduct, Single, M, V, E]
-	{ this :E =>
+	trait MappingTermTemplate[M[A] <: BaseMapping[V, A], V, +Same <: MappingTerm[M, V]]
+		extends GroundSQLTemplate[V, Same]
+		   with MappingSQLTemplate[RowProduct, Single, M, V, Same]
+		   with SQLTermTemplate[V, ({ type E[v] = MappingSQL[RowProduct, Single, M, v] })#E, RWTerm, RWColumnTerm]
+	{ this :Same with MappingTermTemplate[M, V, Same] =>
 //		override type Origin = O
 		val export  :TypedMapping[V, Origin]
 
-		override def default :E = alter(mapping)
+		override def default :Same = alter(mapping)
 
 		override def defaultWith(includes :Unique[TypedMapping[_, Origin]],
-		                         excludes :Unique[TypedMapping[_, Origin]]) :E =
+		                         excludes :Unique[TypedMapping[_, Origin]]) :Same =
 			alter(mapping(includes, excludes))
 
 		override def alter(includes :Iterable[TypedMapping[_, Origin]],
-		                   excludes :Iterable[TypedMapping[_, Origin]]) :E =
+		                   excludes :Iterable[TypedMapping[_, Origin]]) :Same =
 			alter(export(includes, excludes))
 
-		protected def alter(export :TypedMapping[V, Origin]) :E
+		protected def alter(export :TypedMapping[V, Origin]) :Same
 	}
 
 
@@ -1239,20 +1344,31 @@ trait ColumnMappingTerm[M[A] <: BaseColumn[V, A], V]
 //	protected override def convert[X](conversion :SQLConversion[V, X]) :ColumnMappingSQL[RowProduct, Single, M, X] =
 //		ConvertedColumnMappingSQL(this, conversion)
 
+	protected override def reform[V2, U](form :SQLForm[V2],
+	                                     leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U])
+			:Opt[leftResult.SQLResult[RowProduct, Single, ColumnMappingSQL[RowProduct, Single, M, U]]] =
+		Lack
+
+	protected override def reform[V2, U](form :ColumnForm[V2],
+	                                     leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U])
+			:Opt[leftResult.SQLResult[RowProduct, Single, ColumnMappingSQL[RowProduct, Single, M, U]]] =
+		Lack
+
 	override def scopedForm(implicit spelling :SQLSpelling) :ColumnForm[V] = export.form
 }
 
 
 object ColumnMappingTerm {
-	trait ColumnMappingTermTemplate[M[A] <: BaseColumn[V, A], V, +C <: ColumnMappingTerm[M, V]]
-		extends ColumnTerm[V] with MappingTermTemplate[M, V, C]
-	{ this :C =>
+	trait ColumnMappingTermTemplate[M[A] <: BaseColumn[V, A], V, +Same <: ColumnMappingTerm[M, V]]
+		extends SQLTermTemplate[V, ({ type E[v] = ColumnMappingSQL[RowProduct, Single, M, v] })#E, RWTerm, RWColumnTerm]
+		   with MappingTermTemplate[M, V, Same]
+	{ this :Same with ColumnMappingTermTemplate[M, V, Same] =>
 		override def defaultWith(includes :Unique[TypedMapping[_, Origin]],
-		                         excludes :Unique[TypedMapping[_, Origin]]) :C =
+		                         excludes :Unique[TypedMapping[_, Origin]]) :Same =
 			alter(mapping(includes, excludes)) //looks the same as in overridden method, but mapping(...) returns a column
 
 		override def alter(includes :Iterable[TypedMapping[_, Origin]],
-		                   excludes :Iterable[TypedMapping[_, Origin]]) :C =
+		                   excludes :Iterable[TypedMapping[_, Origin]]) :Same =
 			alter(export(includes, excludes))
 	}
 
@@ -1339,10 +1455,10 @@ trait SQLLiteral[V]
 		ColumnLiteral(value)
 
 	override def reform[U](form :SQLForm[U], conversion :SQLConversion[V, U]) :SQLLiteral[U] =
-		SQLLiteral(conversion(value))(form)
+		SQLLiteral(form, conversion(value))
 
 	override def reform[U](form :ColumnForm[U], conversion :SQLConversion[V, U]) :ColumnLiteral[U] =
-		ColumnLiteral(conversion(value))(form)
+		ColumnLiteral(form, conversion(value))
 
 
 	protected override def defaultSpelling[P]
@@ -1384,9 +1500,13 @@ trait SQLLiteral[V]
 object SQLLiteral extends FormBasedFactory[Self, SQLLiteral, ColumnLiteral] {
 	//consider: making SQLNull an SQLLiteral and handle null values gracefully
 
-	def apply[V :SQLForm](value :V) :SQLLiteral[V] = SQLForm[V] match {
-		case column :ColumnForm[V] => ColumnLiteral[V](value)(column)
-		case _ => new Impl(value)
+	def apply[V](form :SQLForm[V], value :V) :SQLLiteral[V] = form match {
+		case column :ColumnForm[V] => ColumnLiteral[V](column, value)
+		case _ => value match {
+			case true  if form == True.form => True.castParam[V]
+			case false if form == False.form => False.castParam[V]
+			case _ => new Impl(value)(form)
+		}
 	}
 
 	def unapply[V](e :SQLExpression[Nothing, Grouped, V]) :Opt[V] = e match {
@@ -1397,8 +1517,8 @@ object SQLLiteral extends FormBasedFactory[Self, SQLLiteral, ColumnLiteral] {
 	private class Impl[V](override val value :V)(implicit override val form :SQLForm[V])
 		extends SQLLiteral[V]
 
-	protected override def generalResult[T :SQLForm](arg :T) :SQLLiteral[T] = SQLLiteral(arg)
-	protected override def specificResult[T :ColumnForm](arg :T) :ColumnLiteral[T] = ColumnLiteral(arg)
+	protected override def generalResult[T :SQLForm](arg :T) :SQLLiteral[T] = SQLLiteral(SQLForm[T], arg)
+	protected override def specificResult[T :ColumnForm](arg :T) :ColumnLiteral[T] = ColumnLiteral(ColumnForm[T], arg)
 
 
 	trait SpecificLiteralVisitor[X, +Y] extends SpecificColumnLiteralVisitor[X, Y] with SpecificMappingLiteralVisitor[X, Y] {
@@ -1450,7 +1570,11 @@ object SQLLiteral extends FormBasedFactory[Self, SQLLiteral, ColumnLiteral] {
 
 
 
-trait ColumnLiteral[V] extends SQLLiteral[V] with RWColumnTerm[V] with GroundSQLTemplate[V, ColumnLiteral[V]] {
+trait ColumnLiteral[V]
+	extends SQLLiteral[V] with RWColumnTerm[V]
+	   with GroundSQLTemplate[V, ColumnLiteral[V]]
+	   with SQLTermTemplate[V, GroundColumn, SQLLiteral, ColumnLiteral]
+{
 	override val form :ColumnForm[V]
 	override val writeForm  :ColumnWriteForm[Unit] = ColumnWriteForm.const(value)(form.writer)
 
@@ -1483,9 +1607,13 @@ trait ColumnLiteral[V] extends SQLLiteral[V] with RWColumnTerm[V] with GroundSQL
 
 
 object ColumnLiteral {
-	def apply[V :ColumnForm](value :V) :ColumnLiteral[V] = new Impl[V](value)
+	def apply[V :ColumnForm](value :V) :ColumnLiteral[V] = apply(ColumnForm[V], value)
 
-	def apply[V](form :ColumnForm[V])(value :V) :ColumnLiteral[V] = new Impl[V](value)(form)
+	def apply[V](form :ColumnForm[V], value :V) :ColumnLiteral[V] = value match {
+		case true  if form == True.form => True.castParam[V]
+		case false if form == False.form => False.castParam[V]
+		case _ => new Impl(value)(form)
+	}
 
 	def unapply[V](e :SQLExpression[Nothing, Grouped, V]) :Opt[V] = e match {
 		case literal :ColumnLiteral[V @unchecked] => Got(literal.value)
@@ -1560,7 +1688,8 @@ object ColumnLiteral {
   * If reformed, it behaves as a regular literal.
   */ //todo: make it a SelectableMappingSQL
 sealed trait MappingLiteral[M[A] <: BaseMapping[V, A], V]
-	extends SQLLiteral[V] with MappingTerm[M, V] with MappingTermTemplate[M, V, MappingLiteral[M, V]]
+	extends SQLLiteral[V] with MappingTerm[M, V]
+	   with MappingTermTemplate[M, V, MappingLiteral[M, V]]
 {
 //	override type ComponentLike[C[A] <: BaseMapping[X, A], X] =
 //		MappingLiteral[C, X] { type Origin = MappingLiteral.this.Origin }
@@ -1846,7 +1975,7 @@ object ColumnMappingLiteral {
 //todo: EvalParam
 trait BoundParam[V]
 	extends RWTerm[V] with SQLTermTemplate[V, GroundSQL, BoundParam, BoundColumnParam]
-//	   with ConvertingTemplate[RowProduct, GlobalScope, V, BoundParam]
+//	   with ConvertingRWTermTemplate[RowProduct, GlobalScope, V, BoundParam]
 	   with SelectableSQL[RowProduct, Single, V]
 {
 	val name :Option[String]
@@ -1856,12 +1985,58 @@ trait BoundParam[V]
 	protected override def column[X](value :X, index :Int)(implicit form :ColumnForm[X]) :ColumnTerm[X] =
 		BoundColumnParam(value, name.map(_ + "_" + index))
 
+	override def upcast[X](implicit ev :V <:< X, tag :ClassTag[V]) :GroundSQL[X] =
+		throw new UnsupportedOperationException(
+			"Parameter expression " + this + "of type " + tag.runtimeClass.name + " cannot be upcast."
+		)
+
 	override def reform[U](form :SQLForm[U], conversion :SQLConversion[V, U]) :BoundParam[U] =
 		BoundParam(conversion(value), name)(form)
 
 	override def reform[U](form :ColumnForm[U], conversion :SQLConversion[V, U]) :BoundColumnParam[U] =
 		BoundColumnParam(conversion(value), name)(form)
-//
+
+	protected override def reform[V2, U](form :SQLForm[V2], leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U])
+			:Opt[leftResult.SQLResult[RowProduct, Single, GroundSQL[U]]] =
+		if (!rightResult.isReversible) //for a BoundParam, reversibility is a must
+			Lack
+		else //we check if form is columnForm in the reformer instead.
+			leftResult match {
+				//important to know that leftResult doesn't create expressions of some incompatible type
+				case conversion :SQLConversion[V, U] =>
+					val reformed = reform(rightResult(form), conversion)
+					Got(reformed.asInstanceOf[leftResult.SQLResult[RowProduct, Single, GroundSQL[U]]])
+				case _ =>
+					val mappedForm = form.bimap(
+						v2 => leftResult.inverse(rightResult(v2)))(
+						v => rightResult.inverse(leftResult(v)) //<- this is the function which really matters
+					)(selectForm.nulls)
+					Got(leftResult(reform(mappedForm)))
+				case _ =>
+					Lack
+			}
+
+	protected override def reform[V2, U](form :ColumnForm[V2], leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U])
+			:Opt[leftResult.SQLResult[RowProduct, Single, GroundColumn[U]]] =
+		if (!rightResult.isReversible) //for a BoundParam, reversibility is a must
+			Lack
+		else //we check if form is columnForm in the reformer instead.
+			leftResult match {
+				//important to know that leftResult doesn't create expressions of some incompatible type
+				case conversion :SQLConversion[V, U] =>
+					val reformed = reform(rightResult(form), conversion)
+					Got(reformed.asInstanceOf[leftResult.SQLResult[RowProduct, Single, GroundColumn[U]]])
+				case _ =>
+					val mappedForm = form.bimap(
+						v2 => leftResult.inverse(rightResult(v2)))(
+						v => rightResult.inverse(leftResult(v)) //<- this is the function which really matters
+					)(selectForm.nulls)
+					Got(leftResult(reform(mappedForm)))
+				case _ =>
+					Lack
+			}
+
+	//
 //	override def reform[U, EC[x] >: BoundParam[x], E](form :SQLForm[U], conversion :SpecificTransformation[V, U, EC, BoundParam[V], E]) :E =
 //		conversion.sql(this)
 
@@ -1925,14 +2100,19 @@ trait BoundParam[V]
 
 object BoundParam extends FormBasedFactory[Self, BoundParam, BoundColumnParam] {
 
+	def apply[T :SQLForm](value :T, name :Option[String]) :BoundParam[T] = SQLForm[T] match {
+		case column :ColumnForm[T] => BoundColumnParam(value, name)(column)
+		case _ => new Impl(value, name)
+	}
 	def apply[T :SQLForm](name :String, value :T) :BoundParam[T] = SQLForm[T] match {
-		case column :ColumnForm[T] => BoundColumnParam(name, value)(column)
+		case column :ColumnForm[T] => BoundColumnParam(name, column, value)
 		case _ => new Impl(value, Some(name))
 	}
-	def apply[T](form :SQLForm[T])(value :T, name :String = null) :BoundParam[T] = form match {
-		case column :ColumnForm[T] => BoundColumnParam(value)(column)
+	def apply[T](name :String, form :SQLForm[T], value :T) :BoundParam[T] = form match {
+		case column :ColumnForm[T] => BoundColumnParam(column, value)
 		case _ => new Impl(value)(form)
 	}
+	def apply[T](form :SQLForm[T], value :T) :BoundParam[T] = apply(value, None)(form)
 
 	def unapply[T](e :SQLExpression[Nothing, Grouped, T]) :Opt[(T, Option[String])] = e match {
 		case param :BoundParam[T @unchecked] => Got((param.value, param.name))
@@ -1947,7 +2127,7 @@ object BoundParam extends FormBasedFactory[Self, BoundParam, BoundColumnParam] {
 //		  */
 
 	protected override def specificResult[X :ColumnForm](value :X) :BoundColumnParam[X] = BoundColumnParam(value)
-	protected override def generalResult[X :SQLForm](value :X) :BoundParam[X] = BoundParam(SQLForm[X])(value)
+	protected override def generalResult[X :SQLForm](value :X) :BoundParam[X] = BoundParam(SQLForm[X], value)
 
 	/** A factory lifting any literal `X` into an [[net.noresttherein.oldsql.sql.ast.BoundParam BoundParam]]`[X]`
 	  * or its subclass [[net.noresttherein.oldsql.sql.ast.BoundColumnParam BoundParamColumn]]`[X]`,
@@ -2015,6 +2195,11 @@ trait BoundColumnParam[V]
 {
 	override val writeForm  :ColumnWriteForm[Unit] = ColumnWriteForm.const(value)(form.writer)
 
+	override def upcast[X](implicit ev :V <:< X, tag :ClassTag[V]) :GroundColumn[X] =
+		throw new UnsupportedOperationException(
+			"Parameter expression " + this + "of type " + tag.runtimeClass.name + " cannot be upcast."
+		)
+
 	protected override def visit[Y[-_ >: Grouped <: Single, _]]
 	                            (visitor :AnyColumnVisitor[RowProduct, Y]) :Y[Single, V] =
 		visitor.paramColumn(this)
@@ -2031,13 +2216,16 @@ trait BoundColumnParam[V]
 
 
 object BoundColumnParam {
-	def apply[V :ColumnForm](name :String, param :V) :BoundColumnParam[V] =
-		new Impl(param, Some(name))
+	def apply[V :ColumnForm](name :String, value :V) :BoundColumnParam[V] =
+		new Impl(value, Option(name))
 
-	def apply[V :ColumnForm](param :V, name :Option[String] = None) :BoundColumnParam[V] =
-		new Impl[V](param, name)
+	def apply[V :ColumnForm](value :V, name :Option[String] = None) :BoundColumnParam[V] =
+		new Impl[V](value, name)
 
-	def apply[V](form :ColumnForm[V])(value :V) :BoundColumnParam[V] =
+	def apply[V](name :String, form :ColumnForm[V], value :V) :BoundColumnParam[V] =
+		new Impl[V](value, Option(name))(form)
+
+	def apply[V](form :ColumnForm[V], value :V) :BoundColumnParam[V] =
 		new Impl[V](value)(form)
 
 	def unapply[V](e :SQLExpression[Nothing, Grouped, V]) :Opt[(V, Option[String])] = e match {
@@ -2099,7 +2287,8 @@ object BoundColumnParam {
   * Reforming produces a regular `BoundParam`.
   */
 sealed trait BoundMappingParam[M[A] <: BaseMapping[V, A], V]
-	extends BoundParam[V] with MappingTerm[M, V] with MappingTermTemplate[M, V, BoundMappingParam[M, V]]
+	extends BoundParam[V] with MappingTerm[M, V]
+	   with MappingTermTemplate[M, V, BoundMappingParam[M, V]]
 {
 	override def \[K <: MappingAt[Origin], X](component :K)(implicit project :OriginProjection[K, X])
 			:BoundMappingParam[project.WithOrigin, X] { type Origin = BoundMappingParam.this.Origin } =
@@ -2463,16 +2652,17 @@ sealed class MultiNull[V] private[ast](implicit val form :SQLForm[V])
 	override def reform[U](form :ColumnForm[U], conversion :SQLConversion[V, U]) :SQLNull[U] =
 		SQLNull[U](form)
 
-	protected override def reform[F1 <: RowProduct, S1 >: Grouped <: Single, F2 <: RowProduct, S2 >: Grouped <: Single, V2,
+	protected override def reform[F1 <: RowProduct, S1 >: Grouped <: Single,
+	                              F2 <: RowProduct, S2 >: Grouped <: Single, V2,
 	                              EC2[v] <: ConvertibleSQL[F2, S2, v, EC2], U]
                                  (other :ConvertibleSQL[F2, S2, V2, EC2])(reform :Reform, passCount :PassCount)
                                  (implicit leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U],
                                            spelling :SQLSpelling)
 			:(leftResult.SQLResult[F1, S1, SQLExpression[F1, S1, U]], rightResult.SQLResult[F2, S2, EC2[U]]) =
 		if (!passCount.lastChance)
-			passReform(other)(reform, passCount)
+			passReform[F1, S1, F2, S2, V2, EC2, U](other)(reform, passCount)
 		else
-			reformer(other)(reform, passCount).apply(other)
+			reformer[F1, S1, F2, S2, V2, EC2, U](other)(reform, passCount).apply(other)
 
 	protected override def reformer[F1 <: RowProduct, S1 >: Grouped <: Single, F2 <: RowProduct, S2 >: Grouped <: Single, V2,
                                     EC2[v] <: ConvertibleSQL[F2, S2, v, EC2], U]
@@ -2481,24 +2671,36 @@ sealed class MultiNull[V] private[ast](implicit val form :SQLForm[V])
                                              rightResult :SQLTransformation[V2, U], spelling :SQLSpelling)
 			:SpecificExpressionVisitor
 			 [F2, S2, V2, (leftResult.SQLResult[F1, S1, SQLExpression[F1, S1, U]], rightResult.SQLResult[F2, S2, EC2[U]])] =
-		new RWTermReformer[F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](other)(reform, passCount) {
-			override def expression(e :SQLExpression[F2, S2, V2]) =
-				if (!passCount.lastChance)
-					pass
-				else if (reform.mayAlterLeft) {
-					val r = rightResult(e)
-					r.selectForm match {
-						case columnForm :ColumnReadForm[U] =>
-							val form = ColumnWriteForm.nulls(columnForm.sqlType) <> r.selectForm
-							(SQLNull[U](form), r)
-						case readForm =>
-							val form = SQLWriteForm.nulls(readForm.columnCount) <> readForm
-							(MultiNull[U](form), r)
-					}
-				} else
-					fallback
+	{
+		if (form.isUniversal)
+			new RWTermReformer[F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](
+				form)(other)(reform, passCount)(leftResult, rightResult, spelling
+			) {
+				override def expression(e :SQLExpression[F2, S2, V2]) :Result =
+					if (passCount.lastChance && reform.mayAlterLeft) {
+						val right = rightResult(e)
+						val left :Left = right.selectForm match {
+							case columnForm :ColumnReadForm[U] if leftResult.isInstanceOf[SQLConversion[_, _]] =>
+								SQLNull[U](columnForm).asInstanceOf[Left]
+							case readForm if leftResult.isInstanceOf[SQLConversion[_, _]] =>
+								val form = SQLWriteForm.nulls(readForm.columnCount) <> readForm
+								MultiNull[U](form).asInstanceOf[Left]
+							case columnForm :ColumnReadForm[U] =>
+								leftResult(SQLNull(leftResult.swap(columnForm)))
+							case readForm =>
+								val form = leftResult.swap(SQLWriteForm.nulls(readForm.columnCount) <> readForm)
+								leftResult(MultiNull(form))
+						}
+						(left, right)
+					} else
+						fallback
 
-		}
+			}
+		else
+			new TermReformer[F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](
+				other)(reform, passCount)(leftResult, rightResult, spelling
+			)
+	}
 
 //	override def reform[U, EC[x] >: MultiNull[x], E]
 //	                   (form :SQLForm[U], conversion :SpecificTransformation[V, U, EC, MultiNull[V], E]) :E =
@@ -2662,6 +2864,7 @@ object MultiNull {
 
 
 
+//consider: classes extending MappingSQL and LValueSQL
 final class SQLNull[V] private[ast]
                    (implicit override val form :ColumnForm[V] = ColumnReadForm.none[V] <> ColumnWriteForm.nulls[V])
 	extends MultiNull[V] with ColumnTerm[V]
@@ -2774,7 +2977,7 @@ object SQLNull extends SQLNullFactory { //consider: extend SQLNull[Null]
 	def apply[T](form :ColumnForm[T] = ColumnReadForm.none[T] <> ColumnWriteForm.nulls[T]) :SQLNull[T] =
 		new SQLNull[T]()(form)
 
-	def apply[T](form :ColumnReadForm[T]) :SQLNull[T] = SQLNull(form <> ColumnWriteForm.nulls[T])
+	def apply[T](form :ColumnReadForm[T]) :SQLNull[T] = SQLNull(form <> ColumnWriteForm.nulls[T](form.sqlType))
 
 
 
@@ -2847,13 +3050,14 @@ class NativeTerm[V] protected (val sql :String, override val groundValue :Opt[V]
 			)
 
 	//prevent other from calling our reform(form) by clearing mayReformThis
-	protected override def reform[F1 <: F, S1 >: Grouped <: S, F2 <: RowProduct, S2 >: Grouped <: Single, V2,
+	protected override def reform[F1 <: RowProduct, S1 >: Grouped <: Single,
+	                              F2 <: RowProduct, S2 >: Grouped <: Single, V2,
 	                              EC2[v] <: ConvertibleSQL[F2, S2, v, EC2], U]
                                  (other :ConvertibleSQL[F2, S2, V2, EC2])(reform :Reform, passCount :PassCount)
-                                 (implicit leftResult :SQLTransformation[Y, U], rightResult :SQLTransformation[V2, U],
+                                 (implicit leftResult :SQLTransformation[V, U], rightResult :SQLTransformation[V2, U],
                                            spelling :SQLSpelling)
 			:(leftResult.SQLResult[F1, S1, SQLExpression[F1, S1, U]], rightResult.SQLResult[F2, S2, EC2[U]]) =
-		super.reform(other)(reform.prohibitReformLeft, passCount)
+		super.reform[F1, S1, F2, S2, V2, EC2, U](other)(reform.prohibitReformLeft, passCount)
 
 //	protected override def reform[E <: RowProduct, C >: Grouped <: Single, X, U]
 //	                             (other :SQLExpression[E, C, X])(reform :Reform, passesAllowed :Int)

@@ -679,7 +679,7 @@ object MappingSchema {
 		def comp[N <: Label, T, MV <: Chain, MC <: Chain]
 		        (label :N, value :S => T, buffs :Buff[T]*)(component :(String, Buffs[T]) => |-|[T, MV, MC])
 				:ExtensibleMappingSchema[S, V ~ T, C ~ @|-|[N, T, MV, MC], O] =
-			comp(value, component(prefix, conveyBuffs(value, buffs)) labeled[N] label)
+			comp(value, component(prefix, conveyBuffs(value, buffs)) labeled (label :N))
 
 		/** Appends a new labeled component to this schema. The component will inherit any column prefix and all buffs
 		  * provided for the outer mapping of `S` at the initialization of this schema. Inherited buffs will follow
@@ -711,7 +711,7 @@ object MappingSchema {
 		        (label :N, value :S => T, columnPrefix :String, buffs :Buff[T]*)
 		        (component :(String, Buffs[T]) => |-|[T, MV, MC])
 				:ExtensibleMappingSchema[S, V ~ T, C ~ @|-|[N, T, MV, MC], O] =
-			comp(value, component(prefix + columnPrefix, conveyBuffs(value, buffs)) labeled[N] label)
+			comp(value, component(prefix + columnPrefix, conveyBuffs(value, buffs)) labeled (label :N))
 
 		/** Appends a new labeled component to this schema. The component will not inherit any column prefix or buffs
 		  * associated with this schema.
@@ -722,7 +722,7 @@ object MappingSchema {
 		  */
 		def comp[N <: Label, T, MV <: Chain, MC <: Chain](label :N, value :S => T, component: |-|[T, MV, MC])
 				:ExtensibleMappingSchema[S, V ~ T, C ~ @|-|[N, T, MV, MC], O] =
-			comp(value, component labeled[N] label)
+			comp(value, component labeled (label :N))
 
 		/** Appends the given component to this schema. The component will not inherit any column prefix or buffs
 		  * associated with this schema.

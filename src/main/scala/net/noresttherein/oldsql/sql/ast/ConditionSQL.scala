@@ -224,7 +224,7 @@ case class HasNulls[-F <: RowProduct, -S >: Grouped <: Single, T](value :SQLExpr
 	                              (expr :SQLExpression[E, C, T]) :ColumnSQL[E, C, Boolean] =
 		new HasNulls(expr)
 
-	protected override def columnOperator(implicit spelling :SQLSpelling) :Boolean = spelling.OR
+	protected override def columnOperator(implicit spelling :SQLSpelling) :String = spelling.OR
 
 	protected override def visit[Y[-_ >: Grouped <: Single, _]]
 	                            (visitor :AnyColumnVisitor[F, Y]) :Y[S, Boolean] = visitor.partiallyNull(this)

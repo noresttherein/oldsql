@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.model
 
+import scala.annotation.showAsInfix
 import scala.collection.{immutable, EvidenceIterableFactory, Factory, IterableFactory}
 import scala.collection.mutable.Builder
 
@@ -53,6 +54,7 @@ object :*: {
   * It is generally written in the code using infix notation for clarity: `C ComposedOf E`.
   * @see [[net.noresttherein.oldsql.model.ComposedOf.CollectionOf CollectionOf]]
   */
+@showAsInfix
 trait ComposedOf[C, E] extends Serializable {
 	def arity :Arity = composer.arity
 //		if (composition.arity == decomposition.arity) composition.arity
@@ -184,6 +186,7 @@ object ComposedOf extends Rank1ComposedOfImplicits {
 	  * be misleading when dealing with singleton values can require a `C CollectionOf E` instead of the more generic
 	  * `C ComposedOf E`.
 	  */
+	@showAsInfix
 	trait CollectionOf[C, E] extends ComposedOf[C, E] {
 		override implicit val composer :C ConstructFrom E
 		override implicit val decomposer :C ExtractAs E
@@ -301,6 +304,7 @@ object ComposedOf extends Rank1ComposedOfImplicits {
 	  * @see [[net.noresttherein.oldsql.model.ComposedOf.DecomposableTo DecomposableTo]]
 	  * @see [[net.noresttherein.oldsql.model.ComposedOf ComposedOf]]
 	  */
+	@showAsInfix
 	trait ComposableFrom[+C, -E] extends Serializable { composition =>
 		def arity :Arity
 
@@ -331,9 +335,10 @@ object ComposedOf extends Rank1ComposedOfImplicits {
 	  * it might easily lead to situations where a collection type is treated as composed of itself rather than its
 	  * items, leading to non obvious bugs.
 	  */
+	@showAsInfix
 	trait ConstructFrom[+C, -E] extends ComposableFrom[C, E] {
 		def builder :Builder[E, C]
-		def decomposeWith[W >: C, T <: E](decomposition :ExtractAs[W, T]) :CollectionOf[W, T] =
+		def decomposeWith[W >: C, T <: E](decomposition :W ExtractAs T) :CollectionOf[W, T] =
 			CollectionOf(this, decomposition)
 	}
 
@@ -989,6 +994,7 @@ object ComposedOf extends Rank1ComposedOfImplicits {
 
 
 	/** A way to obtain `Iterable[E]` from `C`. */
+	@showAsInfix
 	trait DecomposableTo[-C, +E] extends Serializable { decomposition =>
 		def arity :Arity
 
@@ -1018,6 +1024,7 @@ object ComposedOf extends Rank1ComposedOfImplicits {
 	  * some operations available only for actual collection types as well as to eliminate the risk associated with
 	  * an always available implicit value for the identity decomposition.
 	  */ //todo: rename to Contains
+	@showAsInfix
 	trait ExtractAs[-C, +E] extends DecomposableTo[C, E] {
 		def composeWith[W <: C, T >: E](composition :W ConstructFrom T) :W CollectionOf T =
 			CollectionOf(composition, this)

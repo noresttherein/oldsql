@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.sql.mechanics
 
 import java.time.{Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime, ZonedDateTime}
 
-import scala.annotation.nowarn
+import scala.annotation.{implicitNotFound, nowarn}
 import scala.math.Numeric.IntIsIntegral
 import scala.reflect.ClassTag
 
@@ -228,6 +228,7 @@ object SQLOrdering { self =>
 /**
   * @author Marcin Mościcki
   */
+@implicitNotFound("No in-database arithmetic support for type ${T}.")
 sealed trait SQLNumber[T] extends SQLOrdering[T] with Numeric[T]
 
 

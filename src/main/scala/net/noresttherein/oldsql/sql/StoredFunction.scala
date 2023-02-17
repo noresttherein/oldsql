@@ -707,7 +707,7 @@ object ColumnFunction {
 
 	implicit class ColumnFunction1Extension[A, Y](self :ColumnFunction1[A, Y]) extends ColumnFunctionExtension(self) {
 		def apply(a :A) :FunctionColumnSQL[RowProduct, Single, @~ ~A, Y] =
-			function(BoundParam[A, A](a)(function.paramForm.last))
+			function(BoundParam(function.paramForm.last, a))
 
 		def apply[X <: RowProduct, Sc >: Grouped <: Single](a :SQLExpression[X, Sc, A])
 				:FunctionColumnSQL[X, Sc, @~ ~A, Y] =

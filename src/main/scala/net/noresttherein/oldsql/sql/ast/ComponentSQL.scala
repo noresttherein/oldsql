@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.sql.ast
 
+import scala.collection.immutable.ArraySeq
 import scala.collection.mutable
 
 import net.noresttherein.oldsql.collection.{Listing, Opt, PassedArray, Unique}
@@ -14,12 +15,13 @@ import net.noresttherein.oldsql.schema.support.{PatchedMapping, ReorderedMapping
 import net.noresttherein.oldsql.sql.{Adjoin, ColumnSetter, ColumnSQL, Expanded, RowProduct, RowShape, Seal, Select, SQLExpression, WithClause}
 import net.noresttherein.oldsql.sql.ColumnSQL.{AnyColumnVisitor, SpecificColumnVisitor}
 import net.noresttherein.oldsql.sql.GroupByClause.GroupingRelation
-import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundRow, NonEmptyRow, PrefixOf, ProperSubselectOf, TopRow}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundRow, NonEmptyRow, PartOf, PrefixOf, SubselectOf, TopRow}
 import net.noresttherein.oldsql.sql.Sealed.seal
 import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.SQLExpression.{AnyExpressionVisitor, ConvertibleSQL, Grouped, Single, SpecificExpressionVisitor}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.ast.LValueSQL.LValueTemplate
+import net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.ConvertedColumnLValue
+import net.noresttherein.oldsql.sql.ast.LValueSQL.{ConvertedLValueSQL, LValueTemplate}
 import net.noresttherein.oldsql.sql.ast.ComponentSQL.{GenericComponentSQLTemplate, InvariantComponentSQLTemplate, TypedComponentSQL}
 import net.noresttherein.oldsql.sql.ast.GenericColumnComponentSQL.TypedColumnComponentSQL
 import net.noresttherein.oldsql.sql.ast.GenericColumnComponentSQL.TypedColumnComponentSQL.{AnyColumnComponentVisitor, CaseAnyColumnComponent, CaseSpecificColumnComponent, SpecificColumnComponentVisitor}
@@ -33,6 +35,7 @@ import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLC
 
 //implicits
 import net.noresttherein.oldsql.slang.mappingMethods
+import net.noresttherein.oldsql.slang.cast2TypeParams
 
 
 
@@ -256,17 +259,19 @@ trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 		extends BaseReformer[F1, Single, F2, S2, V2, EC2, U, LR, RR](
 		                     other)(reform, passCount)(leftResult, rightResult, spelling)
 	{
-		override def component[O >: F2 <: RowProduct, T[A] <: BaseMapping[R, A], R, M[A] <: BaseMapping[V2, A], L <: RowProduct]
-		                      (e :TypedComponentSQL[O, T, R, M, V2, L]) :Result =
+		override def component[O >: F2 <: RowProduct, T[A] <: BaseMapping[R, A], R, M2[A] <: BaseMapping[V2, A], L <: RowProduct]
+		                      (e :TypedComponentSQL[O, T, R, M2, V2, L]) :Result =
 			if (!passCount.lastChance) pass
-			else reform.default(ComponentSQL.this, e)(leftResult, rightResult, spelling)
+			else
+				reform.default[F, M, F2, M2, U](self, e)(leftResult, rightResult, spelling).castParam2[Right]
 
-		override def term(e :SQLTerm[V2]) :Result =
+		override def term(e :SQLTerm[V2]) :Result = fallback
+/*
 			if (passCount.secondTime && reform.mayAlterRight && rightResult.isReversible) {
 				try {
 					val form = spelling.scope.termForm(origin.anchored, anchored)
 					//todo: support truncation of column sets/forms with the upcast to U
-					(leftResult(ComponentSQL.this), e.reform(leftResult(form), rightResult))
+					(leftResult(self), e.reform(leftResult(form), rightResult).asInstanceOf[RR[F2, S2, U]])
 				} catch {
 					case ex @ (_ :MismatchedExpressionsException | _ :UnsupportedOperationException) => try {
 						fallback
@@ -276,13 +281,14 @@ trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 				}
 			} else
 				fallback
+*/
 
 		//todo: reforming with all mapping terms
 		override def mappingTerm[T[A] <: BaseMapping[V2, A]](e :MappingTerm[T, V2]) :Result =
 			if (passCount.secondTime)
 				if (reform.mayAlterRight && rightResult.isReversible)
 					term(e)
-				else if (ComponentSQL.this.mapping isomorphic e.mapping)
+				else if (self.mapping isomorphic e.mapping)
 					if (reform.mayAlterLeft)
 						???
 					else if (reform.mayAlterRight)
@@ -329,15 +335,15 @@ trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 				else if ((reform.mayAlterRight || reform.mayReorderLeft && !isFinal) && labelsMatchReorderedDefaultColumns) {
 					if (reform.mayReorderRight) {
 						val reordered = e.reorder(defaultColumns.map(_.name))
-						(leftResult(ComponentSQL.this), rightResult(reordered.asInstanceOf[Convertible[F2, S2, V2, EC2]]))
+						(leftResult(self), rightResult(reordered.asInstanceOf[ConvertibleSQL[F2, S2, V2, EC2]]))
 					} else {
 						val columnsInKeyOrder = e.keys.view.map(anchored.columnNamed) to Unique
-						val mappingColumns = mapping.columns.view.map {
+						val mappingColumns = self.mapping.columns.view.map {
 							c => columnsInKeyOrder.indexOf(anchored.export(c)) -> c
-						}.filter(_._1 >= 0).sortBy(_._1).map(_._2) to Unique
+						}.filter(_._1 >= 0).to(ArraySeq).sortBy(_._1).map(_._2) to Unique
 						(leftResult(alter(mappingColumns)), rightResult(other))
 					}
-				} else if (!isFinal) try { //todo: fine grained control of include, exclude, reorder, add null
+				} else if (!isFinal) try {  //consider: reforming right
 					//include, exclude and reorder columns of this component so that they match e.items (including names)
 					val keyOrder = items.view.map(_.key) to Unique
 					val columnsByName = spelling.scope.applicableColumns(origin.anchored, anchored).groupBy(_.name).map {
@@ -348,13 +354,13 @@ trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 					//todo: this is were we'll branch to match keys to property names
 					val counterparts = items.view.map { item =>
 						val column = columnsByName.getOrElse(item.key,
-							throw new MismatchedExpressionsException(ComponentSQL.this, e,
+							throw new MismatchedExpressionsException(self, e,
 								"no column named " + item.key + " in " + anchored + " allowed in scope " +
 									spelling.scope + ": " + columnsByName
 							)
 						)
 						if (!(column.form.shape <:> spelling.shape(item.value)))
-							throw new MismatchedExpressionsException(ComponentSQL.this, e,
+							throw new MismatchedExpressionsException(self, e,
 								"the form " + column.form + " of column " + item.key + " from " + anchored +
 									" does not match the form " + item.value.selectForm + " of expression " +
 									item.value + " under the same name in the right record."
@@ -364,18 +370,18 @@ trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 					val excludes = defaultColumns.filterNot(counterparts.contains)
 					if (excludes.exists(spelling.scope.isMandatory)) {
 						val missing = excludes.filter(spelling.scope.isMandatory)
-						throw new MismatchedExpressionsException(ComponentSQL.this, e,
+						throw new MismatchedExpressionsException(self, e,
 							"the right expression misses values for mandatory columns " + missing +
 								" of " + anchored + "."
 						)
 					} else if (excludes.nonEmpty && !reform.mayExcludeLeft)
-						throw new MismatchedExpressionsException(ComponentSQL.this, e,
+						throw new MismatchedExpressionsException(self, e,
 							"the right expression misses values for some default columns of " + anchored + ": "
 								+ excludes + "."
 						)
 					val includes = counterparts.filterNot(defaultColumns.contains)
 					if (includes.nonEmpty && !reform.mayIncludeLeft)
-						throw new MismatchedExpressionsException(ComponentSQL.this, e,
+						throw new MismatchedExpressionsException(self, e,
 							"the right expression contains values for some non default columns of " + anchored + ": "
 								+ includes + "."
 						)
@@ -384,18 +390,18 @@ trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 					if (reformedColumns.view.map(_.name) == keyOrder)
 						(leftResult(reformed), rightResult(other))
 					else {
-						if (reformedColumns.size != expectedColumnOrder.size)
-							throw new MismatchedExpressionsException(ComponentSQL.this, e,
+						if (reformedColumns.size != keyOrder.size) //consider: using reform.mayAddNullLeft
+							throw new MismatchedExpressionsException(self, e,
 								"Columns of " + reformed.anchored + " of expression " + reformed +
-									" reformed from " + ComponentSQL.this + " by including " + includes +
+									" reformed from " + self + " by including " + includes +
 									" and excluding " + excludes + " do not match the entries in the right expression. " +
 									"This is a bug."
 							)
 						if (reform.mayReorderLeft) {
 							val nominalColumnsByName =
-								mapping.columns.view.map(c => (origin.anchored.export(c.name), c)).toMap
+								self.mapping.columns.view.map { c => (origin.anchored.export(c).name, c) }.toMap
 							val nominalColumns = e.keys.view.map(nominalColumnsByName) to Unique
-							val permutation = ReorderedMapping.subseqPermutation(mapping.columns, nominalColumns)
+							val permutation = ReorderedMapping.subseqPermutation(self.mapping.columns, nominalColumns)
 							val reordered = reformed.reorder(permutation)
 							(leftResult(reordered), rightResult(other))
 						} else if (reform.mayReorderRight) {
@@ -631,16 +637,23 @@ trait ComponentSQL[-F <: RowProduct, M[A] <: MappingAt[A]]
 
 
 	//fixme: use ExtraXxx/CustomXxx columns
-	protected override def split(implicit spelling :SQLSpelling) :Seq[GenericColumnComponentSQL.AnyIn[F]] =
+	protected override def split(implicit spelling :SQLSpelling) :Seq[GenericColumnComponentSQL.AnyIn[F]] = {
+		def columnComponent[T](column :TypedColumn[T, Origin]) :GenericColumnComponentSQL[F, MappingOf[T]#TypedProjection, T] =
+			(origin \ column)(OriginProjection[TypedColumn[T, Origin], T])
+		import GenericColumnComponentSQL.AnyIn
 		try {
 			val columns = spelling.scope.defaultColumns(origin.anchored, anchored)
-			origin.mapping.counterpartColumns(origin.anchored, columns).view.map { origin \ _ } to PassedArray
+			val counterparts = origin.mapping.counterpartColumns(origin.anchored, columns)
+			val columnSQLs = counterparts.view.map[AnyIn[F]](columnComponent(_))
+			PassedArray.from(columnSQLs)
 		} catch { //maybe this should be the primary implementation?
 			case _ :NoSuchComponentException | _ :IncompatibleMappingsException =>
-				origin.mapping.columns.view.collect {
+				val columns = origin.mapping.columns.view.collect {
 					case column if spelling.scope.isDefault(origin.anchored.export(column)) => column
-				}.map(origin \ _) to PassedArray
+				}.map[AnyIn[F]](columnComponent(_))
+				PassedArray.from(columns)
 		}
+	}
 
 	protected override def shape(implicit spelling :SQLSpelling) :RowShape = //consider: cache the result
 		RowShape(spelling.scope.defaultColumns(origin.anchored, anchored).toSeq.map(_.form.sqlType))
@@ -764,7 +777,7 @@ object ComponentSQL {
 
 				override def apply[F <: RowProduct, T[A] <: BaseMapping[R, A], R, L <: RowProduct]
 				                  (table :RelationSQL[F, T, R, L], mapping :M)
-						:TypedComponentSQL[F, T, R, project.WithOrigin, S] =
+						:TypedComponentSQL[F, T, R, project.WithOrigin, S, L] =
 					(table \ mapping.withOrigin[F])(project.isomorphism)
 			}
 	}
@@ -841,7 +854,7 @@ object ComponentSQL {
 		//declared in LValueGroundingTemplate instead
 //		type FromLast <: RowProduct
 
-		override type Origin <: RowProduct //added an upper bound
+		override type Origin >: F <: RowProduct //added an upper bound
 
 		/** The mapping type of the `RelationSQL` to which this component belongs. */
 		type Entity[O] <: MappingAt[O]
@@ -1701,9 +1714,9 @@ object ComponentSQL {
 		def moveTo[C <: RowProduct](offset :RelationOffset[C, Entity] { type First = FromLast }) :Cons[C]
 //			graft(origin.moveTo(offset))
 
-		/** Converts this $this to an expression based on clause `E[F]`, which expands `F` by a single relation. */
-		def asIn[E[+L <: F] <: L Expanded M forSome { type M[O] <: MappingAt[O] }] :Cons[E[F]] =
-			asIn[E[F]](PrefixOf.expand)
+//		/** Converts this $this to an expression based on clause `E[F]`, which expands `F` by a single relation. */
+//		def asIn[J[+L <: F, R[A] <: M[A]] <: L Expanded R, T[A] <: MappingAt[A]] :Cons[J[F, T]] =
+//			asIn[J[F, T]](PrefixOf.expand)
 
 		/** This method is equivalent to
 		  * `this.`[[net.noresttherein.oldsql.sql.ast.ComponentSQL.GenericComponentSQLTemplate.expand expand]]`[E]`,
@@ -1711,11 +1724,11 @@ object ComponentSQL {
 		  * [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]] of the latter, so the result
 		  * has an exact clause type parameter `E`, rather than some `_ >: E <: RowProduct`.
 		  */
-		def asIn[E <: RowProduct](implicit expansion :F PrefixOf E) :Cons[E] =
-			graft(origin.asIn[E])
+		def asIn[E <: RowProduct](implicit expansion :F PrefixOf E) :Cons[E]
 
-		override def asLast :Cons[FromLast] = //graft(origin.asLast)
-			moveTo(RelationOffset.unsafe[FromLast, FromLast, origin.position.Rel, Entity](0))
+
+		override def asLast :Cons[FromLast] //can't implement it here because we don't know that origin.FromLast = this.FromLast
+//			moveTo(RelationOffset.unsafe[FromLast, FromLast, origin.position.Rel, Entity](0))
 	}
 
 
@@ -1737,10 +1750,15 @@ object ComponentSQL {
 	  */ //we don't extend this trait from JoinedRelation, so the implementations here will have to be overridden
 	trait InvariantComponentSQLTemplate[F <: RowProduct, M[A] <: MappingAt[A],
 	                                    +Cons[f <: RowProduct] <: ComponentSQL[f, M] with ComponentSQLTemplate[f, M, Cons[f]]]
-		extends LValueTemplate[F, M, M[Unit]#Subject, ({ type E[f <: RowProduct] = Cons[_ >: f <: RowProduct] })#E, Cons[F]]
-		   with GenericComponentSQLTemplate[F, M, Cons, Cons[F]]
+//		extends LValueTemplate[F, M, M[Unit]#Subject, ({ type E[f <: RowProduct] = Cons[_ >: f <: RowProduct] })#E, Cons[F]]
+//		   with GenericComponentSQLTemplate[F, M, Cons, Cons[F]]
+		extends GenericComponentSQLTemplate[F, M, Cons, Cons[F]]
 	{ self :Cons[F] =>
 		override type Origin = F
+		override type Entity[O] <: BaseMapping[EntitySubject, O]
+		type EntitySubject
+		type FromLast <: RowProduct
+		override val origin :RelationSQL[F, Entity, EntitySubject, FromLast]
 
 		override def default :Cons[F] =
 			if (isDefault) this else graft(origin.default)
@@ -1771,8 +1789,8 @@ object ComponentSQL {
 		}
 
 		override def alterLike[C <: RowProduct](template :JoinedRelation[C, M]) :Cons[F] = {
-			type Rel[f <: RowProduct] = JoinedRelation[f, Entity] { type FromLast = self.FromLast }
-			graft(template.alterOther[F, F, Entity, FromLast, Rel](origin, this))
+			type Rel[f <: RowProduct] = JoinedRelation[f, Entity]
+			graft(template.alterOther[F, F, Entity, Rel](origin, this))
 		}
 
 		private def validateComponents(components :Iterable[TypedMapping[_, F]]) :Unit = {
@@ -1814,7 +1832,10 @@ object ComponentSQL {
 		override def expand[E <: RowProduct](implicit expansion :F ExpandedBy E) :Cons[_ >: E] =
 			{ val res = graft(origin.expand[E](expansion).origin); res }
 
-//		/** Converts this $this to an expression based on clause `E[F]`, which expands `F` by a single relation. */
+		override def basedOn[U <: F, E <: RowProduct](base :E)(implicit expansion :U PartOf E) :Cons[_ >: E] =
+			expand(base)(expansion.asExpandedBy, implicitly[Single <:< Single])
+
+		//		/** Converts this $this to an expression based on clause `E[F]`, which expands `F` by a single relation. */
 //		def asIn[E[+L <: F] <: L Expanded M forSome { type M[O] <: MappingAt[O]}] :Cons[E[F]] =
 //			asIn[E[F]](PrefixOf.expand)
 //
@@ -1824,11 +1845,11 @@ object ComponentSQL {
 //		  * [[net.noresttherein.oldsql.sql.RowProduct.ExpandedBy ExpandedBy]] of the latter, so the result
 //		  * has an exact clause type parameter `E`, rather than some `_ >: E <: RowProduct`.
 //		  */
-//		def asIn[E <: RowProduct](implicit expansion :F PrefixOf E) :Cons[E] =
-//			moveTo(position + expansion)
+		override def asIn[E <: RowProduct](implicit expansion :F PrefixOf E) :Cons[E] =
+			moveTo(origin.position + expansion)
 //
-//		override def asLast :Cons[FromLast] = //note Cons[FromLast], not as inherited Cons[_ >: FromLast]
-//			moveTo(RelationOffset.unsafe[FromLast, FromLast, origin.position.Rel, Entity](0))
+		override def asLast :Cons[FromLast] = //note Cons[FromLast], not as inherited Cons[_ >: FromLast]
+			moveTo(RelationOffset.unsafe[FromLast, FromLast, origin.position.Rel, Entity](0))
 
 //			override type isSelectable = true
 	}
@@ -1876,8 +1897,8 @@ object ComponentSQL {
 		extends ComponentSQL[F, M]
 		   with InvariantComponentSQLTemplate[F, M, ({ type E[f <: RowProduct] = TypedComponentSQL[f, T, R, M, V, L] })#E]
 	{ self =>
-		override type Origin = F
 		override type Entity[A] = T[A]
+		override type EntitySubject = R
 		override type FromLast = L
 
 		/** A projection substituting all references to mapping's [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]]
@@ -1922,7 +1943,7 @@ object ComponentSQL {
 		              (implicit project :OriginProjection[K, X] { type WithOrigin[A] <: BaseColumn[X, A] })
 				:TypedColumnComponentSQL[F, T, R, project.WithOrigin, X, L] =
 			//we don't need to check if column==entity as a column always has itself as its column and among extractors.
-			origin \ column
+			(origin \ column)(project)
 
 		override def \[K <: MappingAt[F]]
 		              (component :M[F] => K)(implicit factory :ComponentSQL.Factory[K])
@@ -1944,8 +1965,13 @@ object ComponentSQL {
 				this
 			else {
 				ReorderedMapping.validatePermutation(mapping, permutation)
+				/* The catch here is that relation and originCounterpart are *anchored* mappings of the altered relation,
+				 * while we promised to apply permutation relative to the *nominal* mapping, as overriding reordering
+				 * seems much more useful than silently composing them. We still however need to defer in everything
+				 * else to originCounterpart, rather than reorder this.mapping and call it the actual version.
+				 */
 				val newOrigin = origin.custom { (relation, originCounterpart) =>
-					if (relation == originCounterpart && origin == this) //this will also cover relation == mapping
+					if (relation == originCounterpart && relation == mapping)//we are an RelationSQL homomorphic to relation
 						ReorderedMapping[TypedMapping[Any, Unit], Any, Unit](relation, permutation)
 					else {
 						val nominal =
@@ -1993,10 +2019,13 @@ object ComponentSQL {
 					import setter.promote
 					val anchored = included \ setter.lvalue.mapping.refine.withOrigin[F]
 					if (!cols.add(anchored.export)) (cols, setters)
-					else (cols, (anchored.asLast := setter.rvalue)::setters)
+					else (cols, (setter.promote(anchored.asLast) := setter.rvalue)::setters)
 				}._2
 				EditedComponentSQL[E, T, R, M, V, included.FromLast](included)(setters)
 			}
+
+		protected override def convert[Y](conversion :SQLConversion[V, Y]) :LValueSQL[F, M, Y] =
+			ConvertedLValueSQL(this, conversion)
 
 //		override def anchor(from :F) :TypedComponentSQL[F, T, R, M, S, L] =
 //			graft(origin.anchor(from))
@@ -2064,8 +2093,11 @@ object ComponentSQL {
 		override def topSelectFrom[E <: F with GroundRow { type Complete <: E }](from :E) :TopSelectAs[M] =
 			SelectSQL[E, M, V](from, this)
 
-		override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectAs[B, M] = //:SubselectAs[B, M] =
-			SelectSQL.subselect[B, from.type, M, V](from, this)
+		override def subselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B]) :SubselectAs[B, M] = //:SubselectAs[B, M] =
+			SelectSQL.subselect[B, F with SubselectOf[B], M, V](from, this)
+//
+//		override def subselectFrom[B <: NonEmptyRow](from :F ProperSubselectOf B) :SubselectAs[B, M] = //:SubselectAs[B, M] =
+//			SelectSQL.subselect[B, from.type, M, V](from, this)
 
 		override def paramSelectFrom[P, E <: F with TopRow { type Complete <: E; type Params = P }](from :E)
 				:SelectMapping[P, M] =
@@ -2122,8 +2154,9 @@ object ComponentSQL {
 				 }] =
 			e match {
 				case component :TypedComponentSQL.__ @unchecked =>
+					type MappingOfAny[O] = BaseMapping[Any, O]
 					Got((component.origin, component.extract).asInstanceOf[(
-						RelationSQL[F, MappingOf[Any]#TypedAsFrom, Any, RowProduct Adjoin MappingOf[Any]#TypedProjection],
+						RelationSQL[F, MappingOfAny, Any, RowProduct Adjoin MappingOfAny],
 							MappingExtract[Any, X, F]
 					)])
 				case _ => Lack
@@ -2366,10 +2399,10 @@ trait GenericColumnComponentSQL[-F <: RowProduct, M[A] <: BaseColumn[V, A], V]
 	protected override def setter[R <: RowProduct, Y]
 	                             (rvalue :ColumnSQL[R, Single, Y])(implicit compat :V =~= Y) :ColumnSetter[F, R] =
 		ColumnSetter[F, M, V, R, compat.Unified](to(compat.left), compat.right(denullify(rvalue)))
-//
-//	protected override def convert[Y](conversion :SQLConversion[S, Y]) :ColumnLValueSQL[F, M, Y] =
-//		ConvertedColumnLValue(this, conversion)
-//
+
+	protected override def convert[Y](conversion :SQLConversion[V, Y]) :ColumnLValueSQL[F, M, Y] =
+		ConvertedColumnLValue(this, conversion)
+
 //	override def anchor(from :F) :GenericColumnComponentSQL[F, M, S] = graft(origin.anchor(from))
 //
 //	override def anchor(relation :Relation[Entity]) :GenericColumnComponentSQL[F, M, S] = graft(origin.anchor(relation))
@@ -2432,7 +2465,7 @@ object GenericColumnComponentSQL {
 		e match {
 			case component :TypedColumnComponentSQL.__ @unchecked =>
 				Got((component.origin, component.extract).asInstanceOf[(
-					RelationSQL[F, MappingOf[Any]#TypedAsFrom, Any, RowProduct Adjoin MappingOf[Any]#TypedProjection],
+					RelationSQL[F, MappingOf[Any]#TypedProjection, Any, RowProduct Adjoin MappingOf[Any]#TypedProjection],
 						ColumnMappingExtract[Any, X, F]
 				)])
 			case _ => Lack
@@ -2546,14 +2579,14 @@ object GenericColumnComponentSQL {
 				this
 			else if (substitutes.sizeIs == 1)
 				if (origin.export.export(substitutes.head.lvalue.mapping.refine.withOrigin[Origin]) == export)
-					EditedComponentSQL[E, T, R, M, V](this)(substitutes.toSeq)
+					EditedComponentSQL[E, T, R, M, V, L](this)(substitutes.toSeq)
 				else
 					reject()
 			else if (substitutes.forall { setter =>
 				origin.export.export(setter.lvalue.mapping.refine.withOrigin[Origin]) == export
 			}) {
 				val last = substitutes.last
-				EditedComponentSQL[E, T, R, M, V](this)(last :: Nil)
+				EditedComponentSQL[E, T, R, M, V, L](this)(last :: Nil)
 			} else
 				reject()
 		}
@@ -2589,7 +2622,7 @@ object GenericColumnComponentSQL {
 			if (relation eq origin)
 				this.asInstanceOf[TypedColumnComponentSQL[P, T, R, M, V, L]]
 			else if (relation.mapping == origin.mapping) //can safely use this.mapping
-				relation.typed \ mapping.withOrigin[P]
+				(relation.typed \ mapping.withOrigin[P])(OriginProjection.isomorphism)
 			else if (!(relation.mapping.columns isomorphic origin.mapping.columns))
 				throw new IncompatibleMappingsException(
 					"Cannot graft column expression " + this + " onto relation expression " + relation +
@@ -2598,7 +2631,7 @@ object GenericColumnComponentSQL {
 				)
 			else this.relation.row[Origin].columns.indexOf(export) match { //todo: use Mapping.counterpart instead
 				case n if n >= 0 =>
-					relation.typed \ relation.mapping.columns(n).asInstanceOf[M[P]]
+					(relation.typed \ relation.mapping.columns(n).asInstanceOf[M[P]])(OriginProjection[M[P], V])
 				case _ =>
 					throw Bug("The mapping " + mapping + " of column expression " + this +
 					          " is not among columns of its origin's mapping " + origin.mapping + "???")
@@ -2629,9 +2662,13 @@ object GenericColumnComponentSQL {
 		override def topSelectFrom[E <: F with GroundRow { type Complete <: E }](from :E) :TopSelectColumnAs[M, V] =
 			SelectSQL(from, this)
 
-		override def subselectFrom[B <: NonEmptyRow]
-		                          (from :F ProperSubselectOf B) :SubselectColumnAs[B, M, V] =
-			SelectSQL.subselect[B, from.type, M, V](from, this)
+		override def subselectFrom[B <: NonEmptyRow](from :F with SubselectOf[B]) :SubselectColumnAs[B, M, V] =
+			SelectSQL.subselect[B, F with SubselectOf[B], M, V](from, this)
+//
+//
+//		override def subselectFrom[B <: NonEmptyRow]
+//		                          (from :F ProperSubselectOf B) :SubselectColumnAs[B, M, V] =
+//			SelectSQL.subselect[B, from.type, M, V](from, this)
 
 
 		protected override def visit[Y[-_ >: Grouped <: Single, _]]

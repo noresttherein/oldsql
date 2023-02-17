@@ -174,7 +174,7 @@ private[mechanics] sealed abstract class Rank2CanSelectImplicits extends Rank3Ca
 	                           (implicit fromClauseType :F <:< TopRow { type Row = R; type Complete = C; type Params = P })
 			:CanSelectDirect[F, sql.*, Select[P, R]] =
 		new CanSelectDef[F, sql.*, Select[P, R]] {
-			override def apply(from :F, expr :sql.*) = from.row paramSelectFrom[P, C] from.complete
+			override def apply(from :F, expr :sql.*) = from.row.paramSelectFrom[P, C](from.complete)
 		}
 }
 

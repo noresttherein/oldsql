@@ -2898,6 +2898,31 @@ object Listing extends ListingFactory {
 		@inline def updated[K <: Key, V, R <: Listing](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
 
+		/** Puts the given `(key, value)` pair in this index. If the key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `K :~ V`, storing `value`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `Listing`), it returns a new index with the new pair at the end.
+		  */
+		@inline def updated[K <: Key, V, R <: Listing](entry :(K, V))(implicit put :IndexPut[I, K, V, R]) :R =
+			put(self, entry._1, entry._2)
+
+		/** Puts the given `(key, value)` pair in this index. If the key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `K :~ V`, storing `value`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `Listing`), it returns a new index with the new pair at the end.
+		  */
+		@inline def +[K <: Key, V, R <: Listing](entry :K :~ V)
+		                                        (implicit key :ValueOf[K], put :IndexPut[I, K, V, R]) :R =
+			put(self, key.value, entry.value)
+
+		/** Puts the given `(key, value)` pair in this index. If the key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `K :~ V`, storing `value`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `Listing`), it returns a new index with the new pair at the end.
+		  */
+		@inline def +[K <: Key, V, R <: Listing](entry :(K, V))(implicit put :IndexPut[I, K, V, R]) :R =
+			put(self, entry._1, entry._2)
+
 		/** Appends the given index to the end of this chain. */
 		//fixme: ambiguity with ChainOps.++
 		@inline def ++[S <: Listing](suffix :S) :suffix.IndexedCat[I] = suffix.indexedCat(self)
@@ -3063,6 +3088,39 @@ object LabeledChain extends ListingFactory {
 		@inline def updated[K <: Key, V, R <: LabeledChain](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
 
+		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `K :~ V`, storing `value`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `LabeledChain`), it returns a new index with the new pair at the end.
+		  * Note that, as `LabeledChain` is covariant regarding both of its type arguments, it is possible to break
+		  * this method by upcasting a key type simply to `String with Singleton`,
+		  * which would then match any other `K =:= String with Singleton` provided here.
+		  */
+		@inline def updated[K <: Key, V, R <: LabeledChain](entry :(K, V))(implicit put :IndexPut[I, K, V, R]) :R =
+			put(self, entry._1, entry._2)
+
+		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `K :~ V`, storing `value`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `LabeledChain`), it returns a new index with the new pair at the end.
+		  * Note that, as `LabeledChain` is covariant regarding both of its type arguments, it is possible to break
+		  * this method by upcasting a key type simply to `String with Singleton`,
+		  * which would then match any other `K =:= String with Singleton` provided here.
+		  */
+		@inline def +[K <: Key, V, R <: LabeledChain](entry :K :~ V)(implicit key :ValueOf[K], put :IndexPut[I, K, V, R]) :R =
+			put(self, key.value, entry.value)
+
+		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `K :~ V`, storing `value`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `LabeledChain`), it returns a new index with the new pair at the end.
+		  * Note that, as `LabeledChain` is covariant regarding both of its type arguments, it is possible to break
+		  * this method by upcasting a key type simply to `String with Singleton`,
+		  * which would then match any other `K =:= String with Singleton` provided here.
+		  */
+		@inline def +[K <: Key, V, R <: LabeledChain](entry :(K, V))(implicit put :IndexPut[I, K, V, R]) :R =
+			put(self, entry._1, entry._2)
+
 		/** Appends the given index to the end of this chain. */
 		//fixme: ambiguity with ChainOps.++
 		@inline def ++[S <: LabeledChain](suffix :S) :suffix.LabeledCat[I] = suffix.labeledCat(self)
@@ -3227,6 +3285,45 @@ object ChainMap extends ChainMapFactory {
 		  */
 		@inline def updated[K <: Key, V, R <: ChainMap](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
+
+		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `(key, value) :(K, V)`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `ChainMap`), it returns a new index with the new pair at the end.
+		  * Note that, as `ChainMap` is covariant regarding both of its type arguments, it is possible to break
+		  * this method by upcasting a key type simply to `Singleton` (or `I with Singleton` for some type `I`),
+		  * which would then match any other `K =:= I with Singleton` provided here. If the actual key of the entry
+		  * returned by the `IndexPut` implicit parameter does not equal the key `key` provided here, an
+		  * `IllegalArgumentException` will be thrown.
+		  */
+		@inline def updated[K <: Key, V, R <: ChainMap](entry :(K, V))(implicit put :IndexPut[I, K, V, R]) :R =
+			put(self, entry._1, entry._2)
+
+		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `(key, value) :(K, V)`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `ChainMap`), it returns a new index with the new pair at the end.
+		  * Note that, as `ChainMap` is covariant regarding both of its type arguments, it is possible to break
+		  * this method by upcasting a key type simply to `Singleton` (or `I with Singleton` for some type `I`),
+		  * which would then match any other `K =:= I with Singleton` provided here. If the actual key of the entry
+		  * returned by the `IndexPut` implicit parameter does not equal the key `key` provided here, an
+		  * `IllegalArgumentException` will be thrown.
+		  */
+		@inline def +[K <: Key, V, R <: ChainMap](entry :K :~ V)(implicit key :ValueOf[K], put :IndexPut[I, K, V, R]) :R =
+			put(self, key.value, entry.value)
+
+		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `(key, value) :(K, V)`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `ChainMap`), it returns a new index with the new pair at the end.
+		  * Note that, as `ChainMap` is covariant regarding both of its type arguments, it is possible to break
+		  * this method by upcasting a key type simply to `Singleton` (or `I with Singleton` for some type `I`),
+		  * which would then match any other `K =:= I with Singleton` provided here. If the actual key of the entry
+		  * returned by the `IndexPut` implicit parameter does not equal the key `key` provided here, an
+		  * `IllegalArgumentException` will be thrown.
+		  */
+		@inline def +[K <: Key, V, R <: ChainMap](entry :(K, V))(implicit put :IndexPut[I, K, V, R]) :R =
+			put(self, entry._1, entry._2)
 
 		/** Appends the given chain to the end of this chain. */
 		//fixme: ambiguity with ChainOps.++
@@ -3396,6 +3493,45 @@ object Record extends ChainMapFactory {
 		  */
 		@inline def updated[K <: Key, V, R <: Record](key :K, value :V)(implicit put :IndexPut[I, K, V, R]) :R =
 			put(self, key, value)
+
+		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `(key, value) :(K, V)`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `Listing`), it returns a new index with the new pair at the end.
+		  * Note that, as `Listing` is covariant regarding both of its type arguments, it is possible to break
+		  * this method by upcasting a key type simply to `Singleton` (or `I with Singleton` for some type `I`),
+		  * which would then match any other `K =:= I with Singleton` provided here. If the actual key of the entry
+		  * returned by the `IndexPut` implicit parameter does not equal the key `key` provided here, an
+		  * `IllegalArgumentException` will be thrown.
+		  */
+		@inline def updated[K <: Key, V, R <: Record](entry :(K, V))(implicit put :IndexPut[I, K, V, R]) :R =
+			put(self, entry._1, entry._2)
+
+		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `(key, value) :(K, V)`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `Listing`), it returns a new index with the new pair at the end.
+		  * Note that, as `Listing` is covariant regarding both of its type arguments, it is possible to break
+		  * this method by upcasting a key type simply to `Singleton` (or `I with Singleton` for some type `I`),
+		  * which would then match any other `K =:= I with Singleton` provided here. If the actual key of the entry
+		  * returned by the `IndexPut` implicit parameter does not equal the key `key` provided here, an
+		  * `IllegalArgumentException` will be thrown.
+		  */
+		@inline def +[K <: Key, V, R <: Record](entry :K :~ V)(implicit key :ValueOf[K], put :IndexPut[I, K, V, R]) :R =
+			put(self, key.value, entry.value)
+
+		/** Puts the given `(key, value)` pair in this index. If key `K` is part of this index's type definition as
+		  * seen in the caller's context, this will create a new index, where the entry with that key is replaced
+		  * with the entry `(key, value) :(K, V)`. If the key is not present, and the index is fully instantiated
+		  * (it starts with `@~` rather than `Listing`), it returns a new index with the new pair at the end.
+		  * Note that, as `Listing` is covariant regarding both of its type arguments, it is possible to break
+		  * this method by upcasting a key type simply to `Singleton` (or `I with Singleton` for some type `I`),
+		  * which would then match any other `K =:= I with Singleton` provided here. If the actual key of the entry
+		  * returned by the `IndexPut` implicit parameter does not equal the key `key` provided here, an
+		  * `IllegalArgumentException` will be thrown.
+		  */
+		@inline def +[K <: Key, V, R <: Record](entry :(K, V))(implicit put :IndexPut[I, K, V, R]) :R =
+			put(self, entry._1, entry._2)
 
 		/** Appends the given record to the end of this record. */
 		//fixme: ambiguity with ChainOps.++

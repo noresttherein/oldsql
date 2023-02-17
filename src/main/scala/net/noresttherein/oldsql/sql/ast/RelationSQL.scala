@@ -16,7 +16,7 @@ import net.noresttherein.oldsql.schema.support.AlteredMapping.annulled
 import net.noresttherein.oldsql.sql.{AndBy, AndByOne, AndByVal, AndFrom, ByParam, ColumnSetter, ColumnSQL, ComponentSetter, Expanded, FromSome, GroupBy, GroupByClause, RowProduct, Seal, Select, SQLExpression, WithClause, WithParam}
 import net.noresttherein.oldsql.sql.GroupByClause.{Group, GroupingRelation}
 import net.noresttherein.oldsql.sql.ParamClause.{ParamRelation, UnboundParam}
-import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundRow, NonEmptyRow, PrefixOf, ProperSubselectOf, TopRow}
+import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, GroundRow, NonEmptyRow, PrefixOf, TopRow}
 import net.noresttherein.oldsql.sql.Select.SelectMapping
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{AnyExpressionVisitor, Grouped, Single, SpecificExpressionVisitor}
@@ -47,8 +47,8 @@ import net.noresttherein.oldsql.slang._
   * in its ''from'' and ''select'' clauses), representing the whole [[net.noresttherein.oldsql.schema.Relation relation]]
   * as a column set. The relation may be a [[net.noresttherein.oldsql.sql.ast.JoinedTable table]],
   * but it can also be used in a more abstract capacity, for arbitrary lists of columns introduced together
-  * bu a [[net.noresttherein.oldsql.sql.RowProduct clause]] (see [[net.noresttherein.oldsql.sql.Adjoin Adjoin]]).
-  * An example of this is a multi column [[net.noresttherein.oldsql.sql.ast.JoinedGrouping  expression]] occurring
+  * by a [[net.noresttherein.oldsql.sql.RowProduct clause]] (see [[net.noresttherein.oldsql.sql.Adjoin Adjoin]]).
+  * An example of this is a multi column [[net.noresttherein.oldsql.sql.ast.JoinedGrouping expression]] occurring
   * in a [[net.noresttherein.oldsql.sql.GroupByClause group by]] clause (and possibly a ''select'' clause).
   * It performs five functions:
   *   1. it is a [[net.noresttherein.oldsql.sql.ast.ComponentSQL component]] expression for q complete entity type,
@@ -56,9 +56,9 @@ import net.noresttherein.oldsql.slang._
   *      applicable in the context of use of this expression, as specified
   *      by their [[net.noresttherein.oldsql.schema.Buff buffs]];
   *   1. it is a factory of component expressions for components (and columns) of the mapping
-  *      for the represented relation, represented as a subset of columns of this relation
+  *      for this relation, represented as a subset of columns of this relation
   *      (see [[net.noresttherein.oldsql.sql.ast.ComponentSQL.ComponentSQLTemplate.\ \]]);
-  *   1. it constitutes a fragment of the domain `F`, that is a set of basic
+  *   1. it constitutes a fragment of the domain clause `F`, that is a set of basic
   *      [[net.noresttherein.oldsql.sql.ColumnSQL column]] expressions which can be used by any SQL expression
   *      based on `F` - table column names and expressions from a ''group by'' clause;
   *   1. it identifies the origin of mapping `T` and its components - most notably a specific occurrence
@@ -72,7 +72,7 @@ import net.noresttherein.oldsql.slang._
   *
   * The latter case allows a direct use of the [[net.noresttherein.oldsql.sql.ast.ComponentSQL.mapping mapping]] `T`
   * of this instance and all its components within SQL expressions.
-  * is invariant in its domain type, which always starts with mapping `T` joined
+  * It is invariant in its domain type, which always starts with mapping `T` joined
   * with a [[net.noresttherein.oldsql.sql.RowProduct.WildcardRow wildcard]] clause, followed
   * by any number of relation mappings 'joined' with [[net.noresttherein.oldsql.sql.RowProduct!.Generalized generalized]]
   * [[net.noresttherein.oldsql.sql.Adjoin join types]].
@@ -210,7 +210,7 @@ trait JoinedRelation[F <: RowProduct, T[A] <: MappingAt[A]]
 	  * @param component A component expression for the counterpart of this relation's mapping within `rel.mapping`;
 	  *                  [[net.noresttherein.oldsql.sql.ast.ComponentSQL.ComponentSQLTemplate.origin origin]] must equal
 	  *                  the `rel` argument.
-	  */ //todo: check if we can remove the refinement on FromLast, it doesn't seem to be doing anything
+	  */
 	def alterOther[C <: E, E <: RowProduct, M[A] <: MappingAt[A],
 	               R[f <: RowProduct] <: JoinedRelation[f, M] with JoinedRelationTemplate[f, M, R]]
 	              (rel :R[E], component :ComponentSQL[C, T] { type Origin = E; type Entity[A] = M[A] }) :R[E]
@@ -745,8 +745,8 @@ object JoinedRelation {
 		def asParamSQL :Option[ParamSQL[F, T[F]#Subject, _ <: RowProduct]] =
 			None
 
-		/** Casts down this instance to more strongly typed `ParamSQL` if it is a pseudo relation representing an expression
-		  * in a ''group by'' clause.
+		/** Casts down this instance to more strongly typed `GroupingSQL` if it is a pseudo relation representing
+		  * an expression in a ''group by'' clause.
 		  */
 		def asGroupingSQL :Option[GroupingSQL[_ <: FromSome, F, M, T[F]#Subject]
 				forSome { type M[A] <: BaseMapping[T[F]#Subject, A] with T[A] }] = None
@@ -795,10 +795,8 @@ object JoinedRelation {
 
 
 
-		override def alterLike[E <: RowProduct](template :JoinedRelation[E, T]) :Rel[F] = {
-			type R[f <: RowProduct] = Rel[f] { type FromLast = self.FromLast }
-			template.typed.alterOther[F, F, T, R](self, self)
-		}
+		override def alterLike[E <: RowProduct](template :JoinedRelation[E, T]) :Rel[F] =
+			template.alterOther[F, F, T, Rel](self, self)
 
 
 		override def aliased(aliases :Map[TypedColumn[_, F], String]) :Rel[F] =
@@ -821,21 +819,30 @@ object JoinedRelation {
 			}
 
 		//todo: in Scala3, extract the bulk of these two methods into a single implementation (requires generic functions)
+/*
 		override def reorder(permutation :IndexedSeq[Int]) :Rel[F] =
 			if (!isCustom && permutation == permutation.indices)
 				this
 			else {
 				ReorderedMapping.validatePermutation(mapping, permutation)
 				custom { (relation, counterpart) =>
-					if (relation == counterpart) //this will also cover relation == mapping
+					if (relation == counterpart) //this will also cover relation being homomorphic with mapping
 						relation.reorder(permutation)
 //					ReorderedMapping[TypedMapping[Any, Unit], Any, Unit](relation, permutation)
 					else {
-						val nominal = //originCounterpart == mapping also checks for relation == mapping, which is the important case here
-							if (counterpart == mapping || relation.contains(mapping.withOrigin[Unit]))
-								mapping.refine.withOrigin[Unit]
-							else
-								counterpart.original
+						//relation and counterpart are *anchored* mappings, but the contract mentions that reordering
+						// is relative to *nominal* mapping.
+						//We therefore need to map back
+						//This would be better/make fewer assumptions, but we don't know here that
+						// mapping.Subject =:= this.Subject, so it does not type check.
+						// Will be irrelevant in Scala 3, as we'll use TypedMapping[_, O] instead of MappingAt[O].
+//						val nominal :TypedMapping[Subject, Unit] =
+							//counterpart == mapping also checks for relation == mapping, which is the important case here
+//							if (counterpart == mapping || relation.contains(mapping.refine.withOrigin[Unit]))
+//								mapping.refine.withOrigin[Unit]
+//							else
+//								counterpart.original
+
 						val export = relation.export(nominal)
 //						val reordered = ReorderedMapping[TypedMapping[S, Unit], S, Unit](export, permutation)
 						val reordered = export.reorder(permutation)
@@ -844,6 +851,7 @@ object JoinedRelation {
 					}
 				}
 			}
+*/
 
 		/** A `JoinedRelation` is ''custom'' if its [[net.noresttherein.oldsql.sql.ast.JoinedRelation.anchored anchored]]
 		  * mapping is created in a non standard way. This flag opens the way for implementing expressions
@@ -914,9 +922,9 @@ object JoinedRelation {
 		override def moveTo[E <: RowProduct](offset :RelationOffset[E, T] { type First = FromLast }) :JoinedRelation[E, T] =
 			copy(offset, includes.withOrigin[E], excludes.withOrigin[E])
 
-		//these three methods
-		override def asIn[E[+L <: F] <: L Expanded M forSome {type M[O] <: MappingAt[O]}] :Rel[E[F]] =
-			asIn[E[F]](PrefixOf.expand)
+		//these three methods are overridden because we don't extend GenericComponentSQLTemplate for Rel
+//		override def asIn[J[+L <: F, R[A] <: M[A]] <: L Expanded R, M[A] <: MappingAt[A]] :Rel[J[F, M]] =
+//			asIn[J[F, M]](PrefixOf.expand)
 
 		/** This method is equivalent to
 		  * `this.`[[net.noresttherein.oldsql.sql.ast.ComponentSQL.GenericComponentSQLTemplate.expand expand]]`[E]`,
@@ -939,14 +947,14 @@ object JoinedRelation {
 		@inline private def result[E <: RowProduct]
 		                          (index :Int, includes :Unique[TypedMapping[_, E]], excludes :Unique[TypedMapping[_, E]])
 				:Rel[E] =
-			copy(RelationOffset.unsafe[E, FromLast, origin.position.Rel, T](index), includes, excludes)
+			copy(RelationOffset.unsafe[E, FromLast, position.Rel, T](index), includes, excludes)
 
 		@inline private def result[E <: RowProduct](index :Int) :Rel[E] =
 			if (index == this.index)
 				origin.asInstanceOf[Rel[E]]
 			else
 				copy(
-					RelationOffset.unsafe[E, FromLast, origin.position.Rel, T](index),
+					RelationOffset.unsafe[E, FromLast, position.Rel, T](index),
 					includes.withOrigin[E], excludes.withOrigin[E]
 				)
 
@@ -1678,7 +1686,7 @@ object RelationSQL {
 			case table :Table[T] =>
 				TableSQL[AndFrom.LUB[T], T, V](table, 0)
 			case grouping :GroupingRelation[f, T] =>
-				GroupingSQL[f, AndBy.Last, T, V](grouping, 0)
+				GroupingSQL[f, AndBy.Last[T], T, V](grouping, 0)
 			case param :ParamRelation[v] =>
 				ParamSQL[WithParam.Last[v], v, WithParam.Last[v]](param, 0)
 					.asInstanceOf[RelationSQL[RowProduct, T, V, RowProduct]]
@@ -1688,12 +1696,15 @@ object RelationSQL {
 				)
 		}
 
-	def apply[F, T[O] <: BaseMapping[V, O], V](relation :Relation[T], offset :RelationOffset[F, T])
+	def apply[F <: RowProduct, T[O] <: BaseMapping[V, O], V](relation :Relation[T], offset :RelationOffset[F, T])
 			:RelationSQL[F, T, V, offset.First] =
 		(relation match {
-			case table :Table[T] => TableSQL[F, T, V](table, offset.index)
-			case grouping :GroupingRelation[f, T] => GroupingSQL[f, RowProduct, T, V](grouping, offset.index)
-			case param :ParamRelation[v] => ParamSQL(param, offset.index)
+			case table :Table[T] =>
+				TableSQL[F, T, V](table, offset.index)
+			case grouping :GroupingRelation[f, T] =>
+				GroupingSQL[f, RowProduct, T, V](grouping, offset.index)
+			case param :ParamRelation[v] =>
+				ParamSQL[F, v, offset.First](param, offset.index).asInstanceOf[RelationSQL[F, T, V, offset.First]]
 			case _ =>
 				throw new IllegalArgumentException(
 					"Cannot create a RelationSQL for an unknown relation " + relation + " :" + relation.className + "."
@@ -2209,7 +2220,7 @@ object TableSQL {
 	type LastTable[T[A] <: BaseMapping[S, A], S] = TableSQL[RowProduct AndFrom T, T, S]
 
 	def LastTable[T[A] <: BaseMapping[S, A], S](from :Table[T]) :LastTable[T, S] =
-		TableSQL[RowProduct AndFrom T, T, S, RowProduct AndFrom T](from, 0, Unique.empty, Unique.empty)
+		TableSQL[RowProduct AndFrom T, T, S](from, 0, Unique.empty, Unique.empty)
 
 
 	private[sql] class CustomTableSQL[F <: RowProduct, T[A] <: BaseMapping[S, A], S]
@@ -2351,7 +2362,7 @@ class GroupingSQL[-U <: RowProduct, F <: RowProduct, T[A] <: BaseMapping[V, A], 
 			toGroupingSQL
 		else
 			new GroupingSQL[U, F, T, V](relation, position, includes, excludes)
-				with CustomRelationMixin[F, T, GroupingSQL[U, F, T, V]]
+				with CustomRelationMixin[F, T, ({ type R[f <: RowProduct] = GroupingSQL[U, f, T, V] })#R]
 
 	protected override def makeFinal :GroupingSQL[U, F, T, V] =
 		if (isFinal)
@@ -2543,7 +2554,6 @@ class ParamSQL[F <: RowProduct, V, L <: RowProduct] protected
 	   with JoinedRelationTemplate[F, ParamRelation[V]#Param, ({ type R[f <: RowProduct] = ParamSQL[f, V, L] })#R]
 { self =>
 //	protected[sql] override def upcast :ParamSQL[F, X, L] = origin
-
 	def param :ParamRelation[V] = relation
 //	override val origin :ParamSQL[F, X, L] = this
 	override def includes :Unique[TypedMapping[_, F]] = Unique.empty
@@ -2589,32 +2599,29 @@ class ParamSQL[F <: RowProduct, V, L <: RowProduct] protected
 		throw new UnsupportedOperationException("Cannot customize the view of parameter relation " + this + ".")
 
 	override def makeCustom :ParamSQL[F, V, L] =
-		???
-//		if (isCustom)
-//			this
-//		else
-//			new ParamSQL[F, V, L](param, position)
-//				with CustomRelationMixin[F, ParamRelation[V]#Param, ({ type R[f <: RowProduct] = ParamSQL[f, V, L] })#R]
+		if (isCustom)
+			this
+		else
+			new ParamSQL[F, V, L](param, position)
+				with CustomRelationMixin[F, ParamRelation[V]#Param, ({ type R[f <: RowProduct] = ParamSQL[f, V, L] })#R]
 
 	protected override def makeFinal :ParamSQL[F, V, L] =
-		???
-//		if (isFinal)
-//			this
-//		else
-//			new ParamSQL[F, V, L](relation, position)
-//				with FinalRelationSQL[F, ParamRelation[V]#Param, V, L]
+		if (isFinal)
+			this
+		else
+			new ParamSQL[F, V, L](relation, position)
+				with FinalRelationSQL[F, ParamRelation[V]#Param, V, L]
 
 	override def anchor(relation :Relation[ParamRelation[V]#Param]) :ParamSQL[F, V, L] =
-		???
-//		relation match {
-//			case this.relation => this
-//			case param :ParamRelation[V @unchecked] => ParamSQL(param, position.index)
-//			case _ =>
-//				throw new IllegalArgumentException(
-//					"Cannot recreate a ParamSQL " + this.fullString + " for a relation which is not a ParamRelation: " +
-//					relation + " :" + relation.getClass.getName + "."
-//				)
-//		}
+		relation match {
+			case this.relation => this
+			case param :ParamRelation[V @unchecked] => ParamSQL(param, position.index)
+			case _ =>
+				throw new IllegalArgumentException(
+					"Cannot recreate a ParamSQL " + this.fullString + " for a relation which is not a ParamRelation: " +
+					relation + " :" + relation.getClass.getName + "."
+				)
+		}
 
 //	/** A new `ParamSQL` instance representing the same relation, but in ''from'' clause `E` at `offset`.
 //	  * The class of the created instance and all its fields except for `offset` are the same as in this instance.
@@ -2642,20 +2649,18 @@ class ParamSQL[F <: RowProduct, V, L <: RowProduct] protected
 //	override def asIn[E <: RowProduct](implicit expansion :F PrefixOf E) :ParamSQL[E, X, L] =
 //		ParamSQL(relation, index + expansion.lengthDiff)
 
-	override def asLast :ParamSQL[L, V, L] = ??? //ParamSQL[L, V, L](relation, 0)
+	override def asLast :ParamSQL[L, V, L] = ParamSQL[L, V, L](relation, 0)
 
 
 	protected override def copy[E <: RowProduct](position :RelationOffset[E, ParamRelation[V]#Param] { type First = FromLast },
 	                                             includes :Unique[TypedMapping[_, E]],
 	                                             excludes :Unique[TypedMapping[_, E]]) :ParamSQL[E, V, L] =
-		???
-//		ParamSQL[E, V, L](relation, position.index)
+		ParamSQL[E, V, L](relation, position.index)
 
 	override def asGrouping[M[A] <: BaseMapping[V, A], V]
 	                       (component :TypedComponentSQL[F, ParamRelation[V]#Param, V, M, V, L])
 			:GroupingRelation[F, M] =
-		???
-//		GroupingRelation.param[F, M, V](component)(OriginProjection.isomorphism)
+		GroupingRelation.param[F, M, V](component)(OriginProjection.isomorphism)
 
 
 	protected override def defaultSpellingOf[P, C <: F, M[A] <: MappingAt[A]]
@@ -2663,16 +2668,14 @@ class ParamSQL[F <: RowProduct, V, L <: RowProduct] protected
 	                        inline :Boolean)
 	                       (from :C, context :SQLContext[P], params :Parameterization[P, C])
 	                       (implicit spelling :SQLSpelling) :SpelledSQL[P] =
-		???
-//		relation.spell(spelling)(this, component.mapping, inline)(from, context, params)
+		relation.spell(spelling)(this, component.mapping, inline)(from, context, params)
 
 	protected override def explodedSpellingOf[P, C <: F, M[A] <: MappingAt[A]]
 	                       (component :ComponentSQL[C, M] { type Origin = F; type Entity[A] = UnboundParam[V, A] },
 	                        independent :Boolean)
 	                       (from :C, context :SQLContext[P], params :Parameterization[P, C])
 	                       (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
-		???
-//		relation.spellExploded(spelling)(this, component.mapping, independent)(from, context, params)
+		relation.spellExploded(spelling)(this, component.mapping, independent)(from, context, params)
 
 
 	protected override def visit[Y[-_ >: Grouped <: Single, _]]
@@ -2701,36 +2704,31 @@ object ParamSQL {
 	sealed trait ParamSQLCurriedConstructor[F <: RowProduct] extends Any {
 		final def apply[X](param :ParamRelation[X])
 		                  (implicit offset :RelationOffset[F, ParamRelation[X]#Param]) :ParamSQL[F, X, offset.First] =
-			???
-//			ParamSQL[F, X](param, offset)
+			ParamSQL[F, X](param, offset)
 	}
 
 	def join[F <: RowProduct, X]
 	        (param :ParamRelation[X],
 	         offset :RelationOffset[F, ParamRelation[X]#Param] { type First = RowProduct AndFrom ParamRelation[X]#Param })
 			:ParamSQL[F, X, RowProduct AndFrom ParamRelation[X]#Param] =
-		???
-//		ParamSQL(param, offset.index)
+		ParamSQL(param, offset.index)
 
 	def group[F <: RowProduct, X]
 	         (param :ParamRelation[X],
 	          offset :RelationOffset[F, ParamRelation[X]#Param] { type First = RowProduct AndBy ParamRelation[X]#Param })
 			:ParamSQL[F, X, RowProduct AndBy ParamRelation[X]#Param] =
-		???
-//		ParamSQL(param, offset.index)
+		ParamSQL(param, offset.index)
 
 	def apply[F <: RowProduct, X](param :ParamRelation[X], offset :RelationOffset[F, ParamRelation[X]#Param])
 			:ParamSQL[F, X, offset.First] =
-		???
-//		new ParamSQL[F, X, offset.First](param, offset) with RowShapeCache
+		new ParamSQL[F, X, offset.First](param, offset) with RowShapeCache
 
 	private[sql] def apply[F <: RowProduct, X, L <: RowProduct]
 	                      (param :ParamRelation[X], index :Int,
 	                       includes :Unique[TypedMapping[_, F]] = Unique.empty[TypedMapping[_, F]],
 	                       excludes :Unique[TypedMapping[_, F]] = Unique.empty[TypedMapping[_, F]])
 			:ParamSQL[F, X, L] =
-		???
-//		ParamSQL[F, X, L](param, index, Unique.empty, Unique.empty)
+		ParamSQL[F, X, L](param, index, Unique.empty, Unique.empty)
 
 	def join[X](param :ParamRelation[X]) :LastParam[X] = ??? //ParamSQL(param, 0)
 

@@ -83,7 +83,9 @@ sealed class SelectIdSQL[-F <: RowProduct, -S >: Grouped <: Single, V] protected
 				"A non-conversion " + rightResult + " passed for transforming the right result of reforming SelectIdSQL "
 					+ self + " with " + other + "."
 			)
-		new BaseReformer[F1, S1, F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](other)(reform, passCount) {
+		new BaseReformer[F1, S1, F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](
+			other)(reform, passCount)(leftResult, rightResult, spelling
+		) {
 			override def selectId(e :SelectIdSQL[F2, S2, V2])  =
 				reform(selectClause, e.selectClause)(
 					//these casts may be possible to remove with a dedicated transformation implementation
@@ -287,7 +289,9 @@ final class SelectAsIdSQL[-F <: RowProduct, M[A] <: MappingAt[A], V] private[ast
 				"A non-conversion " + rightResult + " passed for transforming the right result of reforming SelectAsIdSQL "
 					+ self + " with " + other + "."
 			)
-		new BaseReformer[F1, Single, F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](other)(reform, passCount) {
+		new BaseReformer[F1, Single, F2, S2, V2, EC2, U, leftResult.SQLResult, rightResult.SQLResult](
+			other)(reform, passCount)(leftResult, rightResult, spelling
+		) {
 			override def selectId(e :SelectIdSQL[F2, S2, V2])  =
 				reform(selectClause, e.selectClause)(
 					//these casts may be possible to remove with a dedicated transformation implementation
@@ -399,8 +403,8 @@ sealed trait CompoundSelectIdSQL[V]
 //		else CompoundSelectIdSQL(conversion(value), selectClauses.map(conversion.apply))
 
 	protected override def convert[X](conversion :SQLConversion[V, X]) :CompoundSelectIdSQL[X] =
-		if (conversion.isIdentity) conversion[Nothing, Grouped](this)
-		else CompoundSelectIdSQL(conversion(value), selectClauses.map(conversion.apply))
+		if (conversion.isIdentity) conversion(toConvertibleSQL)
+		else CompoundSelectIdSQL(conversion(value), selectClauses.map(conversion(_)))
 
 	override def asSingleRow :Option[SingleSQL[Nothing, V]] = None
 	override def groundValue :Opt[V] = Lack
@@ -450,21 +454,23 @@ sealed trait CompoundSelectIdSQL[V]
 			val reformed = reformRight(value, other)._2
 			if (!selectClauses.forall(reform.compatible(_, other)))
 				throw new MisalignedExpressionException(this)
-			(leftResult(this), reformed)
+			(leftResult.convert(self), reformed)
 		} else {
 			val reformLeft = reform.prohibitReformRight
 			val (shape, reformed) = reform(value, other)
 			val reformedClauses = selectClauses.map { selectClause =>
 				reformLeft(selectClause, reformed) match {
 					case (selectId :SelectIdSQL[Nothing, Grouped, U], _) => selectId
-					case (l, r) =>
+					case (l, _) =>
 						throw new IllegalExpressionException(l,
 							"Failed to reform " + this + " with " + other +": a SelectIdSQL expression " +
 								selectClause + " was reformed to a different type: " + l + " :" + l.className + "."
 						)
 				}
 			}
-			(leftResult(CompoundSelectIdSQL(shape, reformedClauses)), reformed)
+			val left = CompoundSelectIdSQL(shape, reformedClauses)
+			//cast is safe because we checked that leftResult is an SQLConversion, so its SQLResult is CompoundSelectIdSQL[U]
+			(left.asInstanceOf[leftResult.SQLResult[F1, S1, CompoundSelectIdSQL[U]]], reformed)
 		}
 
 	protected override def split(implicit spelling :SQLSpelling) :Seq[ColumnSQL[Nothing, Grouped, _]] =
@@ -555,10 +561,10 @@ object CompoundSelectIdSQL {
 		apply(selectClauses(query))
 
 	def apply[V, Q[X] <: QueryTemplate[X, Q]](query :CompoundSelectTemplate[V, Q]) :CompoundSelectIdSQL[V] =
-		CompoundSelectIdSQL[V, Q](query, selectClauses(_))
+		CompoundSelectIdSQL[V, Q](query, selectClauses(_ :CompoundSelectTemplate[V, Q]))
 
 	private[sql] def apply[V, Q[X] <: QueryTemplate[X, Q]](left :Q[V], right :Q[V]) :CompoundSelectIdSQL[V] =
-		CompoundSelectIdSQL[V, Q](try {
+		CompoundSelectIdSQL[V](try {
 			(left.constituents.view ++ right.constituents).map(selectClause) to PassedArray
 		} catch {
 			case e :IllegalStateException =>

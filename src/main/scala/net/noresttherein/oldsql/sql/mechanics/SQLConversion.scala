@@ -16,260 +16,17 @@ import net.noresttherein.oldsql.slang.{cast2TypeParams, classMethods, classNameM
 import net.noresttherein.oldsql.sql.{ColumnSQL, Query, RowProduct, SQLExpression}
 import net.noresttherein.oldsql.sql.ColumnSQL.ConvertibleColumn
 import net.noresttherein.oldsql.sql.Query.QueryTemplate
-import net.noresttherein.oldsql.sql.SQLExpression.{ConvertibleSQL, Grouped, Single}
+import net.noresttherein.oldsql.sql.SQLExpression.{ConvertibleSQL, ConvertingTemplate, Grouped, Single}
 import net.noresttherein.oldsql.sql.StoredProcedure.Out
+import net.noresttherein.oldsql.sql.ast.{denullify, ChainSQL, LabeledSQL, MultiNull, QuerySQL, SQLNull, StandardTransformedSQL}
 import net.noresttherein.oldsql.sql.ast.LabeledSQL.LabeledValueSQL
-import net.noresttherein.oldsql.sql.ast.{ChainSQL, LabeledSQL, QuerySQL, StandardTransformedSQL}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.Rows
-import net.noresttherein.oldsql.sql.ast.RecordSQL.SubRecord
-import net.noresttherein.oldsql.sql.ast.RecordSQL.SubRecord.SubRecordOf
+import net.noresttherein.oldsql.sql.ast.RecordSQL.{RecordProjection, RecordTransformation}
+import net.noresttherein.oldsql.sql.ast.RecordSQL.RecordProjection.SubRecordOf
 import net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL
-import net.noresttherein.oldsql.sql.mechanics.SQLConversion.{toSelf, ComposedConversion, ConvertChain, ConvertRecord, ReorderRecord, ReversibleConversion}
-import net.noresttherein.oldsql.sql.mechanics.SQLTransformation.{ArbitraryTransformation, SQLDecoration, TransformChain}
 import net.noresttherein.oldsql.sql.mechanics.SQLAdaptation.DefaultExpressionAdaptation
-
-
-
-
-/** Attests that expressions of type `L` and `R` are compatible from the SQL point of view and
-  * can be directly compared in scala after converting both sides to type
-  * [[net.noresttherein.oldsql.sql.mechanics.=~=.Unified Unified]]. This is defined as existence of a pair
-  * of SQL [[net.noresttherein.oldsql.sql.mechanics.SQLTransformation conversions]] `SQLTransformation[L, Unified]`
-  * and `SQLTransformation[R, Unified]`, included in this evidence. Implicit values exist only if either
-  * of these conversions is [[net.noresttherein.oldsql.sql.mechanics.SQLConversion.toSelf identity]],
-  * but an instance can be created for any compatible conversion pair using the companion object's factory method.
-  *
-  * @tparam L type of the left side of a comparison.
-  * @tparam R type of the right side of a comparison.
-  * @see [[net.noresttherein.oldsql.sql.mechanics.=~=]]
-  */
-@implicitNotFound("Types ${L} and ${R} are not interoperable in SQL. Missing implicit Interoperable[${L}, ${R}] " +
-                  "(required SQLAdaptation[${L}, ${R}] or SQLAdaptation[${R}, ${L}]).")
-sealed trait Interoperable[L, R] extends Serializable {
-	//consider: maybe we should include an SQLForm[Unified]? Would help a lot during reforming, although
-	// we'd have to move back to SQLTypeUnification instead of just Lift pairs.
-	type as[U] = Interoperable[L, R] { type Unified = U }
-
-	/** The type to which both types are promoted in order to be directly comparable. */
-	type Unified
-
-	/** A function lifting both `SQLExpression[_, _, L]` and type `L` itself to a comparable type `U`. */
-	val left :SQLAdaptation[L, Unified]
-
-	/** A function lifting both `SQLExpression[_, _, R]` and type `R` itself to a comparable type `U`. */
-	val right :SQLAdaptation[R, Unified]
-
-	/** Swaps the left and right side of this relation. */
-	val swap :Interoperable[R, L] { type Unified = Interoperable.this.Unified }
-
-	/** Converts the value of the left side to the value of the right side, if possible. */
-	def l2r(l :L) :Opt[R] = right.unapply(left(l))
-
-	/** Converts the value of the right side to the value of the left side, if possible. */
-	def r2l(r :R) :Opt[L] = left.unapply(right(r))
-
-	override def equals(that :Any) :Boolean = that match {
-		case self :AnyRef if this eq self => true
-		case other :Interoperable[_, _] if canEqual(other) && other.canEqual(this) =>
-			left == other.left && right == other.right
-		case _ => false
-	}
-	def canEqual(that :Any) :Boolean = that.isInstanceOf[Interoperable[_, _]]
-	override def hashCode :Int = left.hashCode * 31 + right.hashCode
-
-	override def toString :String = left.toString + " vs " + right
-}
-
-
-
-
-private[mechanics] sealed abstract class InteroperablePriority2 {
-	@inline implicit def transformBoth[L, R, U](implicit left :SQLAdaptation[L, U], right :SQLAdaptation[R, U])
-			:Interoperable[L, R] { type Unified = U } =
-		left vs right
-}
-
-
-private[mechanics] sealed abstract class InteroperablePriority1 extends InteroperablePriority2 {
-	@inline implicit def transformLeft[L, R](implicit left :SQLAdaptation[L, R])
-			:Interoperable[L, R] { type Unified = R } =
-		left.asLeft
-
-	@inline implicit def transformRight[L, R](implicit right :SQLAdaptation[R, L])
-			:Interoperable[L, R] { type Unified = L } =
-		right.asRight
-}
-
-
-/** Factory and implicit values of [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]]. */
-object Interoperable extends InteroperablePriority1 {
-	type Unified[L, R, U] = Interoperable[L, R] { type Unified = U }
-
-	@inline implicit def equivalence[L, R](implicit equiv :L =~= R)
-			:Interoperable[L, R] { type Unified = equiv.Unified } =
-		equiv
-
-	def apply[L, R, U](left :SQLAdaptation[L, U], right :SQLAdaptation[R, U])
-			:Interoperable[L, R] { type Unified = U } =
-		left vs right
-
-	@inline def identity[V] :(V =~= V) { type Unified = V } = =~=.identity[V]
-}
-
-
-
-private abstract class StandardInteroperable[L, R, U](override val left :SQLAdaptation[L, U],
-                                                      override val right :SQLAdaptation[R, U])
-	extends Interoperable[L, R]
-{
-	override type Unified = U
-}
-
-
-/** Attests that expressions of type `L` and `R` are compatible from the SQL point of view and
-  * can be directly compared in scala after converting both sides to type
-  * [[net.noresttherein.oldsql.sql.mechanics.=~=.Unified Unified]]. For example that, for the purpose of generated SQL,
-  * we treat `Option[X]` and `X` as equivalent: `(Option[X] =~= X) { type Unified = Option[X] }`.
-  * Similarly, various number types can be compared after promoting both to a higher precision:
-  * `(Int =~= Long) { type Unified = Long }`.
-  *
-  * The difference from the extended evidence `Interoperable` is that both of these conversions
-  * are [[net.noresttherein.oldsql.sql.mechanics.SQLConversion conversions]] - converted
-  * [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[L]` and `SQLExpression[R]` do not require
-  * adapting by specialized [[net.noresttherein.oldsql.sql.ast.AdaptedSQL AdapterSQL]] implementations,
-  * but are wrapped in one of the standard [[net.noresttherein.oldsql.sql.ast.ConvertedSQL ConvertedSQL]]
-  * @tparam L type of the left side of a comparison.
-  * @tparam R type of the right side of a comparison.
-  */
-@implicitNotFound("Types ${L} and ${R} are not interoperable in SQL. " +
-                  "Missing implicit ${L}=~=${R} (required SQLConversion[${L}, ${R}] or SQLConversion[${R}, ${L}]).")
-sealed trait =~=[L, R] extends Interoperable[L, R] {
-	type As[U] = (L =~= R) { type Unified = U }
-
-	/** A function lifting both `SQLExpression[_, _, L]` and type `L` itself to a comparable type `U`. */
-	override val left :SQLConversion[L, Unified]
-
-	/** A function lifting both `SQLExpression[_, _, R]` and type `R` itself to a comparable type `U`. */
-	override val right :SQLConversion[R, Unified]
-
-	/** Swaps the left and right side of this relation. */
-	override val swap :(R =~= L) { type Unified = =~=.this.Unified }
-
-	override def canEqual(that :Any) :Boolean = that.isInstanceOf[=~=[_, _]]
-	override def toString :String = left + "=~=" + right
-}
-
-
-
-
-private[mechanics] sealed abstract class EquivalencePriority2 {
-	@inline implicit def convertBoth[L, R, U](implicit left :SQLConversion[L, U], right :SQLConversion[R, U])
-			:(L =~= R) { type Unified = U } =
-		left =~= right
-}
-
-
-private[mechanics] sealed abstract class EquivalencePriority1 extends EquivalencePriority2 {
-	@inline implicit def convertToLeft[L, R](implicit left :SQLConversion[L, R]) :(L =~= R) { type Unified = R } =
-		left.asLeft
-
-	@inline implicit def convertToRight[L, R](implicit right :SQLConversion[R, L]) :(L =~= R) { type Unified = L } =
-		right.asRight
-}
-
-
-object =~= extends EquivalencePriority1 {
-	type Conversions[L, R] = {
-		type to[U] = (L =~= R)#to[U]
-	}
-	type Unified[L, R, U] = (L =~= R) { type Unified = U }
-
-	def apply[L, R, U](left :SQLConversion[L, U], right :SQLConversion[R, U]): (L =~= R) { type Unified = U } =
-		left =~= right
-
-	implicit def identity[V] :(V =~= V) { type Unified = V } =
-		Equiv.asInstanceOf[(V =~= V) { type Unified = V }]
-
-	private[this] object Equiv extends (Any =~= Any) {
-		override val left  = toSelf
-		override val right = toSelf
-		override type Unified = Any
-		override val swap = this
-	}
-}
-
-
-private abstract class Equivalence[L, R, U](override val left :SQLConversion[L, U],
-                                            override val right :SQLConversion[R, U])
-	extends (L =~= R)
-{
-	override type Unified = U
-}
-
-
-
-
-
-
-//sealed class SpecificInteroperable[LV, RV, U, -LE, +LR, -RE, +RR] private
-//             (val left :SpecificTransformation[LV, U, LE, LR], val right :SpecificTransformation[RV, U, RE, RR],
-//              swapped :SpecificInteroperable[RV, LV, U, RE, RR, LE, LR])
-//{
-//	def this(left :SpecificTransformation[LV, U, LE, LR], right :SpecificTransformation[RV, U, RE, RR]) =
-//		this(left, right, null)
-//
-//	val swap = if (swapped != null) swapped else new SpecificInteroperable(right, left, this)
-//
-//	override def equals(that :Any) :Boolean = that match {
-//		case other :SpecificInteroperable[_, _, _, _, _, _, _] =>
-//			canEqual(other) && other.canEqual(this) && left == other.left && right == other.right
-//		case _ => false
-//	}
-//	def canEqual(that :Any) :Boolean = that.isInstanceOf[SpecificInteroperable[_, _, _, _, _, _, _]]
-//	override def hashCode :Int = left.hashCode * 31 + right.hashCode
-//}
-//
-//
-//object SpecificInteroperable {
-//	/** A curried type constructor of a
-//	  * [[net.noresttherein.oldsql.sql.mechanics.SpecificInteroperable SpecificInteroperable]]`[LV, RV, U, LE, LR, RE, RR]`.
-//	  * @tparam U SQL expression value type to which both interoperable expressions are converted in order to unify them.
-//	 */
-//	type to[U]= {
-//		/** A curried type constructor of a
-//		  * [[net.noresttherein.oldsql.sql.mechanics.SpecificInteroperable SpecificInteroperable]]`[LV, RV, U, LE, LR, RE, RR]`.
-//		  * @tparam LR The exact type of [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[_, _, U]`
-//		  *            to which the left ('this') expression is converted in order to make it interoperable with
-//		  *            the right expression.
-//		  * @tparam RR The exact type of [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[_, _, U]`
-//		  *            to which the right (argument) expression is converted in order to make it interoperable with
-//		  *            this (left) expression.
-//		  */
-//		type as[+LR, +RR] = {
-//			/** A curried type constructor of a
-//			  * [[net.noresttherein.oldsql.sql.mechanics.SpecificInteroperable SpecificInteroperable]]`[LV, RV, U, LE, LR, RE, RR]`.
-//			  * @tparam LV the value type of the left ('this') expression before the conversion.
-//			  * @tparam LE a subtype of [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, S, LV]`
-//			  *            which is a supertype of the left ('this') expression before the conversion;
-//			  *            it is the last type parameter given to
-//			  *            [[net.noresttherein.oldsql.sql.SQLExpression.ConvertingTemplate ConvertingTemplate]].
-//			  */
-//			type fromLeft[LV, -LE] = {
-//				/** A type constructor of kind accepted by
-//				  * [[net.noresttherein.oldsql.sql.SQLExpression.ExpressionVisitor ExpressionVisitor]].
-//				  * Accepts type arguments related to the right (argument) input expression.
-//				  * @tparam RS the scope of the right expression before (and typically after) conversion.
-//				  * @tparam RV the value type of the right expression before the conversion.
-//				  * @tparam RE a supertype of the right expression.
-//				  */
-//				type visited[-RS >: Grouped <: Single, RV, -RE] = SpecificInteroperable[LV, RV, U, LE, LR, RE, RR]
-//			}
-//
-//		}
-//	}
-//}
-
-
+import net.noresttherein.oldsql.sql.mechanics.SQLConversion.{toSelf, ConvertChain, ConvertRecord, ConvertRows, ConvertSeq, ListingToChain, ReorderRecord}
+import net.noresttherein.oldsql.sql.mechanics.SQLTransformation.{ArbitraryTransformation, SQLDecoration, TransformChain}
 
 
 
@@ -278,12 +35,31 @@ trait SQLValueConversion[X, Y] extends (X => Y) with Serializable {
 
 	def apply(value :X)   :Y
 	def unapply(value :Y) :Opt[X]
+
+	@throws[UnsupportedOperationException]("if the conversion is not reversible.")
+	@throws[IllegalArgumentException]("if the given value cannot be converted back to the input type.")
 	def inverse(value :Y) :X
 
 	/** True if this instance leaves the converted SQL expressions unchanged.
 	  * @return `this` == [[net.noresttherein.oldsql.sql.mechanics.SQLTransformation$ SQLTransformation]]`.`[[net.noresttherein.oldsql.sql.mechanics.SQLTransformation.toSelf toSelf]].
+	  * @see [[net.noresttherein.oldsql.sql.mechanics.SQLTransformation.isDecorator isDecorator]]
 	  */
 	def isIdentity :Boolean = false
+
+	/** True if the conversion always returns its argument,
+	  * but may not be [[net.noresttherein.oldsql.sql.mechanics.SQLValueConversion.isReversible reversible]] because
+	  * the output type is a proper supertype of the input type.
+	  * Being an [[net.noresttherein.oldsql.sql.mechanics.SQLValueConversion.isIdentity identity]] automatically
+	  * implies being an upcast conversion.
+	  * @see [[net.noresttherein.oldsql.sql.mechanics.SQLConversion.Upcast]]
+	  */
+	def isUpcast :Boolean = isIdentity
+
+	/** True for transformations which do not change input ''values'', but might change input expressions
+	  * (in particular, wrapping them in another expression).
+	  * @see [[net.noresttherein.oldsql.sql.mechanics.SQLTransformation.isIdentity isIdentity]]
+	  */
+	def isDecorator :Boolean = false
 
 	/** True if the conversion is lossless,
 	  * that is [[net.noresttherein.oldsql.sql.mechanics.SQLTransformation.inverse inverse]]`(apply(x)) == x`
@@ -338,32 +114,56 @@ trait SQLValueConversion[X, Y] extends (X => Y) with Serializable {
   */
 trait FormConversion[X, Y] extends Any with SQLValueConversion[X, Y] {
 
+	/* Matching of forms created by our swap is important, because it is common when reforming SQL expressions
+	 * (in particular terms) to already have a form of type `Y` from the other expression, but needing to
+	 * 'unmap' it to a form of `X` in order for the whole expression to be mapped with this conversion, including,
+	 * most most likely, its selectForm. This means that even if a conversion is not reversible, there is a chance
+	 * everything will work correctly after we unwrap the original form from the one created by our swap.
+	 */
 	private trait ReadForm extends ReadFormAdapter[Y] {
+		override def form :SQLReadForm[X] //made public
 		def conversion = FormConversion.this
 		override lazy val toString = FormConversion.this.applyString(form.toString) + "=>"
 	}
 	private trait ReadWriteForm extends ReadForm {
+		override def form :SQLForm[X]
 		override lazy val toString = "<=" + FormConversion.this.applyString(form.toString) + "=>"
 	}
 
 
-	def apply(form :SQLReadForm[X]) :SQLReadForm[Y] =
-		new MappedSQLReadForm[X, Y](apply)(form, form.nulls.map(apply)) with ReadForm
+	def apply(form :SQLReadForm[X]) :SQLReadForm[Y] = form match {
+		case swapped :FormConversion[Y, X]#ReadForm @unchecked if swapped.conversion == swap =>
+			swapped.form
+		case _ =>
+			new MappedSQLReadForm[X, Y](apply)(form, form.nulls.map(apply)) with ReadForm
+	}
 
-	def apply(form :ColumnReadForm[X]) :ColumnReadForm[Y] =
-		new MappedColumnReadForm[X, Y](apply)(form, form.nulls.map(apply)) with ReadForm
+	def apply(form :ColumnReadForm[X]) :ColumnReadForm[Y] = form match {
+		case swapped :FormConversion[Y, X]#ReadForm @unchecked if swapped.conversion == swap =>
+			swapped.form.asInstanceOf[ColumnReadForm[Y]]
+		case _ =>
+			new MappedColumnReadForm[X, Y](apply)(form, form.nulls.map(apply)) with ReadForm
+	}
 
-	def apply(form :SQLForm[X]) :SQLForm[Y] = //form.nullAs(Requisite(apply(_:X)))(Optional(unapply))
-		if (isReversible)
+	def apply(form :SQLForm[X]) :SQLForm[Y] = form match {
+		case swapped :FormConversion[Y, X]#ReadWriteForm @unchecked if swapped.conversion == swap =>
+			swapped.form
+		case _ if isReversible =>
 			new MappedSQLForm[X, Y](apply, inverse)(form, form.nulls.map(apply)) with ReadWriteForm
-		else
+		case _ =>
 			new OptMappedSQLForm[X, Y](x => Some(apply(x)), unapply)(form, form.nulls.map(apply)) with ReadWriteForm
+	}
 
-	def apply(form :ColumnForm[X]) :ColumnForm[Y] = //form.nullAs(Requisite(apply))(Optional(unapply))
-		if (isReversible)
+	def apply(form :ColumnForm[X]) :ColumnForm[Y] = form match {
+		case swapped :FormConversion[Y, X]#ReadWriteForm @unchecked if swapped.conversion == swap =>
+			swapped.form.asInstanceOf[ColumnForm[Y]]
+		case _ if isReversible =>
 			new MappedColumnForm[X, Y](apply, inverse)(form, form.nulls.map(apply)) with ReadWriteForm
-		else
+		case _ =>
 			new OptMappedColumnForm[X, Y](x => Some(apply(x)), unapply)(form, form.nulls.map(apply)) with ReadWriteForm
+	}
+
+	def swap :FormConversion[Y, X]
 }
 
 
@@ -461,8 +261,10 @@ trait SQLTransformation[X, Y] extends FormConversion[X, Y] { self =>
 	  * an upper bound on it through refinement,
 	  * needed by [[net.noresttherein.oldsql.sql.mechanics.SQLTransformation.compose compose]].
 	  */
+//	type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
+//		SQLResult[F, S, SQLExpression[F, S, Y]] <: SQLExpression[F, S, Y]
 	type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
-		SQLResult[F, S, SQLExpression[F, S, Y]] <: SQLExpression[F, S, Y]
+		SQLResult[F, S, SQLExpression[F, S, Y]] <: SQLResult[F, S, SQLExpression[F, S, Y]]
 
 	//E must be covariant because we want Expr type parameter to ConvertibleSQL to also be covariant
 	/** The type of SQL expressions created by this instance from expressions conforming to
@@ -483,7 +285,17 @@ trait SQLTransformation[X, Y] extends FormConversion[X, Y] { self =>
 
 
 	def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
-	         (expr :ConvertibleSQL[F, S, X, E]) :SQLResult[F, S, E[Y]]
+	         (expr :ConvertingTemplate[F, S, X, E]) :SQLResult[F, S, E[Y]]
+
+//	def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+//	         (expr :ConvertibleSQL[F, S, X, E]) :SQLResult[F, S, E[Y]]
+	//an alias because overloading fools the type inferer
+	def convert[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+	           (expr :ConvertingTemplate[F, S, X, E]) :SQLResult[F, S, E[Y]] =
+		apply[F, S, E](expr)
+
+	def default[F <: RowProduct, S >: Grouped <: Single](expr :SQLExpression[F, S, X]) :BaseResult[F, S] =
+		apply[F, S, SQLExpression.from[F]#rows[S]#E](expr)
 
 	//todo: rename to rows, because overload resolution would pick this even for SQLTransformation[Rows[X], Y]
 	//todo: use QueryResult?
@@ -506,8 +318,12 @@ trait SQLTransformation[X, Y] extends FormConversion[X, Y] { self =>
 	//return types have bounds on BaseResult only because using equality would in Scala 2 break the existing bound >: SQLResult
 	def compose[W](first :SQLTransformation[W, X])
 			:SQLTransformation[W, Y] {
+//				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
+//					SQLResult[F, S, SQLExpression[F, S, Y]] <: self.BaseResult[F, S]
+//				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Y]] <:
+//					self.BaseResult[F, S]
 				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
-					SQLResult[F, S, SQLExpression[F, S, Y]] <: self.BaseResult[F, S]
+					SQLResult[F, S, SQLExpression[F, S, Y]] <: SQLResult[F, S, SQLExpression[F, S, Y]]//= self.BaseResult[F, S]
 				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Y]] <:
 					self.BaseResult[F, S]
 			} =
@@ -518,8 +334,10 @@ trait SQLTransformation[X, Y] extends FormConversion[X, Y] { self =>
 
 	def compose[W](first :SQLAdaptation[W, X])
 		:SQLTransformation[W, Y] {
-				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
-					SQLResult[F, S, SQLExpression[F, S, Y]] <: self.BaseResult[F, S]
+//				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
+//					SQLResult[F, S, SQLExpression[F, S, Y]] <: self.BaseResult[F, S]
+//				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Y]] <:
+//					self.BaseResult[F, S]
 				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Y]] <:
 					self.BaseResult[F, S]
 			} =
@@ -533,10 +351,20 @@ trait SQLTransformation[X, Y] extends FormConversion[X, Y] { self =>
 		if (first.isIdentity) first andThen this
 		else new ConversionComposedTransformation[W, X, Y, this.type](first, this)
 
+	/** Alias for `andThen`, because overload with inherited method from `X => Y` confuses the compiler. */
+	def ==>[Z](second :SQLTransformation[Y, Z])
+			:SQLTransformation[X, Z] {
+				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Z]] <:
+					second.BaseResult[F, S]
+			} =
+		second compose this
+
 	def andThen[Z](second :SQLTransformation[Y, Z]) //:SQLTransformation[X, Z] = second compose this
 			:SQLTransformation[X, Z] {
-				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
-					SQLResult[F, S, SQLExpression[F, S, Z]] <: second.BaseResult[F, S]
+//				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
+//					SQLResult[F, S, SQLExpression[F, S, Z]] <: second.BaseResult[F, S]
+//				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Z]] <:
+//					second.BaseResult[F, S]
 				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Z]] <:
 					second.BaseResult[F, S]
 			} =
@@ -561,12 +389,15 @@ trait SQLTransformation[X, Y] extends FormConversion[X, Y] { self =>
 	  * it should be used only as a last resort,
 	  * unless `this.`[[net.noresttherein.oldsql.sql.mechanics.SQLTransformation.isReversible isReversible]].
 	  */
-	def swap :SQLTransformation[Y, X] = new Swap
+	override def swap :SQLTransformation[Y, X] = new Swap
 
 	private class Swap extends ArbitraryTransformation[Y, X] with InverseTransformation[Y, X] {
 		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
-		                  (expr :ConvertibleSQL[F, S, Y, E]) :SQLExpression[F, S, X] =
-			new StandardTransformedSQL[F, S, Y, X](expr, this)
+		                  (expr :ConvertingTemplate[F, S, Y, E]) :SQLExpression[F, S, X] =
+//		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+//		                  (expr :ConvertibleSQL[F, S, Y, E]) :SQLExpression[F, S, X] =
+			if (expr == null) SQLNull[X]()
+			else new StandardTransformedSQL[F, S, Y, X](expr.toConvertibleSQL, this)
 		override val swap = SQLTransformation.this
 	}
 
@@ -603,6 +434,7 @@ object SQLTransformation {
 
 
 	trait SQLDecoration[V] extends SQLTransformation[V, V] with FormConversion[V, V] {
+		override def isDecorator = true
 		override def apply(value :V) :V = value
 		override def unapply(value :V) :Got[V] = Got(value)
 		override def inverse(value :V) :V = value
@@ -650,6 +482,9 @@ object SQLTransformation {
 				:Opt[(SQLConversion[X, Y], SQLConversion[Y, Z]) forSome { type Y }] =
 			e.split
 	}
+	type from[X] = { type to[Y] = SQLTransformation[X, Y] }
+	type to[Y] = { type from[X] = SQLTransformation[X, Y] }
+
 
 
 	/** Recursively performs a 'deep conversion' of a chain expression `SQLExpression[F, S, XI ~ XL]`
@@ -663,8 +498,17 @@ object SQLTransformation {
 		override def apply(value :XI ~ XL) :YI ~ YL = init(value.init) ~ last(value.last)
 
 		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
-		                  (expr :ConvertibleSQL[F, S, XI ~ XL, E]) :SQLExpression[F, S, YI ~ YL] =
+		                  (expr :ConvertingTemplate[F, S, XI ~ XL, E]) :SQLExpression[F, S, YI ~ YL] =
+//		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+//		                  (expr :ConvertibleSQL[F, S, XI ~ XL, E]) :SQLExpression[F, S, YI ~ YL] =
 			expr match {
+				case null => MultiNull[YI ~ YL]()
+				case nullSQL :MultiNull[XI ~ XL] =>
+					val form = nullSQL.form.nullOptBimap(
+						chain => Some(init(chain.init) ~ last(chain.last)))(
+						chain => for { i <- init.unapply(chain.init); l <- last.unapply(chain.last) } yield i ~ l
+					)
+					MultiNull[YI ~ YL](form)
 				case chain :ChainSQL[F, S, XI, XL] =>
 					init(chain.init) ~ last(chain.last)
 //				case adapted :AdaptedSQL[F, S, x, XI ~ XL] =>
@@ -698,12 +542,15 @@ object SQLTransformation {
 		override def apply(value :XI |~ (K :~ XL)) :YI |~ (K :~ YL) = init(value.init) |~ :~[K](last(value.last))
 
 		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
-		                  (expr :ConvertibleSQL[F, S, XI |~ (K :~ XL), E]) :SQLExpression[F, S, YI |~ (K :~ YL)] =
+		                  (expr :ConvertingTemplate[F, S, XI |~ (K :~ XL), E]) :SQLExpression[F, S, YI |~ (K :~ YL)] =
+//		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+//		                  (expr :ConvertibleSQL[F, S, XI |~ (K :~ XL), E]) :SQLExpression[F, S, YI |~ (K :~ YL)] =
 			expr match {
+				case null => null
 				case listing :LabeledSQL[F, S, XI |~ (K :~ XL)] => init(listing.init) match {
 					case yi :LabeledSQL[F, S, YI] => last(listing.last) match {
 						case yl :LabeledValueSQL[F, S, YL] =>
-							(yi |~ [K]:~(yl))(new ValueOf[K](listing.lastKey))
+							(yi |~ :~[K](yl))(new ValueOf[K](listing.lastKey))
 						case yl =>
 							throw new IllegalExpressionException(
 								"Cannot transform " + expr + " with " + this + ": transformation " + last +
@@ -731,8 +578,11 @@ object SQLTransformation {
 		override def apply(value :X) :Y = this.value
 
 		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
-		                  (expr :ConvertibleSQL[F, S, X, E]) :SQLExpression[F, S, Y] =
-			result
+		                  (expr :ConvertingTemplate[F, S, X, E]) :SQLExpression[F, S, Y] =
+			denullify(result).toConvertibleSQL
+//		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+//		                  (expr :ConvertibleSQL[F, S, X, E]) :SQLExpression[F, S, Y] =
+//			result
 
 		override def applyString(arg :String) :String = arg + ".return(" + value + ")"
 	}
@@ -802,8 +652,11 @@ private class ArbitraryComposedTransformation[X, Y, Z, T <: SQLTransformation[Y,
 		second.BaseResult[F, S]
 
 	override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
-	                  (expr :ConvertibleSQL[F, S, X, E]) :second.BaseResult[F, S] =
-		second(first(expr) :ConvertibleSQL[F, S, Y, SQLExpression.from[F]#rows[S]#E])
+	                  (expr :ConvertingTemplate[F, S, X, E]) :second.BaseResult[F, S] =
+		second(first(expr) :ConvertingTemplate[F, S, Y, SQLExpression.from[F]#rows[S]#E])
+//	override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+//	                  (expr :ConvertibleSQL[F, S, X, E]) :second.BaseResult[F, S] =
+//		second(first(expr) :ConvertibleSQL[F, S, Y, SQLExpression.from[F]#rows[S]#E])
 }
 
 
@@ -816,8 +669,11 @@ private class ConversionComposedTransformation[X, Y, Z, T <: SQLTransformation[Y
 		second.SQLResult[F, S, E]
 
 	override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
-	                  (expr :ConvertibleSQL[F, S, X, E]) :SQLResult[F, S, E[Z]] =
+	                  (expr :ConvertingTemplate[F, S, X, E]) :SQLResult[F, S, E[Z]] =
 		second[F, S, E](first(expr))
+//	override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+//	                  (expr :ConvertibleSQL[F, S, X, E]) :SQLResult[F, S, E[Z]] =
+//		second[F, S, E](first(expr))
 }
 
 
@@ -864,14 +720,16 @@ trait SQLAdaptation[X, Y] extends SQLTransformation[X, Y] with FormConversion[X,
 	//todo: BaseColumn; bound ColumnSQL[F, S, Y] with SQLResult[F, S, ColumnSQL[F, S, Y]]
 	type ColumnResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: ColumnSQL[F, S, Y]] <: ColumnSQL[F, S, Y]
 
-	def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleColumn[F, S, v, E]]
-	         (expr :ConvertibleColumn[F, S, X, E]) :ColumnResult[F, S, E[Y]]
+	def column[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleColumn[F, S, v, E]]
+	          (expr :ConvertibleColumn[F, S, X, E]) :ColumnResult[F, S, E[Y]]
 
 
 	override def compose[W](first :SQLTransformation[W, X])
 			:SQLTransformation[W, Y] {
-				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
-					SQLResult[F, S, SQLExpression[F, S, Y]] <: self.BaseResult[F, S]
+//				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
+//					SQLResult[F, S, SQLExpression[F, S, Y]] <: self.BaseResult[F, S]
+//				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Y]] <:
+//					self.BaseResult[F, S]
 				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Y]] <:
 					self.BaseResult[F, S]
 			} =
@@ -882,8 +740,10 @@ trait SQLAdaptation[X, Y] extends SQLTransformation[X, Y] with FormConversion[X,
 
 	def compose[W](first :SQLAdaptation[W, X])
 			:SQLAdaptation[W, Y] { //todo: bounds on ColumnResult
-				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
-					SQLResult[F, S, SQLExpression[F, S, Y]] <: self.BaseResult[F, S]
+//				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
+//					SQLResult[F, S, SQLExpression[F, S, Y]] <: self.BaseResult[F, S]
+//				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Y]] <:
+//					self.BaseResult[F, S]
 				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Y]] <:
 					self.BaseResult[F, S]
 			} =
@@ -906,8 +766,8 @@ trait SQLAdaptation[X, Y] extends SQLTransformation[X, Y] with FormConversion[X,
 //	override def andThen[Z](second :SQLTransformation[Y, Z]) :SQLTransformation[X, Z] = second andThen this
 	override def andThen[Z](second :SQLTransformation[Y, Z]) //:SQLTransformation[X, Z] = second compose this
 			:SQLAdaptation[X, Z] {
-				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
-					SQLResult[F, S, SQLExpression[F, S, Z]] <: second.BaseResult[F, S]
+//				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
+//					SQLResult[F, S, SQLExpression[F, S, Z]] <: second.BaseResult[F, S]
 				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Z]] <:
 					second.BaseResult[F, S]
 			} =
@@ -915,8 +775,8 @@ trait SQLAdaptation[X, Y] extends SQLTransformation[X, Y] with FormConversion[X,
 
 	def andThen[Z](second :SQLAdaptation[Y, Z])
 			:SQLAdaptation[X, Z] {
-				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
-					SQLResult[F, S, SQLExpression[F, S, Z]] <: second.BaseResult[F, S]
+//				type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] >:
+//					SQLResult[F, S, SQLExpression[F, S, Z]] <: second.BaseResult[F, S]
 				type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Z]] <:
 					second.BaseResult[F, S]
 			} =
@@ -937,32 +797,6 @@ trait SQLAdaptation[X, Y] extends SQLTransformation[X, Y] with FormConversion[X,
 			override val swap = SQLAdaptation.this
 		}
 
-	/** Combines this instance with another `Lift` to the same type into an evidence value required by many methods
-	  * of `SQLExpression`.
-	  */
-	def vs[A](other :SQLAdaptation[A, Y]) :Interoperable[X, A] { type Unified = Y } =
-		if (other.isIdentity)
-			(other vs this).swap
-		else
-			new StandardInteroperable(this, other) { outer =>
-				override lazy val swap = new StandardInteroperable(right, left) {
-					override val swap = outer
-				}
-			}
-
-	/** Creates an evidence value that `X` and `Y` are interoperable in SQL. */
-	lazy val asLeft :Interoperable[X, Y] { type Unified = Y } =
-		new StandardInteroperable(this, toSelf[Y]) {
-			override lazy val swap = asRight
-		}
-
-	/** Creates an evidence value that `Y` and `X` are interoperable in SQL. */
-	lazy val asRight  :Interoperable[Y, X] { type Unified = Y } =
-		new StandardInteroperable(toSelf[Y], this) {
-			override lazy val swap = asLeft
-		}
-
-
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[SQLAdaptation[_, _]]
 }
 
@@ -972,7 +806,8 @@ trait SQLAdaptation[X, Y] extends SQLTransformation[X, Y] with FormConversion[X,
 object SQLAdaptation {
 	def summon[X, Y](implicit lift :SQLAdaptation[X, Y]) :lift.type = lift
 
-	@inline implicit def implicitSQLConversion[X, Y](implicit conversion :SQLConversion[X, Y]) :SQLConversion[X, Y] =
+	@inline implicit def implicitSQLConversion[X, Y](implicit conversion :SQLConversion[X, Y]) //:SQLConversion[X, Y] =
+			:SQLAdaptation[X, Y]#As[conversion.SQLResult] =
 		conversion
 
 	def apply[X, Y](suffix :String, convert :X => Y) :ArbitraryAdaptation[X, Y] =
@@ -989,6 +824,9 @@ object SQLAdaptation {
 		}
 
 
+	type from[X] = { type to[Y] = SQLAdaptation[X, Y] }
+	type to[Y] = { type from[X] = SQLAdaptation[X, Y] }
+
 	trait ArbitraryAdaptation[X, Y] extends SQLAdaptation[X, Y] with ArbitraryTransformation[X, Y] {
 		override type ColumnResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: ColumnSQL[F, S, Y]] =
 			ColumnSQL[F, S, Y]
@@ -1001,12 +839,15 @@ object SQLAdaptation {
 
 	private trait DefaultExpressionAdaptation[X, Y] extends ArbitraryAdaptation[X, Y] {
 		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
-		                  (expr :ConvertibleSQL[F, S, X, E]) :SQLExpression[F, S, Y] =
-			expr.`->adapt`(this)
+		                  (expr :ConvertingTemplate[F, S, X, E]) :SQLExpression[F, S, Y] =
+			denullify(expr).`->adapt`(this)
+//		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+//		                  (expr :ConvertibleSQL[F, S, X, E]) :SQLExpression[F, S, Y] =
+//			expr.`->adapt`(this)
 
-		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleColumn[F, S, v, E]]
-		                  (expr :ConvertibleColumn[F, S, X, E]) :ColumnSQL[F, S, Y] =
-			expr.`->adapt`(this)
+		override def column[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleColumn[F, S, v, E]]
+		                   (expr :ConvertibleColumn[F, S, X, E]) :ColumnSQL[F, S, Y] =
+			denullify(expr).`->adapt`(this)
 	}
 
 
@@ -1049,7 +890,7 @@ private trait ComposedAdaptation[X, Y, Z] extends ComposedTransformation[X, Y, Z
 //	override def apply(form :ColumnForm[X])     :ColumnForm[Z] = second(first(form))
 
 	protected[mechanics] override def split :Opt[(SQLAdaptation[X, Y], SQLAdaptation[Y, Z]#As[SQLResult])] =
-		Got(first, second)
+		Got((first, second))
 
 	override lazy val swap :SQLAdaptation[Z, X] = new ArbitraryComposedAdaptation(second.swap, first.swap) {
 		override def isReversible = true
@@ -1066,9 +907,9 @@ private class ArbitraryComposedAdaptation[X, Y, Z, T <: SQLAdaptation[Y, Z]]
 	override type ColumnResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: ColumnSQL[F, S, Z]] =
 		ColumnSQL[F, S, Z]
 
-	override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleColumn[F, S, v, E]]
-	                  (expr :ConvertibleColumn[F, S, X, E]) :ColumnResult[F, S, E[Z]] =
-		second[F, S, SQLExpression.from[F]#rows[S]#C](first[F, S, E](expr))
+	override def column[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleColumn[F, S, v, E]]
+	                   (expr :ConvertibleColumn[F, S, X, E]) :ColumnResult[F, S, E[Z]] =
+		second.column[F, S, SQLExpression.from[F]#rows[S]#C](first.column[F, S, E](expr))
 }
 
 private class ConversionComposedAdaptation[X, Y, Z, T <: SQLAdaptation[Y, Z]]
@@ -1078,16 +919,30 @@ private class ConversionComposedAdaptation[X, Y, Z, T <: SQLAdaptation[Y, Z]]
 	override type ColumnResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: ColumnSQL[F, S, Z]] =
 		second.ColumnResult[F, S, E]
 
-	override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleColumn[F, S, v, E]]
-	                  (expr :ConvertibleColumn[F, S, X, E]) :ColumnResult[F, S, E[Z]] =
-		second[F, S, E](first(expr))
+	override def column[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleColumn[F, S, v, E]]
+	                   (expr :ConvertibleColumn[F, S, X, E]) :ColumnResult[F, S, E[Z]] =
+		second.column[F, S, E](first(expr))
 }
 
 
 
 
-
-
+/** A conversion of any [[net.noresttherein.oldsql.sql.SQLExpression SQLExpression]]`[F, S, X]` to
+  * an `SQLExpression[F, S, Y]` which does not change the generated SQL.
+  * If two types `X, Y` can be converted througn implicit conversions to a common type `Z`,
+  * then an implicit [[net.noresttherein.oldsql.sql.mechanics.Interoperable Interoperable]]`[X, Y]` exists,
+  * witnessing that two expressions of these types are comparable in SQL.
+  * As an `SQLConversion` does not influence the generated SQL itself, they may be freely composed with each other:
+  * `expr.`[[net.noresttherein.oldsql.sql.SQLExpression.ConvertingTemplate.to to]]`[X].to[Y]` will normally
+  * produce a flattened expression, in which `expr` is wrapped in a single
+  * [[net.noresttherein.oldsql.sql.ast.ConvertedSQL ConvertedSQL]]. The framework is free to assume that,
+  * in contexts where converting of an actual ''value'' of `X` is not necessary, a conversion exists solely
+  * to satisfy stricter Scala's type system, and may perform some optimizations.
+  * This is not true for its supertypes, where an instance of (a subclass of)
+  * [[net.noresttherein.oldsql.sql.ast.AdaptedSQL AdaptedSQL]] is never elided.
+  * @see [[net.noresttherein.oldsql.sql.mechanics.Interoperable]]
+  */
+@implicitNotFound("Type ${X} cannot be used in place of type ${Y} in SQL. Missing implicit SQLConversion[${X}, ${Y}].")
 trait SQLConversion[X, Y] extends SQLAdaptation[X, Y] {
 	override type BaseResult[-F <: RowProduct, -S >: Grouped <: Single] = SQLExpression[F, S, Y]
 	override type SQLResult[-F <: RowProduct, -S >: Grouped <: Single, +E <: SQLExpression[F, S, Y]] = E
@@ -1095,12 +950,16 @@ trait SQLConversion[X, Y] extends SQLAdaptation[X, Y] {
 	override type QueryResult[P, Q <: Query[P, Y]] = Q
 
 	override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
-	                  (expr :ConvertibleSQL[F, S, X, E]) :E[Y] =
+	                  (expr :ConvertingTemplate[F, S, X, E]) :E[Y] =
 		if (expr == null) null else expr.`->convert`(this)
 
-	override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleColumn[F, S, v, E]]
-	                  (expr :ConvertibleColumn[F, S, X, E]) :E[Y] =
-		if (expr == null) null else expr.`->convert`(this)
+//	override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+//	                  (expr :ConvertibleSQL[F, S, X, E]) :E[Y] =
+//		if (expr == null) null else expr.`->convert`(this)
+//
+	override def column[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleColumn[F, S, v, E]]
+	                   (expr :ConvertibleColumn[F, S, X, E]) :E[Y] =
+		apply(expr :ConvertibleSQL[F, S, X, E])
 
 	override def apply[F <: RowProduct](query :QuerySQL[F, X]) :QuerySQL[F, Y] = query.rowsTo(this)
 	override def apply[P](query :Query[P, X]) :Query[P, Y] = query.rowsTo(this)
@@ -1154,32 +1013,27 @@ trait SQLConversion[X, Y] extends SQLAdaptation[X, Y] {
 //		specific[F, S, E]
 
 
-
-	override def vs[A](other :SQLAdaptation[A, Y]) :Interoperable[X, A] { type Unified = Y } =
-		other match {
-			case conversion :SQLConversion[A, Y] => this =~= conversion
-			case _ => super.vs(other)
-		}
-
-	/** Combines this instance with another `Lift` to the same type into an evidence value required by many methods
-	  * of `SQLExpression`.
+	/** Combines this instance with another `SQLConversion` to the same type into an evidence value required
+	  * by many methods of `SQLExpression`.
 	  */
-	def =~=[A](other :SQLConversion[A, Y]) :(X =~= A) { type Unified = Y } =
+	def vs[A](other :SQLConversion[A, Y]) :Interoperable[X, A]#As[Y] =
 		if (other.isIdentity)
-			(other =~= this).swap
+			(other vs this).swap
 		else
-			new Equivalence(this, other) { outer =>
-				override lazy val swap = new Equivalence(right, left) {
+			new StandardInteroperable(this, other) { outer =>
+				override lazy val swap = new StandardInteroperable(right, left) {
 					override val swap = outer
 				}
 			}
 
-	override lazy val asLeft  :(X =~= Y) { type Unified = Y } =
-		new Equivalence(this, toSelf[Y]) {
+	/** Creates an evidence value that `X` and `Y` are interoperable in SQL. */
+	lazy val asLeft  :Interoperable[X, Y]#As[Y] =
+		new StandardInteroperable(this, toSelf[Y]) {
 			override lazy val swap = asRight
 		}
-	override lazy val asRight :(Y =~= X) { type Unified = Y } =
-		new Equivalence(toSelf[Y], this) {
+	/** Creates an evidence value that `Y` and `X` are interoperable in SQL. */
+	lazy val asRight :Interoperable[Y, X]#As[Y] =
+		new StandardInteroperable(toSelf[Y], this) {
 			override lazy val swap = asLeft
 		}
 
@@ -1189,7 +1043,7 @@ trait SQLConversion[X, Y] extends SQLAdaptation[X, Y] {
 
 
 
-private[mechanics] sealed abstract class ChainConversions {
+private[mechanics] sealed abstract class LiftedConversions {
 	implicit def chain[XI <: Chain, XL, YI <: Chain, YL](implicit init :SQLConversion[XI, YI], last :SQLConversion[XL, YL])
 			:SQLConversion[XI ~ XL, YI ~ YL] =
 		new ConvertChain(init, last)
@@ -1199,20 +1053,38 @@ private[mechanics] sealed abstract class ChainConversions {
 			:SQLConversion[XI |~ (K :~ XL), YI |~ (K :~ YL)] =
 		new ConvertRecord[XI, XL, YI, YL, K](init, last)
 
-	implicit def reorder[X <: Listing, Y <: Listing]
-	                    (implicit there :Y SubRecordOf X, back :X SubRecordOf Y) :Equivalent[X, Y] =
+	implicit def convertRows[X, Y](implicit item :SQLConversion[X, Y]) :SQLConversion[Rows[X], Rows[Y]] =
+		new ConvertRows[X, Y](item)
+
+	implicit def convertSeq[X, Y](implicit item :SQLConversion[X, Y]) :SQLConversion[Seq[X], Seq[Y]] =
+		new ConvertSeq[X, Y](item)
+
+	implicit def reversibleRows[X, Y](implicit item :ReversibleConversion[X, Y]) :ReversibleConversion[Rows[X], Rows[Y]] =
+		new ConvertRows[X, Y](item) with ReversibleConversion[Rows[X], Rows[Y]]
+
+	implicit def reversibleSeq[X, Y](implicit item :ReversibleConversion[X, Y])  :ReversibleConversion[Seq[X], Seq[Y]] =
+		new ConvertSeq[X, Y](item) with ReversibleConversion[Seq[X], Seq[Y]]
+}
+
+private[mechanics] sealed abstract class RecordConversions extends LiftedConversions {
+	implicit def recordToTuple[LI <: Listing, CI <: Chain, K <: Label, L]
+	                          (implicit init :Equivalent[LI, CI]) :Equivalent[LI |~ (K :~ L), CI ~ L] =
+		new ListingToChain(init)
+
+	implicit def reorder[X <: Listing, XKs <: Chain, Y <: Listing, YKs <: Chain]
+	                    (implicit there :(Y RecordProjection XKs) { type Out = X },
+	                     back :(X RecordProjection YKs) { type Out = Y })
+			:ReorderRecord[X, Y] { type XKeys = XKs; type YKeys = YKs } =
 		ReorderRecord(there, back)
 }
 
-
-private[mechanics] sealed abstract class IdentityConversions extends ChainConversions {
-	@inline implicit def identity[X, Y](implicit ev :X =:= Y) :Equivalent[X, Y] = Equivalent(ev)
-//		implicit def select[X, Y](implicit rowLift :Lift[X, Y]) :Lift[Rows[X], Y] = Lift.selectRow andThen rowLift
-
+private[mechanics] sealed abstract class EqualTypeConversions extends RecordConversions {
+	implicit def equal[X, Y](implicit ev :X =:= Y) :Equivalent[X, Y] = SQLConversion.toSelf.castParams[X, Y]
+//
+//	implicit def identity[X] :Equivalent[X, X] = SQLConversion.toSelf
 }
 
-
-private[mechanics] sealed abstract class ConversionsToDouble extends IdentityConversions {
+private[mechanics] sealed abstract class ConversionsToDouble extends EqualTypeConversions {
 	implicit object ByteToDouble extends ReversibleConversion[Byte, Double] {
 		override def apply(value :Byte) :Double = value
 		override def inverse(value :Double) :Byte = value.toByte
@@ -1258,7 +1130,6 @@ private[mechanics] sealed abstract class ConversionsToDouble extends IdentityCon
 //	implicit val DoubleToDouble :Equivalent[Double, Double] = SQLConversion.toSelf[Double]
 }
 
-
 private[mechanics] sealed abstract class ConversionsToFloat extends ConversionsToDouble {
 	implicit object ByteToFloat extends ReversibleConversion[Byte, Float] {
 		override def apply(value :Byte) :Float = value
@@ -1298,7 +1169,6 @@ private[mechanics] sealed abstract class ConversionsToFloat extends ConversionsT
 //	implicit val FloatToFloat :Equivalent[Float, Float] = SQLConversion.toSelf[Float]
 }
 
-
 private[mechanics] sealed abstract class ConversionsToLong extends ConversionsToFloat {
 	implicit object ByteToLong extends ReversibleConversion[Byte, Long] {
 		override def apply(value :Byte) :Long = value
@@ -1331,7 +1201,6 @@ private[mechanics] sealed abstract class ConversionsToLong extends ConversionsTo
 //	implicit val LongToLong :Equivalent[Long, Long] = SQLConversion.toSelf[Long]
 }
 
-
 private[mechanics] sealed abstract class ConversionsToInt extends ConversionsToLong {
 		implicit object ByteToInt extends ReversibleConversion[Byte, Int] {
 		override def apply(value :Byte) :Int = value
@@ -1357,53 +1226,51 @@ private[mechanics] sealed abstract class ConversionsToInt extends ConversionsToL
 //	implicit val IntToInt :Equivalent[Int, Int] = SQLConversion.toSelf[Int]
 }
 
+private[mechanics] sealed abstract class ConversionsToShort extends ConversionsToInt {
+	implicit object ByteToShort extends ReversibleConversion[Byte, Short] {
+		override def apply(value :Byte) :Short = value
+		override def inverse(value :Short) :Byte = value.toByte
+		override val swap :SQLConversion[Short, Byte] = swap("", ".toByte")
+		override def applyString(arg :String) :String = arg + ".toShort"
+	}
 
-object SQLConversion extends ConversionsToInt {
-	def apply[X, Y](convert :X => Y) :SQLConversion[X, Y] =
-		new SQLConversion[X, Y] {
-			override def apply(value :X) = convert(value)
-			override def unapply(value :Y) = Lack
-			override def inverse(value :Y) =
-				throw new UnsupportedOperationException(
-					s"Cannot convert $value :${value.localClassName} back with $this"
-				)
-			override def applyString(arg :String) = convert.toString + "(" + arg + ")"
-		}
+	implicit def toOption[T] :SQLConversion[T, Option[T]] = option
+	protected def option[T] :SQLConversion[T, Option[T]]
+}
+
+
+
+object SQLConversion extends ConversionsToShort {
 
 	def apply[X, Y](suffix :String, convert :X => Y) :SQLConversion[X, Y] =
-		new SQLConversion[X, Y] {
-			override def apply(value :X) = convert(value)
-			override def unapply(value :Y) = Lack
-			override def inverse(value :Y) =
-				throw new UnsupportedOperationException(
-					s"Cannot convert $value :${value.localClassName} back with $this."
-				)
-			override def applyString(arg :String) = arg + suffix
-		}
+		new Impl[X, Y](suffix, convert)
 
-	def apply[X, Y](suffix :String, convert :X => Y, inversed :Y => X) :SQLConversion[X, Y] =
-		new SQLConversion[X, Y] {
-			override def apply(value :X) = convert(value)
+	def apply[X, Y](suffix :String, convert :X => Y, inversed :Y => X) :ReversibleConversion[X, Y] =
+		new Impl[X, Y](suffix, convert) with ReversibleConversion[X, Y] {
 			override def unapply(value :Y) = Got(inversed(value)) //Opt.guard(inversed)(value)
 			override def inverse(value :Y) = inversed(value)
-			override def isReversible = true
-			override def applyString(arg :String) = arg + suffix
 		}
 
 	def opt[X, Y](suffix :String, convert :X => Y, inversed :Y => Opt[X]) :SQLConversion[X, Y] =
-		new SQLConversion[X, Y] {
-			override def apply(value :X) = convert(value)
+		new Impl[X, Y](suffix, convert) {
 			override def unapply(value :Y) = inversed(value)
 			override def inverse(value :Y) = unapply(value) match {
 				case Got(v) => v
 				case _ => throw new IllegalArgumentException("Cannot inverse map " + value + " with " + this + ".")
 			}
-			override def isReversible :Boolean = false
-			override def applyString(arg :String) = arg + suffix
 		}
 
 	def guard[X, Y](suffix :String, convert :X => Y, inversed :Y => X) :SQLConversion[X, Y] =
 		opt(suffix, convert, Opt.guard(inversed))
+
+	private class Impl[X, Y](suffix :String, convert :X => Y) extends SQLConversion[X, Y] {
+		override def apply(value :X) = convert(value)
+		override def inverse(value :Y) :X =
+			throw new UnsupportedOperationException("Conversion " + this + " is not reversible.")
+		override def unapply(value :Y) :Opt[X] = Lack
+		override def applyString(arg :String) = arg + suffix
+	}
+
 
 
 	object Composition {
@@ -1424,56 +1291,60 @@ object SQLConversion extends ConversionsToInt {
 		}
 	}
 
-
-	trait ReversibleConversion[X, Y] extends SQLConversion[X, Y] {
-		override def unapply(value :Y) :Got[X] = Got(inverse(value))
-		override def isReversible = true
-	}
-
-
+	implicit def identity[X]   :Equivalent[X, X] = IdentityConversion.asInstanceOf[Equivalent[X, X]]
+	implicit def toParam[T]    :Equivalent[Out[T], T] = toOut[T].swap
+	implicit def selectRow[T]  :Equivalent[Rows[T], T] = SelectRow.castParams[Rows[T], T] //asInstanceOf[Equiv[Rows[T], T]]
+	implicit def selectRows[T] :Equivalent[Rows[T], Seq[T]] = SelectRows.castParams[Rows[T], Seq[T]] //asInstanceOf[Equiv[Rows[T], Seq[T]]]
+	implicit def entryValue[K <: Label, V] :Equivalent[K :~ V, V] = ConvertLabel.castParams[K :~ V, V] //asInstanceOf[Equiv[K :~ V, V]]
 	private type Equiv[X, Y] = Equivalent[X, Y]
 
-	implicit def toOption[T]   :SQLConversion[T, Option[T]] = ToOption.asInstanceOf[SQLConversion[T, Option[T]]]
-	implicit def toParam[T]    :Equivalent[Out[T], T]       = toOut[T].swap
-	implicit def selectRow[T]  :Equivalent[Rows[T], T]      = SelectRow.asInstanceOf[Equiv[Rows[T], T]]
-	implicit def selectRows[T] :Equivalent[Rows[T], Seq[T]] = SelectRows.asInstanceOf[Equiv[Rows[T], Seq[T]]]
-	implicit def entryValue[K <: Label, V] :Equivalent[K :~ V, V] = ConvertLabel.asInstanceOf[Equiv[K :~ V, V]]
+	//inverses can't be implicits or we'd have an implicit conflict
+	def toSelf[T] :Equivalent[T, T] = IdentityConversion.castParams[T, T]
+	def label[K <: Label, V] :Equivalent[V, K :~ V] = entryValue[K, V].swap
+	def toOut[T] :Equivalent[T, Out[T]] = OutParam.castParams[T, Out[T]] //it's better to unpack by default
+	def forceListing[X <: Chain, Y <: Listing](implicit listingToChain :Equivalent[Y, X]) :Equivalent[X, Y] =
+		listingToChain.swap
 
-	implicit def rows[X, Y](implicit item :SQLConversion[X, Y]) :SQLConversion[Rows[X], Rows[Y]] =
-		new ConvertRows(item)
-	implicit def seq[X, Y](implicit item :SQLConversion[X, Y])  :SQLConversion[Seq[X], Seq[Y]] =
-		new ConvertSeq(item)
-	implicit def recordToTuple[LI <: Listing, CI <: Chain, K <: Label, L]
-	                          (implicit init :Equivalent[LI, CI]) :Equivalent[LI |~ (K :~ L), CI ~ L] =
-		new ListingToChain(init)
+	def toRow[T] :SQLTransformation[T, Rows[T]]       = selectRow[T].swap //unlikely to ever see use, but we won't be able
+	def toRows[T] :SQLTransformation[Seq[T], Rows[T]] = selectRows[T].swap //  to handle custom implementations when needed
 
 	/** An unsafe [[net.noresttherein.oldsql.sql.mechanics.SQLConversion SQLConversion]] for representing
 	  * an SQL expression as one for the supertype of its value type parameter. It is inherently irreversible,
 	  * meaning it can't be used to unify two SQL expressions for use within a comparison or assignment.
 	  * It is reserved for use cases where the adapted expression is guaranteed to be used only in a covariant manner.
 	  */
-	def supertype[X <: Y :ClassTag, Y] :SQLConversion[X, Y] = new Uptype[X, Y](classTag[X])
+	def supertype[X, Y](implicit tag :ClassTag[X], subtype :X <:< Y) :SQLConversion[X, Y] =
+		new Upcast[X, Y](tag, subtype)
 
-	//inverses can't be implicits or we'd have an implicit conflict
-	def toSelf[T] :Equivalent[T, T]                   = Equivalent.identity[T]
-	def toOut[T]  :Equivalent[T, Out[T]]              = OutParam.castParams[T, Out[T]] //it's better to unpack by default
-	def toRow[T]  :SQLTransformation[T, Rows[T]]      = selectRow[T].swap  //unlikely to ever see use, but we won't be able
-	def toRows[T] :SQLTransformation[Seq[T], Rows[T]] = selectRows[T].swap //  to handle custom implementations when needed
-	def label[K <: Label, V] :Equivalent[V, K :~ V]   = entryValue[K, V].swap
-
-	def forceListing[X <: Chain, Y <: Listing]
-	                (implicit listingToChain :Equivalent[Y, X]) :Equivalent[X, Y] =
-		listingToChain.swap
-
-
-	implicit object ByteToShort extends ReversibleConversion[Byte, Short] {
-		override def apply(value :Byte) :Short = value
-		override def inverse(value :Short) :Byte = value.toByte
-		override val swap :SQLConversion[Short, Byte] = swap("", ".toByte")
-		override def applyString(arg :String) :String = arg + ".toShort"
-	}
+	def subtype[X, Y](implicit tag :ClassTag[Y], subtype :Y <:< X) :SQLConversion[X, Y] =
+		supertype[X, Y].swap
 //	implicit val ShortToShort :Equivalent[Short, Short] = toSelf[Short]
 
+	type from[X] = { type to[Y] = SQLConversion[X, Y] }
+	type to[Y] = { type from[X] = SQLConversion[X, Y] }
+
+	case class Upcast[X, Y](X :ClassTag[X], upcast :X <:< Y) extends SQLConversion[X, Y] {
+		override def isUpcast = true
+		override def apply(value :X) = upcast(value)
+		override def inverse(value :Y) = X.unapply(value) match {
+			case Some(x) => x
+			case _       =>
+				throw new IllegalArgumentException(
+					"Cannot downcast " + value + ": " + value.className + " to " + X.runtimeClass.name + "."
+				)
+		}
+		override def unapply(value :Y) = X.unapply(value)
+
+		override def apply(form :SQLReadForm[X]) :SQLReadForm[Y] = upcast.substituteCo(form)
+		override def apply(form :ColumnReadForm[X]) :ColumnReadForm[Y] = upcast.substituteCo(form)
+
+		override def compose[W](first :SQLConversion[W, X]) :SQLConversion[W, Y] = first match {
+			case _ :Upcast[_, _] => first.castParam2[Y]
+			case _ => super.compose(first)
+		}
+
+		override def applyString(arg :String) = arg + X.runtimeClass.localName + ".super"
+	}
 
 	case class ConvertRows[X, Y](item :SQLConversion[X, Y]) extends SQLConversion[Rows[X], Rows[Y]] {
 		override def apply(value :Rows[X]) :Rows[Y] = value.map(item.apply)
@@ -1625,46 +1496,12 @@ object SQLConversion extends ConversionsToInt {
 
 		override def applyString(arg :String) :String = {
 			@tailrec def rec(conv :SQLConversion[_, _]) :String = conv match {
-				case listing :ConvertRecord[_, _] => rec(listing.init) + "|~" + listing.last
+				case listing :ConvertRecord[_, _, _, _, _] => rec(listing.init) + "|~" + listing.last
 				case _ if conv == toSelf => arg + ".map(@~"
 				case _ => conv.applyString(arg) + ".mapSuffix("
 			}
 			rec(this) + ")"
 		}
-	}
-
-
-	private[sql] class ChainToListing[CI <: Chain, LI <: Listing, K <: Label, L](init :Equivalent[CI, LI])
-		extends Equivalent[CI ~ L, LI |~ (K :~ L)]
-	{
-		override def apply(value :CI ~ L) :LI |~ (K :~ L) = init(value.init) |~ :~[K](value.last)
-		override def inverse(value :LI |~ (K :~ L)) :CI ~ L = value.asInstanceOf[CI ~ L] //works because :~ is a value type
-
-		override def isReversible :Boolean = init.isReversible
-		override def isLossless   :Boolean = init.isLossless
-
-		override lazy val swap :Equivalent[LI |~ (K :~ L), CI ~ L] =
-			new ListingToChain[LI, CI, K, L](init.swap) {
-				override lazy val swap = ChainToListing.this
-			}
-		override def applyString(arg :String) :String = arg + ".toListing"
-	}
-
-	private[sql] class ListingToChain[LI <: Listing, CI <: Chain, K <: Label, L](init :Equivalent[LI, CI])
-		extends Equivalent[LI |~ (K :~ L), CI ~ L]
-	{
-		override def apply(value :LI |~ (K :~ L)) :CI ~ L =
-			if (init == toSelf || init.isInstanceOf[ListingToChain[_, _, _, _]] || init.isInstanceOf[Uptype[_, _]])
-				value.asInstanceOf[CI ~ L] //works because :~ is a value type
-			else
-				init(value.init) ~ value.last.value
-
-		override def inverse(value :CI ~ L) :LI |~ (K :~ L) = init.inverse(value.init) |~ :~[K](value.last)
-		override lazy val swap :Equivalent[CI ~ L, LI |~ (K :~ L)] =
-			new ChainToListing[CI, LI, K, L](init.swap) {
-				override lazy val swap = ListingToChain.this
-			}
-		override def applyString(arg :String) :String = arg + ".toChain"
 	}
 
 /*      //The problem with creating a proper conversion to LabeledSQL is that we can't really tell if a value is a column,
@@ -1690,23 +1527,30 @@ object SQLConversion extends ConversionsToInt {
 */
 
 
-
-	private sealed abstract class ReorderRecord[X <: Listing, Y <: Listing] extends Equivalent[X, Y] {
+	sealed abstract class ReorderRecord[X <: Listing, Y <: Listing]
+		extends Equivalent[X, Y] with RecordTransformation[X, Y]
+	{ outer =>
+		override type Out = Y
+		override type OutSQL[-F <: RowProduct, -S >: Grouped <: Single] = LabeledSQL[F, S, Y]
 		type XKeys <: Chain
 		type YKeys <: Chain
-		val there :SubRecord[X, YKeys] { type Out = Y }
-		val back  :SubRecord[Y, XKeys] { type Out = X }
+		val there :RecordProjection[X, YKeys] { type Out = Y }
+		val back  :RecordProjection[Y, XKeys] { type Out = X }
 
 		override def apply(value :X) :Y = there(value)
 		override def inverse(value :Y) :X = back(value)
 
-		override lazy val swap :Equivalent[Y, X] =
+		override def apply[F <: RowProduct, S >: Grouped <: Single]
+		                  (record :LabeledValueSQL[F, S, X]) :LabeledSQL[F, S, Y] =
+			there(record)
+
+		override lazy val swap :ReorderRecord[Y, X] { type XKeys = outer.YKeys; type YKeys = outer.XKeys } =
 			new ReorderRecord[Y, X] {
-				override type XKeys = ReorderRecord.this.YKeys
-				override type YKeys = ReorderRecord.this.XKeys
-				override val there  = ReorderRecord.this.back
-				override val back   = ReorderRecord.this.there
-				override lazy val swap = ReorderRecord.this
+				override type XKeys = outer.YKeys
+				override type YKeys = outer.XKeys
+				override val there  = outer.back
+				override val back   = outer.there
+				override lazy val swap = outer
 			}
 
 		override def andThen[Z](second :SQLConversion[Y, Z]) :SQLConversion[X, Z] = second match {
@@ -1727,13 +1571,9 @@ object SQLConversion extends ConversionsToInt {
 	}
 
 	object ReorderRecord {
-		def apply[X <: Listing, Y <: Listing]
-		         (map :SubRecord[X, _] { type Out = Y }, unmap :SubRecord[Y, _] { type Out = X }) :Equivalent[X, Y] =
-			newInstance(map, unmap)
-
-		private def newInstance[X <: Listing, XKs <: Chain, Y <: Listing, YKs <: Chain]
-		                       (map :SubRecord[X, YKs] { type Out = Y }, unmap :SubRecord[Y, XKs] { type Out = X })
-				:Equivalent[X, Y] =
+		def apply[X <: Listing, XKs <: Chain, Y <: Listing, YKs <: Chain]
+		         (map :RecordProjection[X, YKs] { type Out = Y }, unmap :RecordProjection[Y, XKs] { type Out = X })
+				:ReorderRecord[X, Y] { type XKeys = XKs; type YKeys = YKs } =
 			new ReorderRecord[X, Y] {
 				override type XKeys = XKs
 				override type YKeys = YKs
@@ -1742,7 +1582,7 @@ object SQLConversion extends ConversionsToInt {
 			}
 
 		def unapply[X <: Listing, Y <: Listing](conversion :SQLConversion[X, Y])
-				:Opt[(SubRecord[X, _] { type Out = Y }, SubRecord[Y, _] { type Out = X })] =
+				:Opt[(RecordProjection[X, _] { type Out = Y }, RecordProjection[Y, _] { type Out = X })] =
 			conversion match {
 				case reorder :ReorderRecord[X, Y] => Got((reorder.there, reorder.back))
 				case _ => Lack
@@ -1775,30 +1615,43 @@ object SQLConversion extends ConversionsToInt {
 //		override def applyString(arg :String) :String = arg + ".reorder(" + there + ")"
 //	}
 
-	private case class Uptype[X <: Y, Y](X :ClassTag[X]) extends SQLConversion[X, Y] {
-		override def apply(value :X) = value
-		override def inverse(value :Y) = X.unapply(value) match {
-			case Some(x) => x
-			case _       =>
-				throw new ClassCastException(
-					"Cannot downcast " + value + ": " + value.className + " to " + X.runtimeClass.name + "."
-				)
-		}
-		override def unapply(value :Y) = X.unapply(value)
 
-		override def apply(form :SQLReadForm[X]) :SQLReadForm[Y] = form
-		override def apply(form :ColumnReadForm[X]) :ColumnReadForm[Y] = form
+	private[sql] class ChainToListing[CI <: Chain, LI <: Listing, K <: Label, L](init :Equivalent[CI, LI])
+		extends Equivalent[CI ~ L, LI |~ (K :~ L)]
+	{
+		override def apply(value :CI ~ L) :LI |~ (K :~ L) = init(value.init) |~ :~[K](value.last)
+		override def inverse(value :LI |~ (K :~ L)) :CI ~ L = value.asInstanceOf[CI ~ L] //works because :~ is a value type
 
-		override def applyString(arg :String) = arg + X.runtimeClass.localName + ".super"
+		override def isReversible :Boolean = init.isReversible
+		override def isLossless   :Boolean = init.isLossless
+
+		override lazy val swap :Equivalent[LI |~ (K :~ L), CI ~ L] =
+			new ListingToChain[LI, CI, K, L](init.swap) {
+				override lazy val swap = ChainToListing.this
+			}
+		override def applyString(arg :String) :String = arg + ".toListing"
+	}
+
+	private[sql] class ListingToChain[LI <: Listing, CI <: Chain, K <: Label, L](init :Equivalent[LI, CI])
+		extends Equivalent[LI |~ (K :~ L), CI ~ L]
+	{
+		override def apply(value :LI |~ (K :~ L)) :CI ~ L =
+			if (init == toSelf || init.isInstanceOf[ListingToChain[_, _, _, _]] || init.isInstanceOf[Upcast[_, _]])
+				value.asInstanceOf[CI ~ L] //works because :~ is a value type
+			else
+				init(value.init) ~ value.last.value
+
+		override def inverse(value :CI ~ L) :LI |~ (K :~ L) = init.inverse(value.init) |~ :~[K](value.last)
+		override lazy val swap :Equivalent[CI ~ L, LI |~ (K :~ L)] =
+			new ChainToListing[CI, LI, K, L](init.swap) {
+				override lazy val swap = ListingToChain.this
+			}
+		override def applyString(arg :String) :String = arg + ".toChain"
 	}
 
 
-	private[this] object ConvertLabel extends Equivalent[Label :~ Any, Any] {
-		override def apply(value :Label :~ Any) :Any = value.value
-		override def inverse(value :Any) :Label :~ Any = :~[Label](value)
-		override val swap = swap("", ".:~")
-		override def applyString(arg :String) :String = arg + ".value"
-	}
+	protected override def option[X] :SQLConversion[X, Option[X]] =
+		ToOption.asInstanceOf[SQLConversion[X, Option[X]]]
 
 	private[this] object ToOption extends SQLConversion[Any, Option[Any]] {
 		override def apply(value: Any): Option[Any] = Option(value)
@@ -1811,12 +1664,11 @@ object SQLConversion extends ConversionsToInt {
 		override def apply(form :SQLForm[Any]) :SQLForm[Option[Any]] = form.toOpt
 		override def apply(form :ColumnForm[Any]) :ColumnForm[Option[Any]] = form.toOpt
 
+//		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+//		                  (expr: ConvertibleSQL[F, S, Any, E]): E[Option[Any]] =
+//			if (expr == null) null else expr.opt
 		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
-		                  (expr: ConvertibleSQL[F, S, Any, E]): E[Option[Any]] =
-			if (expr == null) null else expr.opt
-
-		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleColumn[F, S, v, E]]
-		                  (expr: ConvertibleColumn[F, S, Any, E]): E[Option[Any]] =
+		                  (expr: ConvertingTemplate[F, S, Any, E]): E[Option[Any]] =
 			if (expr == null) null else expr.opt
 
 		override lazy val swap = swap("", ".get")
@@ -1849,6 +1701,14 @@ object SQLConversion extends ConversionsToInt {
 		override def applyString(arg :String) :String = arg + ".toOption"
 	}
 
+
+	private[this] object ConvertLabel extends Equivalent[Label :~ Any, Any] {
+		override def apply(value :Label :~ Any) :Any = value.value
+		override def inverse(value :Any) :Label :~ Any = :~[Label](value)
+		override val swap = swap("", ".:~")
+		override def applyString(arg :String) :String = arg + ".value"
+	}
+
 	private[this] object SelectRow extends Equivalent[Rows[Any], Any] {
 		override def apply(value: Rows[Any]): Any = value.head
 		override def inverse(value: Any): Rows[Any] = Rows(value)
@@ -1870,21 +1730,60 @@ object SQLConversion extends ConversionsToInt {
 		override def applyString(arg :String) = "" + arg + ".toOut"
 	}
 
+	private[this] object IdentityConversion extends Equivalent[Any, Any] with SQLDecoration[Any] {
+		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+		                  (expr :ConvertingTemplate[F, S, Any, E]) =
+			denullify(expr).toConvertibleSQL
+//		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
+//		                  (expr :ConvertibleSQL[F, S, Any, E]) = expr
 
-	private class ComposedConversion[X, Y, Z](override val first  :SQLConversion[X, Y],
-	                                          override val second :SQLConversion[Y, Z])
-		extends ComposedAdaptation[X, Y, Z] with SQLConversion[X, Z]
-	{
-		protected override def split :Opt[(SQLConversion[X, Y], SQLConversion[Y, Z])] = Got(first, second)
+		override def apply[F <: RowProduct](query :QuerySQL[F, Any]) = query
+		override def apply[P](query :Query[P, Any]) = query
+		override def apply(query :TopSelectSQL[Any]) = query
+		override def apply[Q[_]](query :Q[Any] with QueryTemplate[Any, Q]) = query
 
-		override lazy val swap :ComposedConversion[Z, Y, X] = new ComposedConversion(second.swap, first.swap) {
-			override def isReversible = true
-			override lazy val swap = ComposedConversion.this
-			override def applyString(arg :String) = arg + ".inverse(" + swap + ")"
-		}
+		override def compose[W](first :SQLTransformation[W, Any]) :first.type = first
+		override def compose[W](first :SQLAdaptation[W, Any]) :first.type = first
+		override def compose[W](first :SQLConversion[W, Any]) :first.type = first
+		override def compose[W](first :ReversibleConversion[W, Any]) :first.type = first
+		override def andThen[Z](second :SQLTransformation[Any, Z]) :second.type = second
+		override def andThen[Z](second :SQLAdaptation[Any, Z]) :second.type = second
+		override def andThen[Z](second :SQLConversion[Any, Z]) :second.type = second
+		override def andThen[Z](second :ReversibleConversion[Any, Z]) :second.type = second
+
+		override val swap :Equivalent[Any, Any] = this
+
+		override def vs[A](other :SQLConversion[A, Any]) :Interoperable[Any, A]#As[Any] = other.asRight
+		override def =~=[A](other :ReversibleConversion[A, Any]) :(Any =~= A)#Widen[Any] = other.asRight
+		override lazy val asLeft  = Interoperable.identity
+		override lazy val asRight = Interoperable.identity
+
+		override def isIdentity = true
+
+//		override def specific[F <: RowProduct, S >: Grouped <: Single,
+//		                      E[v] <: SQLExpression[F, S, v] with ConvertingTemplate[F, S, v, E, E[v]]] =
+//			SpecificConversion.identity
+
+		override def applyString(arg :String) = arg
 	}
+
 }
 
+
+
+private class ComposedConversion[X, Y, Z](override val first  :SQLConversion[X, Y],
+                                          override val second :SQLConversion[Y, Z])
+	extends ComposedAdaptation[X, Y, Z] with SQLConversion[X, Z]
+{
+	protected override def split :Opt[(SQLConversion[X, Y], SQLConversion[Y, Z])] = Got(first, second)
+
+	override lazy val swap :ComposedConversion[Z, Y, X] =
+		new ComposedConversion(second.swap, first.swap) with ReversibleConversion[Z, X]
+	{
+		override lazy val swap = ComposedConversion.this
+		override def applyString(arg :String) = arg + ".inverse(" + swap + ")"
+	}
+}
 
 private class InverseConversion[X, Y](override val swap :SQLConversion[Y, X])
 	extends InverseTransformation[X, Y] with ReversibleConversion[X, Y]
@@ -1893,7 +1792,96 @@ private class InverseConversion[X, Y](override val swap :SQLConversion[Y, X])
 
 
 
+/** A conversion of type `X` to `Y` which is, possibly with some loss of precision, reversible.
+  * It witnesses that the difference between `X` and `Y` exists only in the Scala application,
+  * but any two [[net.noresttherein.oldsql.sql.SQLExpression SQL expressions]] of these types can be substituted
+  * in the generated SQL because the distinction does not exist in the DBMS.
+  * Similarly to `SQLConversion`, two instances `ReversibleConversion[X, Z]` and `ReversibleConversion[Y, Z]`
+  * can be combined into evidence `X `[[net.noresttherein.oldsql.sql.mechanics.=~= =~=]]` Y`, which is the most common
+  * way in which this conversion is encountered.
+  *
+  * Conversions of this type are used to unify types of two comparable expressions, in particular when
+  * [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.:= assigning]] a value to a column/component, and thus
+  * [[net.noresttherein.oldsql.sql.mechanics.SQLConversion.inverse inverse]] should not throw an exception.
+  */ //consider: renaming to SQLWidening or SQLPromotion
+@implicitNotFound("Type ${X} is not equivalent to ${Y} in SQL. Missing implicit ReversibleConversion[${X}, ${Y}].")
+trait ReversibleConversion[X, Y] extends SQLConversion[X, Y] {
+	override def unapply(value :Y) :Got[X] = Got(inverse(value))
+	override def isReversible = true
 
+	override def compose[W](first :SQLConversion[W, X]) :SQLConversion[W, Y] = first match {
+		case reversible :ReversibleConversion[W, X] => compose(reversible)
+		case _ => super.compose(first)
+	}
+
+	def compose[W](first :ReversibleConversion[W, X]) :ReversibleConversion[W, Y] =
+		if (first.isIdentity)
+			first andThen this
+		else if (first == swap)
+			SQLConversion.toSelf.castParams[W, Y]
+		else {
+			val arg = first
+			new ComposedConversion[W, X, Y](first, this) with ReversibleConversion[W, Y] {
+				override val first  :ReversibleConversion[W, X] = arg
+				override val second :ReversibleConversion[X, Y] = ReversibleConversion.this
+				override def split :Opt[(ReversibleConversion[W, X], ReversibleConversion[X, Y])] =
+					Got(first, second)
+			}
+		}
+
+	override def andThen[Z](conversion :ReversibleConversion[Y, Z]) :ReversibleConversion[X, Z] =
+		conversion compose this
+
+	protected override def split :Opt[(ReversibleConversion[X, A], ReversibleConversion[A, Y]) forSome { type A }] =
+		Lack
+
+	override def vs[A](other :SQLConversion[A, Y]) :Interoperable[X, A]#As[Y] =
+		other match {
+			case reversible :ReversibleConversion[A, Y] => this =~= reversible
+			case _ => super.vs(other)
+		}
+
+	/** Combines this instance with another `ReversibleConversion` to the same type into an evidence value required
+	  *  by many methods of `SQLExpression`.
+	  */
+	def =~=[A](other :ReversibleConversion[A, Y]) :(X =~= A)#Widen[Y] =
+		if (other.isIdentity)
+			(other =~= this).swap
+		else
+			new Equivalence(this, other) { outer =>
+				override lazy val swap = new Equivalence(right, left) {
+					override val swap = outer
+				}
+			}
+
+	override lazy val asLeft :(X =~= Y)#Widen[Y] =
+		new Equivalence(this, SQLConversion.toSelf[Y]) {
+			override lazy val swap = left.asRight
+		}
+	override lazy val asRight :(Y =~= X)#Widen[Y] =
+		new Equivalence(SQLConversion.toSelf[Y], this) {
+			override lazy val swap = right.asLeft
+		}
+}
+
+
+object ReversibleConversion {
+	@inline implicit def implicitEquivalentConversion[X, Y](implicit conversion :Equivalent[X, Y])
+			:ReversibleConversion[X, Y] =
+		conversion
+
+	def apply[X, Y](suffix :String, there :X => Y, back :Y => X) :ReversibleConversion[X, Y] =
+		SQLConversion(suffix, there, back)
+}
+
+
+
+
+
+
+/** A fully [[net.noresttherein.oldsql.sql.mechanics.SQLConversion.inverse reversible]] and lossless conversion
+  * between types `X` and `Y`. It is often used for types adapting or wrapping another type.
+  */
 trait Equivalent[X, Y] extends ReversibleConversion[X, Y] {
 	override def isLossless = true
 	protected override def swap(namePrefix :String, nameSuffix :String) :Equivalent[Y, X] =
@@ -1908,12 +1896,9 @@ trait Equivalent[X, Y] extends ReversibleConversion[X, Y] {
 }
 
 
-private[mechanics] sealed abstract class EquivalentPriority1 {
-	implicit def equiv[X, Y](implicit ev :X =:= Y) :Equivalent[X, Y] = identity[X].castParam2[Y]
-}
 
 
-object Equivalent extends EquivalentPriority1 {
+object Equivalent {
 	def apply[X, Y](implicit ev :Equivalent[X, Y]) :ev.type = ev
 
 	def apply[X, Y](suffix :String, map :X => Y, imap :Y => X) :Equivalent[X, Y] =
@@ -1922,43 +1907,6 @@ object Equivalent extends EquivalentPriority1 {
 			override def inverse(value :Y) = imap(value)
 			override def applyString(arg :String) = arg + suffix
 		}
-
-	implicit def identity[X] :Equivalent[X, X] = IdentityConversion.asInstanceOf[Equivalent[X, X]]
-
-	private[this] object IdentityConversion extends Equivalent[Any, Any] with SQLDecoration[Any] {
-		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleSQL[F, S, v, E]]
-		                  (expr :ConvertibleSQL[F, S, Any, E]) = expr
-
-		override def apply[F <: RowProduct, S >: Grouped <: Single, E[v] <: ConvertibleColumn[F, S, v, E]]
-		                  (expr :ConvertibleColumn[F, S, Any, E]) = expr
-
-		override def apply[F <: RowProduct](query :QuerySQL[F, Any]) = query
-		override def apply[P](query :Query[P, Any]) = query
-		override def apply(query :TopSelectSQL[Any]) = query
-		override def apply[Q[_]](query :Q[Any] with QueryTemplate[Any, Q]) = query
-
-		override def compose[W](first :SQLTransformation[W, Any]) :first.type = first
-		override def compose[W](first :SQLAdaptation[W, Any]) :first.type = first
-		override def compose[W](first :SQLConversion[W, Any]) :first.type = first
-		override def andThen[Z](second :SQLTransformation[Any, Z]) :second.type = second
-		override def andThen[Z](second :SQLAdaptation[Any, Z]) :second.type = second
-		override def andThen[Z](second :SQLConversion[Any, Z]) :second.type = second
-
-		override val swap :Equivalent[Any, Any] = this
-
-		override def vs[A](other :SQLAdaptation[A, Any]) :Interoperable[Any, A] { type Unified = Any } = other.asRight
-		override def =~=[A](other :SQLConversion[A, Any]) :(Any =~= A) { type Unified = Any } = other.asRight
-		override lazy val asLeft  = Interoperable.identity
-		override lazy val asRight = Interoperable.identity
-
-		override def isIdentity = true
-
-//		override def specific[F <: RowProduct, S >: Grouped <: Single,
-//		                      E[v] <: SQLExpression[F, S, v] with ConvertingTemplate[F, S, v, E, E[v]]] =
-//			SpecificConversion.identity
-
-		override def applyString(arg :String) = arg
-	}
 }
 
 

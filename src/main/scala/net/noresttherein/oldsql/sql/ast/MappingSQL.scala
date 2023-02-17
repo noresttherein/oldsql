@@ -489,7 +489,8 @@ object MappingSQL {
 		protected override def split(implicit spelling :SQLSpelling) :Seq[ColumnMappingSQL.from[F]#rows[S]#__] =
 			spelling.split(value)
 
-		protected def visit[R[-_], E >: MappingSQL[F, S, M, Y]](visitor :SpecificExpressionVisitor[F, S, Y, R]) :R[E] = visitor.convertedMapping(this)
+		protected def visit[R, E >: MappingSQL[F, S, M, Y]](visitor :SpecificExpressionVisitor[F, S, Y, R]) :R =
+			visitor.convertedMapping(this)
 //		protected override def visit[R](visitor :ExpressionVisitor[F, S, Y, R]) :R = visitor.convertedMapping(this)
 		protected override def visit[R[-_ >: Grouped <: Single, _]](visitor :AnyExpressionVisitor[F, R]) :R[S, Y] =
 			visitor.convertedMapping(this)

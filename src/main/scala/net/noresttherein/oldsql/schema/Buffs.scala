@@ -10,7 +10,7 @@ import net.noresttherein.oldsql.collection.{Opt, PassedArray}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.BuffMappingFailureException
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Buff.{BuffType, SpecificBuffType}
+import net.noresttherein.oldsql.schema.Buff.{BuffExtractor, BuffType, SpecificBuffType}
 import net.noresttherein.oldsql.schema.Buffs.{BuffsFactory, BuffsZipper, DeclaredBuffs, EmptyDeclaration, HierarchicalBuffs, Tag}
 import net.noresttherein.oldsql.schema.Mapping.MappingOf
 
@@ -126,6 +126,11 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 	  */
 	def apply[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Opt[B[T]]
 
+	/** Finds the first active buff of the type matching the extractor's
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffExtractor.owner owner]] which yields a value for this extractor.
+	  */
+	def apply[V[_]](extractor :BuffExtractor[V]) :Opt[V[T]]
+
 	/** Searches for all ''active'' buffs of the given type in this collection, by testing every element
 	  * in one declaration after another with [[net.noresttherein.oldsql.schema.Buff.BuffType.get buff.get]].
 	  * If a [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradicting]] buff is encountered,
@@ -139,6 +144,11 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 	  * the search is terminated at that point and only already found buffs are returned.
 	  */
 	def all[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Seq[B[T]]
+
+	/** Collects the values from all active buffs of type matching the extractor's
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffExtractor.owner owner]], omitting buffs which do not yield a value.
+	  */
+	def all[V[_]](extractor :BuffExtractor[V]) :Seq[V[T]]
 
 	/** Creates a new `Buffs` stack with this instance as result's
 	  * [[net.noresttherein.oldsql.schema.Buffs.inherited inherited]] property and the given buffs as its first
@@ -728,8 +738,10 @@ object Buffs extends ImplicitBuffsFactory {
 
 		override def apply(buff :BuffType) :Opt[Buff[T]] = Lack
 		override def apply[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Opt[B[T]] = Lack
+		override def apply[V[_]](extractor :BuffExtractor[V]) :Opt[V[T]] = Lack
 		override def all(buff :BuffType) :Seq[Buff[T]] = Nil
 		override def all[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Seq[B[T]] = Nil
+		override def all[V[_]](extractor :BuffExtractor[V]) :Seq[V[T]] = Nil
 
 		override def +:(buff :Buff[T]) :Buffs[T] = Buffs.single(tag, buff)
 		override def ++:(buffs :Iterable[Buff[T]]) :Buffs[T] = new BuffsFactory[T](tag).fromSpecific(buffs)
@@ -759,8 +771,10 @@ object Buffs extends ImplicitBuffsFactory {
 
 		override def apply(buff :BuffType) :Opt[Buff[T]] = buff.get(this.buff)
 		override def apply[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Opt[B[T]] = buff.unapply(this.buff)
+		override def apply[V[_]](extractor :BuffExtractor[V]) :Opt[V[T]] = buff.get(extractor)
 		override def all(buff :BuffType) :Seq[Buff[T]] = apply(buff).toSeq
 		override def all[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Seq[B[T]] = apply(buff).toSeq
+		override def all[V[_]](extractor :BuffExtractor[V]) :Seq[V[T]] = buff.get(extractor).toSeq
 
 		override def +:(buff :Buff[T]) :Buffs[T] = new HierarchicalBuffs[T](tag, {
 			val arr = new Array[Buff[T]](2)
@@ -801,8 +815,10 @@ object Buffs extends ImplicitBuffsFactory {
 
 		override def apply(buff :BuffType) = inherited(buff)
 		override def apply[B[X] <: Buff[X]](buff :SpecificBuffType[B]) = inherited(buff)
+		override def apply[V[_]](extractor :BuffExtractor[V]) :Opt[V[T]] = inherited(extractor)
 		override def all(buff :BuffType) :Seq[Buff[T]] = inherited.all(buff)
 		override def all[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Seq[B[T]] = inherited.all(buff)
+		override def all[V[_]](extractor :BuffExtractor[V]) :Seq[V[T]] = inherited.all(extractor)
 
 		override def +:(buff :Buff[T]) :Buffs[T] =
 			new HierarchicalBuffs[T](tag, { val a = new Array[Buff[T]](1); a(0) = buff; a }, inherited)
@@ -860,12 +876,28 @@ object Buffs extends ImplicitBuffsFactory {
 				val b = buffs(i)
 				if (b.buffType contradicts buff)
 					return Lack
-				val res = buff.unapply(buffs(i))
+				val res = buff.unapply(b)
 				if (res.isDefined)
 					return res
 				i += 1
 			}
 			if (buff.cascades) inherited.apply(buff)
+			else Lack
+		}
+
+		override def apply[V[_]](extractor :BuffExtractor[V]) :Opt[V[T]] = {
+			var i = 0; val len = buffs.length
+			val owner = extractor.owner
+			while (i < len) {
+				val b = buffs(i)
+				if (b.buffType contradicts owner)
+					return Lack
+				val res = b.get(extractor)
+				if (res.isDefined)
+					return res
+				i += 1
+			}
+			if (owner.cascades) inherited(extractor)
 			else Lack
 		}
 
@@ -891,11 +923,8 @@ object Buffs extends ImplicitBuffsFactory {
 			val res = ArraySeq.newBuilder[B[T]](classTag[Buff[T]].asInstanceOf[ClassTag[B[T]]])
 			val BuffT = buff //for pattern matching
 			while (i < len) {
-				val b = buffs(i)
-				if (b.buffType contradicts buff)
-					return res.result()
-				b match {
-					case _ if b.buffType contradicts buff =>
+				buffs(i) match {
+					case b if b.buffType contradicts buff =>
 						return res.result()
 					case BuffT(b) =>
 						res += b
@@ -907,6 +936,23 @@ object Buffs extends ImplicitBuffsFactory {
 			else res.result()
 		}
 
+		override def all[V[_]](extractor :BuffExtractor[V]) :Seq[V[T]] = {
+			var i = 0; val len = buffs.length
+			val owner = extractor.owner
+			val res = ArraySeq.untagged.newBuilder[V[T]]
+			while (i < len) {
+				val b = buffs(i)
+				if (b.buffType contradicts owner)
+					return res.result()
+				b.get(extractor) match {
+					case Got(v) => res += v
+					case _ =>
+				}
+				i += 1
+			}
+			if (owner.cascades) (res ++= inherited.all(extractor)).result()
+			else res.result()
+		}
 
 		override def +:(buff :Buff[T]) :Buffs[T] =
 			new HierarchicalBuffs[T](tag, {

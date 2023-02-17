@@ -441,11 +441,11 @@ object ColumnWriteForm {
 		}
 
 
-	/** A column form which always writes `null` values. */
+	/** A column form which always writes `null` values, declaring them as `JDBCType.NULL`. */
 	def nulls[T] :ColumnWriteForm[T] = ColumnForm.nulls
 
 	/** A column form which always writes `null` values. */
-	def nulls(columnType :JDBCType) :ColumnWriteForm[Any] = ColumnForm.nulls(columnType)
+	def nulls[T](columnType :JDBCType) :ColumnWriteForm[T] = ColumnForm.nulls(columnType)
 
 	/** A no-op form serving only as a padding between other forms, shifting their reading and writing starting indices.
 	  * Used primarily for the result type of JDBC [[java.sql.CallableStatement CallableStatement]].

@@ -21,7 +21,7 @@ import net.noresttherein.oldsql.sql.ast.CompoundSelectAs.{AnyCompoundSelectAsVis
 import net.noresttherein.oldsql.sql.ast.CompoundSelectColumn.{AnyCompoundSelectColumnVisitor, SpecificCompoundSelectColumnVisitor}
 import net.noresttherein.oldsql.sql.ast.CompoundSelectColumnAs.{AnyCompoundSelectColumnAsVisitor, SpecificCompoundSelectColumnAsVisitor}
 import net.noresttherein.oldsql.sql.ast.QuerySQL.{Rows, SingleQuerySQL}
-import net.noresttherein.oldsql.sql.mechanics.{QueryReform, Reform, SpelledSQL, SQLConversion, SQLScribe, SQLTransformation}
+import net.noresttherein.oldsql.sql.mechanics.{QueryReform, Reform, SpelledSQL, SQLAdaptation, SQLConversion, SQLScribe, SQLTransformation}
 import net.noresttherein.oldsql.sql.mechanics.Reform.{ArityValidator, PassCount}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 import net.noresttherein.oldsql.sql.Query.QueryReformingTemplate
@@ -57,7 +57,7 @@ trait CompoundSelectSQL[-F <: RowProduct, R]
 //			:QuerySQL[F, X] =
 //		CompoundSelectSQL(left, operator, right)
 
-	override def rowsTo[X](implicit conversion :SQLConversion[R, X]) :CompoundSelectSQL[F, X] =
+	override def rowsTo[X](implicit conversion :SQLAdaptation[R, X]) :CompoundSelectSQL[F, X] =
 		if (conversion.isIdentity) this.castFrom[CompoundSelectSQL[F, R], CompoundSelectSQL[F, X]]
 		else CompoundSelectSQL(left.rowsTo[X], operator, right.rowsTo[X])
 //
@@ -170,7 +170,7 @@ trait CompoundSelectSQL[-F <: RowProduct, R]
 		if (this eq other)
 			(leftResult(this), rightResult(other))
 		else if (passCount.firstTime)
-			passReform(other)(reform, passCount)
+			passReform[F1, S1, F2, S2, V2, EC2, U](other)(reform, passCount)
 		else {
 			//consider: if we had access to F2 here, we could just create a select other,
 			// and use the algorithm which reforms all select clauses at the same time.
@@ -472,7 +472,7 @@ trait CompoundSelectColumn[-F <: RowProduct, R]
 	override val right             :ColumnQuery[F, R]
 	override def constituents      :Seq[ColumnSingleQuery[F, R]] = left.constituents ++: right.constituents
 
-	override def rowsTo[X](implicit conversion :SQLConversion[R, X]) :CompoundSelectColumn[F, X] =
+	override def rowsTo[X](implicit conversion :SQLAdaptation[R, X]) :CompoundSelectColumn[F, X] =
 		if (conversion.isIdentity) this.asInstanceOf[CompoundSelectColumn[F, X]]
 		else CompoundSelectColumn(left.rowsTo[X], operator, right.rowsTo[X])
 //

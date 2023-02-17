@@ -199,7 +199,9 @@ trait AdaptedSQL[-F <: RowProduct, -S >: Grouped <: Single, X, Y]
 		if (passCount.firstTime)
 			passReform[F1, S1, F2, S2, V2, EC2, U](other)(reform, passCount)(leftResult, rightResult, spelling)
 		else
-			reform(value :SQLExpression[F1, S1, X], other)(adaptation andThen leftResult, rightResult, spelling)
+			reform[F1, S1, X, SQLExpression.from[F1]#rows[S1]#E, F2, S2, V2, EC2, U](
+				value :SQLExpression[F1, S1, X], other)(adaptation andThen leftResult, rightResult, spelling
+			)
 
 	protected override def columnCount(implicit spelling :SQLSpelling) :Int = spelling.columnCount(value)
 	protected override def split(implicit spelling :SQLSpelling) :Seq[ColumnSQL[F, S, _]] = spelling.split(value)
@@ -301,21 +303,28 @@ object AdaptedSQL {
 			case _ => Lack
 		}
 
-	trait AbstractAdaptedSQL[-F <: RowProduct, -S >: Grouped <: Single, X, Y] extends AdaptedSQL[F, S, X, Y] {
+	trait AbstractAdaptedSQL[-F <: RowProduct, -S >: Grouped <: Single, X, Y] extends AdaptedSQL[F, S, X, Y] { self =>
 		override def adaptation :SQLAdaptation[X, Y] = new DerivedAdaptation
 
 		protected class DerivedAdaptation extends ArbitraryAdaptation[X, Y] {
-			override def apply(value :X) :Y = convert(value)
+			override def apply(value :X) :Y = self.convert(value)
 
 			override def apply[F1 <: RowProduct, S1 >: Grouped <: Single, E[v] <: ConvertibleSQL[F1, S1, v, E]]
-			                  (expr :ConvertibleSQL[F1, S1, X, E]) :SQLExpression[F1, S1, Y] =
+			                  (expr :ConvertingTemplate[F1, S1, X, E]) :SQLExpression[F1, S1, Y] =
 				expr match {
+					case null => reapply(SQLNull[X]())
 					case column :ColumnSQL[F1, S1, X] => reapply(column)
-					case _ => reapply(expr)
+					case _ => reapply(expr.toConvertibleSQL)
 				}
+//			override def apply[F1 <: RowProduct, S1 >: Grouped <: Single, E[v] <: ConvertibleSQL[F1, S1, v, E]]
+//			                  (expr :ConvertibleSQL[F1, S1, X, E]) :SQLExpression[F1, S1, Y] =
+//				expr match {
+//					case column :ColumnSQL[F1, S1, X] => reapply(column)
+//					case _ => reapply(expr)
+//				}
 
-			override def apply[F1 <: RowProduct, S1 >: Grouped <: Single, E[v] <: ConvertibleSQL[F1, S1, v, E]]
-			                  (expr :ConvertibleColumn[F1, S1, X, E]) :ColumnSQL[F1, S1, Y] =
+			override def column[F1 <: RowProduct, S1 >: Grouped <: Single, E[v] <: ConvertibleSQL[F1, S1, v, E]]
+			                   (expr :ConvertibleColumn[F1, S1, X, E]) :ColumnSQL[F1, S1, Y] =
 				reapply(expr)
 
 			override def applyString(arg :String) :String = arg + "." + name
@@ -687,11 +696,11 @@ object ConvertedSQL {
 		                                       spelling :SQLSpelling)
 				:(leftResult.SQLResult[F1, S1, EC[U]], rightResult.SQLResult[F2, S2, EC2[U]]) =
 			if (this eq other)
-				(leftResult(this), rightResult(other))
+				(leftResult[F1, S1, EC](this), rightResult(other))
 			else if (passCount.firstTime)
-				super.reform(other)(reform, passCount)
+				passReform[F1, S1, F2, S2, V2, EC2, U](other)(reform, passCount)
 			else
-				reform(value, other)(adaptation andThen leftResult, rightResult, spelling)
+				reform[F1, S1, X, EC, F2, S2, V2, EC2, U](value, other)(adaptation andThen leftResult, rightResult, spelling)
 	}
 
 
