@@ -83,13 +83,13 @@ private[sql] trait PreprocessorReform extends Reform {
 //			case (_ :ComponentLValueSQL[_, _, _], _) => ???
 //			case (_, _ :ComponentLValueSQL[_, _, _]) => ???
 			case (_ :LabeledSQL[_, _, _], _ :LabeledSQL[_, _, _]) =>
-				super.apply[LF, LS, LV, LE, RF, RS, RV, RE, U](left, right)
+				super.apply(left, right)(leftResult, rightResult, spelling)
 			case (_ :InlineSQL[_, _, _] | _ :ChainSQL[_, _, _, _] | _ :SelectIdSQL[_, _, _],
 			      _ :InlineSQL[_, _, _] | _ :ChainSQL[_, _, _, _] | _ :SelectIdSQL[_, _, _]) =>
-				super.apply(left, right)
-			case (_ :AdaptedSQL[_, _, _, _], _) => super.apply[LF, LS, LV, LE, RF, RS, RV, RE, U](left, right)
-			case (_, _ :AdaptedSQL[_, _, _, _]) => super.apply[LF, LS, LV, LE, RF, RS, RV, RE, U](left, right)
-			case _ => fallback(left, right) //ColumnSQL, CompositeSQL, MappingSQL, SQLTerm, QuerySQL
+				super.apply[LF, LS, LV, LE, RF, RS, RV, RE, U](left, right)(leftResult, rightResult, spelling)
+			case (_ :AdaptedSQL[_, _, _, _], _) => super.apply(left, right)(leftResult, rightResult, spelling)
+			case (_, _ :AdaptedSQL[_, _, _, _]) => super.apply(left, right)(leftResult, rightResult, spelling)
+			case _ => fallback(left, right)(leftResult, rightResult, spelling) //ColumnSQL, CompositeSQL, MappingSQL, SQLTerm, QuerySQL
 		}
 
 /*
