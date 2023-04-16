@@ -12,8 +12,8 @@ import net.noresttherein.oldsql.sql.jdbc.PreparedStatementProxy
 /**
   * @author Marcin Mościcki
   */
-private[oldsql] class CachedUpdateCountStatement(statement: PreparedStatement)
-	extends PreparedStatementProxy(statement)
+private[oldsql] class CachedUpdateCountStatement(protected override val statement: PreparedStatement)
+	extends PreparedStatementProxy
 {
 	private[this] var count = Long.MinValue
 

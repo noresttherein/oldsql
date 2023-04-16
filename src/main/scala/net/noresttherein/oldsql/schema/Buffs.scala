@@ -4,13 +4,13 @@ import scala.annotation.tailrec
 import scala.collection.immutable.{ArraySeq, Iterable, LinearSeq}
 import scala.collection.{Factory, IterableFactory, IterableOps}
 import scala.collection.mutable.Builder
-import scala.reflect.ClassTag
+import scala.reflect.{classTag, ClassTag}
 
-import net.noresttherein.oldsql.collection.Opt
+import net.noresttherein.oldsql.collection.{Opt, PassedArray}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.exceptions.BuffMappingFailureException
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.Buff.{BuffType, TypedBuffType}
+import net.noresttherein.oldsql.schema.Buff.{BuffExtractor, BuffType, SpecificBuffType}
 import net.noresttherein.oldsql.schema.Buffs.{BuffsFactory, BuffsZipper, DeclaredBuffs, EmptyDeclaration, HierarchicalBuffs, Tag}
 import net.noresttherein.oldsql.schema.Mapping.MappingOf
 
@@ -23,14 +23,17 @@ import net.noresttherein.oldsql.schema.Mapping.MappingOf
   * It is a stack of individual declarations, where every declaration consists of a buff collection
   * [[net.noresttherein.oldsql.schema.Buffs.front front]] of any size. Aside from the buffs, each declaration
   * is associated with a unique [[net.noresttherein.oldsql.schema.Buffs.tag tag]], which represents the source/location
-  * of the declaration (that is, the mapping class). No information about the source itself is available and this tag
-  * is used only in comparisons do determine if two buff collections of different `Buffs` instances originate
+  * of the declaration (that is, the mapping object). No information about the source itself is available and this tag
+  * is used only in comparisons to determine if two buff collections of different `Buffs` instances originate
   * from the same original declaration. This is because all elements of this linked list following the first one,
   * starting with the [[net.noresttherein.oldsql.schema.Buffs.inherited inherited]] reference, and ending with
   * an empty `Buffs` instance, represent buff declarations made in some supercomponents of the component from which
   * came the first declaration. They are not however taken from those mappings directly, forming a tree of sorts,
   * but are adapted in order to change the buff type from `Buff[S]` of some composite type `S` to `Buff[T]`
   * of some its property `T`; other buffs may not be inherited at all, leading to otherwise untraceable changes.
+  * In an example use case, 'cancelling' a certain `Buff` on a component, cancels also buffs
+  * [[net.noresttherein.oldsql.schema.Buff.cascade derived]] from that buff on its subcomponents, but without
+  * affecting other buffs of the same type.
   *
   * When viewed as a single collection, all declarations are flattened into a single sequence. Individual buff
   * collections are not declared as sequences in order to potentially allow optimisations or variance in behaviour
@@ -74,7 +77,7 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 	  * applying changes to this instance at its current position (declaration).
 	  */
 	def zipper :BuffsZipper[T] = new BuffsZipper(this)
-
+	//todo: replace all 'cascade' with 'derive'
 	/** A value unique to this declaration, preserved by the transformation and cascading processes and identifying
 	  * the originating mapping for future comparison with other `Buffs` instances. It is often the `Mapping` instance
 	  * which declared this buff collection; note that [[net.noresttherein.oldsql.schema.Buffs.inherited inherited]]
@@ -93,29 +96,63 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 	  * same between different runs and preserved by transformation methods. The type of the collection used
 	  * may vary, with [[net.noresttherein.oldsql.collection.Unique Unique]]
 	  * and [[java.util.LinkedHashSet LinkedHashSet]] being possible alternatives to [[Seq]] types.
-	  */ //todo: rename to top
+	  */ //todo: rename to top/local
 	def front :Iterable[Buff[T]]
 
 	/** A view of this instance as its [[net.noresttherein.oldsql.schema.Buffs.front front]] collection of buffs,
 	  * but which produces other `Buffs[T]` instances by transplanting unmodified
 	  * [[net.noresttherein.oldsql.schema.Buffs.inherited inherited]] suffixes to the result of any collection
-	  * transformation method.
+	  * transformation method. Thus, performing any collection method returning another `Buffs[T]` instance
+	  * is applied only to a subset of buffs.
 	  */
 	@inline final def declared :DeclaredBuffs[T] = new DeclaredBuffs[T](this)
+
+	/** Filters out buffs [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts canceled]] by preceding buffs.
+	  * The result has the same structure (declarations with tags) as this one, and is equivalent from the point
+	  * of view of checking if it contains an [[net.noresttherein.oldsql.schema.Buff.BuffType.active active]] `Buff`
+	  * of a given [[net.noresttherein.oldsql.schema.Buff.BuffType BuffType]].
+	  */
+	def active :Buffs[T] = filter(_.buffType.active(this))
 
 	/** Searches for a buff of the given type in this collection, by testing every element in one declaration after
 	  * another until either [[net.noresttherein.oldsql.schema.Buff.BuffType.get buff.get]] method matches a buff,
 	  * or a [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradicting]] buff is encountered,
 	  * in which case the search is aborted.
+	  * @see [[net.noresttherein.oldsql.schema.Buffs.all(BuffType)*]]
 	  */
 	def apply(buff :BuffType) :Opt[Buff[T]]
 
 	/** Searches for a buff of the given type in this collection, by testing every element in one declaration after
-	  * another until either [[net.noresttherein.oldsql.schema.Buff.TypedBuffType.unapply buff.unapply]] method matches a buff,
-	  * or a [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradicting]] buff is encountered,
+	  * another until either [[net.noresttherein.oldsql.schema.Buff.SpecificBuffType.unapply buff.unapply]] method matches
+	  * a buff, or a [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradicting]] buff is encountered,
 	  * in which case the search is aborted.
+	  * @see [[net.noresttherein.oldsql.schema.Buffs.all[B[* ]]
 	  */
-	def apply[B[X] <: Buff[X]](buff :TypedBuffType[B]) :Opt[B[T]]
+	def apply[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Opt[B[T]]
+
+	/** Finds the first active buff of the type matching the extractor's
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffExtractor.owner owner]] which yields a value for this extractor.
+	  */
+	def apply[V[_]](extractor :BuffExtractor[V]) :Opt[V[T]]
+
+	/** Searches for all ''active'' buffs of the given type in this collection, by testing every element
+	  * in one declaration after another with [[net.noresttherein.oldsql.schema.Buff.BuffType.get buff.get]].
+	  * If a [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradicting]] buff is encountered,
+	  * the search is terminated at that point and only already found buffs are returned.
+	  */
+	def all(buff :BuffType) :Seq[Buff[T]]
+
+	/** Searches for all ''active'' buffs of the given type in this collection, by testing every element
+	  * in one declaration after another with [[net.noresttherein.oldsql.schema.Buff.SpecificBuffType.unapply buff.unapply]].
+	  * If a [[net.noresttherein.oldsql.schema.Buff.BuffType.contradicts contradicting]] buff is encountered,
+	  * the search is terminated at that point and only already found buffs are returned.
+	  */
+	def all[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Seq[B[T]]
+
+	/** Collects the values from all active buffs of type matching the extractor's
+	  * [[net.noresttherein.oldsql.schema.Buff.BuffExtractor.owner owner]], omitting buffs which do not yield a value.
+	  */
+	def all[V[_]](extractor :BuffExtractor[V]) :Seq[V[T]]
 
 	/** Creates a new `Buffs` stack with this instance as result's
 	  * [[net.noresttherein.oldsql.schema.Buffs.inherited inherited]] property and the given buffs as its first
@@ -258,7 +295,7 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 	  * as the result will be elided, but all mapped buffs remain in the same order and
 	  * the [[net.noresttherein.oldsql.schema.Buffs.tag tags]] those declarations which remain are preserved.
 	  * @return `flatMap(_.cascade(f))`.
-	  */
+	  */ //todo: rename to derive
 	def cascade[S](f :T => S) :Buffs[S] = flatMap(_.cascade(f))
 
 	/** Adapts the buffs of this collection to subject type `S` derivable from `T` with a function obtained from
@@ -350,12 +387,12 @@ trait Buffs[T] extends Iterable[Buff[T]] with IterableOps[Buff[T], Iterable, Buf
 
 
 /** Base class only used to bring the implicit conversion
-  * [[net.noresttherein.oldsql.schema.ImplicitBuffs.toBuffFactory toBuffFactory]] to scope for
+  * [[net.noresttherein.oldsql.schema.ImplicitBuffsFactory.toBuffFactory toBuffFactory]] to scope for
   * the [[net.noresttherein.oldsql.schema.Buffs$ Buffs]] companion object.
   */
-sealed abstract class ImplicitBuffs
+sealed abstract class ImplicitBuffsFactory
 
-object ImplicitBuffs {
+object ImplicitBuffsFactory {
 	/** Converts the [[net.noresttherein.oldsql.schema.Buffs$ Buffs]] companion object to a [[Factory]]
 	  * for `Buffs` of any type parameter. This allows its use with [[Iterable.to to]] method of standard collections,
 	  * as long as the element type is `Buffs[T]`:
@@ -368,7 +405,7 @@ object ImplicitBuffs {
 
 
 
-object Buffs extends ImplicitBuffs {
+object Buffs extends ImplicitBuffsFactory {
 
 	def apply[T](source :Tag, buffs :Buff[T]*) :Buffs[T] =
 		if (buffs.isEmpty) new EmptyBuffs(source)
@@ -421,7 +458,7 @@ object Buffs extends ImplicitBuffs {
 
 
 	/** A tag attached to every declaration in [[net.noresttherein.oldsql.schema.Buffs Buffs]] in order to allow
-	  * its identification. It represents the source of declaration and t is often wrapping
+	  * its identification. It represents the source of declaration and it is often wrapping
 	  * the [[net.noresttherein.oldsql.schema.Mapping mapping]] where the buffs were declared, although if
 	  * not specified when creating a `Buffs` instance, a new, unique `Tag` will be created for this purpose.
 	  * The tag given as [[net.noresttherein.oldsql.schema.Buffs.tag tag]] property of `Buffs` is preserved
@@ -432,9 +469,9 @@ object Buffs extends ImplicitBuffs {
 	  * or the first enclosing `Mapping` with non-empty [[net.noresttherein.oldsql.schema.Buffs.declared declared]]
 	  * buff list, as its [[net.noresttherein.oldsql.schema.Buffs.inherited inherited]] buffs.
 	  *
-	  * Tags are serializable, but just as with mappings, they do not preserve equality after deserialization
-	  */
-	class Tag extends Serializable {
+	  * Tags are serializable, but just as with mappings, they do not preserve equality after deserialization.
+	  */ //consider a more unique name
+	sealed class Tag extends Serializable {
 		def source :Option[Mapping] = None
 		override def toString :String = "@" + System.identityHashCode(this)
 	}
@@ -473,16 +510,20 @@ object Buffs extends ImplicitBuffs {
 
 
 
-	/** A view of the top/first declaration of a [[net.noresttherein.oldsql.schema.Buffs Buffs]] collection.
+	/** A view on the top/first declaration of a [[net.noresttherein.oldsql.schema.Buffs Buffs]] collection.
 	  * All collection methods operate only on the [[net.noresttherein.oldsql.schema.Buffs.front front]] property:
 	  * methods returning a standard collection, searching for items, etc, are limited to the buffs in that declaration.
-	  * While this class is [[IterableOnce]], the specific collection type of extended [[IterableOps]] is `Buffs[T]`.
-	  * All non-conversion methods return `Buffs[T]` instead of `DeclaredBuffs[T]`, simply stacking all processed buffs
-	  * on the inherited suffix `Buffs`, which remains unchanged, as is
-	  * the [[net.noresttherein.oldsql.schema.Buffs.DeclaredBuffs.source source]] of this declaration (and in returned
-	  * `Buffs`). This class is only a light syntactic wrapper over `Buffs`, intended to make the operations on
-	  * its first declaration easier, and not as a stand alone collection. Using it in that aspect (i.e. through
-	  * polymorphism of `IterableOnce` interface) may lead to inconsistencies or surprising results due to this duality.
+	  * The `Buffs[T]` instances they produce however retain the unmodified
+	  * [[net.noresttherein.oldsql.schema.Buffs.inherited inherited]] buffs of this instance: the result of any method
+	  * is the wrapped buffs stack `all`, with its top (`front`) declaration transformed by applying to it
+	  * said operation.
+	  *
+	  * While this class is formally [[IterableOnce]], the specific collection type of extended [[IterableOps]]
+	  * is `Buffs[T]`, not `DeclaredBuffs[T]`. It is designed as a light syntactic wrapper over `Buffs`,
+	  * intended to make the operations on its top declaration easier, and not for polymorphic use
+	  * as a stand alone collection. Using it as any other collection may lead to surprising results due to this duality:
+	  * essentially methods like `map` and `filter` may very well result in returning a collection of a larger
+	  * (reported) size than this one.
 	  */
 	class DeclaredBuffs[T](val all :Buffs[T])
 		extends AnyVal with IterableOnce[Buff[T]] with IterableOps[Buff[T], Iterable, Buffs[T]] with Serializable
@@ -491,7 +532,7 @@ object Buffs extends ImplicitBuffs {
 
 		@inline def source :Tag = all.tag
 		def apply(buff :BuffType) :Opt[Buff[T]] = buff.get(front)
-		def apply[B[X] <: Buff[X]](buff :TypedBuffType[B]) :Opt[B[T]] = buff.unapply(front)
+		def apply[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Opt[B[T]] = buff.unapply(front)
 
 		@inline private def reset(buffs :scala.Iterable[Buff[T]]) :Buffs[T] = all.reset(buffs.toSeq :_*)
 
@@ -556,7 +597,7 @@ object Buffs extends ImplicitBuffs {
 	  */
 	final class BuffsZipper[T] private (private val prefix :Opt[BuffsZipper[T]], val stack :Buffs[T])
 		extends Serializable
-	{
+	{ //todo swap method names as we change the logical order of the collection
 		def this(buffs :Buffs[T]) = this(Lack, buffs)
 
 		/** Is the underlying `Buffs` instance empty? */
@@ -573,7 +614,7 @@ object Buffs extends ImplicitBuffs {
 		def source :Tag = stack.tag
 
 		/** Buffs from the current declaration. */
-		def top :Iterable[Buff[T]] = stack.front
+		def top :Iterable[Buff[T]] = stack.front //todo: rename current
 
 		/** The underlying `Buff` collection, with all changes applied. */
 		def buffs :Buffs[T] = |<<.stack
@@ -663,6 +704,34 @@ object Buffs extends ImplicitBuffs {
 		/** Replaces the whole suffix (all declarations starting from the current one to the outermost one).
 		  * After the operation `stack` will equal `buffs`, while the prefix remains unchanged. */
 		def replace(buffs :Buffs[T]) :BuffsZipper[T] = new BuffsZipper(prefix, buffs)
+
+		/** A zipper over `Buffs` in which the buffs of the current
+		  * ([[net.noresttherein.oldsql.schema.Buffs.BuffsZipper.top top]]) declaration (and only those) are mapped
+		  * with the given function. The [[net.noresttherein.oldsql.schema.Buffs.tag tag]] of the declaration
+		  * is preserved. The zipper will point at the same (transformed) declaration as this one.
+		  * @return `this.`[[net.noresttherein.oldsql.schema.Buffs.BuffsZipper.replace replace]]`(this.`[[net.noresttherein.oldsql.schema.Buffs.BuffsZipper.stack stack]]`.`[[net.noresttherein.oldsql.schema.Buffs.declared declared]]`.`[[net.noresttherein.oldsql.schema.Buffs.DeclaredBuffs.map map]]`(f))`.
+		  */
+		def map(f :Buff[T] => Buff[T]) :BuffsZipper[T] =
+			new BuffsZipper(prefix, stack.declared.map(f))
+
+		/** A zipper over `Buffs` in which the buffs of the current
+		  * ([[net.noresttherein.oldsql.schema.Buffs.BuffsZipper.top top]]) declaration (and only those) are flat mapped
+		  * with the given function. The [[net.noresttherein.oldsql.schema.Buffs.tag tag]] of the declaration
+		  * is preserved. The zipper will point at the same (transformed) declaration as this one.
+		  * @return `this.`[[net.noresttherein.oldsql.schema.Buffs.BuffsZipper.replace replace]]`(this.`[[net.noresttherein.oldsql.schema.Buffs.BuffsZipper.stack stack]]`.`[[net.noresttherein.oldsql.schema.Buffs.declared declared]]`.`[[net.noresttherein.oldsql.schema.Buffs.DeclaredBuffs.flatMap flatMap]]`(f))`.
+		  */
+		def flatMap(f :Buff[T] => IterableOnce[Buff[T]]) :BuffsZipper[T] =
+			new BuffsZipper(prefix, stack.declared.flatMap(f))
+
+		/** A zipper over `Buffs` in which the buffs of the current
+		  * ([[net.noresttherein.oldsql.schema.Buffs.BuffsZipper.top top]]) declaration (and only those) are filtered
+		  * with the given function. The [[net.noresttherein.oldsql.schema.Buffs.tag tag]] of the declaration
+		  * is preserved. The zipper will point at the same (transformed) declaration as this one.
+		  * @return `this.`[[net.noresttherein.oldsql.schema.Buffs.BuffsZipper.replace replace]]`(this.`[[net.noresttherein.oldsql.schema.Buffs.BuffsZipper.stack stack]]`.`[[net.noresttherein.oldsql.schema.Buffs.declared declared]]`.`[[net.noresttherein.oldsql.schema.Buffs.DeclaredBuffs.filter filter]]`(f))`.
+		  */
+		def filter(f :Buff[T] => Boolean) :BuffsZipper[T] =
+			new BuffsZipper(prefix, stack.declared.filter(f))
+
 	}
 
 
@@ -672,7 +741,11 @@ object Buffs extends ImplicitBuffs {
 		override def inherited :Buffs[T] = this
 
 		override def apply(buff :BuffType) :Opt[Buff[T]] = Lack
-		override def apply[B[X] <: Buff[X]](buff :TypedBuffType[B]) :Opt[B[T]] = Lack
+		override def apply[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Opt[B[T]] = Lack
+		override def apply[V[_]](extractor :BuffExtractor[V]) :Opt[V[T]] = Lack
+		override def all(buff :BuffType) :Seq[Buff[T]] = Nil
+		override def all[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Seq[B[T]] = Nil
+		override def all[V[_]](extractor :BuffExtractor[V]) :Seq[V[T]] = Nil
 
 		override def +:(buff :Buff[T]) :Buffs[T] = Buffs.single(tag, buff)
 		override def ++:(buffs :Iterable[Buff[T]]) :Buffs[T] = new BuffsFactory[T](tag).fromSpecific(buffs)
@@ -701,7 +774,11 @@ object Buffs extends ImplicitBuffs {
 		override def inherited = Buffs.empty
 
 		override def apply(buff :BuffType) :Opt[Buff[T]] = buff.get(this.buff)
-		override def apply[B[X] <: Buff[X]](buff :TypedBuffType[B]) = buff.unapply(this.buff)
+		override def apply[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Opt[B[T]] = buff.unapply(this.buff)
+		override def apply[V[_]](extractor :BuffExtractor[V]) :Opt[V[T]] = buff.get(extractor)
+		override def all(buff :BuffType) :Seq[Buff[T]] = apply(buff).toSeq
+		override def all[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Seq[B[T]] = apply(buff).toSeq
+		override def all[V[_]](extractor :BuffExtractor[V]) :Seq[V[T]] = buff.get(extractor).toSeq
 
 		override def +:(buff :Buff[T]) :Buffs[T] = new HierarchicalBuffs[T](tag, {
 			val arr = new Array[Buff[T]](2)
@@ -725,7 +802,7 @@ object Buffs extends ImplicitBuffs {
 		override def foreach[U](f :Buff[T] => U) :Unit = f(buff)
 
 		protected override def filterMatching(f :Buff[T] => Boolean, value :Boolean) :Buffs[T] =
-			if (f(buff) == value) this else empty
+			if (f(buff) == value) this else this.empty
 
 		override def map[S](f :Buff[T] => Buff[S]) = new BuffsSingleton(tag, f(buff))
 		override def flatMap[S](f :Buff[T] => IterableOnce[Buff[S]]) = factory[S](tag).fromSpecific(f(buff))
@@ -740,9 +817,12 @@ object Buffs extends ImplicitBuffs {
 	private class EmptyDeclaration[T](override val tag :Tag, override val inherited :Buffs[T]) extends Buffs[T] {
 		override def front :Iterable[Nothing] = Nil
 
-		override def apply(buff :BuffType) = inherited.apply(buff)
-		override def apply[B[X] <: Buff[X]](buff :TypedBuffType[B]) = inherited.apply(buff)
-
+		override def apply(buff :BuffType) = inherited(buff)
+		override def apply[B[X] <: Buff[X]](buff :SpecificBuffType[B]) = inherited(buff)
+		override def apply[V[_]](extractor :BuffExtractor[V]) :Opt[V[T]] = inherited(extractor)
+		override def all(buff :BuffType) :Seq[Buff[T]] = inherited.all(buff)
+		override def all[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Seq[B[T]] = inherited.all(buff)
+		override def all[V[_]](extractor :BuffExtractor[V]) :Seq[V[T]] = inherited.all(extractor)
 
 		override def +:(buff :Buff[T]) :Buffs[T] =
 			new HierarchicalBuffs[T](tag, { val a = new Array[Buff[T]](1); a(0) = buff; a }, inherited)
@@ -794,13 +874,13 @@ object Buffs extends ImplicitBuffs {
 			else Lack
 		}
 
-		override def apply[B[X] <: Buff[X]](buff :TypedBuffType[B]) :Opt[B[T]] = {
+		override def apply[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Opt[B[T]] = {
 			var i = 0; val len = buffs.length
 			while (i < len) {
 				val b = buffs(i)
 				if (b.buffType contradicts buff)
 					return Lack
-				val res = buff.unapply(buffs(i))
+				val res = buff.unapply(b)
 				if (res.isDefined)
 					return res
 				i += 1
@@ -809,6 +889,74 @@ object Buffs extends ImplicitBuffs {
 			else Lack
 		}
 
+		override def apply[V[_]](extractor :BuffExtractor[V]) :Opt[V[T]] = {
+			var i = 0; val len = buffs.length
+			val owner = extractor.owner
+			while (i < len) {
+				val b = buffs(i)
+				if (b.buffType contradicts owner)
+					return Lack
+				val res = b.get(extractor)
+				if (res.isDefined)
+					return res
+				i += 1
+			}
+			if (owner.cascades) inherited(extractor)
+			else Lack
+		}
+
+		override def all(buff :BuffType) :Seq[Buff[T]] = {
+			var i = 0; val len = buffs.length
+			val res = ArraySeq.newBuilder[Buff[T]]
+			while (i < len) {
+				val b = buffs(i)
+				if (b.buffType contradicts buff)
+					return res.result()
+				buff.get(b) match {
+					case Got(found) => res += found
+					case _ =>
+				}
+				i += 1
+			} //todo: this is O(n^n), but when we reverse the buff order in the collection, will be O(n)
+			if (buff.cascades) (res ++= inherited.all(buff)).result()
+			else res.result()
+		}
+
+		override def all[B[X] <: Buff[X]](buff :SpecificBuffType[B]) :Seq[B[T]] = {
+			var i = 0; val len = buffs.length
+			val res = ArraySeq.newBuilder[B[T]](classTag[Buff[T]].asInstanceOf[ClassTag[B[T]]])
+			val BuffT = buff //for pattern matching
+			while (i < len) {
+				buffs(i) match {
+					case b if b.buffType contradicts buff =>
+						return res.result()
+					case BuffT(b) =>
+						res += b
+					case _ =>
+				}
+				i += 1
+			}
+			if (buff.cascades) (res ++= inherited.all(buff)).result()
+			else res.result()
+		}
+
+		override def all[V[_]](extractor :BuffExtractor[V]) :Seq[V[T]] = {
+			var i = 0; val len = buffs.length
+			val owner = extractor.owner
+			val res = ArraySeq.untagged.newBuilder[V[T]]
+			while (i < len) {
+				val b = buffs(i)
+				if (b.buffType contradicts owner)
+					return res.result()
+				b.get(extractor) match {
+					case Got(v) => res += v
+					case _ =>
+				}
+				i += 1
+			}
+			if (owner.cascades) (res ++= inherited.all(extractor)).result()
+			else res.result()
+		}
 
 		override def +:(buff :Buff[T]) :Buffs[T] =
 			new HierarchicalBuffs[T](tag, {

@@ -1,45 +1,49 @@
 package net.noresttherein.oldsql.schema.support
 
-import scala.annotation.nowarn
+import java.lang.invoke.VarHandle.releaseFence
+
 import scala.collection.mutable
 
-import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql
+import net.noresttherein.oldsql.OperationView.WriteOperationView
 import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.morsels.generic.=#>
-import net.noresttherein.oldsql.schema.{filterColumnExtracts, Buffs, ColumnExtract, ColumnForm, ColumnMapping, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.ColumnMapping.StableColumn
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, RefinedMapping}
+import net.noresttherein.oldsql.morsels.generic.=>:
+import net.noresttherein.oldsql.schema.{filterColumnExtracts, Buffs, ColumnExtract, ColumnForm, ColumnMapping, SpecificExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.ColumnMapping.{StableColumn, TypedColumn}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, MappingTemplate, TypedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bases.{ExportMapping, StableMapping}
 import net.noresttherein.oldsql.schema.support.DelegateMapping.{ShallowDelegate, WrapperDelegate}
-import net.noresttherein.oldsql.{DeprecatedAlways, SharedImplDeprecation}
 
+//implicits:
+import net.noresttherein.oldsql.slang._
 
 
 
 
 
 /** A `DelegateMapping` subtype which preserves the subject type of the adapted mapping.
-  * Proxy classes can be divided into two broad groups: 'shallow' proxies, which use the components of the adapted mapping
-  * as their own, without changes, and 'deep' proxies, which create an adapter for some or all components of `backer`.
-  * The first group is generally restricted to adapters which do not change the effective buffs, at least those
-  * used during assembly, so that there are no changes in their cascading. These classes derive from
-  * either [[net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy ShallowProxy]] (treating `backer`
-  * as its own ''export'' version) and [[net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy ExportProxy]]
+  * Proxy classes can be divided into two broad groups: ''shallow'' proxies, which use the components
+  * of the adapted mapping as their own, without changes, and 'deep' proxies, which create an adapter for some
+  * or all components of `backer`. The first group is generally restricted to adapters which do not change
+  * the effective buffs, at least those used during assembly, so that there are no changes in their cascading.
+  * These classes derive from either [[net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy ShallowProxy]]
+  * (treating `backer` as its own ''export'' version)
+  * and [[net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy ExportProxy]]
   * (treating itself as the ''export'' version of `backer`). The second group, for the most part,
   * is derived from [[net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy DeepProxy]].
   * @see [[net.noresttherein.oldsql.schema.support.DelegateMapping]]
+  * @see [[net.noresttherein.oldsql.schema.support.MappingDecorator]]
   */
 trait MappingProxy[S, O] extends DelegateMapping[MappingOf[S], S, O] {
-
+//	protected override val backer :MappingOf[S] //to grant access
 	override def nullValue :NullValue[S] = backer.nullValue
 
 	override def buffs :Buffs[S] = backer.buffs
-
 }
 
 
@@ -53,25 +57,34 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * the `backer` mapping as just another component, being its own ''export'' version. For efficiency,
 	  * it is excluded from all component and column list, but subclasses are free to change this. It is however
 	  * still included among the `extracts`, mapped to itself, and a value preset for it in
-	  * [[net.noresttherein.oldsql.schema.Mapping.Pieces Pieces]] will be picked up as the value for this mapping
+	  * [[net.noresttherein.oldsql.schema.Mapping.Pieces Pieces]] will be returned by this mapping
 	  * (assuming there is none preset for this mapping). Select/assembly related buffs on the adapted mapping
 	  * are ignored by bypassing its [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] method.
 	  * However, unless overriden, the buffs on this instance are exactly the buffs of the adapted mapping.
-	  * As the result, the buffs are processed exactly once for the assembled value.
+	  * As the result, the buffs are processed exactly once for the assembled value, albeit in a default manner,
+	  * ignoring potentially overriden implementation of `optionally` in the adapted mapping.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy]]
+	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy]]
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.WrapperProxy]]
 	  */
 	trait ShallowProxy[S, O]
-		extends MappingProxy[S, O] with ShallowDelegate[S, O] with DelegateMapping[RefinedMapping[S, O], S, O]
+		extends MappingProxy[S, O] with ShallowDelegate[S, O] with DelegateMapping[TypedMapping[S, O], S, O]
 	{
+		protected override val backer :TypedMapping[S, O] //only to grant access to other.bqcker
+
 		override def assemble(pieces :Pieces) :Opt[S] = {
 			val res = pieces.preset(backer)
 			if (res.isDefined) res else backer.assemble(pieces)
 		}
 
+		override def extracts :NaturalMap[Component, Extract] =
+			backer.extracts.updated[Extract, S](backer, backer(backer))
+
+		override def columnExtracts :NaturalMap[Column, ColumnExtract] = backer.columnExtracts
+
 		override def apply[T](component :Component[T]) :Extract[T] =
-			(if ((component eq backer) | (component eq this))
-				 MappingExtract.ident(backer)
+			(if (component eq this)
+				 MappingExtract.ident(this)
 			 else
 				 backer(component)
 			).asInstanceOf[Extract[T]]
@@ -83,18 +96,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 				 backer(column)
 			).asInstanceOf[ColumnExtract[T]]
 
-		
-		override def extracts :NaturalMap[Component, Extract] =
-			backer.extracts.updated[Extract, S](backer, MappingExtract.ident(backer))
-
-		override def columnExtracts :NaturalMap[Column, ColumnExtract] = backer match {
-			case column :ColumnMapping[S @unchecked, O @unchecked] =>
-				//consider: what if backer has subcolumns?
-				NaturalMap.single[Column, ColumnExtract, S](column, ColumnExtract.ident(column))
-			case _ =>
-				backer.columnExtracts
-		}
-
+		override def original :Component[S] = backer.original
 
 		override def toString :String = "->" + backer
 	}
@@ -127,7 +129,16 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * The difference between this proxy and
 	  * [[net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy ExportProxy]] is that the latter is
 	  * the ''export'' version of the proxied `backer`. This proxy ''cannot'' be the export version of `backer`,
-	  * or infinite recursion will occur.
+	  * or infinite recursion will occur. It is more similar to a sister shallow proxy type
+	  * [[net.noresttherein.oldsql.schema.support.MappingProxy.WrapperProxy WrapperProxy]], with the same assembly
+	  * process, but for three differences:
+	  *   1. The direct components of this mapping are the direct components of `backer`, where the latter
+	  *      contains `backer` as its only component;
+	  *   1. The subcomponents of this proxy do not include `backer`;
+	  *   1. Lack of buffs in this instance allows overriding more `Mapping` methods by delegating them
+	  *      directly to `backer`, where `WrapperProxy`, allowing subclasses to define buffs, relies on
+	  *      the default implementations of [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]]
+	  *      and other methods.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy]]
 	  */
 	trait DirectProxy[S, O] extends ShallowProxy[S, O] {
@@ -143,14 +154,14 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		final override def buffs :Buffs[S] = Buffs.empty
 
 
-		override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] =
+		override def writtenValues[T](op :WriteOperationView, subject :S) :ComponentValues[S, O] =
 			backer.writtenValues(op, subject)
 
 		override def filterValues(subject :S) :ComponentValues[S, O] = backer.filterValues(subject)
 		override def insertValues(subject :S) :ComponentValues[S, O] = backer.insertValues(subject)
 		override def updateValues(subject :S) :ComponentValues[S, O] = backer.updateValues(subject)
 
-		override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+		override def writtenValues[T](op :WriteOperationView, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 			backer.writtenValues(op, subject, collector)
 
 		override def filterValues[T](subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
@@ -163,27 +174,13 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 			backer.updateValues(subject, collector)
 
 
+
 		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
 			if (components.contains(backer))
 				backer.selectForm(backer.selectedByDefault :++ components.view.filter(_ != backer))
 			else backer.selectForm(components)
 
-		override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-			if (components.contains(backer))
-				backer.filterForm(backer.filteredByDefault :++ components.view.filter(_ != backer))
-			else backer.filterForm(components)
-
-		override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-			if (components.contains(backer))
-				backer.insertForm(backer.insertedByDefault :++ components.view.filter(_ != backer))
-			else backer.insertForm(components)
-
-		override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] =
-			if (components.contains(backer))
-				backer.updateForm(backer.updatedByDefault :++ components.view.filter(_ != backer))
-			else backer.updateForm(components)
-
-		override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
+		protected override def newWriteForm(op :WriteOperationView, components :Unique[Component[_]]) :SQLWriteForm[S] =
 			if (components.contains(backer))
 				backer.writeForm(op, op.defaultColumns(backer) :++ components.view.filter(_ != backer))
 			else backer.writeForm(op, components)
@@ -192,8 +189,11 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		override def filterForm :SQLWriteForm[S] = backer.filterForm
 		override def insertForm :SQLWriteForm[S] = backer.insertForm
 		override def updateForm :SQLWriteForm[S] = backer.updateForm
-		override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = backer.writeForm(op)
+		override def writeForm(op :WriteOperationView) :SQLWriteForm[S] = backer.writeForm(op)
+		protected override def newWriteForm(op :WriteOperationView) :SQLWriteForm[S] = backer.writeForm(op)
 
+		override def uniIsomorphic(that :Mapping) :Boolean = backer isomorphic that
+		override def uniHomomorphic(that :Mapping) :Boolean = backer homomorphic that
 	}
 
 
@@ -209,9 +209,25 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy]]
 	  */
 	trait ExportProxy[S, O]
-		extends MappingProxy[S, O] with ShallowDelegate[S, O] with DelegateMapping[RefinedMapping[S, O], S, O]
+		extends MappingProxy[S, O] with ShallowDelegate[S, O] with DelegateMapping[TypedMapping[S, O], S, O]
 	{
 		override def assemble(pieces :Pieces) :Opt[S] = backer.assemble(pieces)
+
+		override def extracts :NaturalMap[Component, Extract] =
+			backer.extracts.updated[Extract, S](backer, MappingExtract.ident(this))
+
+		override def columnExtracts :NaturalMap[Column, ColumnExtract] = backer.columnExtracts
+
+		override def original :TypedMapping[S, O] = backer.original
+
+		override def apply[T](component :Component[T]) :Extract[T] =
+			(if (component eq backer)
+				MappingExtract.ident(this)
+			else
+				backer(component)
+			).asInstanceOf[Extract[T]]
+
+		override def apply[T](column :Column[T]) :ColumnExtract[T] = backer(column)
 
 		override def export[T](component :Component[T]) :Component[T] =
 			if ((component eq backer) | (component eq this)) this.asInstanceOf[Component[T]]
@@ -225,23 +241,10 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 			if (component eq this) backer.asInstanceOf[Component[X]]
 			else component
 
-		override def apply[T](component :Component[T]) :Extract[T] =
-			(if (component eq backer)
-				MappingExtract.ident(this)
-			else
-				backer(component)
-			).asInstanceOf[Extract[T]]
+		override def uniIsomorphic(that :Mapping) :Boolean = backer isomorphic that
+		override def uniHomomorphic(that :Mapping) :Boolean = backer homomorphic that
 
-		override def apply[T](column :Column[T]) :ColumnExtract[T] = backer(column)
-
-
-		override def extracts :NaturalMap[Component, Extract] =
-			backer.extracts.updated[Extract, S](backer, MappingExtract.ident(this))
-
-		override def columnExtracts :NaturalMap[Column, ColumnExtract] = backer.columnExtracts
-
-
-		override def toString = "->"
+		override def toString :String = "^" + backer + "^"
 	}
 
 
@@ -250,7 +253,9 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * As far as the assembly process is concerned, it is similar
 	  * to [[net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy DirectProxy]], returning
 	  * the value of `backer` from `assemble` as if it was a component of this mapping. This means that it
-	  * must be a component of a larger mapping containing this mapping. Other methods however are inherited
+	  * must be a (unique) component of a larger mapping containing this mapping, or a `NoSuchElementException`
+	  * will be thrown during assembly from [[net.noresttherein.oldsql.haul.ComponentValues ComponentValues]].
+	  * Other methods however are inherited
 	  * from [[net.noresttherein.oldsql.schema.support.EffectivelyEmptyMapping EffectivelyEmptyMapping]], treating
 	  * this proxy as if it didn't have a value or any components.
 	  *
@@ -259,7 +264,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * @see [[net.noresttherein.oldsql.schema.bits.SymlinkMapping]]
 	  */
 	trait EmptyProxy[S, O]
-		extends MappingProxy[S, O] with DelegateMapping[RefinedMapping[S, O], S, O] with EffectivelyEmptyMapping[S, O]
+		extends MappingProxy[S, O] with DelegateMapping[TypedMapping[S, O], S, O] with EffectivelyEmptyMapping[S, O]
 	{
 		override def optionally(pieces :Pieces) :Opt[S] = pieces.assemble(this)
 		override def assemble(pieces :Pieces) :Opt[S] = pieces.get(backer) //infinite recursion potential!
@@ -280,14 +285,23 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 
 
 
-	@deprecated(SharedImplDeprecation, DeprecatedAlways)
-	abstract class AbstractDeepProxy[S, O] private[MappingProxy]
-	                                (protected override val backer :MappingOf[S],
-		                            /** Temporary (non-field) constructor parameter which becomes `extracts` property
-		                              * in the mapping process. *///both start empty
-		                             adapters :mutable.Map[Mapping, MappingExtract[S, _, O]])
-		extends MappingProxy[S, O]
-	{
+	/** The bulk of implementation
+	  * of its main subclass [[net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy DeepProxy]]
+	  * shared with [[net.noresttherein.oldsql.schema.support.MappingProxy.OpaqueProxy OpaqueProxy]].
+	  * Unlike the former, it doesn't assume that `backer` is of the same origin and that it is actually a component
+	  * of the enclosing mapping, restricting itself to simply copying the component structure and relying on
+	  * `backer` and its components only for assembly.
+	  *
+	  * This class is an implementation artifact and should not be used directly by client code.
+	  */
+	private[MappingProxy] sealed abstract
+	class AbstractDeepProxy[+Comp[T, Q] <: TypedMapping[T, Q], +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q], S, O]
+	                      (protected override val backer :MappingOf[S],
+		                  /** Temporary (non-field) constructor parameter which becomes `extracts`
+		                    * property in the mapping process. *///starts empty
+		                   adapters :mutable.Map[Mapping, TypedMapping[S, O]#like[Comp]#Extract[_]])
+		extends MappingProxy[S, O] with MappingTemplate[Comp, Col]
+	{ self :Comp[S, O] =>
 		/** Method called from the `DeepProxy` constructor before any component lists are initialized. */
 		protected def preInit(): Unit = ()
 
@@ -298,15 +312,18 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		private[this] val originals = mutable.Map.empty[MappingAt[O], Mapping] //mutable, but I'm lazy. Sue me.
 
 		private[this] val adaptedBacker = adaptBacker
-		adapters.put(backer, MappingExtract.ident(adaptedBacker))
+		protected override val selfExtract :like[Comp]#Extract[S] = SpecificExtract.ident(adaptedBacker)
+		adapters.put(backer, SpecificExtract.ident(adaptedBacker))
 		originals.put(adaptedBacker, backer)
 
+		//fixme: this will evaluate lazy vals in foreign keys, leading to potential infinite loops/nulls
+		//  This could be fixed by creating a lazily initialized backing mapping
 		for (Assoc(comp, base) <- backer.extracts) {
 			val extract = adapters.get(base.export) match {
 				case Some(ex) => ex
 				case _ =>
 					val export = adaptExport(base.export)
-					val ex = MappingExtract(export)(base)
+					val ex = SpecificExtract(export)(base)
 					adapters.put(base.export, ex)         //unnecessary, but prevents duplicate extract instances
 					originals.put(export, base.export)
 					ex
@@ -314,56 +331,68 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 			adapters.put(comp, extract)
 		}
 
-		override def apply[T](component :Component[T]) :Extract[T] = extracts(component)
-		override def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
+		override val columns        :Unique[Col[_, O]]          = backer.columns.map(alias(adapters, originals, _))
+		override val components     :Unique[Comp[_, O]]         = backer.components.map(alias(adapters, originals, _))
+		override val subcomponents  :Unique[Comp[_, O]]         = backer.subcomponents.map(alias(adapters, originals, _))
+		override val extracts       :like[Comp]#ExtractMap      = initExtractMap[like[Comp]#Extract](adapters) //last, so adapters qre initialized
+		override val columnExtracts :like[Col]#ColumnExtractMap =
+			filterColumnExtracts(this)(extracts).asInstanceOf[like[Col]#ColumnExtractMap]
 
-		override def export[T](component :Component[T]) :Component[T] = extracts(component).export
-		override def export[T](column :Column[T]) :Column[T] = columnExtracts(column).export
-
-		override val columns :Unique[Column[_]] = backer.columns.map(alias(adapters, originals, _))
-		override val components :Unique[Component[_]] = backer.components.map(alias(adapters, originals, _))
-		override val subcomponents :Unique[Component[_]] = backer.subcomponents.map(alias(adapters, originals, _))
-		override val extracts :ExtractMap = initExtractMap //has to be last because it can use adapters map
-		override val columnExtracts :ColumnExtractMap = filterColumnExtracts(this)(extracts)
-
-		protected[MappingProxy] def initExtractMap :ExtractMap
+		protected[MappingProxy] def initExtractMap[E[X] >: like[Comp]#Extract[X] <: Extract[X]]
+		                                          (exports :mutable.Map[Mapping, E[_]]) :NaturalMap[Component, E]
 
 		private val columnMap = columns.view.map { c => (c.name, c) }.toMap
+		releaseFence()
 
-		override def columnNamed(name :String) :Column[_] = columnMap.getOrElse(name, null) match {
-			case null => throw new NoSuchComponentException("No column '" + name + "' in " + this + ".")
-			case res => res
-		}
+		override def columnNamed(name :String) :Col[_, O] =
+			columnMap.getOrElse(name, null.asInstanceOf[Col[_, O]]) match {
+				case null => throw new NoSuchComponentException("No column '" + name + "' in " + this + ".")
+				case res => res
+			}
 
-		private[this] def alias[T](exports :mutable.Map[Mapping, Extract[_]],
+
+		override def apply[T](component :Component[T]) :SpecificExtract[Comp[T, O], S, T, O] = extracts(component)
+		override def apply[T](column :Column[T])       :SpecificExtract[Col[T, O], S, T, O]  = columnExtracts(column)
+
+		override def export[T](component :Component[T]) :Comp[T, O] = extracts(component).export
+		override def export[T](column :Column[T]) :Col[T, O] = columnExtracts(column).export
+
+
+		private[this] def alias[T](exports   :mutable.Map[Mapping, like[Comp]#Extract[_]],
 		                           originals :mutable.Map[MappingAt[O], Mapping],
-		                           component :backer.Component[T]) :Component[T] =
+		                           component :backer.Component[T]) :Comp[T, O] =
 			exports.getOrElse(component, {
 				val base = backer.apply(component)
-				val extract = exports.getOrElse(base.export, MappingExtract(adaptExport(base.export))(base))
+				val extract = exports.getOrElse(base.export, SpecificExtract(adaptExport(base.export))(base))
 				exports.put(component, extract)
 				exports.put(base.export, extract)
 				originals.put(extract.export, base.export)
 				extract
-			}).export.asInstanceOf[Component[T]]
+			}).export.asInstanceOf[Comp[T, O]]
 
-		private[this] def alias[T](exports :mutable.Map[Mapping, Extract[_]],
+		private[this] def alias[T](exports   :mutable.Map[Mapping, like[Comp]#Extract[_]],
 		                           originals :mutable.Map[MappingAt[O], Mapping],
-		                           column :backer.Column[T]) :Column[T] =
-			alias(exports, originals, column :backer.Component[T]).asInstanceOf[Column[T]]
+		                           column    :backer.Column[T]) :Col[T, O] =
+			alias(exports, originals, column :backer.Component[T]).asInstanceOf[Col[T, O]]
 
 
 		/** Maps a component of this proxy back to its corresponding export component of `backer`. */
-		protected override def unexport[T](component :Component[T]) :backer.Component[T] =
-			originals.getOrElse(component, component).asInstanceOf[backer.Component[T]]
+		protected override def unexport[T](component :Component[T]) :backer.Component[T] = {
+			val res = originals.getOrElse(component, null.asInstanceOf[Component[T]]).asInstanceOf[backer.Component[T]]
+			if (res != null) res
+			else backer.export(component.asInstanceOf[backer.Component[T]])
+		}
 
 		/** Maps a column of this proxy back to its corresponding export column of `backer`. */
-		protected override def unexport[T](column :Column[T]) :backer.Column[T] =
-			originals.getOrElse(column, column).asInstanceOf[backer.Column[T]]
+		protected override def unexport[T](column :Column[T]) :backer.Column[T] = {
+			val res = originals.getOrElse(column, null.asInstanceOf[backer.Column[T]]).asInstanceOf[backer.Column[T]]
+			if (res != null) res
+			else backer.export(column.asInstanceOf[backer.Column[T]])
+		}
 
-		private[this] def adaptExport[T](component :backer.Component[T]) = component match {
-			case _ if component eq backer => adaptedBacker.asInstanceOf[Component[T]]
-			case column :ColumnMapping[_, _] => adapt(column.asInstanceOf[backer.Column[T]])
+		private[this] def adaptExport[T](component :backer.Component[T]) :Comp[T, O] = component match {
+			case _ if component eq backer => adaptedBacker.asInstanceOf[Comp[T, O]]
+			case column :ColumnMapping => adapt(column.asInstanceOf[backer.Column[T]])
 			case _ => adapt(component)
 		}
 
@@ -372,22 +401,55 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		  * components of `backer` (and `backer` itself) mapped with this method.
 		  * @param component an 'export', non-column component of `backer`.
 		  */
-		protected def adapt[T](component :backer.Component[T]) :Component[T]
+		protected def adapt[T](component :backer.Component[T]) :Comp[T, O]
 
 		/** A hook method left for subclasses to implement adapting of a column of the adapted mapping
 		  * to its 'export' form under this mapping. All column lists of this instance contain
 		  * columns mapped with this method.
 		  * @param column an 'export' column of `backer`.
 		  */
-		protected def adapt[T](column :backer.Column[T]) :Column[T] //= adapt(component)
+		protected def adapt[T](column :backer.Column[T]) :Col[T, O] //= adapt(component)
 
 		/** The 'export' version of the adapted `backer` itself. Defaults to `this`. */
-		protected def adaptBacker :Component[S] = this
+		protected def adaptBacker :Comp[S, O] = this
+
+		override def uniHomomorphic(that :Mapping) :Boolean = backer.homomorphic(that)
 
 		override def mappingName :String = "->>" + backer.mappingName
 	}
 
 
+
+	/** The generic version of [[net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy DeepProxy]],
+	  * with all components conforming to the type parameter `Comp[_, O]` and all columns to `Col[_, O]`.
+	  *///make it a trait in Scala 3
+	abstract class DeepProxyTemplate[+Comp[T, Q] <: TypedMapping[T, Q],
+	                                 +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q], S, O] private
+	                                (protected override val backer :TypedMapping[S, O],
+	                                 exports :mutable.Map[Mapping, TypedMapping[S, O]#like[Comp]#Extract[_]])
+		extends AbstractDeepProxy[Comp, Col, S, O](backer, exports)
+	{ this :Comp[S, O] =>
+		//a private constructor with a mutable map ensures that extract entries can be created as method side effects,
+		//without the map becoming an instance field - it is used only in initialization of the 'extracts' properties
+		def this(backer :TypedMapping[S, O]) = this(backer, mutable.Map.empty)
+
+		override def assemble(pieces :Pieces) :Opt[S] = backer.assemble(pieces)
+
+		override def original :TypedMapping[S, O] = backer.original
+
+		protected[MappingProxy] override def initExtractMap[E[X] >: like[Comp]#Extract[X] <: Extract[X]]
+		                                     (exports :mutable.Map[Mapping, E[_]]) :NaturalMap[Component, E] =
+		{
+			exports.put(this, SpecificExtract.ident(this))
+			NaturalMap.from[Component, E](
+				exports.view.map { case (comp, extract) =>
+					Assoc[Component, E, Any](
+						comp.asInstanceOf[Component[Any]], extract.asInstanceOf[E[Any]]
+					)
+				}
+			)
+		}
+	}
 
 	/** A `DeepProxy` implementation which eagerly initializes all column and component lists and creates
 	  * a fixed mapping between components of the adapted mapping and their adapted counterparts, as well as the
@@ -395,29 +457,20 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * which are formed by adapting each element of the corresponding list from `backer` with `adapt` methods,
 	  * left for subclasses to implement. They are still recognized by this mapping as its subcomponents though,
 	  * and `Extract` maps include as keys all the keys from the corresponding extract map of the adapted mapping
-	  * together with the adapted components. The buffs of this proxy are exactly the same as those on the adapted
+	  * together with the adapted components. The adapted mapping has a special status: it is, like its components,
+	  * a non-export component of this adapter, with the latter considering itself the export version of the former.
+	  * The divergence from the treatment of other components is that despite the above, this adapter is not included
+	  * in the components and subcomponents lists with other export components. Due to this fact, and because the
+	  * order of the components in all property collections is preserved, this mapping is isomorphic with the
+	  * underlying mapping: its [[net.noresttherein.oldsql.schema.Mapping.MappingTemplate.counterpart counterpart]]
+	  * methods will always return a value for any component of `backer`.
+	  *
+	  * The buffs of this proxy are exactly the same as those on the adapted
 	  * mapping, but the latter are ignored during assembly. This property can be safely overriden.
+	  * This adapter is not suitable for columns.
 	  */
-	@nowarn("cat=deprecation")
-	abstract class DeepProxy[S, O] private (protected override val backer :MappingOf[S],
-	                                        exports :mutable.Map[Mapping, MappingExtract[S, _, O]])
-		extends AbstractDeepProxy[S, O](backer, exports) with StableMapping
-	{
-		//a private constructor with a mutable map ensures that extract entries can be created as method side effects,
-		//without the map becoming an instance field - it is used only in initialization of the 'extracts' properties
-		def this(backer :MappingOf[S]) = this(backer, mutable.Map.empty)
-
-		override def assemble(pieces :Pieces) :Opt[S] = backer.assemble(pieces.asInstanceOf[backer.Pieces])
-
-		protected[MappingProxy] override def initExtractMap :ExtractMap = {
-			exports.put(this, MappingExtract.ident(this))
-			NaturalMap[Component, Extract](
-				exports.view.map { case (comp, extract) =>
-					Assoc[Component, Extract, Any](comp.asInstanceOf[Component[Any]], extract.asInstanceOf[Extract[Any]])
-				}.toSeq  :_*
-			)
-		}
-	}
+	abstract class DeepProxy[S, O](protected override val backer :TypedMapping[S, O])
+		extends DeepProxyTemplate[TypedMapping, TypedColumn, S, O](backer) with StableMapping
 
 
 
@@ -434,10 +487,10 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * This is to protect against `backer` instance being used as another component of of the same root mapping,
 	  * in particular in foreign key scenarios.
 	  */
-	@nowarn("cat=deprecation")
 	abstract class OpaqueProxy[S, O] private (protected override val backer :MappingOf[S],
 	                                          substitutes :mutable.Map[Mapping, MappingExtract[S, _, O]])
-		extends AbstractDeepProxy[S, O](backer, substitutes) with StableMapping with ExportMapping
+		extends AbstractDeepProxy[TypedMapping, TypedColumn, S, O](backer, substitutes)
+		   with StableMapping with ExportMapping
 	{
 		//a private constructor with a mutable map ensures that extract entries can be created as method side effects,
 		//without the map becoming an instance field - it is used only in initialization of the 'extracts' properties
@@ -460,36 +513,38 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		protected def alias[T](column :backer.Column[T]) :Column[T] =
 			aliases(column.asInstanceOf[Column[T]]).export.asInstanceOf[Column[T]]
 
-		protected[MappingProxy] override def initExtractMap :ExtractMap = NaturalMap[Component, Extract](
-			substitutes.view.map { entry => //will contain an extract for this because substitutes contains backer->this
-				def export[T](extract :MappingExtract[S, T, O]) =
-					Assoc[Component, Extract, T](extract.export, extract)
-				export(entry._2)
-			}.toList : _*
-		)
+		protected[MappingProxy] override def initExtractMap[E[X] >: Extract[X] <: Extract[X]]
+		                                     (exports :mutable.Map[Mapping, E[_]]) :NaturalMap[Component, E] =
+			NaturalMap.from[Component, E](
+				exports.view.map { entry => //will contain an extract for this because substitutes contains backer->this
+					def export[T](extract :MappingExtract[S, T, O]) =
+						Assoc[Component, E, T](extract.export, extract) //put only export as entry._1 can't leak
+					export(entry._2 :MappingExtract[S, _, O])
+				}
+			)
 
 		override def toString :String = "//" + backer
 	}
 
 
 
-	/** A `ColumnMapping` implementation which delegates its
+	/** A `TypedColumn` implementation which delegates its
 	  * [[net.noresttherein.oldsql.schema.support.MappingProxy.OpaqueColumnProxy.assemble assemble]] method to
 	  * another column. The proxy is ''opaque'' in that the underlying column is not exposed to the outside
-	  * (this proxy column is its own column as per `ColumnMapping` default); additionally,
+	  * (this proxy column is its own column as per `TypedColumn` default); additionally,
 	  * [[net.noresttherein.oldsql.haul.ComponentValues ComponentValues]] are
 	  * [[net.noresttherein.oldsql.haul.ComponentValues.aliased aliased]]: the adapted column is substituted with
 	  * this proxy when checking for a preset value.
 	  */ //consider: why can't we just have it in the extract map, so it's aliased automatically?
-	class OpaqueColumnProxy[S, A, O] private (protected override val backer :ColumnMapping[S, A],
+	class OpaqueColumnProxy[S, A, O] private (protected override val backer :TypedColumn[S, A],
 	                                          override val name :String, override val buffs :Buffs[S],
 	                                          override val form :ColumnForm[S])
-		extends MappingProxy[S, O] with ColumnMapping[S, O] with StableColumn[S, O]
+		extends MappingProxy[S, O] with StableColumn[S, O]
 	{
-		def this(backer :ColumnMapping[S, A]) = this(backer, backer.name, backer.buffs, backer.form)
-		def this(backer :ColumnMapping[S, A], name :String) = this(backer, name, backer.buffs, backer.form)
-		def this(backer :ColumnMapping[S, A], buffs :Buffs[S]) = this(backer, backer.name, buffs, backer.form)
-		def this(backer :ColumnMapping[S, A], name :String, buffs :Buffs[S]) = this(backer, name, buffs, backer.form)
+		def this(backer :TypedColumn[S, A]) = this(backer, backer.name, backer.buffs, backer.form)
+		def this(backer :TypedColumn[S, A], name :String) = this(backer, name, backer.buffs, backer.form)
+		def this(backer :TypedColumn[S, A], buffs :Buffs[S]) = this(backer, backer.name, buffs, backer.form)
+		def this(backer :TypedColumn[S, A], name :String, buffs :Buffs[S]) = this(backer, name, buffs, backer.form)
 
 		protected override def unexport[X](component :Component[X]) :backer.Component[X] =
 			if (component eq this) backer.asInstanceOf[backer.Component[X]]
@@ -499,7 +554,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 			if (column eq this) backer.asInstanceOf[backer.Column[X]]
 			else throw new IllegalArgumentException(s"Column $column is not a component of column $this.")
 
-		private[this] val aliasing = new (MappingAt[O]#Component =#> MappingAt[O]#Component) {
+		private[this] val aliasing = new (MappingAt[O]#Component =>: MappingAt[O]#Component) {
 			override def apply[T](x :Component[T]) =
 				if (x eq backer) this.asInstanceOf[Column[T]] else null
 		}
@@ -512,31 +567,51 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 
 
 
-	/** A `ColumnMapping` which is a proxy to another column. All methods delegate to the corresponding methods
+	/** A `TypedColumn` which is a proxy to another column. All methods delegate to the corresponding methods
 	  * of `backer`, with the exception of component/column lists and extracts map, which retain the default
-	  * `ColumnMapping` implementation, declaring no components and this column as its only column.
+	  * `TypedColumn` implementation, declaring no components and this column as its only column.
 	  * As with [[net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy DirectProxy]], the buffs of this
 	  * proxy are empty, but the buffs of the adapted column are used normally.
 	  * This instance must not be used as the export version of the adapted column, or infinite recursion will occur.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.ExportColumnProxy]]
 	  */
-	class DirectColumnProxy[S, O] private (protected override val backer :ColumnMapping[S, O], 
+	class DirectColumnProxy[S, O] private (protected override val backer :TypedColumn[S, O],
 	                                       override val name :String, override val form :ColumnForm[S])
-		extends MappingProxy[S, O] with ColumnMapping[S, O] with StableColumn[S, O]
+		extends MappingProxy[S, O] with StableColumn[S, O]
 	{
-		def this(backer :ColumnMapping[S, O]) = this(backer, backer.name, backer.form)
-		def this(backer :ColumnMapping[S, O], name :String) = this(backer, name, backer.form)
+		def this(backer :TypedColumn[S, O]) = this(backer, backer.name, backer.form)
+		def this(backer :TypedColumn[S, O], name :String) = this(backer, name, backer.form)
 
 		override def optionally(pieces :Pieces) :Opt[S] = pieces.assemble(this)
 		override def assemble(pieces :Pieces) :Opt[S] = pieces.get(backer)
 
 		final override def buffs :Buffs[S] = Buffs.empty
 
-		override def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
-		override def apply[T](component :Component[T]) :Extract[T] = extracts(component)
+		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
+			if (components.isEmpty)  SQLReadForm.empty
+			else if (components.contains(this)) selectForm
+			else backer.selectForm(components)
 
-		override def export[T](component :Component[T]) :Component[T] =
-			if ((component eq this) | (component eq backer)) component
+		protected override def newWriteForm(op :WriteOperationView, components :Unique[Component[_]]) :SQLWriteForm[S] =
+			if (components.isEmpty) SQLWriteForm.empty
+			else if (components.contains(this)) form
+			else backer.writeForm(op, components)
+
+
+		override lazy val columnExtracts :NaturalMap[Column, ColumnExtract] =
+			backer.columnExtracts.updated[ColumnExtract, S](backer, backer(backer))
+				.updated[ColumnExtract, S](this, super.apply(this))
+
+		//this can fail with ClassCastException for custom NaturalMap implementations
+		override def extracts :NaturalMap[Component, ColumnExtract] =
+			columnExtracts.asInstanceOf[NaturalMap[Component, ColumnExtract]]
+
+
+		override def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
+//		override def apply[T](component :Component[T]) :ColumnExtract[T] = extracts(component)
+
+		override def export[T](component :Component[T]) :Column[T] =
+			if ((component eq this) | (component eq backer)) component.asInstanceOf[Column[T]]
 			else backer.export(component)
 
 		override def exportOrNot[T](component :Component[T]) :Component[T] =
@@ -552,7 +627,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 			else backer.exportOrNot(column)
 
 		override def unexport[X](component :Component[X]) :Component[X] = component match {
-			case column :ColumnMapping[X @unchecked, O] => unexport(column)
+			case column :TypedColumn[X, O] @unchecked => unexport(column)
 			case _ => throw new IllegalArgumentException(s"Cannot unexport a non-column component $component with $this.")
 		}
 
@@ -562,57 +637,52 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 			else
 				column
 
-		override val columnExtracts :NaturalMap[Column, ColumnExtract] =
-			backer.columnExtracts.updated[ColumnExtract, S](backer, ColumnExtract.ident(backer))
-				.updated(this, super.apply(this))
-
-		//this can fail with ClassCastException for custom NaturalMap implementations
-		override val extracts :NaturalMap[Component, ColumnExtract] =
-			columnExtracts.asInstanceOf[NaturalMap[Component, ColumnExtract]]
-
-		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-			if (components.isEmpty)  SQLReadForm.empty
-			else if (components.contains(this)) selectForm
-			else backer.selectForm(components)
-
-		override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
-			if (components.isEmpty) SQLWriteForm.empty
-			else if (components.contains(this)) form
-			else backer.writeForm(op, components)
+		override def contains[T](component :Component[T]) :Boolean =
+			(component eq this) | (component eq backer) || (backer contains component)
 
 		override def toString :String = "->" + backer
 	}
 
 
 
-	/** A `ColumnMapping` proxy to be used as an export version of another column. This class is required
+	/** A `TypedColumn` proxy to be used as an export version of another column. This class is required
 	  * for columns which do not extend [[net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn SimpleColumn]]
 	  * (as those can be adapted by simply mapping their forms). It allows to override the name, buffs and form
 	  * of the adapted column and delegates to it its
 	  * [[net.noresttherein.oldsql.schema.support.MappingProxy.ExportColumnProxy.assemble assemble]] method.
-	  * As is the standard convention among `ColumnMapping` implementation, the components list are empty,
+	  * As per the standard contract of `TypedColumn`, the components lists are empty,
 	  * while the column lists contain this instance or nothing (depending on the buffs). The extracts however
 	  * contain all extracts from the adapted column, substituting `this` for `backer` in every extract.
 	  * Extracts for this column and `backer` use `this` as the export component.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.DirectColumnProxy]]
 	  */
-	class ExportColumnProxy[S, O] private (protected override val backer :ColumnMapping[S, O],
+	class ExportColumnProxy[S, O] private (protected override val backer :TypedColumn[S, O],
 	                                       override val name :String, override val buffs :Buffs[S],
 	                                       override val form :ColumnForm[S])
-		extends MappingProxy[S, O] with ColumnMapping[S, O] with StableColumn[S, O]
+		extends MappingProxy[S, O] with StableColumn[S, O]
 	{
-		def this(backer :ColumnMapping[S, O]) = this(backer, backer.name, backer.buffs, backer.form)
-		def this(backer :ColumnMapping[S, O], name :String) = this(backer, name, backer.buffs, backer.form)
-		def this(backer :ColumnMapping[S, O], buffs :Buffs[S]) = this(backer, backer.name, buffs, backer.form)
-		def this(backer :ColumnMapping[S, O], name :String, buffs :Buffs[S]) =
+		def this(backer :TypedColumn[S, O]) = this(backer, backer.name, backer.buffs, backer.form)
+		def this(backer :TypedColumn[S, O], name :String) = this(backer, name, backer.buffs, backer.form)
+		def this(backer :TypedColumn[S, O], buffs :Buffs[S]) = this(backer, backer.name, buffs, backer.form)
+		def this(backer :TypedColumn[S, O], name :String, buffs :Buffs[S]) =
 			this(backer, name, buffs, backer.form)
 
 		override def assemble(pieces :Pieces) :Opt[S] = backer.assemble(pieces)
 
-		override def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
-		override def apply[T](component :Component[T]) :Extract[T] = extracts(component)
+		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
+			if (components.isEmpty) SQLReadForm.empty
+			else if (components.contains(this) || components.contains(backer)) form
+			else backer.selectForm(components)
 
-		override val columnExtracts =
+		override def newWriteForm(op :WriteOperationView, components :Unique[Component[_]]) :SQLWriteForm[S] =
+			if (components.isEmpty) SQLWriteForm.empty
+			else if (components.contains(this)) form
+			else backer.writeForm(op, components)
+
+		override def original :TypedColumn[S, O] = backer.original
+
+		//lazy because backer.extracts might be lazy as in ForeignKeyColumnMapping
+		override lazy val columnExtracts :NaturalMap[Column, ColumnExtract] =
 			backer.columnExtracts.map { entry =>
 				if (entry._2.export == backer)
 					Assoc[Column, ColumnExtract, S](
@@ -624,24 +694,21 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 			 .updated[ColumnExtract, S](this, super[StableColumn].apply(this))
 
 		//this can fail with ClassCastException for custom NaturalMap implementations
-		override val extracts = columnExtracts.asInstanceOf[NaturalMap[Component, ColumnExtract]]
+		override def extracts = columnExtracts.asInstanceOf[NaturalMap[Component, ColumnExtract]]
+
+
+		override def apply[T](component :Component[T]) :ColumnExtract[T] =
+			if (component == this) super[StableColumn].apply(component) //more to avoid lazy init than anything else
+			else extracts(component)
+
+		override def contains[T](component :Component[T]) :Boolean =
+			(component eq this) | (component eq backer) || (backer contains component)
 
 		protected override def unexport[X](component :Component[X]) :Component[X] =
-			if (component eq this) backer.asInstanceOf[Component[X]] else component
+			if (component == this) backer.asInstanceOf[Component[X]] else component
 
 		protected override def unexport[X](column :Column[X]) :Column[X] =
-			if (column eq this) backer.asInstanceOf[Column[X]] else column
-
-
-		override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-			if (components.isEmpty) SQLReadForm.empty
-			else if (components.contains(this) || components.contains(backer)) form
-			else backer.selectForm(components)
-
-		override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
-			if (components.isEmpty) SQLWriteForm.empty
-			else if (components.contains(this)) form
-			else backer.writeForm(op, components)
+			if (column == this) backer.asInstanceOf[Column[X]] else column
 
 		override def toString :String = "^" + backer + "^"
 	}

@@ -1,11 +1,12 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.OperationView.WriteOperationView
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
-import net.noresttherein.oldsql.schema.{Buffs, SQLForm, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buffs, Mapping, SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.support.EmptyMapping
+import net.noresttherein.oldsql.schema.SQLForm.NullValue
 
 
 
@@ -19,12 +20,14 @@ import net.noresttherein.oldsql.schema.support.EmptyMapping
   */
 class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O] {
 
+	override def nullValue :NullValue[S] = form.nulls
+
 	final override def buffs :Buffs[S] = Buffs.empty
 
-	override def writtenValues[T](op :WriteOperationType, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
+	override def writtenValues[T](op :WriteOperationView, subject :S, collector :ComponentValuesBuilder[T, O]) :Unit =
 		collector.add(this, subject)
 
-	override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] =
+	override def writtenValues[T](op :WriteOperationView, subject :S) :ComponentValues[S, O] =
 		ComponentValues(this, subject)
 
 	override def filterValues(subject :S) :ComponentValues[S, O] = ComponentValues(this, subject)
@@ -32,23 +35,30 @@ class FormMapping[S, O](implicit val form :SQLForm[S]) extends EmptyMapping[S, O
 	override def updateValues(subject :S) :ComponentValues[S, O] = ComponentValues(this, subject)
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		if (components.isEmpty) SQLReadForm.defaults(form.nulls)
+		if (components.isEmpty) SQLReadForm.defaults(form.columnCount)(form.nulls)
 		else if (components.size == 1 && components.head == this) form
 		else throw new IllegalArgumentException("Mappings " + components + " are not components of " + this)
 
-	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
+	protected override def newWriteForm(op :WriteOperationView, components :Unique[Component[_]]) :SQLWriteForm[S] =
 		if (components.isEmpty) SQLWriteForm.empty
 		else if (components.size == 1 && components.head == this) form
 		else throw new IllegalArgumentException("Mappings " + components + " are not components of " + this)
 
-//	override def filterForm(components :Unique[Component[_]]) :SQLWriteForm[S] = writeForm(FILTER, components)
-//	override def updateForm(components :Unique[Component[_]]) :SQLWriteForm[S] = writeForm(UPDATE, components)
-//	override def insertForm(components :Unique[Component[_]]) :SQLWriteForm[S] = writeForm(INSERT, components)
-
 	override def selectForm :SQLReadForm[S] = form
-	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = form
-//	override def insertForm :SQLWriteForm[S] = form
-//	override def filterForm :SQLWriteForm[S] = form
-//	override def updateForm :SQLWriteForm[S] = form
+	protected override def newWriteForm(op :WriteOperationView) :SQLWriteForm[S] = form
 
+
+	override def uniIsomorphic(that :Mapping) :Boolean = that match {
+		case _ if this eq that => true
+		case other :FormMapping[_, _] => form == other.form
+		case _ => false
+	}
+	override def equivalent(that :Mapping) :Boolean = identical(that)
+	override def identical(that :Mapping) :Boolean = that match {
+		case _ if this eq that => true
+		case other :FormMapping[_, _] if canEqual(that) && that.canEqual(this) => form == other.form
+		case _ => false
+	}
+
+	override def toString :String = mappingName + "[" + form + "]"
 }

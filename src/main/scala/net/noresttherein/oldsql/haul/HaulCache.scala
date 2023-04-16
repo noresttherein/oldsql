@@ -26,7 +26,7 @@ object FutureValues {
 }
 
 
-
+//todo: rename to Loot. Or something else. Good name.
 trait TableCache[E] extends FutureValues[E] {
 	def table :Table[MappingOf[E]#Projection]
 	def indices :Iterable[TableIndex[_, E]]

@@ -1,9 +1,10 @@
 package net.noresttherein.oldsql.sql
 
 import net.noresttherein.oldsql.schema.Mapping.MappingAt
-import net.noresttherein.oldsql.sql.RowProduct.NonEmptyFrom
-import net.noresttherein.oldsql.sql.ast.SQLParameter
+import net.noresttherein.oldsql.sql.RowProduct.NonEmptyRow
+import net.noresttherein.oldsql.sql.ast.BoundParam
 import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits
+import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits.boundParameterSQL
 
 
 
@@ -15,11 +16,11 @@ import net.noresttherein.oldsql.sql.mechanics.SQLLiteralImplicits
   */
 package object lowercase extends SQLLiteralImplicits {
 
-	def param[T](value :T)(implicit factory :SQLParameter.Factory[T]) :factory.Res =
+	def param[T](value :T)(implicit factory :BoundParam.Factory[T]) :factory.Res =
 		factory(value)
 
-	implicit def param_?[T](value :T)(implicit factory :SQLParameter.Factory[T]) :boundParameterSQL[T, factory.Res] =
-		boundParameterSQL[T, factory.Res](value)(factory :SQLParameter.Factory[T] { type Res = factory.Res })
+	implicit def param_?[T](value :T)(implicit factory :BoundParam.Factory[T]) :boundParameterSQL[T, factory.Res] =
+		boundParameterSQL[T, factory.Res](value)(factory :BoundParam.Factory[T] { type Res = factory.Res })
 
 
 	type dual = Dual
@@ -33,16 +34,16 @@ package object lowercase extends SQLLiteralImplicits {
 	type outerJoin[+L <: FromSome, R[O] <: MappingAt[O]] = L OuterJoin R
 	type leftJoin[+L <: FromSome, R[O] <: MappingAt[O]] = L LeftJoin R
 	type rightJoin[+L <: FromSome, R[O] <: MappingAt[O]] = L RightJoin R
-	type subselect[+L <: NonEmptyFrom, R[O] <: MappingAt[O]] = L Subselect R
+	type subselect[+L <: NonEmptyRow, R[O] <: MappingAt[O]] = L Subselect R
 	type groupByAll[+L <: FromSome, R[O] <: MappingAt[O]] = L GroupBy R
 	type byAll[+L <: GroupByClause, R[O] <: MappingAt[O]] = L By R
 
 
-//	type not[-F <: RowProduct, S >: LocalScope <: GlobalScope] = LogicalSQL.NotSQL[F, S]
+//	type not[-F <: RowProduct, S >: Grouped <: GlobalScope] = LogicalSQL.NotSQL[F, S]
 
 	val not = ast.NotSQL
 
-//	type exists[-F <: RowProduct, S >: LocalScope <: GlobalScope, V] = ConditionSQL.ExistsSQL[F, S, V]
+//	type exists[-F <: RowProduct, S >: Grouped <: GlobalScope, V] = ConditionSQL.ExistsSQL[F, S, V]
 
 	val exists = ast.ExistsSQL
 

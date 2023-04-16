@@ -7,6 +7,8 @@ import java.util.Calendar
 
 import scala.annotation.nowarn
 
+//import scala.annotation.nowarn
+
 
 
 
@@ -15,9 +17,9 @@ import scala.annotation.nowarn
 /**
   * @author Marcin Mościcki
   */
-private[sql] class ResultSetProxy(rs :ResultSet) extends ResultSet {
+private[oldsql] class ResultSetProxy(rs :ResultSet) extends ResultSet {
 	override def next() = rs.next()
-	override def close() = rs.close()
+	override def close() :Unit = rs.close()
 	override def wasNull() = rs.wasNull()
 
 	override def findColumn(columnLabel :String) = rs.findColumn(columnLabel)
@@ -26,8 +28,10 @@ private[sql] class ResultSetProxy(rs :ResultSet) extends ResultSet {
 	override def getArray(columnLabel :String) = rs.getArray(columnLabel)
 	override def getAsciiStream(columnIndex :Int) = rs.getAsciiStream(columnIndex)
 	override def getAsciiStream(columnLabel :String) = rs.getAsciiStream(columnLabel)
-	@nowarn override def getBigDecimal(columnIndex :Int, scale :Int) = rs.getBigDecimal(columnIndex, scale)
-	@nowarn override def getBigDecimal(columnLabel :String, scale :Int) = rs.getBigDecimal(columnLabel, scale)
+	@nowarn
+	override def getBigDecimal(columnIndex :Int, scale :Int) = rs.getBigDecimal(columnIndex, scale)
+	@nowarn
+	override def getBigDecimal(columnLabel :String, scale :Int) = rs.getBigDecimal(columnLabel, scale)
 	override def getBigDecimal(columnIndex :Int) = rs.getBigDecimal(columnIndex)
 	override def getBigDecimal(columnLabel :String) = rs.getBigDecimal(columnLabel)
 	override def getBinaryStream(columnIndex :Int) = rs.getBinaryStream(columnIndex)
@@ -86,8 +90,10 @@ private[sql] class ResultSetProxy(rs :ResultSet) extends ResultSet {
 	override def getTimestamp(columnLabel :String) = rs.getTimestamp(columnLabel)
 	override def getTimestamp(columnIndex :Int, cal :Calendar) = rs.getTimestamp(columnIndex, cal)
 	override def getTimestamp(columnLabel :String, cal :Calendar) = rs.getTimestamp(columnLabel, cal)
-	@nowarn override def getUnicodeStream(columnIndex :Int) = rs.getUnicodeStream(columnIndex)
-	@nowarn override def getUnicodeStream(columnLabel :String) = rs.getUnicodeStream(columnLabel)
+	@nowarn
+	override def getUnicodeStream(columnIndex :Int) = rs.getUnicodeStream(columnIndex)
+	@nowarn
+	override def getUnicodeStream(columnLabel :String) = rs.getUnicodeStream(columnLabel)
 	override def getURL(columnIndex :Int) = rs.getURL(columnIndex)
 	override def getURL(columnLabel :String) = rs.getURL(columnLabel)
 

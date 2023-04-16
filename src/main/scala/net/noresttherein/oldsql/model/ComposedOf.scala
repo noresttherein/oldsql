@@ -1,5 +1,6 @@
 package net.noresttherein.oldsql.model
 
+import scala.annotation.showAsInfix
 import scala.collection.{immutable, EvidenceIterableFactory, Factory, IterableFactory}
 import scala.collection.mutable.Builder
 
@@ -25,11 +26,21 @@ import net.noresttherein.oldsql.slang._
   *  of entity relationships mapped to `Map` instances being crossed by chained property expressions used to
   *  create filter and fetch descriptors.
   */
-case class ->[+L, +R](_1 :L, _2 :R) extends Product2[L, R] with Serializable
+@SerialVersionUID(ver) //todo: remove it once we migrate to compile time reflection or make it an opaque alias for (L, R)
+sealed class :*:[+L, +R](val _1 :L, val _2 :R) extends Serializable { //extends Product2[L, R] with Serializable {
+	override def equals(that :Any) :Boolean = that match {
+		case other: :*:[_, _] => (this eq other) || _1 == other._1 && _2 == other._2
+	}
+//	override def canEqual(that :Any) :Boolean = that.isInstanceOf[:*:[_, _]]
+	override def hashCode :Int = _1.hashCode * 31 + _2.hashCode
+	override def toString :String = _1.toString + ":*:" + _2
+}
 
-object -> {
-	implicit def fromTuple2[_1, _2](t2 :(_1, _2)) : _1->_2 = ->(t2._1, t2._2)
-	implicit def toTuple2[_1, _2](pair :_1->_2) :(_1, _2) = (pair._1, pair._2)
+object :*: {
+	def apply[L, R](_1 :L, _2 :R) = new :*:(_1, _2)
+	def unapply[L, R](pair :L :*: R) :Opt[(L, R)] = Got(pair._1, pair._2)
+	implicit def fromTuple2[_1, _2](t2 :(_1, _2)) : _1 :*: _2 = new :*:(t2._1, t2._2)
+	implicit def toTuple2[_1, _2](pair :_1 :*: _2) :(_1, _2) = (pair._1, pair._2)
 }
 
 
@@ -43,6 +54,7 @@ object -> {
   * It is generally written in the code using infix notation for clarity: `C ComposedOf E`.
   * @see [[net.noresttherein.oldsql.model.ComposedOf.CollectionOf CollectionOf]]
   */
+@showAsInfix
 trait ComposedOf[C, E] extends Serializable {
 	def arity :Arity = composer.arity
 //		if (composition.arity == decomposition.arity) composition.arity
@@ -61,7 +73,7 @@ trait ComposedOf[C, E] extends Serializable {
 
 	def unapply(kin :Kin[C]) :Opt[Derived[E, C]] =
 		kin match {
-			case composite :Derived[E @unchecked, C] if composite.composition compatibleWith decomposer =>
+			case composite :Derived[E @unchecked, C @unchecked] if composite.composition compatibleWith decomposer =>
 				Got(composite)
 			case _ => Lack
 		}
@@ -97,7 +109,7 @@ trait ComposedOf[C, E] extends Serializable {
 
 
 
-abstract class LowPriorityComposedOfImplicits {
+private[model] sealed abstract class Rank2ComposedOfImplicits {
 
 	/** Combines implicitly available composer and decomposer for the type pair `C`, `E` into a `C ComposedOf E`.
 	  * Returned instance overrides equality in terms of equality of its constituents. This may potentially lead to
@@ -123,7 +135,7 @@ abstract class LowPriorityComposedOfImplicits {
 
 
 
-abstract class ImplicitFallbackComposedOfItself extends LowPriorityComposedOfImplicits {
+private[model] sealed abstract class Rank1ComposedOfImplicits extends Rank2ComposedOfImplicits {
 
 	/** A witness that any type `T` consists of itself. This is useful as it eliminates special treatment of result types
 	  * in most scenarios, but as it is always implicitly available, some care needs to be taken to make sure that it
@@ -134,7 +146,7 @@ abstract class ImplicitFallbackComposedOfItself extends LowPriorityComposedOfImp
 
 
 
-object ComposedOf extends ImplicitFallbackComposedOfItself {
+object ComposedOf extends Rank1ComposedOfImplicits {
 
 	/** Summons the implicitly available instance of `C ComposedOf E`. */
 	def apply[C, E](implicit ev :C ComposedOf E) :C ComposedOf E = ev
@@ -164,8 +176,8 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 	implicit def collection[C[X] <: Iterable[X], E](implicit factory :Factory[E, C[E]]) :C[E] CollectionOf E =
 		CollectionOf(ComposableFrom.collection, DecomposableTo.iterable)
 
-	/** An implicit value witnessing that `Map[K, V]` can be converted to and from a collection of `K->V`. */
-	implicit def map[K, V] :Map[K, V] CollectionOf (K -> V) = mapInstance.asInstanceOf[Map[K, V] CollectionOf (K -> V)]
+	/** An implicit value witnessing that `Map[K, V]` can be converted to and from a collection of `K:*:V`. */
+	implicit def map[K, V] :Map[K, V] CollectionOf (K :*: V) = mapInstance.asInstanceOf[Map[K, V] CollectionOf (K :*: V)]
 
 
 
@@ -174,6 +186,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 	  * be misleading when dealing with singleton values can require a `C CollectionOf E` instead of the more generic
 	  * `C ComposedOf E`.
 	  */
+	@showAsInfix
 	trait CollectionOf[C, E] extends ComposedOf[C, E] {
 		override implicit val composer :C ConstructFrom E
 		override implicit val decomposer :C ExtractAs E
@@ -252,12 +265,12 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 		object AtMostOne {
 			def apply(arity :Arity) :Boolean = arity.isInstanceOf[AtMostOne]
-			def unapply(arity :Arity) :Option[AtMostOne] = arity.asSubclass[AtMostOne]
+			def unapply(arity :Arity) :Option[AtMostOne] = arity.asInstanceOpt[AtMostOne]
 		}
 
 		object AtLeastOne {
 			def apply(arity :Arity) :Boolean = arity.isInstanceOf[AtLeastOne]
-			def unapply(arity :Arity) :Option[AtLeastOne] = arity.asSubclass[AtLeastOne]
+			def unapply(arity :Arity) :Option[AtLeastOne] = arity.asInstanceOpt[AtLeastOne]
 		}
 	}
 
@@ -267,15 +280,16 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 	private object selfInstance extends Hybrid[Any, Any](ComposableFrom.itself[Any], DecomposableTo.itself[Any])
 
 	private object optionInstance extends CollectionOf[Option[Any], Any] {
-		implicit override val composer = ComposableFrom.option
-		implicit override val decomposer = DecomposableTo.option
+		implicit override val composer   :ConstructFrom[Option[Any], Any] = ComposableFrom.option
+		implicit override val decomposer :ExtractAs[Option[Any], Any] = DecomposableTo.option
 	}
 
-	private object mapInstance extends CollectionOf[Map[Any, Any], Any -> Any] {
-		implicit override val composer = ComposableFrom.map
-		implicit override val decomposer = DecomposableTo.map
+	private object mapInstance extends CollectionOf[Map[Any, Any], Any :*: Any] {
+		implicit override val composer   :ConstructFrom[Map[Any, Any], Any :*: Any] = ComposableFrom.map
+		implicit override val decomposer :ExtractAs[Map[Any, Any], Any :*: Any] = DecomposableTo.map
 	}
 
+	@SerialVersionUID(1L)
 	private class Hybrid[C, E](val composer :ComposableFrom[C, E], val decomposer :DecomposableTo[C, E])
 		extends ComposedOf[C, E]
 
@@ -290,6 +304,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 	  * @see [[net.noresttherein.oldsql.model.ComposedOf.DecomposableTo DecomposableTo]]
 	  * @see [[net.noresttherein.oldsql.model.ComposedOf ComposedOf]]
 	  */
+	@showAsInfix
 	trait ComposableFrom[+C, -E] extends Serializable { composition =>
 		def arity :Arity
 
@@ -318,11 +333,12 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 	/** A trait extended by `ComposableFrom` implementations using actual collection classes as `C`.
 	  * This especially excludes the identity composition `C=:=E`. As an implicit value for latter is always available,
 	  * it might easily lead to situations where a collection type is treated as composed of itself rather than its
-	  * items, leading to unobvious bugs.
+	  * items, leading to non obvious bugs.
 	  */
+	@showAsInfix
 	trait ConstructFrom[+C, -E] extends ComposableFrom[C, E] {
 		def builder :Builder[E, C]
-		def decomposeWith[W >: C, T <: E](decomposition :ExtractAs[W, T]) :CollectionOf[W, T] =
+		def decomposeWith[W >: C, T <: E](decomposition :W ExtractAs T) :CollectionOf[W, T] =
 			CollectionOf(this, decomposition)
 	}
 
@@ -349,8 +365,8 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 
 
-	sealed abstract class FallbackComposableFromImplicits {
-		implicit def ordered[S <: Iterable[V], V](implicit factory :Factory[V, S]) :S ConstructFrom (Int -> V) =
+	private[ComposedOf] sealed abstract class FallbackComposableFromImplicits {
+		implicit def ordered[S <: Iterable[V], V](implicit factory :Factory[V, S]) :S ConstructFrom (Int :*: V) =
 			ComposableFrom.Ordered()
 	}
 
@@ -378,8 +394,8 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		}
 
 
-		/** A composition for type `Map[K, V]` out of `Iterable[(K->V)]`. */ //todo: other map types
-		implicit def map[K, V] :Map[K, V] ConstructFrom (K -> V) = ToMap.asInstanceOf[Map[K, V] ConstructFrom (K->V)]
+		/** A composition for type `Map[K, V]` out of `Iterable[(K:*:V)]`. */ //todo: other map types
+		implicit def map[K, V] :Map[K, V] ConstructFrom (K :*: V) = ToMap.asInstanceOf[Map[K, V] ConstructFrom (K:*:V)]
 
 		implicit def factory[C, T](implicit factory :Factory[T, C]) :C ComposableFrom T =
 			new Custom(items => (factory.newBuilder ++= items).result())
@@ -444,7 +460,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			def unapply[T, E](composition :T ComposableFrom E)
 					:Opt[(PropertyPath[E, P], T ComposableFrom P) forSome { type P }] =
 				composition match {
-					case prop :ToProperties[T, p, E] => Got(prop.property, prop.compose)
+					case prop :ToProperties[T, p, E] => Got(prop.property, prop.composition)
 					case _ => Lack
 				}
 
@@ -464,7 +480,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		}
 
 		/** A factory and matcher for identity compositions witnessing that `S ComposedOf T` for any type `S >: T`. */
-		object Self {
+		object Self { //todo: rename to Itself
 			def apply[T]() :T ComposableFrom T = ToSelf.asInstanceOf[T ComposableFrom T]
 
 			def unapply[T, E](composition :T ComposableFrom E) :Boolean =
@@ -587,35 +603,35 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		}
 
 
-		/** A factory and matcher for composition of `Map[K, V]` and subclasses from instances of `K -> V`.
-		  * @see [[net.noresttherein.oldsql.model.-> ->]]
+		/** A factory and matcher for composition of `Map[K, V]` and subclasses from instances of `K :*: V`.
+		  * @see [[net.noresttherein.oldsql.model.:*: :*:]]
 		  */
 		object Map {
 			def apply[M[A, B] <: Map[A, B], K, V]()(implicit factory :Factory[(K, V), M[K, V]])
-					:M[K, V] ConstructFrom (K -> V) =
+					:M[K, V] ConstructFrom (K :*: V) =
 				new ToMap[M, K, V](factory)("Map[" + factory.innerClassName + "]")
 
 			def apply[M[A, B] <: Map[A, B], K, V](factory :ComparableFactory[(K, V), M[K, V]])
-					:M[K, V] ConstructFrom (K -> V) =
+					:M[K, V] ConstructFrom (K :*: V) =
 				new ToMap[M, K, V](factory)("Map[" + factory + "]")
 
 			@inline def of[K, V] :MapComposer[K, V] = new MapComposer[K, V] {}
 
 			sealed trait MapComposer[K, V] extends Any {
-				final def apply() :Map[K, V] ConstructFrom (K -> V) =
-					ToMap.asInstanceOf[Map[K, V] ConstructFrom (K -> V)]
+				final def apply() :Map[K, V] ConstructFrom (K :*: V) =
+					ToMap.asInstanceOf[Map[K, V] ConstructFrom (K :*: V)]
 
-				final def in[M[_, _]](implicit factory :Factory[(K, V), M[K, V]]) :M[K, V] ConstructFrom (K -> V) =
+				final def in[M[_, _]](implicit factory :Factory[(K, V), M[K, V]]) :M[K, V] ConstructFrom (K :*: V) =
 					new ToMap[M, K, V](factory)("Map[" + factory.innerClassName + "]")
 
-				final def apply[M[_, _]](factory :ComparableFactory[(K, V), M[K, V]]) :M[K, V] ConstructFrom (K -> V) =
+				final def apply[M[_, _]](factory :ComparableFactory[(K, V), M[K, V]]) :M[K, V] ConstructFrom (K :*: V) =
 					new ToMap[M, K, V](factory)("Map[" + factory + "]")
 //
-//				final def apply[M[_, _]](factory :MapFactory[M]) :M[K, V] ConstructFrom (K -> V) =
+//				final def apply[M[_, _]](factory :MapFactory[M]) :M[K, V] ConstructFrom (K :*: V) =
 //					new ToMap[M, K, V](ComparableFactory(factory))(factory.toString)
 //
 //				final def apply[M[_, _]](factory :SortedMapFactory[M])
-//				                        (implicit ord :Ordering[K]) :M[K, V] ConstructFrom (K -> V) =
+//				                        (implicit ord :Ordering[K]) :M[K, V] ConstructFrom (K :*: V) =
 //					new ToMap[M, K, V](ComparableFactory(factory))(factory.toString)
 			}
 
@@ -639,27 +655,27 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 
 		/** A factory and matcher for composition of `Seq[V]` and subclasses from instances
-		  * of `Int `[[net.noresttherein.oldsql.model.-> ->]]` V`, where the first element of the pair is the index
+		  * of `Int `[[net.noresttherein.oldsql.model.:*: :*:]]` V`, where the first element of the pair is the index
 		  * of element of the second element. More precisely, the sequence is constructed by sorting the input ascending
 		  * by index - gaps in numeration result in subsequent elements being at lower position than stated rather than
 		  * `null` or other filler elements at missing indices.
 		  */
 		object Ordered {
-			def apply[S, V]()(implicit factory :Factory[V, S]) :S ConstructFrom (Int -> V) =
+			def apply[S, V]()(implicit factory :Factory[V, S]) :S ConstructFrom (Int :*: V) =
 				new ToOrdered[S, V](factory)("Ordered[" + factory.innerClassName + "]")
 
-			def apply[S, V](factory :ComparableFactory[V, S]) :S ConstructFrom (Int -> V) =
+			def apply[S, V](factory :ComparableFactory[V, S]) :S ConstructFrom (Int :*: V) =
 				new ToOrdered[S, V](factory)("Ordered[" + factory + "]")
 
 			@inline def of[V] :OrderedComposer[V] = new OrderedComposer[V] {}
 
 			sealed trait OrderedComposer[V] extends Any {
-				final def as[S](factory :Factory[V, S]) :S ConstructFrom (Int -> V) =
+				final def as[S](factory :Factory[V, S]) :S ConstructFrom (Int :*: V) =
 					new ToOrdered[S, V](factory)("Ordered[" + factory.innerClassName + "]")
 
-				final def in[S[_]](implicit factory :Factory[V, S[V]]) :S[V] ConstructFrom (Int -> V) = as(factory)
+				final def in[S[_]](implicit factory :Factory[V, S[V]]) :S[V] ConstructFrom (Int :*: V) = as(factory)
 
-				final def apply[S[_]](factory :ComparableFactory[V, S[V]]) :S[V] ConstructFrom (Int -> V) =
+				final def apply[S[_]](factory :ComparableFactory[V, S[V]]) :S[V] ConstructFrom (Int :*: V) =
 					new ToOrdered[S[V], V](factory)(factory.toString)
 			}
 
@@ -682,6 +698,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 
 		/** A custom `C ComposableFrom E` instance backed by the provided function. */
+		@SerialVersionUID(1L)
 		class Custom[+C, -E](private val compose :Iterable[E] => C, override val arity :Arity = Arity._0_n)
 			extends ComposableFrom[C, E]
 		{
@@ -731,19 +748,29 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 
 
-		private case class ToProperties[+T, P, -E](property :PropertyPath[E, P], compose :T ComposableFrom P)
+		@SerialVersionUID(1L)
+		private class ToProperties[+T, P, -E](get :PropertyPath[E, P], compose :T ComposableFrom P)
 			extends ComposableFrom[T, E]
 		{
 			override def arity = compose.arity
 
-			override def apply(items :Iterable[E]) = compose(items.map(property.fun))
-			override def attempt(items :Iterable[E]) = compose.attempt(items.map(property.fun))
+			override def apply(items :Iterable[E]) = compose(items.map(get.fun))
+			override def attempt(items :Iterable[E]) = compose.attempt(items.map(get.fun))
 
 			override def compatibleWith(decomposer :DecomposableTo[T, _]) = false
 
-			override def toString = compose.toString + "(_." + property + ")"
+			def property = get
+			def composition = compose
+			override def equals(that :Any) :Boolean = that match {
+				case other :ToProperties[_, _, _] =>
+					(this eq other) || property == other.property && composition == other.composition
+				case _ => false
+			}
+			override def hashCode :Int = get.hashCode * 31 + compose.hashCode
+			override def toString = compose.toString + "(_." + get + ")"
 		}
 
+		@SerialVersionUID(1L)
 		private class ToProperty[T, -E](prop :PropertyPath[E, T]) extends ToProperties[T, T, E](prop, Self()) {
 			override def attempt(items :Iterable[E]) =
 				if (items.isEmpty || items.sizeIs > 1) Lack
@@ -844,6 +871,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 //			override def toString = "Opt"
 //		}
 
+		@SerialVersionUID(1L)
 		private[ComposedOf] class ToCollection[+C, -E](val factory :Factory[E, C])
 			extends Custom[C, E](factory.fromSpecific) with ConstructFrom[C, E]
 		{
@@ -879,18 +907,19 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			override def toString = "Iterable"
 		}
 
-		private case class ToMap[M[_, _], K, V](factory :Factory[(K, V), M[K, V]])(override val toString :String)
-			extends Custom[M[K, V], K -> V](
-				map => factory.fromSpecific(map.view.map { case _1 -> _2 => (_1,  _2) }))
-			   with ConstructFrom[M[K, V], K -> V]
+		@SerialVersionUID(1L)
+		private case class ToMap[M[_, _], K, V](factory :Factory[Tuple2[K, V], M[K, V]])(override val toString :String)
+			extends Custom[M[K, V], K :*: V](
+				map => factory.fromSpecific(map.view.map { e => (e._1,  e._2) }))
+			   with ConstructFrom[M[K, V], K :*: V]
 		{
-			override def builder = new Builder[K -> V, M[K, V]] {
+			override def builder = new Builder[K :*: V, M[K, V]] {
 				private val target = factory.newBuilder
 
 				override def clear() :Unit = target.clear()
 				override def result() = target.result()
 
-				override def addOne(elem :K -> V) = {
+				override def addOne(elem :K :*: V) = {
 					target += ((elem._1, elem._2)); this
 				}
 			}
@@ -899,6 +928,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 				DecomposableTo.Map.unapply(decomposer)
 
 			private def mapFactory :Option[Any] = companionFactoryOf(factory)
+//			def factory :Factory[(_, _), _] = underlying
 
 			override def equals(that :Any) :Boolean = that match {
 				case self :AnyRef if self eq this => true
@@ -913,19 +943,28 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		}
 
 		private object ToMap extends ToMap[Map, Any, Any](immutable.Map)("Map")
+//		{
+//			override def unapply(c :ComposableFrom[_, _]) :Opt[Factory[(_, _), _]] =
+////					:Opt[Factory[(K, V), M[K, V]] forSome { type K; type V; type M[_, _] }] =
+//				c match {
+//					case map :ToMap[m, _, _] => Got(map.factory)
+//					case _ => Lack
+//				}
+//		}
 
-		private case class ToOrdered[S, E](factory :Factory[E, S])(override val toString :String)
-			extends Custom[S, Int -> E](_.toArray.sorted(Ordering.by((_ :Int -> E)._1)).view.map(_._2).to(factory))
-			   with ConstructFrom[S, Int -> E]
+		@SerialVersionUID(1L)
+		private class ToOrdered[S, E](underlying :Factory[E, S])(override val toString :String)
+			extends Custom[S, Int :*: E](_.toArray.sorted(Ordering.by((_ :Int :*: E)._1)).view.map(_._2).to(underlying))
+			   with ConstructFrom[S, Int :*: E]
 		{
 			override def builder =
-				Array.newBuilder[Int -> E].mapResult(_.sorted(Ordering.by((_ :Int -> E)._1)).view.map(_._2).to(factory))
+				Array.newBuilder[Int :*: E].mapResult(_.sorted(Ordering.by((_ :Int :*: E)._1)).view.map(_._2).to(underlying))
 
 			override def compatibleWith(decomposer :DecomposableTo[S, _]) :Boolean =
 				DecomposableTo.Ordered.unapply(decomposer)
 
-			private def mapFactory :Option[Any] = companionFactoryOf(factory)
-
+			private def mapFactory :Option[Any] = companionFactoryOf(underlying)
+			def factory = underlying
 			override def equals(that :Any) :Boolean = that match {
 				case self :AnyRef if self eq this => true
 				case other :ToOrdered[_, _] =>
@@ -955,6 +994,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 
 	/** A way to obtain `Iterable[E]` from `C`. */
+	@showAsInfix
 	trait DecomposableTo[-C, +E] extends Serializable { decomposition =>
 		def arity :Arity
 
@@ -983,7 +1023,8 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 	  * of variable/multiple number of values of `E`. This specifically excludes `E DecomposableTo E` to make
 	  * some operations available only for actual collection types as well as to eliminate the risk associated with
 	  * an always available implicit value for the identity decomposition.
-	  */
+	  */ //todo: rename to Contains
+	@showAsInfix
 	trait ExtractAs[-C, +E] extends DecomposableTo[C, E] {
 		def composeWith[W <: C, T >: E](composition :W ConstructFrom T) :W CollectionOf T =
 			CollectionOf(composition, this)
@@ -1004,13 +1045,13 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 
 
-	abstract class FallbackDecomposableToImplicits {
+	private[ComposedOf] abstract sealed class FallbackDecomposableToImplicits {
 		/** A decomposer of type `T` into a singleton `Iterable[T]`. */
 		implicit def itself[T] :T DecomposableTo T = DecomposableTo.FromSelf.asInstanceOf[DecomposableTo[T, T]]
 	}
 
-	abstract class IndexedDecomposableToImplicits extends FallbackDecomposableToImplicits {
-		implicit def indexed[T] :Iterable[T] ExtractAs (Int -> T) = DecomposableTo.Ordered()
+	private[ComposedOf] abstract sealed class IndexedDecomposableToImplicits extends FallbackDecomposableToImplicits {
+		implicit def indexed[T] :Iterable[T] ExtractAs (Int :*: T) = DecomposableTo.Ordered()
 	}
 
 
@@ -1038,8 +1079,8 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 				case _ => Lack
 			}
 
-		/** A decomposer of type `Map[K, V]` into an `Iterable[K -> V]`. */
-		implicit def map[K, V] :Map[K, V] ExtractAs (K -> V) = FromMap.asInstanceOf[ExtractAs[Map[K, V], K->V]]
+		/** A decomposer of type `Map[K, V]` into an `Iterable[K :*: V]`. */
+		implicit def map[K, V] :Map[K, V] ExtractAs (K :*: V) = FromMap.asInstanceOf[ExtractAs[Map[K, V], K :*: V]]
 
 		/** A decomposer of `Iterable[T]` - and, by extension, any of its subtypes - returning it as-is. */
 		implicit def iterable[T] :Iterable[T] ExtractAs T = FromIterable.asInstanceOf[ExtractAs[Iterable[T], T]]
@@ -1053,7 +1094,7 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 
 		/** A factory and matcher for the identity decomposition witnessing that values of `T` can be extracted from `T` itself. */
-		object Self {
+		object Self { //todo: rename to Itself
 			def apply[T]() :T DecomposableTo T = FromSelf.asInstanceOf[T DecomposableTo T]
 
 			def unapply[T, E](decomposition :DecomposableTo[T, E]) :Boolean = decomposition == FromSelf
@@ -1094,11 +1135,11 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 		}
 
 
-		/** A factory and matcher for the decomposition of `Map[K, V]` returning its elements as `K->V`.
-		  * @see [[net.noresttherein.oldsql.model.-> ->]]
+		/** A factory and matcher for the decomposition of `Map[K, V]` returning its elements as `K:*:V`.
+		  * @see [[net.noresttherein.oldsql.model.:*: :*:]]
 		  */
 		object Map {
-			def apply[K, V]() :Map[K, V] ExtractAs (K -> V) = FromMap.asInstanceOf[Map[K, V] ExtractAs (K->V)]
+			def apply[K, V]() :Map[K, V] ExtractAs (K :*: V) = FromMap.asInstanceOf[Map[K, V] ExtractAs (K:*:V)]
 
 			def unapply[T, E](decomposer :T DecomposableTo E) :Boolean = decomposer == FromMap
 
@@ -1107,11 +1148,11 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 
 		/** A factory and matcher for the decomposition of `Seq[V]`
-		  * into `Int `[[net.noresttherein.oldsql.model.-> ->]]` V`, where the first element of the pair
+		  * into `Int `[[net.noresttherein.oldsql.model.:*: :*:]]` V`, where the first element of the pair
 		  * is the zero-based index of the given element in the sequence.
 		  */
 		object Ordered {
-			def apply[V]() :Iterable[V] ExtractAs (Int -> V) = FromOrdered.asInstanceOf[Iterable[V] ExtractAs (Int -> V)]
+			def apply[V]() :Iterable[V] ExtractAs (Int :*: V) = FromOrdered.asInstanceOf[Iterable[V] ExtractAs (Int :*: V)]
 
 			def unapply[T, E](decomposer :T DecomposableTo E) :Boolean = decomposer == FromOrdered
 
@@ -1121,11 +1162,22 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 
 
 		/** A custom decomposer using the provided function. */
-		case class Custom[C, E](decompose :C => Iterable[E], arity :Arity = Arity._0_n) extends DecomposableTo[C, E] {
+		@SerialVersionUID(1L)
+		private class Custom[C, E](decompose :C => Iterable[E], override val arity :Arity = Arity._0_n)
+			extends DecomposableTo[C, E]
+		{
 			override def apply(composite: C): Iterable[E] = decompose(composite)
 
 			override def first(composite :C) :E = decompose(composite).head
 
+			override def equals(that :Any) :Boolean = that match {
+				case other :Custom[_, _] => (this eq other) || other.equals(decompose, arity)
+				case _ => false
+			}
+			private def equals(decompose :Nothing => Iterable[Any], arity :Arity) =
+				this.decompose == decompose && this.arity == arity
+
+			override def hashCode :Int = decompose.hashCode * 31 + arity.hashCode()
 			override def toString :String = arity.toString
 		}
 
@@ -1167,49 +1219,49 @@ object ComposedOf extends ImplicitFallbackComposedOfItself {
 			override def toString = "Iterable"
 		}
 
-		private case object FromMap extends ExtractAs[Map[Any, Any], Any->Any] {
+		private case object FromMap extends ExtractAs[Map[Any, Any], Any:*:Any] {
 			override def arity :Arity = Arity._0_n
 
-			override def apply(composite :Map[Any, Any]) :Iterable[Any -> Any] =
-				composite.map { case (_1, _2) => ->(_1, _2) }
+			override def apply(composite :Map[Any, Any]) :Iterable[Any :*: Any] =
+				composite.map { case (_1, _2) => :*:(_1, _2) }
 
-			override def first(composite :Map[Any, Any]) :Any -> Any = composite match {
+			override def first(composite :Map[Any, Any]) :Any :*: Any = composite match {
 				case mock :DecomposableMap[_, _] => mock.first
 				case _ =>
 					val (_1, _2) = composite.head
-					->(_1, _2)
+					:*:(_1, _2)
 			}
 
 			override def toString = "Map"
 		}
 
-		private case object FromOrdered extends ExtractAs[Iterable[Any], Int -> Any] {
+		private case object FromOrdered extends ExtractAs[Iterable[Any], Int :*: Any] {
 			override def arity = Arity._0_n
 
-			override def apply(composite :Iterable[Any]) :Iterable[Int -> Any] =
-				composite.view.zipWithIndex.map { case (v, idx) => ->(idx, v) }
+			override def apply(composite :Iterable[Any]) :Iterable[Int :*: Any] =
+				composite.view.zipWithIndex.map { case (v, idx) => :*:(idx, v) }
 
-			override def first(composite :Iterable[Any]) :Int -> Any = composite match {
+			override def first(composite :Iterable[Any]) :Int :*: Any = composite match {
 				case mock :DecomposableSeq[_] => mock.first
-				case _ => -> (0, composite.head)
+				case _ => :*: (0, composite.head)
 			}
 
 			override def toString = "Ordered"
 		}
 
 
-		/** Mock class specialization of `Map` for instrumentations, makes `Kin.fetch` for a K->V
+		/** Mock class specialization of `Map` for instrumentations, makes `Kin.fetch` for a K:*:V
 		  * resolve to a single property call, and thus work with `PropertyPath`.
 		  */
 		private[oldsql] trait DecomposableMap[K, V] extends Map[K, V] {
-			def first :K -> V
+			def first :K :*: V
 		}
 
-		/** Mock class specialization of `Set` for instrumentations, makes `Kin.fetch` for a Int->E
+		/** Mock class specialization of `Set` for instrumentations, makes `Kin.fetch` for a Int:*:E
 		  * resolve to a single property call, and thus work with `PropertyPath`.
 		  */
 		private[oldsql] trait DecomposableSeq[E] extends Seq[E] {
-			def first :Int -> E
+			def first :Int :*: E
 		}
 	}
 

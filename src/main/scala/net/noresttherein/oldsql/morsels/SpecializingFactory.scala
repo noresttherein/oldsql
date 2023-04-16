@@ -16,8 +16,8 @@ import net.noresttherein.oldsql.morsels.generic.Self
   * [[net.noresttherein.oldsql.morsels.SpecializingFactory.SpecializingFactoryBase.DedicatedFactory DedicatedFactory]]`[X, T]`,
   * which defines the return type `Res` of the method. The resolution of the result type depends on the type `X`
   * of the explicit argument and existence of implicit evidence `E[T]/SE[T]`. If the argument type is `X &lt;: SA[T]`,
-  * ''and'' an implicit 'single column' type class `SE[T]` exists, then the provided factory will be for values
-  * of `S[T]`. Otherwise it will produce the more generic `G[T]`, assuming an implicit type class `E[T]` exists.
+  * ''and'' an implicit 'specific' type class `SE[T]` exists, then the provided factory will be for values
+  * of `S[T]`. Otherwise it will produce the more general `G[T]`, assuming an implicit type class `E[T]` exists.
   * This happens by double dispatch starting from the `apply` method and involving the implicit factory argument;
   * the cases outlined above result in invoking either
   * [[net.noresttherein.oldsql.morsels.SpecializingFactory.SpecializingFactoryBase.generalResult generalResult]] or
@@ -42,14 +42,14 @@ import net.noresttherein.oldsql.morsels.generic.Self
 trait SpecializingFactory[A[_], SA[T] <: A[T], E[_], SE[T] <: E[T], G[_], S[T] <: G[T]]
 	extends SpecializingFactoryBase[A, SA, E, SE, G, S]
 {
-	implicit def specificFactory[T :SE] = new SpecificFactory[T]
-	implicit def specificEvidenceFactory[T](ev :SE[T]) = new SpecificFactory[T]()(ev)
+	implicit def specificFactory[T :SE] :SpecificFactory[T] = new SpecificFactory[T]
+	implicit def specificEvidenceFactory[T](ev :SE[T]) :SpecificFactory[T] = new SpecificFactory[T]()(ev)
 }
 
 
 
 object SpecializingFactory {
-	type ArgOf[A] = { type T[X] = A }
+	type ArgOf[A] = { type T[_] = A }
 
 	/** A [[net.noresttherein.oldsql.morsels.SpecializingFactory SpecializingFactory]] using a fixed explicit
 	  * argument type `A`. The result types `S[T]` and `G[T]` depend only on the implicit argument type `E[T]/SE[T]`.
@@ -63,6 +63,19 @@ object SpecializingFactory {
 	type SimpleFactory[E[_], SE[T] <: E[T], G[_], S[T] <: G[T]] = SpecializingFactory[Self, Self, E, SE, G, S]
 
 
+	/** Base trait of [[net.noresttherein.oldsql.morsels.SpecializingFactory SpecializingFactory]] extracted
+	  * for implicit priority enforcement. Defines an `apply` method accepting an argument of `A[T]`,
+	  * an implicit argument of `E[T]`, and returning `G[T]`. However, if both explicit and implicit arguments
+	  * are specialized subtypes of the former, `SA[T]` and `SE[T]`, then a specialized subtype `S[T] <: G[T]`
+	  * is the method's return type, as defined by
+	  * [[net.noresttherein.oldsql.morsels.SpecializingFactory.Factory Factory]].
+	  * @tparam A  type constructor of the upper bound of the explicit arguments passed to the factory.
+	  * @tparam SA type constructor of a specialized subtype of the argument type `A[T]`.
+	  * @tparam E  type constructor of the more generic, implicit type class (for example, `SQLForm`).
+	  * @tparam SE type constructor of the more specific, implicit type class (for example, `ColumnForm`).
+	  * @tparam G  type constructor of the more generic method result.
+	  * @tparam S  type constructor of the more specific method result.
+	  */
 	sealed trait SpecializingFactoryBase[A[_], SA[T] <: A[T], E[_], SE[T] <: E[T], G[_], S[T] <: G[T]] {
 
 		/** A factory method accepting some subtype of the generic argument type `A[T]` and an implicit
@@ -104,11 +117,11 @@ object SpecializingFactory {
 		  * `E[T] =:= `[[net.noresttherein.oldsql.schema.SQLForm SQLForm]]`[T]`
 		  * and `SE[T] =:= `[[net.noresttherein.oldsql.schema.ColumnForm ColumnForm]]`[T]`.
 		  * Thus, two implementations exist: one for `BoundParam[T]` itself, and one for its subtype
-		  * [[net.noresttherein.oldsql.sql.ast.BoundParamColumn BoundParamColumn]]`[T]`,
+		  * [[net.noresttherein.oldsql.sql.ast.BoundColumnParam BoundParamColumn]]`[T]`,
 		  * which will always have precedence if an implicit `ColumnForm[T]` exists, falling back to the more generic
 		  * instance if only an `SQLForm[T]` is available.
 		  * @see [[net.noresttherein.oldsql.morsels.SpecializingFactory SpecializingFactory]]
-		  */
+		  */ //todo: rename to ResultConstructor
 		type Factory[T] = DedicatedFactory[A[T], T]
 
 		/** A conversion of values of type `X`, being either `A[T]` or `SA[T]`, producing values of `G[T]`
@@ -128,23 +141,24 @@ object SpecializingFactory {
 		  * @tparam X argument type accepted by this factory.
 		  * @tparam T the type parameter shared by the return type, the required type class and the argument type.
 		  */ //implicitNotFound is not helpful at all, as the type parameters from the enclosing class are inaccessible
+		//todo: rename to SuitableResult
 		abstract class DedicatedFactory[-X <: A[T], T](implicit val evidence :E[T]) {
+			/** The type of objects returned by this factory (and methods accepting it as an implicit parameter). */
 			type Res <: G[T]
 			def apply(arg :X) :Res
 		}
-
+		//todo: rename to GeneralResult
 		class GeneralFactory[T :E] extends DedicatedFactory[A[T], T] {
 			type Res = G[T]
 			def apply(arg :A[T]) :G[T] = generalResult(arg)
 		}
-
+		//todo: rename to SpecificResult
 		class SpecificFactory[T :SE] extends DedicatedFactory[SA[T], T] {
 			type Res = S[T]
 			def apply(arg :SA[T]) :S[T] = specificResult(arg)
 		}
-
-		implicit def generalFactory[T :E] = new GeneralFactory[T]
-		implicit def generalEvidenceFactory[T](ev :E[T]) = new GeneralFactory[T]()(ev)
+		implicit def generalFactory[T :E] :GeneralFactory[T] = new GeneralFactory[T]
+		implicit def generalEvidenceFactory[T](ev :E[T]) :GeneralFactory[T] = new GeneralFactory[T]()(ev)
 	}
 
 }

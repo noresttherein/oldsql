@@ -2,7 +2,7 @@ package net.noresttherein.oldsql.schema.support
 
 import net.noresttherein.oldsql.schema.{Buff, Buffs}
 import net.noresttherein.oldsql.schema.Buffs.BuffsZipper
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, TypedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, ComposedAdapter, DelegateAdapter}
 import net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy
@@ -47,7 +47,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy
   * the very bottom of the stack, after dropping the whole common suffix with `backer.buffs`.
   * @author Marcin Mościcki
   */
-class BuffedMapping[+M <: RefinedMapping[S, O], S, O](protected override val backer :M, replacements :Buffs[S])
+class BuffedMapping[+M <: TypedMapping[S, O], S, O](protected override val backer :M, replacements :Buffs[S])
 	extends DeepProxy[S, O](backer) with DelegateMapping[M, S, O]
 {
 	override def buffs :Buffs[S] = replacements
@@ -82,10 +82,10 @@ class BuffedMapping[+M <: RefinedMapping[S, O], S, O](protected override val bac
 
 object BuffedMapping {
 
-	def apply[M <: RefinedMapping[S, O], S, O](mapping :M, buffs :Buffs[S]) :Adapted[M] =
+	def apply[M <: TypedMapping[S, O], S, O](mapping :M, buffs :Buffs[S]) :Adapted[M] =
 		new BuffedMapping[M, S, O](mapping, buffs) with DelegateAdapter[M, S, O]
 
-	def apply[M <: RefinedMapping[S, O], S, O](mapping :M, buffs :Buff[S]*) :Adapted[M] =
+	def apply[M <: TypedMapping[S, O], S, O](mapping :M, buffs :Buff[S]*) :Adapted[M] =
 		apply[M, S, O](mapping, mapping.buffs.inherited.declare(mapping.buffs.tag, buffs :_*))
 
 	def apply[M <: MappingAt[O], S, O](mapping :MappingAdapter[M, S, O], buffs :Buffs[S]) :MappingAdapter[M, S, O] =
@@ -95,10 +95,10 @@ object BuffedMapping {
 		apply[M, S, O](mapping, mapping.buffs.inherited.declare(mapping.buffs.tag, buffs :_*))
 
 
-	def nonCascading[M <: RefinedMapping[S, O], S, O](mapping :M, buffs :Buffs[S]) :Adapted[M] =
+	def nonCascading[M <: TypedMapping[S, O], S, O](mapping :M, buffs :Buffs[S]) :Adapted[M] =
 		new NonCascadingBuffedMapping[M, S, O](mapping, buffs) with DelegateAdapter[M, S, O]
 
-	def nonCascading[M <: RefinedMapping[S, O], S, O](mapping :M, buffs :Buff[S]*) :Adapted[M] =
+	def nonCascading[M <: TypedMapping[S, O], S, O](mapping :M, buffs :Buff[S]*) :Adapted[M] =
 		nonCascading[M, S, O](mapping, mapping.buffs.inherited.declare(mapping.buffs.tag, buffs :_*))
 
 	def nonCascading[M <: MappingAt[O], S, O](mapping :MappingAdapter[M, S, O], buffs :Buffs[S]) :MappingAdapter[M, S, O] =
@@ -108,7 +108,7 @@ object BuffedMapping {
 		nonCascading[M, S, O](mapping, mapping.buffs.inherited.declare(mapping.buffs.tag, buffs :_*))
 
 
-	private class NonCascadingBuffedMapping[+M <: RefinedMapping[S, O], S, O]
+	private class NonCascadingBuffedMapping[+M <: TypedMapping[S, O], S, O]
 	                                       (protected override val backer :M, override val buffs :Buffs[S])
 		extends BuffedMapping[M, S, O](backer, Buffs.empty[S](backer.buffs.tag))
 

@@ -2,6 +2,8 @@ package net.noresttherein.oldsql.model
 
 import java.{lang => j}
 
+import scala.annotation.showAsInfix
+
 import net.noresttherein.oldsql.collection.{Chain, Opt}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
@@ -23,52 +25,68 @@ object types {
 
 	final val ValueTypes = new Specializable.Group(Byte, Short, Int, Long, Char, Float, Double, Boolean)
 
+	@showAsInfix
 	abstract class <%<[S, T] extends (S => T) with Serializable
 
-	abstract class =%=[S, T] extends (S<%<T) {
+	@showAsInfix
+	abstract class =%=[S, T] extends (S <%< T) {
 		def apply(left :S) :T = right(left)
 		def right(left :S) :T
 		def left(right :T) :S
+		def swap :T =%= S
 	}
 
 	object <%< {
 //		@inline implicit final def symmetrical[S, T](implicit equiv: S=%=T) :T=%=S = adapt(equiv.left, equiv.right)
 
-		implicit final val (byteUnboxing, byteBoxing) = adapt((_:j.Byte).byteValue, j.Byte.valueOf :Byte => j.Byte)
-		implicit final val (shortUnboxing, shortBoxing) = adapt((_ :j.Short).shortValue, j.Short.valueOf :Short => j.Short)
-		implicit final val (intUnboxing, intBoxing) = adapt((_ :j.Integer).intValue, j.Integer.valueOf :Int => j.Integer)
-		implicit final val (longUnboxing, longBoxing) = adapt((_ :j.Long).longValue, j.Long.valueOf :Long => j.Long)
-		implicit final val (floatUnboxing, floatBoxing) = adapt((_ :j.Float).floatValue, j.Float.valueOf :Float => j.Float)
-		implicit final val (doubleUnboxing, doubleBoxing) = adapt((_ :j.Double).doubleValue, j.Double.valueOf :Double => j.Double)
-		implicit final val (charUnboxing, charBoxing) = adapt((_ :j.Character).charValue, j.Character.valueOf :Char => j.Character)
-		implicit final val (booleanUnboxing, booleanBoxing) = adapt((_ :j.Boolean).booleanValue, j.Boolean.valueOf :Boolean => j.Boolean)
+		implicit val booleanBoxing   :Boolean =%= j.Boolean = box(j.Boolean.valueOf(_ :Boolean))(_.booleanValue)
+		implicit val booleanUnboxing :j.Boolean =%= Boolean = booleanBoxing.swap
+		implicit val byteBoxing      :Byte =%= j.Byte = box(j.Byte.valueOf(_:Byte))(_.byteValue)
+		implicit val byteUnboxing    :j.Byte =%= Byte = byteBoxing.swap
+		implicit val shortBoxing     :Short =%= j.Short = box(j.Short.valueOf(_:Short))(_.shortValue)
+		implicit val shortUnboxing   :j.Short =%= Short = shortBoxing.swap
+		implicit val charBoxing      :Char =%= j.Character = box(j.Character.valueOf(_:Char))(_.charValue)
+		implicit val charUnboxing    :j.Character =%= Char = charBoxing.swap
+		implicit val intBoxing       :Int =%= j.Integer = box(j.Integer.valueOf(_:Int))(_.intValue)
+		implicit val intUnboxing     :j.Integer =%= Int = intBoxing.swap
+		implicit val longBoxing      :Long =%= j.Long = box(j.Long.valueOf(_:Long))(_.longValue)
+		implicit val longUnboxing    :j.Long =%= Long = longBoxing.swap
+		implicit val floatBoxing     :Float =%= j.Float = box(j.Float.valueOf(_:Float))(_.floatValue)
+		implicit val floatUnboxing   :j.Float =%= Float = floatBoxing.swap
+		implicit val doubleBoxing    :Double =%= j.Double = box(j.Double.valueOf(_:Double))(_.doubleValue)
 
 		implicit final def nullToOption[X >: Null] :X =%= Option[X] = nullBoxing.asInstanceOf[X =%= Option[X]]
 		implicit final def optionToNull[X >: Null] :Option[X] =%= X = nullUnboxing.asInstanceOf[Option[X] =%= X]
-		private[this] final val (nullUnboxing, nullBoxing) = adapt((_ :Option[Null]).orNull, Option.apply :Null => Option[Null])
+		private[this] val nullBoxing   :Null =%= Option[Null] = box(Option.apply[Null])(_.orNull)
+		private[this] val nullUnboxing :Option[Null] =%= Null = nullBoxing.swap
 
-		implicit final val byte2Short = adapt((_ :Byte).toShort)
-		implicit final val byte2Int = adapt((_ :Byte).toInt)
-		implicit final val byte2Long = adapt((_ :Byte).toLong)
-		implicit final val byte2Float = adapt((_ :Byte).toFloat)
-		implicit final val byte2Double = adapt((_ :Byte).toDouble)
-		implicit final val short2Int = adapt((_ :Short).toInt)
-		implicit final val short2Long = adapt((_ :Short).toLong)
-		implicit final val short2Float = adapt((_ :Short).toFloat)
-		implicit final val short2Double = adapt((_ :Short).toDouble)
-		implicit final val int2Long = adapt((_ :Int).toLong)
-		implicit final val int2Float = adapt((_ :Int).toFloat)
-		implicit final val int2Double = adapt((_ :Int).toDouble)
-		implicit final val long2Float = adapt((_ :Long).toFloat)
-		implicit final val long2Double = adapt((_ :Long).toDouble)
-		implicit final val float2Double = adapt((_ :Float).toDouble)
+		//fixme: precedence
+		implicit final val byte2Short   :Byte <%< Short = adapt((_ :Byte).toShort)
+		implicit final val byte2Int     :Byte <%< Int = adapt((_ :Byte).toInt)
+		implicit final val byte2Long    :Byte <%< Long = adapt((_ :Byte).toLong)
+		implicit final val byte2Float   :Byte <%< Float = adapt((_ :Byte).toFloat)
+		implicit final val byte2Double  :Byte <%< Double = adapt((_ :Byte).toDouble)
+		implicit final val short2Int    :Short <%< Int = adapt((_ :Short).toInt)
+		implicit final val short2Long   :Short <%< Long = adapt((_ :Short).toLong)
+		implicit final val short2Float  :Short <%< Float = adapt((_ :Short).toFloat)
+		implicit final val short2Double :Short <%< Double = adapt((_ :Short).toDouble)
+		implicit final val int2Long     :Int <%< Long = adapt((_ :Int).toLong)
+		implicit final val int2Float    :Int <%< Float = adapt((_ :Int).toFloat)
+		implicit final val int2Double   :Int <%< Double = adapt((_ :Int).toDouble)
+		implicit final val long2Float   :Long <%< Float = adapt((_ :Long).toFloat)
+		implicit final val long2Double  :Long <%< Double = adapt((_ :Long).toDouble)
+		implicit final val float2Double :Float <%< Double = adapt((_ :Float).toDouble)
 
-		@inline private def adapt[S, T](right :S => T, left :T => S) :(S =%= T, T =%= S) =
-			(new adapt(right, left), new adapt(left, right))
+		private def box[S, T](r :S => T)(l :T => S) = new adapt(r, l)
 
-		private class adapt[S, T](r :S=>T, l :T=>S) extends (S =%= T) {
+//		private def box[S, T](r :S => T)(l :T => S) :S =%= T = new adapt[S, T](r, l)
+//		@inline private def adapt[S, T](right :S => T, left :T => S) :(S =%= T, T =%= S) =
+//			(new adapt(right, left), new adapt(left, right))
+
+		private class adapt[S, T](r :S => T, l :T => S) extends (S =%= T) {
 			override def right(left :S) :T = r(left)
 			override def left(right :T) :S = l(right)
+			override def swap = new adapt(l, r)
 		}
 
 		@inline private def adapt[S, T](cast :S=>T) :S<%<T = { s :S => cast(s) }
@@ -96,15 +114,15 @@ object types {
 
 		private def standard[V](name :String) :LiteralSupport[V] = new StandardLiteral[V](name)
 
-		implicit val ForByte = standard[Byte]("Byte")
-		implicit val ForShort = standard[Short]("Short")
-		implicit val ForInt = standard[Int]("Int")
-		implicit val ForLong = standard[Long]("Long")
-		implicit val ForFloat = standard[Float]("Float")
-		implicit val ForDouble = standard[Double]("Double")
-		implicit val ForChar = standard[Char]("Char")
-		implicit val ForBoolean = standard[Boolean]("Boolean")
-		implicit val ForString = standard[String]("String")
+		implicit val ForByte    :LiteralSupport[Byte] = standard[Byte]("Byte")
+		implicit val ForShort   :LiteralSupport[Short] = standard[Short]("Short")
+		implicit val ForInt     :LiteralSupport[Int] = standard[Int]("Int")
+		implicit val ForLong    :LiteralSupport[Long] = standard[Long]("Long")
+		implicit val ForFloat   :LiteralSupport[Float] = standard[Float]("Float")
+		implicit val ForDouble  :LiteralSupport[Double] = standard[Double]("Double")
+		implicit val ForChar    :LiteralSupport[Char] = standard[Char]("Char")
+		implicit val ForBoolean :LiteralSupport[Boolean] = standard[Boolean]("Boolean")
+		implicit val ForString  :LiteralSupport[String] = standard[String]("String")
 
 		implicit def ForOption[T](some :LiteralSupport[T]) :LiteralSupport[Option[T]] =
 			standard("Option[" + some + "]")

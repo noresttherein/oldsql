@@ -9,7 +9,7 @@ import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.ComposedOf.{DecomposableTo, ExtractAs}
 import net.noresttherein.oldsql.model.Restraint.{Conjunction, Disjunction, False, NestedRestraint, Not, True}
 import net.noresttherein.oldsql.model.Restraint.Restrainer.{AbstractTermRestrainer, FlattenedRestrainer, MappedRestrainer, NestedRestrainer}
-import net.noresttherein.oldsql.model.Restrictive.{Collection, IfElse, Literal, Self, TranslableTerm}
+import net.noresttherein.oldsql.model.Restrictive.{Collection, IfElse, Literal, Self, TranslatableTerm}
 import net.noresttherein.oldsql.model.types.OrderingSupport
 
 
@@ -26,7 +26,7 @@ import net.noresttherein.oldsql.model.types.OrderingSupport
   * treated as a result set of values of `T`, because then it would have to be covariant with regards to `T` -
   * a set of values of `S` is of course a set of values of `T>:S`. This becomes an issue when used inside a
   * `Kin[T]`, which is covariant with regards to `T` and care has to be taken when dealing with such cases.
-  */ //consider: renaming to Selection/Specification
+  */ //consider: renaming to Selection/Specification/Restriction
 trait Restraint[-T] extends (T => Boolean) with scala.Equals with Serializable with implicits {
 
 	/** Creates a restraint implementing the negated condition of this restraint (i.e. selecting a value ''iff''
@@ -42,7 +42,7 @@ trait Restraint[-T] extends (T => Boolean) with scala.Equals with Serializable w
 		case _ => Conjunction(Seq(this, other))
 	}
 
-	def &&[S <: T](other :TranslableTerm[S, Boolean]) :Restraint[S] = this && other.toRestrictive
+	def &&[S <: T](other :TranslatableTerm[S, Boolean]) :Restraint[S] = this && other.toRestrictive
 
 
 
@@ -54,7 +54,7 @@ trait Restraint[-T] extends (T => Boolean) with scala.Equals with Serializable w
 		case _ => Disjunction(Seq(this, other))
 	}
 
-	def ||[S <: T](other :TranslableTerm[S, Boolean]) :Restraint[S] = this || other.toRestrictive
+	def ||[S <: T](other :TranslatableTerm[S, Boolean]) :Restraint[S] = this || other.toRestrictive
 
 
 
@@ -99,7 +99,7 @@ object Restraint {
 	  * While there is some overlap with the `Restrictive` values, restrainers encapsulate not only any values
 	  * taking part in matching (as in `Restrictive`s), but also the ''way'' matching is performed.
 	  * @see [[net.noresttherein.oldsql.model.Restrictive Restrictive]]
-	  */
+	  */ //consider: renaming to Restrict
 	trait Restrainer[-T, P] extends (P => Restraint[T]) {
 		//todo: combining restrainers into logical formulas
 		/** Must every key correspond to to a value? This doesn't guarantee that values of `T` exist for
@@ -650,7 +650,7 @@ object Restraint {
 		  *                '?' and '*' special characters are used to match a single and any number of any characters
 		  *                respectively, with `\` working as an escape character.
 		  */
-		def apply[T](matched :TranslableTerm[T, String], pattern :String) :Restraint[T] =
+		def apply[T](matched :TranslatableTerm[T, String], pattern :String) :Restraint[T] =
 			new Like(matched.toRestrictive, pattern)
 
 
@@ -729,7 +729,7 @@ object Restraint {
 
 
 		/** Create a `Restraint` testing if the left expression is part of the collection of the right expression. */
-		def apply[T, C, E](member :TranslableTerm[T, E], collection :Restrictive[T, C])
+		def apply[T, C, E](member :TranslatableTerm[T, E], collection :Restrictive[T, C])
 		                  (implicit deco :C ExtractAs E) :Restraint[T] =
 			new MembershipTest(member.toRestrictive, collection)
 
@@ -737,7 +737,7 @@ object Restraint {
 		/** Create a `Restraint` representing membership test for the value specified by the first argument
 		  * and the collection of terms given by the second argument.
 		  */
-		def apply[T, E](member :Restrictive[T, E], values :Iterable[TranslableTerm[T, E]]) :Restraint[T] = values.size match {
+		def apply[T, E](member :Restrictive[T, E], values :Iterable[TranslatableTerm[T, E]]) :Restraint[T] = values.size match {
 //			case 0 => False
 //			case 1 => Equal(member, values.head)
 			case _ => new MembershipTest[T, Iterable[E], E](member, Collection(values.map(_.toRestrictive)))
@@ -954,7 +954,7 @@ object Restraint {
 
 		def unapply[T](restraint :Restraint[T]) :Opt[(Restrictive[T, Option[E]], Restraint[E]) forSome { type E }] =
 			restraint match {
-				case Exists(option, condition, deco @ DecomposableTo.Option()) =>
+				case Exists(option, condition, DecomposableTo.Option()) =>
 					Got((option.asInstanceOf[Restrictive[T, Option[Any]]], condition.asInstanceOf[Restraint[Any]]))
 				case _ => Lack
 			}

@@ -6,7 +6,7 @@ import net.noresttherein.oldsql.collection.Opt
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory}
 import net.noresttherein.oldsql.model.ComposedOf.ComposableFrom
-import net.noresttherein.oldsql.model.Kin.{Derived, Present, Unknown}
+import net.noresttherein.oldsql.model.Kin.{Absent, Derived, Present, Unknown}
 import net.noresttherein.oldsql.model.KinFactory.{BaseDerivedKinFactory, BaseKinFactory, DerivedKinFactory}
 
 
@@ -25,7 +25,7 @@ import net.noresttherein.oldsql.model.KinFactory.{BaseDerivedKinFactory, BaseKin
   * @tparam T exposed collection type with elements of type `E`.
   * @tparam E the entity type mapped to the table being the other side of the relationship and the item type
   *           of `T`.
-  */
+  */ //todo: move to model, it uses nothing from the schema package
 trait TeleKin[E, +T] extends Derived[E, T] {
 	val key :Kin[Iterable[Kin[E]]]
 
@@ -213,8 +213,6 @@ object TeleKin {
 
 
 
-
-
 	private class TeleKinFactory[K, K2, E, T](keyFactory :KinFactory[K, Kin[E], Iterable[Kin[E]]],
 	                                          valueFactory :KinFactory[K2, E, E])
 	                                         (implicit override val result :T ComposedOf E)
@@ -225,9 +223,16 @@ object TeleKin {
 
 		override def apply(key :Kin[Iterable[Kin[E]]], value :Option[T]) :Derived[E, T] = TeleKin(key, value)
 
-		override def missing(key :Kin[Iterable[Kin[E]]]) :Derived[E, T] = TeleKin(key)
+		override def missing(key :Kin[Iterable[Kin[E]]]) :Derived[E, T] = key match {
+			case Absent() => TeleKin(key)
+			case Present(vals) if vals.forall(_.isAbsent) => TeleKin(key) //includes empty collections
+			case _ => keyFactory.keyOf(key) match {
+				case Got(k) => TeleKin(keyFactory.missing(k))
+				case _ => TeleKin(key, None)
+			}
+		}
 
-		override def absent(key :Kin[Iterable[Kin[E]]]) :Derived[E, T] = TeleKin(key) //fixme: not absent!
+		override def absent(key :Kin[Iterable[Kin[E]]]) :Derived[E, T] = missing(key)
 
 		override def present(value :T) :Derived[E, T] =
 			TeleKin(Derived.present(result.decomposer(value).map(Derived.one)))
@@ -240,7 +245,7 @@ object TeleKin {
 			Got(keyFactory.present(items.map(valueFactory.present)))
 
 		override def keyOf(kin :Kin[T]) :Opt[Kin[Iterable[Kin[E]]]] = kin match {
-			case Derived(TeleKin(k)) => Got(k.asInstanceOf[Kin[Iterable[Kin[E]]]])
+			case Derived(TeleKin(k)) => Got(k)
 			case Present(result.decomposer(values)) =>
 				Got(keyFactory.present(values.map(valueFactory.present)))
 			case _ => Lack

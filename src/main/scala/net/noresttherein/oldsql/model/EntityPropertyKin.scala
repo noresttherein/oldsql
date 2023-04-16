@@ -66,7 +66,7 @@ object EntityPropertyKin {
 			throw new IllegalArgumentException(s"Cannot create a kin for property $property of Unknown.")
 		else
 			new SingularPropertyKin[E, T](owner.recompose, property) {
-				override lazy val toOption = value orElse owner.items.map {
+				override lazy val toOption = value orElse this.owner.items.map {
 					items => propertyComposition(items.view.map(property.fun))
 				}
 			}
@@ -164,7 +164,7 @@ object EntityPropertyKin {
 
 		override def present(value :T) :Derived[E, T] =
 			new Present[T] with Derived[E, T] {
-				implicit override val composition = factory.composition
+				implicit override val composition :ComposableFrom[T, E] = factory.composition
 				override val get = value
 				override def items = Some(Iterable.empty)
 //				override def property[Y, U >: T](property :PropertyPath[U, Y]) :One[Y] =

@@ -7,29 +7,26 @@ import scala.collection.immutable.ArraySeq
 import scala.reflect.ClassTag
 
 import com.sun.rowset.CachedRowSetImpl
-import net.noresttherein.oldsql.{DeprecatedAlways, OperationType, SharedImplDeprecation}
 import net.noresttherein.oldsql.collection.Chain
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
-import net.noresttherein.oldsql.exceptions.{Bug, IllegalResultArityException, MissingStatementResultBug, TooManyResultsException}
+import net.noresttherein.oldsql.exceptions.{IllegalResultArityException, MissingStatementResultBug, TooManyResultsException}
 import net.noresttherein.oldsql.morsels.ComparableFactory
-import net.noresttherein.oldsql.morsels.Extractor.Optional
 import net.noresttherein.oldsql.pixies.{CachedUpdateCountStatement, CallableStatementOutParams}
-import net.noresttherein.oldsql.schema.{ColumnMapping, ColumnReadForm, RelVar, SQLReadForm, Table}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.{ColumnReadForm, SQLReadForm, Table}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, TypedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.sql.Adjoin.JoinedRelationSubject.InferSubject
 import net.noresttherein.oldsql.sql.Call.{CallVisitor, CaseCall}
 import net.noresttherein.oldsql.sql.Delete.implementation.{CaseDelete, DeleteVisitor}
 import net.noresttherein.oldsql.sql.DML.{BoundDML, ComposedDML, DMLAdapter, DMLAPI, RepeatedDML}
 import net.noresttherein.oldsql.sql.DMLStatement.{AlteredResultStatement, BoundStatement, ComposedStatement, DMLStatementAPI, StatementResult, StatementVisitor}
 import net.noresttherein.oldsql.sql.DMLStatement.StatementResult.{BatchResult, LargeUpdateCount, MappedResult, RepeatedResult, UpdateCount}
 import net.noresttherein.oldsql.sql.Insert.implementation.{CaseInsert, InsertVisitor}
+import net.noresttherein.oldsql.sql.ParamClause.{ParamRelation, UnboundParam}
 import net.noresttherein.oldsql.sql.Returning.implementation.{CaseReturning, ReturningVisitor}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.UnboundParam.{FromParam, ParamRelation}
 import net.noresttherein.oldsql.sql.Update.implementation.{CaseUpdate, UpdateVisitor}
-import net.noresttherein.oldsql.sql.mechanics.{SpelledSQL, SQLScribe}
+import net.noresttherein.oldsql.sql.mechanics.SpelledSQL
+import net.noresttherein.oldsql.sql.mechanics.MappingReveal.BaseMappingSubject
 
 //implicits
 import net.noresttherein.oldsql.slang._
@@ -392,7 +389,7 @@ object DML {
   * [[net.noresttherein.oldsql.sql.JoinParam unbound]] parameter(s).  A lack of parameters on this class doesn't mean
   * that the resulting `PreparedStatement` will be parameterless;
   * if the SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] used contain
-  * [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]] parameters, they will be translated to JDBC
+  * [[net.noresttherein.oldsql.sql.ast.BoundParam bound]] parameters, they will be translated to JDBC
   * parameters which will always be assigned the embedded values.
   *
   * A single invocation of this instance is expected to result in a single database round-trip, unless the returned
@@ -417,7 +414,7 @@ object DML {
   *         by [[net.noresttherein.oldsql.sql.DMLStatement.StatementVisitor StatementVisitor]] implementing the ''visitor''
   *         pattern for this class hierarchy.
   *
-  * @tparam Args the parameter(s) of this statement, represented as [[net.noresttherein.oldsql.sql.UnboundParam unbound]]
+  * @tparam Args the parameter(s) of this statement, represented as [[net.noresttherein.oldsql.sql.ParamClause unbound]]
   *              parameters of SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]] within the statement.
   *              Translates to the parameters of created `Incantation`.
   * @tparam Res  the type of the returned value. It can represent a single value, some collection type, or simply
@@ -445,10 +442,10 @@ trait DMLStatement[-Args, +Res] extends DML[Args, Res] with DMLStatementAPI[Args
 	  * Implementations should call the method corresponding to the most specific standard `DMLStatement` type they
 	  * extend.
 	  */
-	protected def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res]
+	protected def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res]
 
-	private[sql] final def applyToForwarder[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
-		applyTo(visitor)
+	private[sql] final def `->applyTo`[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
+		visit(visitor)
 
 
 	/** 'Spell out' this DML into a textual form understandable by the targeted DBMS, converting it into
@@ -499,7 +496,7 @@ trait DMLStatement[-Args, +Res] extends DML[Args, Res] with DMLStatementAPI[Args
 object DMLStatement {
 
 	/** Wildcard type alias matching all [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]] instances. */
-	type * = DMLStatement[Nothing, Any]
+	type __ = DMLStatement[Nothing, Any]
 
 	/** Public API declaring methods available on [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]]
 	  * and its specialization `S`. This trait is variant in all its type parameter, requiring the same variance
@@ -536,7 +533,7 @@ object DMLStatement {
 		def noResult :Stmt[Args, Unit] = returns(StatementResult.NoResult)
 
 		/** A DML statement returning the same result as this one, but as a singleton sequence.
-		  * Useful when uninfying the types of statements returning individual objects and collections of objects.
+		  * Useful when unifying the types of statements returning individual objects and collections of objects.
 		  */
 		def inSeq :Stmt[Args, Seq[Res]] = returns(result.map(_::Nil))
 
@@ -563,9 +560,9 @@ object DMLStatement {
 		  * if no specific formatting is needed for this statement type. It should format this statement
 		  * in standard SQL.
 		  */
-		protected def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct]
+		protected def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args]
 
-		private[sql] final def defaultSpellingForwarder(spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
+		private[sql] final def `->defaultSpelling`(spelling :SQLSpelling) :SpelledSQL[Args] =
 			defaultSpelling(spelling)
 
 		protected def doChant(implicit dialect :SQLDialect) :Incantation[Args, Res]
@@ -586,10 +583,10 @@ object DMLStatement {
 	  */
 	trait AlteredResultStatement[-Args, +Res] extends DMLStatement[Args, Res] with DMLAdapter[DMLStatement[Args, Any]] {
 
-		protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
+		protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
 			visitor.result(this)
 
-		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
+		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] =
 			spelling.spell(dml)
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[AlteredResultStatement[_, _]]
@@ -658,10 +655,10 @@ object DMLStatement {
 	{
 		override def result :StatementResult[Nothing, Res] = dml.result
 
-		protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
+		protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Args, Res] =
 			visitor.composed(this)
 
-		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args, RowProduct] =
+		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Args] =
 			spelling.spell(dml).compose(argmap)
 
 		protected override def doChant(implicit dialect :SQLDialect) :Incantation[Args, Res] =
@@ -713,7 +710,7 @@ object DMLStatement {
 	/** Combines a parameterized DML statement with a single value of its parameter(s), turning it into
 	  * a parameterless statement which will always ignore its arguments and use the preset value instead.
 	  * This allows late binding of previously created, reusable statements to obtain effectively the same result
-	  * as if the statement was defined using SQL [[net.noresttherein.oldsql.sql.ast.SQLParameter bound]]
+	  * as if the statement was defined using SQL [[net.noresttherein.oldsql.sql.ast.BoundParam bound]]
 	  * parameters, reducing the overhead. This is the public interface that can be used in pattern matching
 	  * by the application; extending classes typically also mix-in
 	  * [[net.noresttherein.oldsql.sql.DMLStatement.BoundStatement.Impl BoundStatement.Impl]].
@@ -723,10 +720,10 @@ object DMLStatement {
 	{
 		override def result :StatementResult[Nothing, Res] = dml.result
 
-		protected override def applyTo[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Any, Res] =
+		protected override def visit[R[-X, +Y]](visitor :StatementVisitor[R]) :R[Any, Res] =
 			visitor.bound(this)
 
-		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any, RowProduct] =
+		protected override def defaultSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Any] =
 			spelling.spell(dml).compose { _ => args }
 
 		protected override def doChant(implicit dialect :SQLDialect) :Incantation[Any, Res] =
@@ -775,18 +772,18 @@ object DMLStatement {
 	/** Base trait for implementations of a ''visitor'' pattern implementation matching
 	  * standard [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]] class hierarchy.
 	  * No default implementations are given for any methods, but extending classes can group various tree branches
-	  * to handle them as their common base type by mixing-in suitable `CaseXxx` or `MatchXxx` traits provided
+	  * to handle them as their common base type by mixing-in suitable `CaseAnyXxx` or `MatchAnyXxx` traits provided
 	  * in the singleton object grouping the branch. For example, extending
 	  * {{{
-	  *     StatementVisitor[R] with CaseInsert[R] with CaseUpdate[R] with CaseMerge[R]
-	  *                         with CaseDelete[R] with CaseCall[R]
+	  *     StatementVisitor[R] with CaseAnyInsert[R] with CaseAnyUpdate[R] with CaseAnyMerge[R]
+	  *                         with CaseDelete[R] with CaseAnyCall[R]
 	  * }}}
 	  * will leave 9 unimplemented methods:
 	  *   - one for each of the listed main statement types;
 	  *   - three for existing high-level adapters of other statements;
 	  *   - a fallback for custom implementations extending none of the above.
 	  *
-	  * See [[net.noresttherein.oldsql.sql.DMLStatement.CaseStatement CaseStatement]] for a base type which
+	  * See [[net.noresttherein.oldsql.sql.DMLStatement.CaseStatement CaseAnyStatement]] for a base type which
 	  * instead implements all methods by delegating them to the method for their direct supertype in the hierarchy
 	  * (as listed by this visitor). Its supertypes include all mix-in visitor traits for all statement types
 	  * and is thus a good starting point for browsing available dispatching implementations for composing
@@ -796,12 +793,12 @@ object DMLStatement {
 	  *           and its return type (the `Res` argument of the visited statement).
 	  * @see [[net.noresttherein.oldsql.sql.DMLStatement.MatchStatement]]
 	  * @see [[net.noresttherein.oldsql.sql.DMLStatement.CaseStatement]]
-	  *///todo: rename to visitor; Merge
+	  *///todo: Merge
 	trait StatementVisitor[R[-X, +Y]]
 		extends InsertVisitor[R] with UpdateVisitor[R]  with DeleteVisitor[R]
 		   with CallVisitor[R] with ReturningVisitor[R]
 	{
-		def apply[X, Y](stmt :DMLStatement[X, Y]) :R[X, Y] = stmt.applyToForwarder(this)
+		def apply[X, Y](stmt :DMLStatement[X, Y]) :R[X, Y] = stmt.`->applyTo`(this)
 
 		def bound[X, Y](stmt :BoundStatement[X, Y])             :R[Any, Y]
 		def composed[X, A, Y](stmt :ComposedStatement[X, A, Y]) :R[X, Y]
@@ -852,7 +849,7 @@ object DMLStatement {
 	  * (and in similar contexts for other DML statements). It exposes the mappings for the updated table
 	  * and the statement parameter(s) with proper `Origin` types to allow their implicit conversions to
 	  * [[net.noresttherein.oldsql.sql.ast.ComponentSQL ComponentSQL]] expressions for the whole table.
-	  */
+	  */ //consider: renaming to DMLClosure or DMlDomain
 	class DMLScope[X, M[O] <: MappingAt[O]](val domain :From[M] WithParam X) {
 		/** The mapping of the modified table, for use on the left side
 		  * of [[net.noresttherein.oldsql.sql.ComponentSetter assignments]]. Any of tis components are implicitly
@@ -869,12 +866,12 @@ object DMLStatement {
 		  */
 		val current :M[RowProduct AndFrom M WithParam X] = domain.prev
 
-		/** A [[net.noresttherein.oldsql.sql.UnboundParam.FromParam mapping]] for the statement parameter,
+		/** A [[net.noresttherein.oldsql.sql.ParamClause.UnboundParam mapping]] for the statement parameter,
 		  * implicitly convertible to a placeholder SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]]
 		  * representing the parameter. It can be also used to create pseudo 'components' representing parameter values
 		  * derivable from `X`.
 		  */
-		val param :FromParam[X, RowProduct AndFrom ParamRelation[X]#Param] = domain.last.mapping
+		val param :UnboundParam[X, RowProduct AndFrom ParamRelation[X]#Param] = domain.last.mapping
 
 		/** Initiates the creation of a dependent ''select'' having access to both the modified table and the statement
 		  * parameter.
@@ -883,8 +880,7 @@ object DMLStatement {
 		  *         `select` extension methods.
 		  */
 		def from[R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
-		        (table :Table[R])(implicit cast :InferSubject[From[M] WithParam X, Subselect, R, T, S])
-				:From[M] WithParam X Subselect R =
+		        (table :Table[R])(implicit cast :BaseMappingSubject[R, T, S]) :From[M] WithParam X Subselect R =
 			domain subselect table
 	}
 
@@ -926,8 +922,13 @@ object DMLStatement {
 	  * Implementations are expected to close all consumed resources (such as `ResultSet`s), but not the
 	  * executed statement itself, whose lifecycle is handled
 	  * by [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]].
-	  */ //todo: we need an argument parameter for InsertReturning
-	trait StatementResult[-E, +Res] extends Serializable {
+	  * @tparam E   the `Subject` type of the mapping for rows of the returned `ResultSet`. This type is not used
+	  *             by this class, but serves a declarative purpose, allowing to match a `StatementResult`
+	  *             appropriate to a given statement.
+	  * @tparam Res the type returned by this instance and the [[net.noresttherein.oldsql.sql.Incantation Incantation]]
+	  *             using it.
+	  */ //fixme: we need an argument parameter for InsertReturning
+	trait StatementResult[-E, +Res] extends Serializable { //todo: use Seq[E] instead of E for batch results.
 		/** Hot spot method invoked after the statement handled by this instance was created, but before its execution.
 		  * This is where various properties of the returned `ResultSet` can be set and where ''OUT'' parameters
 		  * are registered.
@@ -1440,15 +1441,15 @@ object DMLStatement {
 			private[this] val indices = Array.ofDim[Int](outParams.length + 1)
 			outParams.copyToArray(indices, 1)
 
-			if (indices.length != form.readColumns + 1)
+			if (indices.length != form.columnCount + 1)
 				throw new IllegalArgumentException(
 					"Cannot create StatementResult " + this + " because out parameter form uses " +
-						form.readColumns + " columns."
+						form.columnCount + " columns."
 				)
 
 			override def prepare(statement :PreparedStatement) :Unit = statement match {
 				case call :CallableStatement => form.register(call, position)
-				case _ if form.readColumns == 0 =>
+				case _ if form.columnCount == 0 =>
 				case _ => throw new IllegalArgumentException(
 					"Cannot register out params for " + this + " - not a CallableStatement: '" +
 						statement + "':" + statement.getClass.getName + "."
@@ -1458,7 +1459,7 @@ object DMLStatement {
 
 			protected def readParams(statement :PreparedStatement) :Xs = statement match {
 				case call :CallableStatement => form(CallableStatementOutParams(call, indices), position)
-				case _ if form.readColumns == 0 => form(emptyResultSet, position)
+				case _ if form.columnCount == 0 => form(emptyResultSet, position)
 				case _ => throw new IllegalArgumentException(
 					"Cannot read out params for " + this + " - not a CallableStatement: '" +
 						statement + "' :" + statement.getClass.getName + "."
@@ -1572,7 +1573,10 @@ object DMLStatement {
 				:StatementResult[Call[Xs, Y], Xs ~ Y] =
 			new ProcedureResult[Xs ~ Y](1 +: indices)(SQLReadForm[Xs] ~ SQLReadForm[Y])
 
-		implicit def FunctionResult[Y :ColumnReadForm] :StatementResult[Call[@~, Y], Y] =
+		def FunctionResult[Y :ColumnReadForm] :StatementResult[Call[@~, Y], Y] =
+			FunctionResult[@~, Y](Nil).map(_.last)
+
+		implicit def paramlessFunctionResult[Y :ColumnReadForm] :StatementResult[Call[@~, Y], Y] =
 			FunctionResult[@~, Y](Nil).map(_.last)
 
 		/** [[net.noresttherein.oldsql.sql.DMLStatement.StatementResult StatementResult]] implementations reading
@@ -1654,17 +1658,17 @@ object DMLStatement {
 		}
 
 		object UpdatedEntities {
-			def Single[E, M[X] <: BaseMapping[E, X], O](mapping :RefinedMapping[E, O], columns :Seq[String])
-					:StatementResult[E, E] = ??? //fixme
+			def Single[E, M[X] <: BaseMapping[E, X], O](mapping :TypedMapping[E, O], columns :Seq[String])
+					:StatementResult[E, E] = ??? //fixme:
 
-			def Single[E, M[X] <: BaseMapping[E, X], O](arg :E, mapping :RefinedMapping[E, O], columns :Seq[String])
-					:StatementResult[E, E] = ??? //fixme
+			def Single[E, M[X] <: BaseMapping[E, X], O](arg :E, mapping :TypedMapping[E, O], columns :Seq[String])
+					:StatementResult[E, E] = ??? //fixme:
 
-			def Option[E, M[X] <: BaseMapping[E, X], O](mapping :RefinedMapping[E, O], columns :Seq[String])
-					:StatementResult[E, Option[E]] = ??? //fixme
+			def Option[E, M[X] <: BaseMapping[E, X], O](mapping :TypedMapping[E, O], columns :Seq[String])
+					:StatementResult[E, Option[E]] = ??? //fixme:
 
-			def Option[E, M[X] <: BaseMapping[E, X], O](arg :E, mapping :RefinedMapping[E, O], columns :Seq[String])
-					:StatementResult[E, Option[E]] = ??? //fixme
+			def Option[E, M[X] <: BaseMapping[E, X], O](arg :E, mapping :TypedMapping[E, O], columns :Seq[String])
+					:StatementResult[E, Option[E]] = ??? //fixme:
 
 			/** Reads all rows of the [[java.sql.ResultSet java.sql.ResultSet]] with
 			  * [[java.sql.PreparedStatement.getGeneratedKeys generated keys]] using the implicitly given
@@ -1673,11 +1677,11 @@ object DMLStatement {
 			  * @see [[net.noresttherein.oldsql.morsels.ComparableFactory]]
 			  */
 			def apply[E, C, M[X] <: BaseMapping[E, X], O]
-			         (factory :Factory[E, C])(mapping :RefinedMapping[E, O], columns :Seq[String]) :StatementResult[E, C] =
+			         (factory :Factory[E, C])(mapping :TypedMapping[E, O], columns :Seq[String]) :StatementResult[E, C] =
 				??? //fixme:
 
 			def apply[E, C, M[X] <: BaseMapping[E, X], O]
-			         (factory :Factory[E, C])(args :Seq[E], mapping :RefinedMapping[E, O], columns :Seq[String])
+			         (factory :Factory[E, C])(args :Seq[E], mapping :TypedMapping[E, O], columns :Seq[String])
 					:StatementResult[E, C] =
 				??? //fixme:
 
@@ -1687,14 +1691,14 @@ object DMLStatement {
 			  * using the builder provided by the given factory.
 			  */
 			def apply[E, C[_], M[X] <: BaseMapping[E, X], O]
-			         (mapping :RefinedMapping[E, O], columns :Seq[String], factory :IterableFactory[C])
+			         (mapping :TypedMapping[E, O], columns :Seq[String], factory :IterableFactory[C])
 					:StatementResult[E, C[E]] =
-				??? //fixme
+				??? //fixme:
 
 			def apply[E, C[_], M[X] <: BaseMapping[E, X], O]
-			         (args :Seq[E], mapping :RefinedMapping[E, O], columns :Seq[String], factory :IterableFactory[C])
+			         (args :Seq[E], mapping :TypedMapping[E, O], columns :Seq[String], factory :IterableFactory[C])
 					:StatementResult[E, C[E]] =
-				??? //fixme
+				??? //fixme:
 
 			/** Reads all rows of the [[java.sql.ResultSet java.sql.ResultSet]] with
 			  * [[java.sql.PreparedStatement.getGeneratedKeys generated keys]] using the implicitly given
@@ -1702,16 +1706,16 @@ object DMLStatement {
 			  * using the builder provided by the given factory.
 			  */
 			def apply[E, C[_], M[X] <: BaseMapping[E, X], O, Ev[_]]
-			         (mapping :RefinedMapping[E, O], columns :Seq[String], factory :EvidenceIterableFactory[C, Ev])
+			         (mapping :TypedMapping[E, O], columns :Seq[String], factory :EvidenceIterableFactory[C, Ev])
 			         (implicit ev :Ev[E])
 					:StatementResult[E, C[E]] =
-				??? //fixme
+				??? //fixme:
 
 			def apply[E, C[_], M[X] <: BaseMapping[E, X], O, Ev[_]]
-			         (args :Seq[E], mapping :RefinedMapping[E, O],
+			         (args :Seq[E], mapping :TypedMapping[E, O],
 			          columns :Seq[String], factory :EvidenceIterableFactory[C, Ev])(implicit ev :Ev[E])
 					:StatementResult[E, C[E]] =
-				??? //fixme
+				??? //fixme:
 		}
 	}
 

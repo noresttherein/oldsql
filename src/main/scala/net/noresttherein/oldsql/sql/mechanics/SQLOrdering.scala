@@ -2,6 +2,7 @@ package net.noresttherein.oldsql.sql.mechanics
 
 import java.time.{Instant, LocalDate, LocalDateTime, LocalTime, OffsetDateTime, OffsetTime, ZonedDateTime}
 
+import scala.annotation.{implicitNotFound, nowarn}
 import scala.math.Numeric.IntIsIntegral
 import scala.reflect.ClassTag
 
@@ -19,6 +20,7 @@ import net.noresttherein.oldsql.sql.mechanics.SQLOrdering.{MappedSQLOrdering, Re
   * @author Marcin Mościcki
   */
 sealed trait SQLOrdering[X] extends Ordering[X] with Serializable {
+	//todo: ordering of tuples by chaining instances
 	def unmap[Y](lower :Y => X) :SQLOrdering[Y] = new MappedSQLOrdering(lower)(this)
 
 	override def reverse :SQLOrdering[X] = new ReverseSQLOrdering[X](this)
@@ -27,6 +29,21 @@ sealed trait SQLOrdering[X] extends Ordering[X] with Serializable {
 		case rev :ReverseSQLOrdering[_] => rev.reverse == this
 		case _ => false
 	}
+
+/*
+	protected def defaultSpelling[F <: RowProduct, P]
+	                             (left :SQLExpression[F, Grouped, X], operator :OrderingOperator,
+	                              right :SQLExpression[F, Grouped, X])
+	                             (from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                             (implicit spelling :SQLSpelling) :SpelledSQL[P]
+
+	final private[sql] def defaultSpelling[F <: RowProduct, P]
+	                                      (spelling :SQLSpelling)
+	                                      (left :SQLExpression[F, Grouped, X], operator :OrderingOperator,
+	                                       right :SQLExpression[F, Grouped, X])
+	                                      (from :F, context :SQLContext[P], params :Parameterization[P, F]) :SpelledSQL[P] =
+		defaultSpelling(left, operator, right)(from, context, params)(spelling)
+*/
 }
 
 
@@ -40,9 +57,15 @@ object SQLOrdering { self =>
 
 	def by[X, Y :SQLOrdering](f :X => Y) :SQLOrdering[X] = SQLOrdering[Y].unmap(f)
 
-
 	private class MappedSQLOrdering[X, Y](lower :Y => X)(implicit order :SQLOrdering[X]) extends SQLOrdering[Y] {
 		override def compare(x :Y, y :Y) :Int = order.compare(lower(x), lower(y))
+
+//		protected override def defaultSpelling[F <: RowProduct, P]
+//		                       (left :SQLExpression[F, Grouped, Y], operator: OrderingOperator,
+//		                        right :SQLExpression[F, Grouped, Y])
+//		                       (from :F, context :SQLContext[P], params :Parameterization[P, F])
+//		                       (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+//			spelling.compare(left.map(lower), operator, right.map(lower))(from, context, params)
 
 		override def toString = "by[" + order + "]"
 	}
@@ -53,40 +76,148 @@ object SQLOrdering { self =>
 
 		override def isReverseOf(other :Ordering[_]) :Boolean = other == reverse
 
+//		protected override def defaultSpelling[F <: RowProduct, P]
+//		                       (left :SQLExpression[F, Grouped, X], operator :OrderingOperator,
+//		                        right :SQLExpression[F, Grouped, X])
+//		                       (from :F, context :SQLContext[P], params :Parameterization[P, F])
+//		                       (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+//			spelling.compare(right, operator, left)(from, context, params)(reverse)
+
 		override def toString :String = reverse.toString + ".reverse"
 	}
 
-	protected class Adapter[X :ClassTag](implicit order :Ordering[X]) extends SQLOrdering[X] {
+	private class ColumnOrdering[X :ClassTag](implicit order :Ordering[X]) extends SQLOrdering[X] {
 		override def compare(x :X, y :X) :Int = order.compare(x, y)
+
+/*
+		protected override def defaultSpelling[F <: RowProduct, P]
+		                       (left :SQLExpression[F, Grouped, X], operator :OrderingOperator,
+		                        right :SQLExpression[F, Grouped, X])
+		                       (from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                       (implicit spelling :SQLSpelling) =
+		{
+			val cmpSpelling = spelling.inWhere
+			val anchoredLeft = if (left.isAnchored(from)) left else left.anchor(from)
+			val anchoredRight = if (right.isAnchored(from)) right else right.anchor(from)
+			val (finalLeft, finalRight) =
+				if (left.columnCount(cmpSpelling) == right.columnCount(cmpSpelling))
+					(anchoredLeft, anchoredRight)
+				else
+					left.reform(right)(SQLTypeUnification.directly, cmpSpelling)
+			val leftColumns = cmpSpelling.explode(finalLeft)(from, context, params)
+			if (leftColumns.length != 1)
+				throw new MismatchedExpressionsException(left, right,
+					leftColumns.mkString("single column required, but ", ", ", " included.")
+				)
+			val rightColumns = cmpSpelling.explode(finalRight)(from, leftColumns.head.context, params)
+			if (rightColumns.length != 1)
+				throw new MismatchedExpressionsException(left, right,
+					rightColumns.mkString("single column required, but ", ", ", " included.")
+				)
+			leftColumns.head + " " + spelling.operator(operator.symbol) + " " + rightColumns.head
+		}
+*/
 
 		override def toString :String = "<=[" + implicitly[ClassTag[X]] + "]"
 	}
 
 
-	implicit val OfInt            :SQLOrdering[Int]            = { val OfInt            = null; new Adapter }
-	implicit val OfLong           :SQLOrdering[Long]           = { val OfLong           = null; new Adapter }
-	implicit val OfShort          :SQLOrdering[Short]          = { val OfShort          = null; new Adapter }
-	implicit val OfByte           :SQLOrdering[Byte]           = { val OfByte           = null; new Adapter }
-	implicit val OfFloat          :SQLOrdering[Float]          = { val OfFloat          = null; new Adapter }
-	implicit val OfDouble         :SQLOrdering[Double]         = { val OfDouble         = null; new Adapter }
-	implicit val OfBigInt         :SQLOrdering[BigInt]         = { val OfBigInt         = null; new Adapter }
-	implicit val OfBigDecimal     :SQLOrdering[BigDecimal]     = { val OfBigDecimal     = null; new Adapter }
+/*
+	trait LexicographicalOrdering[X] extends SQLOrdering[X] {
+		protected[SQLOrdering] def splitSpelling[F <: RowProduct, P]
+		                                        (left :SQLExpression[F, Grouped, X], operator :OrderingOperator,
+		                                         right :SQLExpression[F, Grouped, X])
+		                                        (from :F, context :SQLContext[P], params :Parameterization[P, F])
+				:(SpelledSQL[P], SpelledSQL[P], SpelledSQL[P])
 
-	implicit val OfString         :SQLOrdering[String]         = { val OfString         = null; new Adapter }
+		protected override def defaultSpelling[F <: RowProduct, P]
+		                                      (left :SQLExpression[F, Grouped, X], operator :OrderingOperator,
+		                                       right :SQLExpression[F, Grouped, X])
+		                                      (from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                                      (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		{
+			val (previous, nonStrict, strict) = splitSpelling(left, operator, right)(from, context, params)
+			if (operator.isStrict) previous + strict else previous + nonStrict
+		}
+	}
+
+	class ChainOrdering[Xs <: Chain, X](implicit prev :LexicographicalOrdering[Xs], val last :SQLOrdering[X])
+		extends LexicographicalOrdering[Xs ~ X]
+	{
+		override def compare(x :Xs ~ X, y :Xs ~ X) :Int = prev.compare(x.init, y.init) match {
+			case 0 => last.compare(x.last, y.last)
+			case cmp => cmp
+		}
+
+		protected override def splitSpelling[F <: RowProduct, P]
+		                       (left :SQLExpression[F, Grouped, Xs ~ X], operator :OrderingOperator,
+		                        right :SQLExpression[F, Grouped, Xs ~ X])
+		                       (from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                       (implicit spelling :SQLSpelling) :(SpelledSQL[P], SpelledSQL[P], SpelledSQL[P]) =
+		(left, right) match {
+			case (ChainSQL(leftInit, leftLast), ChainSQL(rightInit, rightLast)) =>
+					val (prefix, prevNonStrict, prevStrict) =
+						prev.splitSpelling(leftInit, operator.nonStrict, rightInit)(from, context, params)
+					val (lastNonStrict, lastStrict) =
+						if (operator.isStrict)
+							(spelling.compare(leftLast, operator.nonStrict, rightLast)(from, prefix.context, params)(last),
+							spelling.compare(leftLast, operator, rightLast)(from, prefix.context, params)(last))
+						else if (operator.isNonStrict)
+							(spelling.compare(leftLast, operator, rightLast)(from, prefix.context, params)(last),
+							spelling.compare(leftLast, operator.strict, rightLast)(from, prefix.context, params)(last))
+						else {
+							val cmp = spelling.compare(leftLast, operator, rightLast)(from, prefix.context, params)(last)
+							(cmp, cmp)
+						}
+					(prefix)
+			case _ =>
+				throw new MismatchedExpressionsException(left, right,
+					"cannot split the expressions into a prefix and the last element because " +
+					"they are not ChainSQL but " + left.getClass.getName + + " and " + right.getClass.getName + "."
+
+				)
+		}
+
+		override def toString :String = prev.toString + "~" + last.toString
+	}
+
+	implicit object EmptyTupleOrdering extends SQLOrdering[@~] {
+		override def compare(x: @~, y: @~) :Int = 0
+
+		protected override def defaultSpelling[F <: RowProduct, P]
+		                       (left :SQLExpression[F, Grouped, @~], right :SQLExpression[F, Grouped, @~])
+		                       (from :F, context :SQLContext[P], params :Parameterization[P, F])
+		                       (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+			SpelledSQL(context)
+
+		override def toString = "@~"
+	}
+*/
+
+	//in the following declarations, we need to shadow the implicits
+	implicit val OfInt            :SQLOrdering[Int]            = { @nowarn val OfInt            = null; new ColumnOrdering }
+	implicit val OfLong           :SQLOrdering[Long]           = { @nowarn val OfLong           = null; new ColumnOrdering }
+	implicit val OfShort          :SQLOrdering[Short]          = { @nowarn val OfShort          = null; new ColumnOrdering }
+	implicit val OfByte           :SQLOrdering[Byte]           = { @nowarn val OfByte           = null; new ColumnOrdering }
+	implicit val OfFloat          :SQLOrdering[Float]          = { @nowarn val OfFloat          = null; new ColumnOrdering }
+	implicit val OfDouble         :SQLOrdering[Double]         = { @nowarn val OfDouble         = null; new ColumnOrdering }
+	implicit val OfBigInt         :SQLOrdering[BigInt]         = { @nowarn val OfBigInt         = null; new ColumnOrdering }
+	implicit val OfBigDecimal     :SQLOrdering[BigDecimal]     = { @nowarn val OfBigDecimal     = null; new ColumnOrdering }
+
+	implicit val OfString         :SQLOrdering[String]         = { @nowarn val OfString         = null; new ColumnOrdering }
+
+	implicit val OfLocalDate      :SQLOrdering[LocalDate]      = { @nowarn val OfLocalDate      = null; new ColumnOrdering }
+	implicit val OfDateTime       :SQLOrdering[LocalDateTime]  = { @nowarn val OfDateTime       = null; new ColumnOrdering }
+	implicit val OfLocalTime      :SQLOrdering[LocalTime]      = { @nowarn val OfLocalTime      = null; new ColumnOrdering }
+	implicit val OfZonedDateTime  :SQLOrdering[ZonedDateTime]  = { @nowarn val OfZonedDateTime  = null; new ColumnOrdering }
+	implicit val OfOffsetDateTime :SQLOrdering[OffsetDateTime] = { @nowarn val OfOffsetDateTime = null; new ColumnOrdering }
+	implicit val OfOffsetTime     :SQLOrdering[OffsetTime]     = { @nowarn val OfOffsetTime     = null; new ColumnOrdering }
+	implicit val OfInstant        :SQLOrdering[Instant]        = { @nowarn val OfInstant        = null; new ColumnOrdering }
 
 
-	implicit val OfLocalDate      :SQLOrdering[LocalDate]      = { val OfLocalDate      = null; new Adapter }
-	implicit val OfDateTime       :SQLOrdering[LocalDateTime]  = { val OfDateTime       = null; new Adapter }
-	implicit val OfLocalTime      :SQLOrdering[LocalTime]      = { val OfLocalTime      = null; new Adapter }
-	implicit val OfZonedDateTime  :SQLOrdering[ZonedDateTime]  = { val OfZonedDateTime  = null; new Adapter }
-	implicit val OfOffsetDateTime :SQLOrdering[OffsetDateTime] = { val OfOffsetDateTime = null; new Adapter }
-	implicit val OfOffsetTime     :SQLOrdering[OffsetTime]     = { val OfOffsetTime     = null; new Adapter }
-	implicit val OfInstant        :SQLOrdering[Instant]        = { val OfInstant        = null; new Adapter }
+	implicit def OfTuple[I <: Chain :SQLOrdering, L :SQLOrdering] :SQLOrdering[I ~ L] = new ColumnOrdering
 
-
-	implicit def OfTuple[I <: Chain :SQLOrdering, L:SQLOrdering] :SQLOrdering[I ~ L] = new Adapter
-
-	implicit val OfEmptyTuple :SQLOrdering[@~] = new Adapter
+	implicit val OfEmptyTuple :SQLOrdering[@~] = new ColumnOrdering
 }
 
 
@@ -97,6 +228,7 @@ object SQLOrdering { self =>
 /**
   * @author Marcin Mościcki
   */
+@implicitNotFound("No in-database arithmetic support for type ${T}.")
 sealed trait SQLNumber[T] extends SQLOrdering[T] with Numeric[T]
 
 
@@ -141,17 +273,17 @@ object SQLNumber {
 		override def div(x :T, y :T) = cmp.div(x, y)
 	}
 
-	private def integer[T :Integral] :SQLInteger[T] = new Integer[T]
+	private def integer[T :Integral]    :SQLInteger[T]  = new Integer[T]
 	private def fraction[T :Fractional] :SQLFraction[T] = new Fraction[T]
 
-	implicit val SQLInt = integer[Int]
-	implicit val SQLLong = integer[Long]
-	implicit val SQLShort = integer[Short]
-	implicit val SQLByte = integer[Byte]
-	implicit val SQLDouble = fraction[Double]
-	implicit val SQLFloat = fraction[Float]
-	implicit val SQLBigInt = integer[BigInt]
-	implicit val SQLBigDecimal = fraction[BigDecimal]
+	implicit val SQLInt        :SQLInteger[Int]         = integer[Int]
+	implicit val SQLLong       :SQLInteger[Long]        = integer[Long]
+	implicit val SQLShort      :SQLInteger[Short]       = integer[Short]
+	implicit val SQLByte       :SQLInteger[Byte]        = integer[Byte]
+	implicit val SQLDouble     :SQLFraction[Double]     = fraction[Double]
+	implicit val SQLFloat      :SQLFraction[Float]      = fraction[Float]
+	implicit val SQLBigInt     :SQLInteger[BigInt]      = integer[BigInt]
+	implicit val SQLBigDecimal :SQLFraction[BigDecimal] = fraction[BigDecimal]
 //	implicit val SQLBigInteger = integer[java.math.BigInteger](Numeric.BigIntIsIntegral)
 //	implicit val SQLJavaBigDecimal = fraction[java.math.BigDecimal]
 

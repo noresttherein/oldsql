@@ -99,14 +99,14 @@ private[model] object InvocationReflection {
 					s"is not fully instantiated in the place of method declaration or you have found a bug.\n${e.getMessage}"),
 				e)
 			case e :Exception =>
-				throw new PropertyReflectionException(errorMsg(e.toString), e)
+				throw new PropertyReflectionException(errorMsg(e.getMessage), e)
 		}
 	}
 
 
 
 
-	private class MethodInterceptor {
+	private[InvocationReflection] class MethodInterceptor { //ByteBuddy requires that it is visible in run time to instrumented classes
 
 		@RuntimeType
 		def intercept(@This owner :Any, @Origin method :Method): Any = {
@@ -361,7 +361,7 @@ private[model] object InvocationReflection {
 	@inline private[this] final val JavaChar = classOf[j.Character] :Any
 	@inline private[this] final val JavaBoolean = classOf[j.Boolean] :Any
 	@inline private[this] final val ScalaUnit = classOf[Unit] :Any
-	@inline private[this] final val ScalaOption = classOf[Option[Any]] :Any
+//	@inline private[this] final val ScalaOption = classOf[Option[Any]] :Any
 	@inline private[this] final val JavaString = classOf[String] :Any
 
 	@inline private[this] final val ByteBuddy = new ByteBuddy

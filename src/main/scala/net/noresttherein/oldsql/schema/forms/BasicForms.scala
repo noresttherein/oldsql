@@ -17,8 +17,9 @@ import net.noresttherein.oldsql.collection.Opt.Lack
 import net.noresttherein.oldsql.morsels.Stateless
 import net.noresttherein.oldsql.schema.ColumnForm
 import net.noresttherein.oldsql.schema.ColumnForm.{JDBCObjectFormSingleton, NamedColumnForm}
-import net.noresttherein.oldsql.schema.ColumnWriteForm.{DirectColumnWriteForm, SingletonColumnWriteForm}
+import net.noresttherein.oldsql.schema.ColumnWriteForm.{DirectColumnWriteForm, NonLiteralColumnWriteForm, SingletonColumnWriteForm}
 import net.noresttherein.oldsql.schema.SQLForm.{NonLiteralForm, NullValue}
+import net.noresttherein.oldsql.slang.castTypeParam
 import net.noresttherein.oldsql.sql.sanitize
 
 
@@ -43,7 +44,7 @@ import net.noresttherein.oldsql.sql.sanitize
   * summoning an implicit value like this: [[net.noresttherein.oldsql.schema.ColumnForm.apply[T:ColumnForm] ColumnForm[Int] ]].
   */
 trait NotNullBasicForms { this :BasicForms =>
-	private implicit val NotNull = NullValue.NotNull
+	private implicit val NotNull :NullValue[Nothing] = NullValue.NotNull
 	
 	implicit val NotNullSQLArray          :ColumnForm[sql.Array]     = SQLArrayForm
 	val NotNullASCIIStream                :ColumnForm[InputStream]   = ASCIIStreamForm
@@ -64,7 +65,7 @@ trait NotNullBasicForms { this :BasicForms =>
 	val NotNullNCharacterStream           :ColumnForm[Reader]        = NCharacterStreamForm
 	implicit val NotNullNClob             :ColumnForm[NClob]         = NCLobForm
 	val NotNullNString                    :ColumnForm[String]        = NStringForm
-	val NotNullNull                       :ColumnForm[Null]          = NullValueForm(NotNull)
+//	val NotNullNull                       :ColumnForm[Null]          = NullValueForm(NotNull)
 	implicit val NotNullRef               :ColumnForm[Ref]           = RefForm
 	implicit val NotNullRowId             :ColumnForm[RowId]         = RowIdForm
 	implicit val NotNullShort             :ColumnForm[Short]         = ShortForm
@@ -100,47 +101,47 @@ trait NotNullBasicForms { this :BasicForms =>
 
 	
 	val NotNullType :NaturalMap[Class, ColumnForm] = NaturalMap(
-		Assoc(classOf[sql.Array], NotNullSQLArray),
-		Assoc(classOf[BigDecimal], NotNullBigDecimal),
-		Assoc(classOf[Blob], NotNullBlob),
-		Assoc(classOf[Boolean], NotNullBoolean),
-		Assoc(classOf[Byte], NotNullByte),
-		Assoc(classOf[Array[Byte]], NotNullBytes), //are we sure this must be the default?
-		Assoc(classOf[Char], NotNullChar),
-		Assoc(classOf[Reader], NotNullCharacterStream),
-		Assoc(classOf[Clob], NotNullClob),
-		Assoc(classOf[Date], NotNullDate),
-		Assoc(classOf[Double], NotNullDouble),
-		Assoc(classOf[Float], NotNullFloat),
-		Assoc(classOf[Int], NotNullInt),
-		Assoc(classOf[Long], NotNullLong),
-		Assoc(classOf[NClob], NotNullNClob),
-		Assoc(classOf[Ref], NotNullRef),
-		Assoc(classOf[RowId], NotNullRowId),
-		Assoc(classOf[Short], NotNullShort),
-		Assoc(classOf[SQLXML], NotNullSQLXML),
-		Assoc(classOf[String], NotNullString),
-		Assoc(classOf[Time], NotNullTime),
-		Assoc(classOf[Timestamp], NotNullTimestamp),
-		Assoc(classOf[URL], NotNullURL),
-		
-		Assoc(classOf[JBigDecimal], NotNullJavaBigDecimal),
-		Assoc(classOf[JBoolean], NotNullJavaBoolean),
-		Assoc(classOf[JByte], NotNullJavaByte),
-		Assoc(classOf[JChar], NotNullJavaChar),
-		Assoc(classOf[JDouble], NotNullJavaDouble),
-		Assoc(classOf[JFloat], NotNullJavaFloat),
-		Assoc(classOf[JInt], NotNullJavaInt),
-		Assoc(classOf[JLong], NotNullJavaLong),
-		Assoc(classOf[JShort], NotNullJavaShort),
+		Assoc(classOf[sql.Array],      NotNullSQLArray),
+		Assoc(classOf[BigDecimal],     NotNullBigDecimal),
+		Assoc(classOf[Blob],           NotNullBlob),
+		Assoc(classOf[Boolean],        NotNullBoolean),
+		Assoc(classOf[Byte],           NotNullByte),
+		Assoc(classOf[Array[Byte]],    NotNullBytes), //are we sure this must be the default?
+		Assoc(classOf[Char],           NotNullChar),
+		Assoc(classOf[Reader],         NotNullCharacterStream),
+		Assoc(classOf[Clob],           NotNullClob),
+		Assoc(classOf[Date],           NotNullDate),
+		Assoc(classOf[Double],         NotNullDouble),
+		Assoc(classOf[Float],          NotNullFloat),
+		Assoc(classOf[Int],            NotNullInt),
+		Assoc(classOf[Long],           NotNullLong),
+		Assoc(classOf[NClob],          NotNullNClob),
+		Assoc(classOf[Ref],            NotNullRef),
+		Assoc(classOf[RowId],          NotNullRowId),
+		Assoc(classOf[Short],          NotNullShort),
+		Assoc(classOf[SQLXML],         NotNullSQLXML),
+		Assoc(classOf[String],         NotNullString),
+		Assoc(classOf[Time],           NotNullTime),
+		Assoc(classOf[Timestamp],      NotNullTimestamp),
+		Assoc(classOf[URL],            NotNullURL),
 
-		Assoc(classOf[Instant], NotNullInstant),
-		Assoc(classOf[LocalDate], NotNullLocalDate),
-		Assoc(classOf[LocalTime], NotNullLocalTime),
-		Assoc(classOf[LocalDateTime], NotNullLocalDateTime),
-		Assoc(classOf[OffsetTime], NotNullOffsetTime),
+		Assoc(classOf[JBigDecimal],    NotNullJavaBigDecimal),
+		Assoc(classOf[JBoolean],       NotNullJavaBoolean),
+		Assoc(classOf[JByte],          NotNullJavaByte),
+		Assoc(classOf[JChar],          NotNullJavaChar),
+		Assoc(classOf[JDouble],        NotNullJavaDouble),
+		Assoc(classOf[JFloat],         NotNullJavaFloat),
+		Assoc(classOf[JInt],           NotNullJavaInt),
+		Assoc(classOf[JLong],          NotNullJavaLong),
+		Assoc(classOf[JShort],         NotNullJavaShort),
+
+		Assoc(classOf[Instant],        NotNullInstant),
+		Assoc(classOf[LocalDate],      NotNullLocalDate),
+		Assoc(classOf[LocalTime],      NotNullLocalTime),
+		Assoc(classOf[LocalDateTime],  NotNullLocalDateTime),
+		Assoc(classOf[OffsetTime],     NotNullOffsetTime),
 		Assoc(classOf[OffsetDateTime], NotNullOffsetDateTime),
-		Assoc(classOf[ZonedDateTime], NotNullZonedDateTime)
+		Assoc(classOf[ZonedDateTime],  NotNullZonedDateTime)
 	)
 	
 }
@@ -159,48 +160,47 @@ trait NotNullBasicForms { this :BasicForms =>
   * summoning an implicit value like this: [[net.noresttherein.oldsql.schema.ColumnForm.apply[T:ColumnForm] ColumnForm[Int] ]].
   */ //anonymous classes are PITA on stack traces ...
 trait BasicForms extends NotNullBasicForms {
-	import SQLForms.{BasicJDBCForm => Basic, AlternateJDBCForm => Alternate}
+	import SQLForms.{DedicatedJDBCForm => Basic, AlternateJDBCForm => Alternate}
 	import ColumnForm.jdbc
-
 
 	implicit def SQLArrayForm(implicit nulls :NullValue[sql.Array]) :ColumnForm[sql.Array] =
 		new Basic[sql.Array](ARRAY) {
 			override def set(statement :PreparedStatement, position :Int, value :sql.Array) :Unit =
 				statement.setArray(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :sql.Array = res.getArray(column)
+			protected override def get(res :ResultSet, column :Int) :sql.Array = res.getArray(column)
 		}
 
 	def ASCIIStreamForm(implicit nulls :NullValue[InputStream]) :ColumnForm[InputStream] =
-		new Basic[InputStream](LONGVARCHAR) with NonLiteralForm[InputStream] {
+		new Basic[InputStream](LONGVARCHAR) with NonLiteralColumnWriteForm[InputStream] {
 			override def set(statement :PreparedStatement, position :Int, value :InputStream) :Unit =
 				statement.setAsciiStream(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :InputStream = res.getAsciiStream(column)
+			protected override def get(res :ResultSet, column :Int) :InputStream = res.getAsciiStream(column)
 		}
 
 	implicit def BigDecimalForm(implicit nulls :NullValue[BigDecimal]) :ColumnForm[BigDecimal] =
-		new Basic[BigDecimal](DECIMAL) {
+		new Basic[BigDecimal](DECIMAL) { //todo: verify literal format
 			override def set(statement :PreparedStatement, position :Int, value :BigDecimal) :Unit =
 				statement.setBigDecimal(position, value.bigDecimal)
 
-			protected override def read(res :ResultSet, column :Int) :BigDecimal = res.getBigDecimal(column)
+			protected override def get(res :ResultSet, column :Int) :BigDecimal = res.getBigDecimal(column)
 		}
 
 	def BinaryStreamForm(implicit nulls :NullValue[InputStream]) :ColumnForm[InputStream] =
-		new Basic[InputStream](LONGVARBINARY) with NonLiteralForm[InputStream] {
+		new Basic[InputStream](LONGVARBINARY) with NonLiteralColumnWriteForm[InputStream] {
 			override def set(statement :PreparedStatement, position :Int, value :InputStream) :Unit =
 				statement.setBinaryStream(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :InputStream = res.getBinaryStream(column)
+			protected override def get(res :ResultSet, column :Int) :InputStream = res.getBinaryStream(column)
 		}
 
 	implicit def BlobForm(implicit nulls :NullValue[Blob]) :ColumnForm[Blob] =
-		new Basic[Blob](BLOB) with NonLiteralForm[Blob] {
+		new Basic[Blob](BLOB) with NonLiteralColumnWriteForm[Blob] {
 			override def set(statement :PreparedStatement, position :Int, value :Blob) :Unit =
 				statement.setBlob(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Blob = res.getBlob(column)
+			protected override def get(res :ResultSet, column :Int) :Blob = res.getBlob(column)
 		}
 
 	implicit def BooleanForm(implicit nulls :NullValue[Boolean]) :ColumnForm[Boolean] =
@@ -208,7 +208,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :Boolean) :Unit =
 				statement.setBoolean(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Boolean = res.getBoolean(column)
+			protected override def get(res :ResultSet, column :Int) :Boolean = res.getBoolean(column)
 		}
 
 	implicit def ByteForm(implicit nulls :NullValue[Byte]) :ColumnForm[Byte] =
@@ -216,20 +216,20 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :Byte) :Unit =
 				statement.setByte(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Byte = res.getByte(column)
+			protected override def get(res :ResultSet, column :Int) :Byte = res.getByte(column)
 		}
 
 	implicit def BytesForm(implicit nulls :NullValue[Array[Byte]]) :ColumnForm[Array[Byte]] =
-		new Basic[Array[Byte]](BINARY) with NonLiteralForm[Array[Byte]] {
+		new Basic[Array[Byte]](BINARY) with NonLiteralColumnWriteForm[Array[Byte]] {
 			override def set(statement :PreparedStatement, position :Int, value :Array[Byte]) :Unit =
 				statement.setBytes(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Array[Byte] = res.getBytes(column)
+			protected override def get(res :ResultSet, column :Int) :Array[Byte] = res.getBytes(column)
 		}
 
 	implicit def CharForm(implicit nulls :NullValue[Char]) :ColumnForm[Char] =
 		new Basic[Char](CHAR) {
-			protected override def read(res :ResultSet, position :Int) :Char =
+			protected override def get(res :ResultSet, position :Int) :Char =
 				res.getString(position) match {
 					case null => 0
 					case s if s.length != 1 =>
@@ -243,19 +243,19 @@ trait BasicForms extends NotNullBasicForms {
 		}
 
 	implicit def CharacterStreamForm(implicit nulls :NullValue[Reader]) :ColumnForm[Reader] =
-		new Basic[Reader](LONGVARCHAR) with NonLiteralForm[Reader] {
+		new Basic[Reader](LONGVARCHAR) with NonLiteralColumnWriteForm[Reader] {
 			override def set(statement :PreparedStatement, position :Int, value :Reader) :Unit =
 				statement.setCharacterStream(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Reader = res.getCharacterStream(column)
+			protected override def get(res :ResultSet, column :Int) :Reader = res.getCharacterStream(column)
 		}
 
 	implicit def ClobForm(implicit nulls :NullValue[Clob]) :ColumnForm[Clob] =
-		new Basic[Clob](CLOB) with NonLiteralForm[Clob] {
+		new Basic[Clob](CLOB) with NonLiteralColumnWriteForm[Clob] {
 			override def set(statement :PreparedStatement, position :Int, value :Clob) :Unit =
 				statement.setClob(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Clob = res.getClob(column)
+			protected override def get(res :ResultSet, column :Int) :Clob = res.getClob(column)
 		}
 
 	implicit def DateForm(implicit nulls :NullValue[Date]) :ColumnForm[Date] =
@@ -263,7 +263,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :Date) :Unit =
 				statement.setDate(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Date = res.getDate(column)
+			protected override def get(res :ResultSet, column :Int) :Date = res.getDate(column)
 
 			override def literal(value :Date) :String = formatDate(value.toLocalDate)
 		}
@@ -273,7 +273,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :Double) :Unit =
 				statement.setDouble(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Double = res.getDouble(column)
+			protected override def get(res :ResultSet, column :Int) :Double = res.getDouble(column)
 		}
 
 	implicit def FloatForm(implicit nulls :NullValue[Float]) :ColumnForm[Float] =
@@ -281,7 +281,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :Float) :Unit =
 				statement.setFloat(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Float = res.getFloat(column)
+			protected override def get(res :ResultSet, column :Int) :Float = res.getFloat(column)
 		}
 
 	implicit def IntForm(implicit nulls :NullValue[Int]) :ColumnForm[Int] =
@@ -289,7 +289,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :Int) :Unit =
 				statement.setInt(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Int = res.getInt(column)
+			protected override def get(res :ResultSet, column :Int) :Int = res.getInt(column)
 		}
 
 	implicit def LongForm(implicit nulls :NullValue[Long]) :ColumnForm[Long] =
@@ -297,23 +297,23 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :Long) :Unit =
 				statement.setLong(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Long = res.getLong(column)
+			protected override def get(res :ResultSet, column :Int) :Long = res.getLong(column)
 		}
 
 	def NCharacterStreamForm(implicit nulls :NullValue[Reader]) :ColumnForm[Reader] =
-		new Basic[Reader](LONGVARCHAR) with NonLiteralForm[Reader] {
+		new Basic[Reader](LONGVARCHAR) with NonLiteralColumnWriteForm[Reader] {
 			override def set(statement :PreparedStatement, position :Int, value :Reader) :Unit =
 				statement.setNCharacterStream(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Reader = res.getNCharacterStream(column)
+			protected override def get(res :ResultSet, column :Int) :Reader = res.getNCharacterStream(column)
 		}
 
 	implicit def NCLobForm(implicit nulls :NullValue[NClob]) :ColumnForm[NClob] =
-		new Basic[NClob](NCLOB) with NonLiteralForm[NClob] {
+		new Basic[NClob](NCLOB) with NonLiteralColumnWriteForm[NClob] {
 			override def set(statement :PreparedStatement, position :Int, value :NClob) :Unit =
 				statement.setNClob(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :NClob = res.getNClob(column)
+			protected override def get(res :ResultSet, column :Int) :NClob = res.getNClob(column)
 		}
 
 	def NStringForm(implicit nulls :NullValue[String]) :ColumnForm[String] =
@@ -321,13 +321,14 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :String) :Unit =
 				statement.setNString(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :String = res.getNString(column)
+			protected override def get(res :ResultSet, column :Int) :String = res.getNString(column)
 
 			override def literal(value :String) :String =
 				if (value == null) "NULL"
 				else "'" + sanitize(value) + "'"
 		}
 
+/*
 	def NullValueForm[T :NullValue] :ColumnForm[T] =
 		new NamedColumnForm[T](NullValue[T].toString + ":NULL", NULL)
 			with DirectColumnWriteForm[T] with SingletonColumnWriteForm[T]
@@ -339,44 +340,49 @@ trait BasicForms extends NotNullBasicForms {
 
 			override def literal(value :T) = "NULL"
 		}
+*/
 
-	def NullForm[T >: Null] :ColumnForm[T] =
-		new Basic[T](NULL)(NullValue.Null) with Stateless {
+	private val nullForm = NullForm(NULL)
+
+	def NullForm[T >: Null] :ColumnForm[T] = nullForm.castParam[T]
+
+	def NullForm[T >: Null](sqlType :JDBCType) :ColumnForm[T] =
+		new Basic[T](sqlType)(NullValue.Null) with Stateless {
 			override def set(statement :PreparedStatement, position :Int, value :T) :Unit =
-				statement.setNull(position, NULL.getVendorTypeNumber)
+				setNull(statement, position)
 
-			protected override def read(res :ResultSet, column :Int) :T = null
+			protected override def get(res :ResultSet, column :Int) :T = null
 		}
 
 	implicit def RefForm(implicit nulls :NullValue[Ref]) :ColumnForm[Ref] =
-		new Basic[Ref](REF) with NonLiteralForm[Ref] {
+		new Basic[Ref](REF) with NonLiteralColumnWriteForm[Ref] {
 			override def set(statement :PreparedStatement, position :Int, value :Ref) :Unit =
 				statement.setRef(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Ref = res.getRef(column)
+			protected override def get(res :ResultSet, column :Int) :Ref = res.getRef(column)
 		}
 
 	implicit def RowIdForm(implicit nulls :NullValue[RowId]) :ColumnForm[RowId] =
-		new Basic[RowId](ROWID) with NonLiteralForm[RowId] {
+		new Basic[RowId](ROWID) with NonLiteralColumnWriteForm[RowId] {
 			override def set(statement :PreparedStatement, position :Int, value :RowId) :Unit =
 				statement.setRowId(position, value)
 
-			protected override def read(res :ResultSet, position :Int) :RowId = res.getRowId(position)
+			protected override def get(res :ResultSet, position :Int) :RowId = res.getRowId(position)
 		}
 	implicit def ShortForm(implicit nulls :NullValue[Short]) :ColumnForm[Short] =
 		new Basic[Short](SMALLINT) {
 			override def set(statement :PreparedStatement, position :Int, value :Short) :Unit =
 				statement.setShort(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :Short = res.getShort(column)
+			protected override def get(res :ResultSet, column :Int) :Short = res.getShort(column)
 		}
 
 	implicit def SQLXMLForm(implicit nulls :NullValue[SQLXML]) :ColumnForm[SQLXML] =
-		new Basic[SQLXML](JDBCType.SQLXML) with NonLiteralForm[SQLXML] { //todo: is it really non literal?
+		new Basic[SQLXML](JDBCType.SQLXML) with NonLiteralColumnWriteForm[SQLXML] { //todo: is it really non literal?
 			override def set(statement :PreparedStatement, position :Int, value :SQLXML) :Unit =
 				statement.setSQLXML(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :SQLXML = res.getSQLXML(column)
+			protected override def get(res :ResultSet, column :Int) :SQLXML = res.getSQLXML(column)
 		}
 
 	implicit def StringForm(implicit nulls :NullValue[String]) :ColumnForm[String] =
@@ -384,7 +390,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :String) :Unit =
 				statement.setString(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :String = res.getString(column)
+			protected override def get(res :ResultSet, column :Int) :String = res.getString(column)
 
 			override def literal(value: String): String =
 				if (value == null) "NULL"
@@ -396,7 +402,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :Time) :Unit =
 				statement.setTime(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :sql.Time = res.getTime(column)
+			protected override def get(res :ResultSet, column :Int) :sql.Time = res.getTime(column)
 
 			override def literal(value :Time) :String = formatTime(value.toLocalTime)
 		}
@@ -406,7 +412,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :Timestamp) :Unit =
 				statement.setTimestamp(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :sql.Timestamp = res.getTimestamp(column)
+			protected override def get(res :ResultSet, column :Int) :sql.Timestamp = res.getTimestamp(column)
 
 			override def literal(value :Timestamp) :String = formatTimestamp(value.toLocalDateTime)
 		}
@@ -416,7 +422,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :URL) :Unit =
 				statement.setURL(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :URL = res.getURL(column)
+			protected override def get(res :ResultSet, column :Int) :URL = res.getURL(column)
 
 			override def toString = "URL"
 		}
@@ -431,7 +437,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :JBigDecimal) :Unit =
 				statement.setBigDecimal(position, value)
 	
-			protected override def read(res: ResultSet, column :Int) :JBigDecimal = res.getBigDecimal(column)
+			protected override def get(res: ResultSet, column :Int) :JBigDecimal = res.getBigDecimal(column)
 		}
 
 	implicit def JavaBooleanForm(implicit nulls :NullValue[JBoolean]) :ColumnForm[JBoolean] =
@@ -439,7 +445,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :JBoolean) :Unit =
 				statement.setBoolean(position, value)
 	
-			protected override def read(res :ResultSet, column :Int) :JBoolean = {
+			protected override def get(res :ResultSet, column :Int) :JBoolean = {
 				val bool = res.getBoolean(column)
 				if (res.wasNull) null else bool
 			}
@@ -450,7 +456,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :JByte) :Unit =
 				statement.setByte(position, value)
 	
-			protected override def read(res: ResultSet, column :Int) :JByte = {
+			protected override def get(res: ResultSet, column :Int) :JByte = {
 				val byte = res.getByte(column)
 				if (res.wasNull) null else byte
 			}
@@ -461,7 +467,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :JChar) :Unit =
 				statement.setString(position, if (value == null) null else String.valueOf(value))
 			
-			protected override def read(res :ResultSet, position :Int) :JChar =
+			protected override def get(res :ResultSet, position :Int) :JChar =
 				res.getString(position) match {
 					case null => null
 					case s if s.length != 1 => throw new IllegalArgumentException(
@@ -476,7 +482,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :JDouble) :Unit =
 				statement.setDouble(position, value)
 	
-			protected override def read(res: ResultSet, column :Int) :JDouble = {
+			protected override def get(res: ResultSet, column :Int) :JDouble = {
 				val double = res.getDouble(column)
 				if (res.wasNull) null else double
 			}
@@ -486,8 +492,8 @@ trait BasicForms extends NotNullBasicForms {
 		new Alternate[JFloat](FLOAT) {
 			override def set(statement :PreparedStatement, position :Int, value :JFloat) :Unit =
 				statement.setFloat(position, value)
-	
-			protected override def read(res: ResultSet, column :Int) :JFloat = {
+
+			protected override def get(res: ResultSet, column :Int) :JFloat = {
 				val float = res.getFloat(column)
 				if (res.wasNull) null else float
 			}
@@ -498,7 +504,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :JInt) :Unit =
 				statement.setInt(position, value)
 	
-			protected override def read(res: ResultSet, column :Int) :JInt = {
+			protected override def get(res: ResultSet, column :Int) :JInt = {
 				val int = res.getInt(column)
 				if (res.wasNull) null else int
 			}
@@ -509,7 +515,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :JLong) :Unit =
 				statement.setLong(position, value)
 	
-			protected override def read(res: ResultSet, column :Int) :JLong = {
+			protected override def get(res: ResultSet, column :Int) :JLong = {
 				val long = res.getLong(column)
 				if (res.wasNull) null else long
 			}
@@ -520,7 +526,7 @@ trait BasicForms extends NotNullBasicForms {
 			override def set(statement :PreparedStatement, position :Int, value :JShort) :Unit =
 				statement.setShort(position, value)
 
-			protected override def read(res :ResultSet, column :Int) :JShort = {
+			protected override def get(res :ResultSet, column :Int) :JShort = {
 				val short = res.getShort(column)
 				if (res.wasNull) null else short
 			}

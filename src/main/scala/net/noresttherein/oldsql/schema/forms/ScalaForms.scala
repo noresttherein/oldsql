@@ -1,16 +1,6 @@
 package net.noresttherein.oldsql.schema.forms
 
-//import net.noresttherein.oldsql.schema.forms.ScalaReadForms._
-//import net.noresttherein.oldsql.schema.forms.ScalaWriteForms._
 import net.noresttherein.oldsql.schema.SQLForm
-
-
-
-
-
-
-/** Trait mixed in by all forms solely to bring into the implicit search scope declarations from its companion object. */
-//trait ScalaForms extends ScalaReadForms with ScalaWriteForms
 
 
 
@@ -31,7 +21,7 @@ trait ScalaForms extends ScalaReadForms with ScalaWriteForms {
 //	implicit final val UnitForm = SQLForm.empty((), "Unit")
 
 	//not implicit because they would satisfy any SQLReadForm[Option[_]]
-	final val NoneForm = SQLForm.empty[Option[Nothing]](None, "None")
+	final val NoneForm = SQLForm.empty[Option[Nothing]]("None")(None)
 
 
 

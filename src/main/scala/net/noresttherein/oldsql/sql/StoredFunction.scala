@@ -6,21 +6,17 @@ import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Opt.Lack
 import net.noresttherein.oldsql.morsels.witness.Maybe
 import net.noresttherein.oldsql.schema.{ColumnForm, ColumnReadForm, SQLForm, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.SQLForm.AbstractMappedForm
-import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
-import net.noresttherein.oldsql.schema.forms.ChainForm
 import net.noresttherein.oldsql.schema.ColumnWriteForm.SingletonColumnWriteForm
+import net.noresttherein.oldsql.schema.SQLForm.AbstractMappedForm
+import net.noresttherein.oldsql.schema.bits.LabelPath.Label
+import net.noresttherein.oldsql.schema.forms.ChainForm
 import net.noresttherein.oldsql.sql.Call.{DirectCallFunction, DirectCallProcedure}
 import net.noresttherein.oldsql.sql.Call.CallFunction.{CallFunctionNamedParamDecl, CallFunctionParamDecl}
 import net.noresttherein.oldsql.sql.Call.CallProcedure.{CallProcedureNamedParamDecl, CallProcedureParamDecl}
-import net.noresttherein.oldsql.sql.RowProduct.PureParamFrom
+import net.noresttherein.oldsql.sql.RowProduct.ParamsRow
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
-import net.noresttherein.oldsql.sql.SQLExpression.{GlobalScope, LocalScope}
-import net.noresttherein.oldsql.sql.StoredProcedure.ProcedureParameterization
-import net.noresttherein.oldsql.sql.ast.{FunctionSQL, SQLParameter}
-import net.noresttherein.oldsql.sql.ast.FunctionSQL.FunctionColumnSQL
-import net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple
+import net.noresttherein.oldsql.sql.SQLExpression.{Grouped, Single}
+import net.noresttherein.oldsql.sql.ast.{BoundParam, ChainTuple, FunctionColumnSQL, FunctionSQL}
 import net.noresttherein.oldsql.sql.mechanics.{ProcedureSignature, SpelledSQL}
 import net.noresttherein.oldsql.sql.mechanics.SpelledSQL.{Parameterization, SQLContext}
 
@@ -73,28 +69,28 @@ trait SQLExecutable[Params, +Res] extends Serializable {
 	  * values, unable to conform to `StoredFunction`, or whose usage must be restricted with respect to 'normal'
 	  * functions returning distinct types.
 	  */
-	protected def paramSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Params, RowProduct] = {
+	protected def paramSpelling(implicit spelling :SQLSpelling) :SpelledSQL[Params] = {
 		val sql = spelling.function(name) + "(" + paramForm.inlineParam + ")"
-		SpelledSQL(sql, SQLContext(), new ProcedureParameterization[Params]()(paramForm))
+		SpelledSQL(sql, paramForm, spelling.newContext)
 	}
 
-	private[sql] final def paramSpellingForwarder(spelling :SQLSpelling) :SpelledSQL[Params, RowProduct] =
+	private[sql] final def `->paramSpelling`(spelling :SQLSpelling) :SpelledSQL[Params] =
 		paramSpelling(spelling)
 
 	/** Creates SQL text of an SQL expression invoking this function with arguments listed by the tuple expression
 	  * `args`. It is intended to be used as a subexpression of a larger SQL/DML expression, and not a standalone call.
 	  * For that, see [[net.noresttherein.oldsql.sql.SQLExecutable.call call]]`(args)`.
 	  */
-	protected def defaultSpelling[P, F <: RowProduct](args :SQLExpression[F, LocalScope, Params])
-	                                                 (context :SQLContext, params :Parameterization[P, F])
-	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P, F] =
-		(spelling.function(name) +  "(") +: (spelling.inline(args)(context, params) + ")")
+	protected def defaultSpelling[P, F <: RowProduct](args :SQLExpression[F, Grouped, Params])
+	                                                 (from :F, context :SQLContext[P], params :Parameterization[P, F])
+	                                                 (implicit spelling :SQLSpelling) :SpelledSQL[P] =
+		(spelling.function(name) +  "(") +: (spelling.inCall(args)(from, context, params) + ")")
 
 	private[sql] final def defaultSpelling[P, F <: RowProduct]
-	                                      (spelling :SQLSpelling)(args :SQLExpression[F, LocalScope, Params])
-	                                      (implicit context :SQLContext, params :Parameterization[P, F])
-			:SpelledSQL[P, F] =
-		defaultSpelling(args)(context, params)(spelling)
+	                                      (spelling :SQLSpelling)(args :SQLExpression[F, Grouped, Params])
+	                                      (from :F, context :SQLContext[P], params :Parameterization[P, F])
+			:SpelledSQL[P] =
+		defaultSpelling(args)(from, context, params)(spelling)
 
 
 	/** Creates a [[net.noresttherein.oldsql.sql.DMLStatement DMLStatement]] executing this stored procedure.
@@ -124,7 +120,7 @@ trait SQLExecutable[Params, +Res] extends Serializable {
 
 /** A signature of an SQL stored procedure for use in SQL [[net.noresttherein.oldsql.sql.DMLStatement statements]].
   * This is the most generic variant, which accepts arguments as a polymorphic
-  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]]; most implementations will be instances
+  * [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]]; most implementations will be instances
   * of one of the subclasses specialized for concrete parameter lists. The elements of the chain typically correspond
   * one-to-one to the parameter's of the procedure, but this not needs be the case, and it can contain multi column
   * types, which map to a consecutive sequence of parameters. The argument chain can contain elements
@@ -157,7 +153,7 @@ trait StoredProcedure[Params <: Chain] extends SQLExecutable[Params, Any] {
 	  * except the ''OUT'' parameters are not returned.
 	  */
 	def chant[F <: FromClause, Xs <: Chain]
-	         (args :ChainTuple[F, GlobalScope, Xs])
+	         (args :ChainTuple[F, Single, Xs])
 	         (implicit signature :ProcedureSignature[Params, Xs] { type Domain <: F }, dialect :Maybe[SQLDialect])
 			:Incantation[signature.CallParams, signature.Out] =
 		signature(this, args).chant(dialect getOrElse StandardSQL)
@@ -216,7 +212,7 @@ object StoredProcedure {
 	/** Extension methods available for all stored procedures. These are all `apply` methods for creating
 	  * [[net.noresttherein.oldsql.sql.Call Call]] expressions and similar, as `apply` methods with signatures
 	  * accepting individual arguments individually instead of as a single chain must be extension methods,
-	  * and declaring any methods with the same name in the class directly would cause overlading clashes.
+	  * and declaring any methods with the same name in the class directly would cause overloading clashes.
 	  */
 	implicit class StoredProcedureExtension[Args <: Chain](private val procedure :StoredProcedure[Args]) extends AnyVal {
 
@@ -225,7 +221,7 @@ object StoredProcedure {
 		  * or only - parameter. Subsequent, named an anonymous parameters can be introduced by chaining `apply` calls
 		  * with only type parameter lists, each introducing a single parameter: `this[P][Q][R]`, `this[P]["Q", Q][R]`.
 		  * At any point, the process can be finalized by passing a
-		  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]] SQL expression with a value of `X`, either
+		  * [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]] SQL expression with a value of `X`, either
 		  * [[net.noresttherein.oldsql.sql.Call.CallProcedure.CallProcedureParams.apply(args:JoinedMappings[F]=>ChainTuple[F,GlobalScope,X])* apply(domain => args)]]
 		  * or [[net.noresttherein.oldsql.sql.Call.CallProcedure.CallProcedureParams.apply(args:ChainTuple[F,GlobalScope,X]) apply(args)]].
 		  * The tuple expression must be based on a [[net.noresttherein.oldsql.sql.FromClause FromClause]] consisting only
@@ -253,7 +249,7 @@ object StoredProcedure {
 		  * with procedure's arguments are created. Subsequent, named an anonymous parameters can be introduced by chaining
 		  * `apply` calls with only type parameter lists, each introducing a single parameter: `this[N, P][Q][R]`,
 		  * `this[N, P]["Q", Q][R]`. At any point, the process can be finalized by passing a
-		  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]] SQL expression with a value of `X`, either
+		  * [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]] SQL expression with a value of `X`, either
 		  * [[net.noresttherein.oldsql.sql.Call.CallProcedure.CallProcedureParams.apply(args:JoinedMappings[F]=>ChainTuple[F,GlobalScope,X])* apply(domain => args)]]
 		  * or [[net.noresttherein.oldsql.sql.Call.CallProcedure.CallProcedureParams.apply(args:ChainTuple[F,GlobalScope,X]) apply(args)]].
 		  * The tuple expression must be based on a [[net.noresttherein.oldsql.sql.FromClause FromClause]] consisting only
@@ -308,7 +304,9 @@ object StoredProcedure {
 	  * @see [[net.noresttherein.oldsql.sql.StoredProcedure]]
 	  */
 	@SerialVersionUID(ver) //todo: make this an opaque type in Scala 3
-	case class Out[T](param :T) extends Serializable
+	case class Out[T](param :T) extends Serializable {
+		def map[O](f :T => O) :Out[O] = Out(f(param))
+	}
 
 	object Out {
 		@inline implicit def out[T](param :Out[T]) :T = param.param
@@ -340,18 +338,6 @@ object StoredProcedure {
 	                                                    (implicit override val paramForm :ChainForm[X])
 		extends StoredProcedure[X]
 
-	
-	@SerialVersionUID(SpelledSQL.ver)
-	private[sql] class ProcedureParameterization[X](implicit form :SQLWriteForm[X])
-		extends Parameterization[X, RowProduct](form::Nil)
-	{
-		override def apply[T[A] <: BaseMapping[S, A], S, O >: RowProduct <: RowProduct]
-		                  (param :JoinedRelation[O, T]) :X => S =
-			throw new UnsupportedOperationException("Procedure parameterization (" + form + ")")
-
-		override def ungroup[E <: FromSome](implicit grouped :RowProduct <:< E#GeneralizedAggregate) =
-			throw new UnsupportedOperationException("Procedure parameterization (" + form + ")")
-	}
 }
 
 
@@ -361,7 +347,7 @@ object StoredProcedure {
 
 /** A signature of an SQL function for use in SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]].
   * This is the most generic variant, which accepts arguments as a polymorphic
-  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]]; most implementations will be instances
+  * [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]]; most implementations will be instances
   * of the single column variant, [[net.noresttherein.oldsql.sql.ColumnFunction ColumnFunction]].
   * @tparam Params a [[net.noresttherein.oldsql.collection.Chain Chain]] listing the types of all arguments of this function.
   * @tparam Res    the return type of this function.
@@ -370,7 +356,7 @@ object StoredProcedure {
   */
 trait StoredFunction[Params <: Chain, Res] extends SQLExecutable[Params, Res] {
 
-	/** Create an SQL expression invoking this function, which can be used as part of larger SQL expressions
+	/** Create an SQL expression invoking this function, which can be used as a part of larger SQL expressions
 	  * in an SQL query or a DML statement. If the result is a ground expression - based on `RowProduct` itself,
 	  * without any dependencies - the result will be convertible to
 	  * a [[net.noresttherein.oldsql.sql.Call.CallFunction CallFunction]] statement.
@@ -380,9 +366,9 @@ trait StoredFunction[Params <: Chain, Res] extends SQLExecutable[Params, Res] {
 	  * There is an `apply` extension method with the same signature forwarding to this method, allowing
 	  * to to provide the arguments in the function application notation.
 	  */
-	def sql[F <: RowProduct, S >: LocalScope <: GlobalScope, Xs <: Chain]
+	def sql[F <: RowProduct, S >: Grouped <: Single, Xs <: Chain]
 	       (args :ChainTuple[F, S, Xs])(implicit signature :ProcedureSignature[Params, Xs]) :FunctionSQL[F, S, Params, Res] =
-		FunctionSQL(this, signature(args))
+		FunctionSQL(this, signature(args, paramForm))
 
 	override val paramForm :ChainForm[Params]
 
@@ -417,7 +403,7 @@ trait StoredFunction[Params <: Chain, Res] extends SQLExecutable[Params, Res] {
 	  * except the ''OUT'' parameters are not returned.
 	  */
 	def chant[F <: FromClause, Xs <: Chain]
-	         (args :ChainTuple[F, GlobalScope, Xs])
+	         (args :ChainTuple[F, Single, Xs])
 	         (implicit signature :ProcedureSignature[Params, Xs] { type Domain <: F }, dialect :Maybe[SQLDialect])
 			:Incantation[signature.CallParams, signature.FunctionResult[Res]] =
 		signature(this, args).chant(dialect getOrElse StandardSQL)
@@ -447,16 +433,16 @@ object StoredFunction {
 	{
 		/** Initiates the preparation of a parameterized stored procedure call ending with the creation of
 		  * a [[net.noresttherein.oldsql.sql.Call.CallFunction CallFunction]] statement with `P` as its first - or only -
-		  * parameter. Subsequent, named an anonymous parameters can be introduced by chaining `apply` calls with only
+		  * parameter. Subsequent, named or anonymous parameters can be introduced by chaining `apply` calls with only
 		  * type parameter lists, each introducing a single parameter: `this[P][Q][R]`, `this[P]["Q", Q][R]`.
 		  * At any point, the process can be finalized by passing a
-		  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]] SQL expression with a value of `X`,
+		  * [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]] SQL expression with a value of `X`,
 		  * either [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams.apply(args:JoinedMappings[F]=>ChainTuple[F,GlobalScope,X])* apply(domain => args)]]
 		  * or [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams.apply(args:ChainTuple[F,GlobalScope,X]) apply(args)]].
 		  * The tuple expression must be based on a [[net.noresttherein.oldsql.sql.FromClause FromClause]] consisting only
 		  * of [[net.noresttherein.oldsql.sql.JoinParam JoinParam]] pseudo joins - in the case of the last examples,
 		  * `FromSome WithParam P WithParam Q WithParam R` and `FromSome WithParam P WithParam Q As "Q" WithParam R`.
-		  * The function will creating the tuple accepts an argument of
+		  * The function creating the tuple accepts an argument of
 		  * [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]], providing access to call parameters,
 		  * and is analogous to the one passed to [[net.noresttherein.oldsql.sql.RowProduct.RowProductTemplate.where where]].
 		  *
@@ -468,7 +454,7 @@ object StoredFunction {
 		  * @tparam P the type of the - currently last - parameter of the `RowProduct` with the unbound parameters
 		  *           used by the future SQL expression with arguments for the procedure.
 		  */
-		def apply[P] :CallFunctionParamDecl[PureParamFrom[@~], @~, P, X, Y] =
+		def apply[P] :CallFunctionParamDecl[ParamsRow[@~], @~, P, X, Y] =
 			CallFunctionParamDecl(function)
 
 		/** Initiates the preparation of a parameterized stored procedure call ending with the creation of
@@ -478,7 +464,7 @@ object StoredFunction {
 		  * the expression with procedure's arguments are created. Subsequent, named an anonymous parameters can
 		  * be introduced by chaining `apply` calls with only type parameter lists, each introducing a single parameter:
 		  * `this[N, P][Q][R]`, `this[N, P]["Q", Q][R]`. At any point, the process can be finalized by passing
-		  * a [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]] SQL expression with a value of `X`, either
+		  * a [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]] SQL expression with a value of `X`, either
 		  * [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams.apply(args:JoinedMappings[F]=>ChainTuple[F,GlobalScope,X])* apply(domain => args)]]
 		  * or [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams.apply(args:ChainTuple[F,GlobalScope,X]) apply(args)]].
 		  * The tuple expression must be based on a [[net.noresttherein.oldsql.sql.FromClause FromClause]] consisting only
@@ -500,7 +486,7 @@ object StoredFunction {
 		  *           from [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]] for the whole domain
 		  *           when creating the SQL expression with the arguments for the procedure.
 		  */
-		def apply[N <: Label, P] :CallFunctionNamedParamDecl[PureParamFrom[@~], @~, N, P, X, Y] =
+		def apply[N <: Label, P] :CallFunctionNamedParamDecl[ParamsRow[@~], @~, N, P, X, Y] =
 			CallFunctionNamedParamDecl(function)
 
 		/** Create an SQL expression invoking this function, which can be used as part of larger SQL expressions
@@ -513,7 +499,7 @@ object StoredFunction {
 		  * This method forwards to [[net.noresttherein.oldsql.sql.StoredFunction.sql sql]] method
 		  * of [[net.noresttherein.oldsql.sql.StoredFunction StoredFunction]] with the same signature.
 		  */
-		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, Xs <: Chain]
+		def apply[F <: RowProduct, S >: Grouped <: Single, Xs <: Chain]
                  (args :ChainTuple[F, S, Xs])(implicit signature :ProcedureSignature[X, Xs])
 				:FunctionSQL[F, S, X, Y] =
 			function.sql(args)
@@ -549,7 +535,7 @@ object StoredFunction {
 
 /** A signature of a single column SQL function for use in SQL [[net.noresttherein.oldsql.sql.SQLExpression expressions]].
   * This is generic base class, which accepts arguments as a polymorphic
-  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]]; in most cases it is more convenient to use one of
+  * [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]]; in most cases it is more convenient to use one of
   * its subclasses dedicated to functions of a fixed arity. They can be created using `ofX` methods from
   * the [[net.noresttherein.oldsql.sql.ColumnFunction$ companion]] object to this trait:
   * {{{
@@ -565,10 +551,10 @@ object StoredFunction {
 trait ColumnFunction[X <: Chain, Y] extends StoredFunction[X, Y] {
 	override val readForm :ColumnReadForm[Y]
 
-	override def sql[F <: RowProduct, S >: LocalScope <: GlobalScope, Xs <: Chain]
+	override def sql[F <: RowProduct, S >: Grouped <: Single, Xs <: Chain]
                     (args :ChainTuple[F, S, Xs])(implicit signature :ProcedureSignature[X, Xs])
 			:FunctionColumnSQL[F, S, X, Y] =
-		FunctionColumnSQL(this, signature(args))
+		FunctionColumnSQL(this, signature(args, paramForm))
 }
 
 
@@ -638,10 +624,6 @@ object ColumnFunction {
 	type ColumnFunction10[A, B, C, D, E, F, G, H, I, J, Y] = ColumnFunction[@~ ~A~B~C~D~E~F~G~H~I~J, Y]
 
 
-	// used to prevent infinite recursion in implicit resolution
-	private class Provider[T](val get :T) extends AnyVal
-	@inline private def box[T](value :T) = new Provider(value)
-
 	implicit class ColumnFunctionExtension[X <: Chain, Y](protected val function :ColumnFunction[X, Y]) {
 		//repeated from StoredFunctionExtension because of overload issues
 		/** Initiates the preparation of a parameterized stored procedure call ending with the creation of
@@ -649,7 +631,7 @@ object ColumnFunction {
 		  * parameter. Subsequent, named an anonymous parameters can be introduced by chaining `apply` calls with only
 		  * type parameter lists, each introducing a single parameter: `this[P][Q][R]`, `this[P]["Q", Q][R]`.
 		  * At any point, the process can be finalized by passing a
-		  * [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]] SQL expression with a value of `X`,
+		  * [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]] SQL expression with a value of `X`,
 		  * either [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams.apply(args:JoinedMappings[F]=>ChainTuple[F,GlobalScope,X])* apply(domain => args)]]
 		  * or [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams.apply(args:ChainTuple[F,GlobalScope,X]) apply(args)]].
 		  * The tuple expression must be based on a [[net.noresttherein.oldsql.sql.FromClause FromClause]] consisting only
@@ -667,7 +649,7 @@ object ColumnFunction {
 		  * @tparam P the type of the - currently last - parameter of the `RowProduct` with the unbound parameters
 		  *           used by the future SQL expression with arguments for the procedure.
 		  */
-		def apply[P] :CallFunctionParamDecl[PureParamFrom[@~], @~, P, X, Y] =
+		def apply[P] :CallFunctionParamDecl[ParamsRow[@~], @~, P, X, Y] =
 			CallFunctionParamDecl(function)
 
 		/** Initiates the preparation of a parameterized stored procedure call ending with the creation of
@@ -677,7 +659,7 @@ object ColumnFunction {
 		  * the expression with procedure's arguments are created. Subsequent, named an anonymous parameters can
 		  * be introduced by chaining `apply` calls with only type parameter lists, each introducing a single parameter:
 		  * `this[N, P][Q][R]`, `this[N, P]["Q", Q][R]`. At any point, the process can be finalized by passing
-		  * a [[net.noresttherein.oldsql.sql.ast.TupleSQL.ChainTuple tuple]] SQL expression with a value of `X`, either
+		  * a [[net.noresttherein.oldsql.sql.ast.ChainTuple tuple]] SQL expression with a value of `X`, either
 		  * [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams.apply(args:JoinedMappings[F]=>ChainTuple[F,GlobalScope,X])* apply(domain => args)]]
 		  * or [[net.noresttherein.oldsql.sql.Call.CallFunction.CallFunctionParams.apply(args:ChainTuple[F,GlobalScope,X]) apply(args)]].
 		  * The tuple expression must be based on a [[net.noresttherein.oldsql.sql.FromClause FromClause]] consisting only
@@ -699,7 +681,7 @@ object ColumnFunction {
 		  *           from [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]] for the whole domain
 		  *           when creating the SQL expression with the arguments for the procedure.
 		  */
-		def apply[N <: Label, P] :CallFunctionNamedParamDecl[PureParamFrom[@~], @~, N, P, X, Y] =
+		def apply[N <: Label, P] :CallFunctionNamedParamDecl[ParamsRow[@~], @~, N, P, X, Y] =
 			CallFunctionNamedParamDecl(function)
 
 		/** Create an SQL expression invoking this function, which can be used as part of larger SQL expressions
@@ -712,7 +694,7 @@ object ColumnFunction {
 		  * This method forwards to [[net.noresttherein.oldsql.sql.StoredFunction.sql sql]] method
 		  * of [[net.noresttherein.oldsql.sql.StoredFunction StoredFunction]] with the same signature.
 		  */
-		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, Xs <: Chain]
+		def apply[F <: RowProduct, S >: Grouped <: Single, Xs <: Chain]
 		         (args :ChainTuple[F, S, Xs])(implicit signature :ProcedureSignature[X, Xs])
 				:FunctionColumnSQL[F, S, X, Y] =
 			function.sql(args)
@@ -726,10 +708,10 @@ object ColumnFunction {
 	}
 
 	implicit class ColumnFunction1Extension[A, Y](self :ColumnFunction1[A, Y]) extends ColumnFunctionExtension(self) {
-		def apply(a :A) :FunctionColumnSQL[RowProduct, GlobalScope, @~ ~A, Y] =
-			function(SQLParameter[A, A](a)(function.paramForm.last))
+		def apply(a :A) :FunctionColumnSQL[RowProduct, Single, @~ ~A, Y] =
+			function(BoundParam(function.paramForm.last, a))
 
-		def apply[X <: RowProduct, Sc >: LocalScope <: GlobalScope](a :SQLExpression[X, Sc, A])
+		def apply[X <: RowProduct, Sc >: Grouped <: Single](a :SQLExpression[X, Sc, A])
 				:FunctionColumnSQL[X, Sc, @~ ~A, Y] =
 			function(ChainTuple(a))
 	}
@@ -737,13 +719,13 @@ object ColumnFunction {
 	implicit class ColumnFunction2Extension[A, B, Y](self :ColumnFunction2[A, B, Y])
 		extends ColumnFunctionExtension(self)
 	{
-		def apply(a :A, b :B) :FunctionColumnSQL[RowProduct, GlobalScope, @~ ~A~B, Y] = {
+		def apply(a :A, b :B) :FunctionColumnSQL[RowProduct, Single, @~ ~A~B, Y] = {
 			implicit val bf = function.paramForm
 			implicit val af = bf.init
 			function(a.?, b.?)
 		}
 
-		def apply[X <: RowProduct, Sc >: LocalScope <: GlobalScope]
+		def apply[X <: RowProduct, Sc >: Grouped <: Single]
 		         (a :SQLExpression[X, Sc, A], b :SQLExpression[X, Sc, B])
 				:FunctionColumnSQL[X, Sc, @~ ~A~B, Y] =
 			function(a.chain ~ b)
@@ -752,14 +734,14 @@ object ColumnFunction {
 	implicit class ColumnFunction3Extension[A, B, C, Y](self :ColumnFunction3[A, B, C, Y]) 
 		extends ColumnFunctionExtension(self)
 	{
-		def apply(a :A, b :B, c :C) :FunctionColumnSQL[RowProduct, GlobalScope, @~ ~A~B~C, Y] = {
+		def apply(a :A, b :B, c :C) :FunctionColumnSQL[RowProduct, Single, @~ ~A~B~C, Y] = {
 			implicit val cf = function.paramForm
 			implicit val bf = cf.init
 			implicit val af = bf.init
 			function(a.?, b.?, c.?)
 		}
 
-		def apply[X <: RowProduct, Sc >: LocalScope <: GlobalScope]
+		def apply[X <: RowProduct, Sc >: Grouped <: Single]
 		         (a :SQLExpression[X, Sc, A], b :SQLExpression[X, Sc, B], c :SQLExpression[X, Sc, C])
 				:FunctionColumnSQL[X, Sc, @~ ~A~B~C, Y] =
 			function(a.chain~b~c)
@@ -768,7 +750,7 @@ object ColumnFunction {
 	implicit class ColumnFunction4Extension[A, B, C, D, Y](self :ColumnFunction4[A, B, C, D, Y])
 		extends ColumnFunctionExtension(self)
 	{
-		def apply(a :A, b :B, c :C, d :D) :FunctionColumnSQL[RowProduct, GlobalScope, @~ ~A~B~C~D, Y] = {
+		def apply(a :A, b :B, c :C, d :D) :FunctionColumnSQL[RowProduct, Single, @~ ~A~B~C~D, Y] = {
 			implicit val df = function.paramForm
 			implicit val cf = df.init
 			implicit val bf = cf.init
@@ -776,7 +758,7 @@ object ColumnFunction {
 			function(a.?, b.?, c.?, d.?)
 		}
 
-		def apply[X <: RowProduct, Sc >: LocalScope <: GlobalScope]
+		def apply[X <: RowProduct, Sc >: Grouped <: Single]
 		         (a :SQLExpression[X, Sc, A], b :SQLExpression[X, Sc, B], c :SQLExpression[X, Sc, C], d :SQLExpression[X, Sc, D])
 				:FunctionColumnSQL[X, Sc, @~ ~A~B~C~D, Y] =
 			function(a.chain~b~c~d)
@@ -785,7 +767,7 @@ object ColumnFunction {
 	implicit class ColumnFunction5Extension[A, B, C, D, E, Y](self :ColumnFunction5[A, B, C, D, E, Y])
 		extends ColumnFunctionExtension(self)
 	{
-		def apply(a :A, b :B, c :C, d :D, e :E) :FunctionColumnSQL[RowProduct, GlobalScope, @~ ~A~B~C~D~E, Y] = {
+		def apply(a :A, b :B, c :C, d :D, e :E) :FunctionColumnSQL[RowProduct, Single, @~ ~A~B~C~D~E, Y] = {
 			implicit val ef = function.paramForm
 			implicit val df = ef.init
 			implicit val cf = df.init
@@ -794,7 +776,7 @@ object ColumnFunction {
 			function(a.?, b.?, c.?, d.?, e.?)
 		}
 
-		def apply[X <: RowProduct, Sc >: LocalScope <: GlobalScope]
+		def apply[X <: RowProduct, Sc >: Grouped <: Single]
 		         (a :SQLExpression[X, Sc, A], b :SQLExpression[X, Sc, B], c :SQLExpression[X, Sc, C], d :SQLExpression[X, Sc, D],
 		          e :SQLExpression[X, Sc, E])
 				:FunctionColumnSQL[X, Sc, @~ ~A~B~C~D~E, Y] =
@@ -805,7 +787,7 @@ object ColumnFunction {
 		extends ColumnFunctionExtension(self)
 	{
 		def apply(a :A, b :B, c :C, d :D, e :E, f :F)
-				:FunctionColumnSQL[RowProduct, GlobalScope, @~ ~A~B~C~D~E~F, Y] =
+				:FunctionColumnSQL[RowProduct, Single, @~ ~A~B~C~D~E~F, Y] =
 		{
 			implicit val ff = function.paramForm
 			implicit val ef = ff.init
@@ -816,7 +798,7 @@ object ColumnFunction {
 			function(a.?, b.?, c.?, d.?, e.?, f.?)
 		}
 
-		def apply[X <: RowProduct, Sc >: LocalScope <: GlobalScope]
+		def apply[X <: RowProduct, Sc >: Grouped <: Single]
 		         (a :SQLExpression[X, Sc, A], b :SQLExpression[X, Sc, B], c :SQLExpression[X, Sc, C], d :SQLExpression[X, Sc, D],
 		          e :SQLExpression[X, Sc, E], f :SQLExpression[X, Sc, F])
 				:FunctionColumnSQL[X, Sc, @~ ~A~B~C~D~E~F, Y] =
@@ -828,7 +810,7 @@ object ColumnFunction {
 		extends ColumnFunctionExtension(self)
 	{
 		def apply(a :A, b :B, c :C, d :D, e :E, f :F, g :G)
-				:FunctionColumnSQL[RowProduct, GlobalScope, @~ ~A~B~C~D~E~F~G, Y] =
+				:FunctionColumnSQL[RowProduct, Single, @~ ~A~B~C~D~E~F~G, Y] =
 		{
 			implicit val gf = function.paramForm
 			implicit val ff = gf.init
@@ -840,7 +822,7 @@ object ColumnFunction {
 			function(a.?, b.?, c.?, d.?, e.?, f.?, g.?)
 		}
 
-		def apply[X <: RowProduct, Sc >: LocalScope <: GlobalScope]
+		def apply[X <: RowProduct, Sc >: Grouped <: Single]
 		         (a :SQLExpression[X, Sc, A], b :SQLExpression[X, Sc, B], c :SQLExpression[X, Sc, C], d :SQLExpression[X, Sc, D],
 		          e :SQLExpression[X, Sc, E], f :SQLExpression[X, Sc, F], g :SQLExpression[X, Sc, G])
 				:FunctionColumnSQL[X, Sc, @~ ~A~B~C~D~E~F~G, Y] =
@@ -852,7 +834,7 @@ object ColumnFunction {
 		extends ColumnFunctionExtension(self)
 	{
 		def apply(a :A, b :B, c :C, d :D, e :E, f :F, g :G, h :H)
-				:FunctionColumnSQL[RowProduct, GlobalScope, @~ ~A~B~C~D~E~F~G~H, Y] =
+				:FunctionColumnSQL[RowProduct, Single, @~ ~A~B~C~D~E~F~G~H, Y] =
 		{
 			implicit val hf = function.paramForm
 			implicit val gf = hf.init
@@ -865,7 +847,7 @@ object ColumnFunction {
 			function(a.?, b.?, c.?, d.?, e.?, f.?, g.?, h.?)
 		}
 
-		def apply[X <: RowProduct, Sc >: LocalScope <: GlobalScope]
+		def apply[X <: RowProduct, Sc >: Grouped <: Single]
 		         (a :SQLExpression[X, Sc, A], b :SQLExpression[X, Sc, B], c :SQLExpression[X, Sc, C], d :SQLExpression[X, Sc, D],
 		          e :SQLExpression[X, Sc, E], f :SQLExpression[X, Sc, F], g :SQLExpression[X, Sc, G], h :SQLExpression[X, Sc, H])
 				:FunctionColumnSQL[X, Sc, @~ ~A~B~C~D~E~F~G~H, Y] =
@@ -877,7 +859,7 @@ object ColumnFunction {
 		extends ColumnFunctionExtension(self)
 	{
 		def apply(a :A, b :B, c :C, d :D, e :E, f :F, g :G, h :H, i :I)
-				:FunctionColumnSQL[RowProduct, GlobalScope, @~ ~A~B~C~D~E~F~G~H~I, Y] =
+				:FunctionColumnSQL[RowProduct, Single, @~ ~A~B~C~D~E~F~G~H~I, Y] =
 		{
 			implicit val ifm = function.paramForm
 			implicit val hf = ifm.init
@@ -891,7 +873,7 @@ object ColumnFunction {
 			function(a.?, b.?, c.?, d.?, e.?, f.?, g.?, h.?, i.?)
 		}
 
-		def apply[X <: RowProduct, Sc >: LocalScope <: GlobalScope]
+		def apply[X <: RowProduct, Sc >: Grouped <: Single]
 		         (a :SQLExpression[X, Sc, A], b :SQLExpression[X, Sc, B], c :SQLExpression[X, Sc, C], d :SQLExpression[X, Sc, D],
 		          e :SQLExpression[X, Sc, E], f :SQLExpression[X, Sc, F], g :SQLExpression[X, Sc, G], h :SQLExpression[X, Sc, H],
 		          i :SQLExpression[X, Sc, I])
@@ -904,7 +886,7 @@ object ColumnFunction {
 		extends ColumnFunctionExtension(self)
 	{
 		def apply(a :A, b :B, c :C, d :D, e :E, f :F, g :G, h :H, i :I, j :J)
-				:FunctionColumnSQL[RowProduct, GlobalScope, @~ ~A~B~C~D~E~F~G~H~I~J, Y] =
+				:FunctionColumnSQL[RowProduct, Single, @~ ~A~B~C~D~E~F~G~H~I~J, Y] =
 		{
 			implicit val jf = function.paramForm
 			implicit val ifm = jf.init
@@ -919,7 +901,7 @@ object ColumnFunction {
 			function(a.?, b.?, c.?, d.?, e.?, f.?, g.?, h.?, i.?, j.?)
 		}
 
-		def apply[X <: RowProduct, Sc >: LocalScope <: GlobalScope]
+		def apply[X <: RowProduct, Sc >: Grouped <: Single]
 		         (a :SQLExpression[X, Sc, A], b :SQLExpression[X, Sc, B], c :SQLExpression[X, Sc, C], d :SQLExpression[X, Sc, D],
 		          e :SQLExpression[X, Sc, E], f :SQLExpression[X, Sc, F], g :SQLExpression[X, Sc, G], h :SQLExpression[X, Sc, H],
 		          i :SQLExpression[X, Sc, I], j :SQLExpression[X, Sc, J])
@@ -958,27 +940,27 @@ object GenericFunction {
 
 	@SerialVersionUID(ver)
 	class GenericFunction1(val name :String) extends Serializable {
-		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, X :SQLForm](arg :ColumnSQL[F, S, X])
+		def apply[F <: RowProduct, S >: Grouped <: Single, X :SQLForm](arg :ColumnSQL[F, S, X])
 				:ColumnSQL[F, S, X] =
-			ColumnFunction.of1[X, X](name)(SQLForm[X], arg.readForm)(arg.chain)
+			ColumnFunction.of1[X, X](name)(SQLForm[X], arg.selectForm)(arg.chain)
 
 		override def toString :String = name
 	}
 
 	@SerialVersionUID(ver)
 	class GenericFunction2(val name :String) extends Serializable {
-		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, X :SQLForm]
+		def apply[F <: RowProduct, S >: Grouped <: Single, X :SQLForm]
 		         (arg1 :ColumnSQL[F, S, X], arg2 :ColumnSQL[F, S, X]) :ColumnSQL[F, S, X] =
-			ColumnFunction.of2[X, X, X](name)(SQLForm[X], SQLForm[X], arg1.readForm)(arg1.chain ~ arg2)
+			ColumnFunction.of2[X, X, X](name)(SQLForm[X], SQLForm[X], arg1.selectForm)(arg1.chain ~ arg2)
 
 		override def toString :String = name
 	}
 
 	@SerialVersionUID(ver)
 	class GenericFunction3(val name :String) extends Serializable {
-		def apply[F <: RowProduct, S >: LocalScope <: GlobalScope, X :SQLForm]
+		def apply[F <: RowProduct, S >: Grouped <: Single, X :SQLForm]
 		         (arg1 :ColumnSQL[F, S, X], arg2 :ColumnSQL[F, S, X], arg3 :ColumnSQL[F, S, X]) :ColumnSQL[F, S, X] =
-			ColumnFunction.of3(name)(SQLForm[X], SQLForm[X], SQLForm[X], arg1.readForm)(arg1.chain ~ arg2 ~ arg3)
+			ColumnFunction.of3(name)(SQLForm[X], SQLForm[X], SQLForm[X], arg1.selectForm)(arg1.chain ~ arg2 ~ arg3)
 	}
 
 }

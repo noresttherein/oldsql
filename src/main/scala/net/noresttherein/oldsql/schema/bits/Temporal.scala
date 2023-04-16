@@ -14,11 +14,11 @@ import java.time.{Clock, Instant, LocalDate, LocalDateTime, LocalTime, OffsetDat
   * timestamps instead of the jvm time.
   * @author Marcin Mościcki
   */
-final class Temporal[T](val now :()=>T) extends Serializable
+final class Temporal[T](val now :() => T) extends Serializable
 
 
 
-sealed abstract class DefaultTemporalImplicits {
+private[schema] sealed abstract class DefaultTemporalImplicits {
 
 	implicit final val SQLDate = new Temporal(() => new sql.Date(System.currentTimeMillis))
 	implicit final val SQLTime = new Temporal(() => new sql.Time(System.currentTimeMillis))

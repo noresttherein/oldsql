@@ -39,6 +39,8 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 
 	/** Casts this to its [[net.noresttherein.oldsql.model.RelatedEntityFactory RelatedEntityFactory]] supertype,
 	  * for the same kin/reference type `R` as this instance (rather than standard `Kin[X]`).
+	  * The cast is safe bacause all methods with reference `Kin[X]` in covariant position are overridden to return `R`,
+	  * while `U <: Kin[X]` satisfies the requirement of methods with `Kin[X]` in contravariant positions.
 	  */
 	def narrow[U >: R <: Kin[X]] :RelatedEntityFactory[K, E, X, U] =
 		this.asInstanceOf[RelatedEntityFactory[K, E, X, U]]
@@ -166,7 +168,9 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 		if (isRequired) new NotRequiredKinFactoryDecorator(this, Nonexistent()) else this
 
 	override def notRequired(nonexistent :Kin[X]) :KinFactory[K, E, X] = {
-		val same = try { nonexistent == this.nonexistent } catch { case _ :NonexistentEntityException => false }
+		val same = try { nonexistent == this.nonexistent } catch {
+			case _ :NonexistentEntityException => false
+		}
 		if (!isRequired && same) this
 		else if (!isRequired && nonexistent == Nonexistent()) notRequired //because it is often overriden
 		else new NotRequiredKinFactoryDecorator(this, nonexistent)
@@ -174,6 +178,7 @@ trait GenericKinFactory[K, E, X, +R <: Kin[X]] extends RelatedEntityFactory[K, E
 
 
 	//new methods
+
 	/** Attempts to convert a given `Kin` to the specific `Kin` type `R` produced by this factory.
 	  * Returned option is non-empty if the key can be retrieved from `kin`. The `Kin` itself inside the
 	  * option will be absent or present based on whether `kin` is present.

@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.schema
 
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.ColumnMapping.TypedColumn
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, TypedMapping}
 
 
 
@@ -13,13 +14,13 @@ import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
   */
 trait PrimaryKeyOf[-M[O] <: MappingAt[O]] extends Serializable {
 	type Key
-	type PKMapping[O] <: RefinedMapping[Key, O]
+	type PKMapping[O] <: TypedMapping[Key, O]
 	def apply[O](entity :M[O]) :PKMapping[O]
 }
 
 
 
 object PrimaryKeyOf {
-	type PrimaryKeyColumnOf[M[O] <: MappingAt[O]] = PrimaryKeyOf[M] { type PKMapping[O] <: ColumnMapping[Key, O] }
+	type PrimaryKeyColumnOf[M[O] <: MappingAt[O]] = PrimaryKeyOf[M] { type PKMapping[O] <: TypedColumn[Key, O] }
 }
 

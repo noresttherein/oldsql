@@ -1,33 +1,121 @@
-import java.sql.JDBCType
-import java.time.{Instant, LocalDate, LocalDateTime, OffsetDateTime, OffsetTime, ZonedDateTime}
-
-import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.schema.{ColumnForm, ColumnMapping, ColumnReadForm, Relation, SQLForm, SQLReadForm}
-import net.noresttherein.oldsql.schema.bits.FormMapping
-import net.noresttherein.oldsql.schema.ColumnMapping.StandardColumn
-import net.noresttherein.oldsql.schema.forms.SQLForms
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.sql.{AndFrom, ColumnFunction, From, InnerJoin, Join, JoinParam, LeftJoin, RightJoin, RowProduct, StoredFunction, StoredProcedure, Subselect}
-import net.noresttherein.oldsql.sql.RowProduct.As
-import net.noresttherein.oldsql.sql.UnboundParam.FromParam
-import net.noresttherein.oldsql.slang
-
-//implicits
-import slang._
-
-
-
-
-
+import net.noresttherein.oldsql.collection.Chain.@~
+import net.noresttherein.oldsql.sql.{Dual, RowProduct}
+import net.noresttherein.oldsql.sql.ast.QuerySQL
 
 /**
   * @author Marcin Mościcki
   */
 object playground extends App {
-	import net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals._
+	import net.noresttherein.oldsql.sql.*
+//	import net.noresttherein.oldsql.sql.With.CTEName
+//	"dupa" as (Dual select * :QuerySQL[RowProduct, @~])
 
-	val proc = ColumnFunction.of5[Byte, Short, Int, Long, String, Double]("proc")
-	val call = proc[Int][Long][String](params => 1.toByte.?.chain ~ 2.toShort.? ~ params.of[Int] ~ params.of[Long] ~ params.of[String])
+	class Arg {
+		def apply[T](f :Arg => T) = f(this)
+	}
+	class This {
+		def and(arg :Arg) :Arg = arg
+	}
+	new This and (new Arg) { arg :Arg => arg }
+
+/*
+	/*class Equiv[A, B]
+
+	class Rank2Equiv {
+		implicit def liftBoth[X, Y, Z](implicit left :Lift[X, Z], right :Lift[Y, Z]) = new Equiv[X, Y]
+	}
+	class Rank1Equiv extends Rank2Equiv {
+		implicit def liftLeft[X, Y](implicit lift :Lift[X, Y]) = new Equiv[X, Y]
+		implicit def liftRight[X, Y](implicit lift :Lift[Y, X]) = new Equiv[X, Y]
+	}
+	object Equiv extends Rank1Equiv {
+		implicit def identity[X] = new Equiv[X, X]
+	}
+
+	class Lift[X, Y]
+
+	class Rank1Lift {
+	}
+	object Lift extends Rank1Lift {
+		implicit val int2Long = new Lift[Int, Long]
+		implicit val double2Long = new Lift[Double, Long]
+		implicit def identity[X] = new Lift[X, X]
+	}
+
+	def test[X, Y, Z](x :X, y :Y)(implicit left :Lift[X, Z], right :Lift[Y, Z]) :Unit = ()
+	test(1L, 1)
+	test(1, 1.1)
+	implicitly[Equiv[Int, Long]]
+	implicitly[Equiv[Long, Int]]
+	implicitly[Equiv[Double, Int]]
+*/
+	trait Payload {
+		type T
+	}
+	type PayloadOf[X] = Payload { type T = X }
+	trait Base {
+		type Self
+		type T[X] <: PayloadOf[X]
+	}
+	trait A extends Base { override type Self = A }
+	trait B extends Base { override type Self = B }
+	type Wildcard = A with B
+//	trait Start extends A { type T = Start }
+
+	class Succ[+L <: Base, R[X] <: PayloadOf[X]] extends A { type T[X] = R[X] }
+	class AA[R[X] <: PayloadOf[X]] extends Succ[A, R]
+
+	class Count[X <: Base, N <: Int with Singleton]
+
+	class FallbackFirst {
+//		implicit def first[L >: Wildcard <: Base, N[+A <: L] <: A And B, R] :First[L J R, R]= new First[L J R, R]
+	}
+	object Count extends FallbackFirst {
+		implicit def aa[R[X] <: PayloadOf[X]] = new Count[AA[R], 0]
+		implicit def wildcard[F >: Wildcard <: Base] = new Count[F, 0]
+		implicit def next[L <: Base, J[+A <: L, B[X] <: R[X]] <: Succ[A, R], R[X] <: PayloadOf[X], N <: Int with Singleton]
+		                 (implicit fist :Count[L, N]) :Count[J[L, R], N] = new Count[J[L, R], N]
+	}
+
+	implicit def first[F <: Base, N <: Int with Singleton](in :F)(implicit f :Count[F, N]) :f.type = f
+
+	first(new AA)
+*/
+
+//	import net.noresttherein.oldsql.sql.mechanics.implicitSQLLiterals._
+//
+//	val proc = ColumnFunction.of5[Byte, Short, Int, Long, String, Double]("proc")
+//	val call = proc[Int][Long][String](params => 1.toByte.?.chain ~ 2.toShort.? ~ params.of[Int] ~ params.of[Long] ~ params.of[String])
+
+/*
+
+	type Bound
+	trait DoubleBox[X, Y]
+	trait Box[X]
+	trait High[F[X] <: Box[X]]
+
+	class Base[H[T] <: Box[T], -L <: Bound, X >: L <: Bound]
+	          (val high :High[X], val seq :Unique[DoubleBox[_, X]] = Unique.empty[DoubleBox[_, X]])
+	{
+		lazy val lzy :Box[X] = x
+
+		def copy[Y <: Bound](box :Box[Y]) :Base[Y, Y] = new Base(box)
+		def bug[Y <: Bound](box :Box[Y]) :Base[Y, Y] = new Base(box)
+	}
+
+	class Wrapper[-L <: Bound, X >: L <: Bound]
+	             (val content :Base[L, X], override val x :Box[X], override val seq :Unique[DoubleBox[_, X]] = Unique.empty[DoubleBox[_, X]])
+		extends Base[L, X](x, seq)
+	{
+		override lazy val lzy :Box[X] = x
+
+		override def bug[Y <: Bound](box :Box[Y]) :Base[Y, Y] =
+			new Wrapper(content.copy(box), box) {
+				override lazy val lzy = Wrapper.this.lzy.asInstanceOf[Box[Y]]
+			}
+	}
+*/
+
 //	call :Nothing
 //	call call (params => 1.toByte.? ~ 2.toShort.? ~ params[Int] ~ params[Long] ~ params[String])
 //	call :Nothing
@@ -56,11 +144,11 @@ object playground extends App {
 //	val f :From[A] As "A" WithParam Int WithParam Long WithParam String = null
 //	val res = f("string")(1L)(1)
 //	res :From[A]
-	println(scala.reflect.runtime.universe.reify(
-//		f.apply("A")
-//		refined.withOrigin["X"]
-	).tree)
-//	val a = f("A")
+
+//	println(scala.reflect.runtime.universe.reify(
+//	).tree)
+
+	//	val a = f("A")
 //	a :Nothing
 /*
 	val f = From(A) as "A" leftJoin B as "B" rightJoin C as "C" subselect D as "D" join E as "E"
@@ -75,14 +163,13 @@ object playground extends App {
 	d :D[RowProduct AndFrom D Join E]
 	e :E[RowProduct AndFrom E]
 
-	//todo: make a method which creates a JoinParam _ As _ in one go.
 	val params = From(A) as "A" param[Int] "p1" as "P1" join B as "B" param[Long] "p2" as "P2" join C as "C" param[String] "p3" as "P3"
 
 //	val params2 = From(A) ? [Int] "p1"
 
 //	def ?:[X] = ???
 //	def ?:[String :ValueOf, Int] = ???
-	import net.noresttherein.oldsql.sql.UnboundParam.?:
+	import net.noresttherein.oldsql.sql.ParamClause.?:
 	?:[Int]
 	"param".?:[Int]
 	?:["p1", Int]
@@ -93,9 +180,9 @@ object playground extends App {
 //	val p1 = params ? 0; val p2 = params ? 1; val p3 = params ? 2
 //	val p1 = params ? -3; val p2 = params ? -2; val p3 = params ? -1
 
-	p1 :FromParam[Int, RowProduct AndFrom FromParam.Of[Int]#P Join B JoinParam FromParam.Of[Long]#P Join C JoinParam FromParam.Of[String]#P]
-	p2 :FromParam[Long, RowProduct AndFrom FromParam.Of[Long]#P Join C JoinParam FromParam.Of[String]#P]
-	p3 :FromParam[String, RowProduct AndFrom FromParam.Of[String]#P]
+	p1 :UnboundParam[Int, RowProduct AndFrom UnboundParam.Of[Int]#P Join B JoinParam UnboundParam.Of[Long]#P Join C JoinParam UnboundParam.Of[String]#P]
+	p2 :UnboundParam[Long, RowProduct AndFrom UnboundParam.Of[Long]#P Join C JoinParam UnboundParam.Of[String]#P]
+	p3 :UnboundParam[String, RowProduct AndFrom UnboundParam.Of[String]#P]
 
 
 	println(scala.reflect.runtime.universe.reify {

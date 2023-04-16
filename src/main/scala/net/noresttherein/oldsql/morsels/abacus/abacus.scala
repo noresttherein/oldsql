@@ -133,7 +133,7 @@ package object abacus {
 
 	implicit def LT[A <: Numeral, B <: Numeral, N <: Numeral, S <: Numeral]
 	               (implicit neg :Sum[B, N, 0], cmp :Sum[A, N, S], lt :Negative[S]) :LT[A, B] =
-		lt.asInstanceOf[LT[A, B]]
+		this.lt.asInstanceOf[LT[A, B]]
 
 
 

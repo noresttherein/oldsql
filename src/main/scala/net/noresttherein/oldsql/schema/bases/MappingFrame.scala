@@ -1,6 +1,7 @@
 package net.noresttherein.oldsql.schema.bases
 
-import java.sql.{CallableStatement, ResultSet}
+import java.lang.invoke.VarHandle.releaseFence
+import java.sql.{CallableStatement, JDBCType, ResultSet}
 
 import scala.collection.AbstractSeq
 import scala.collection.immutable.ArraySeq
@@ -8,24 +9,23 @@ import scala.collection.mutable.ListBuffer
 import scala.reflect.runtime.universe.TypeTag
 
 import net.noresttherein.oldsql
-import net.noresttherein.oldsql.OperationType.{FILTER, INSERT, UPDATE, WriteOperationType}
+import net.noresttherein.oldsql.OperationView.{FilterView, InsertView, ReadOperationView, SelectView, UpdateView, WriteOperationView}
 import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.{ColumnValues, ComponentValues}
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.model.{ComposedOf, Kin, KinFactory, PropertyPath, RelatedEntityFactory}
-import net.noresttherein.oldsql.model.Kin.{some_?, Derived}
+import net.noresttherein.oldsql.model.Kin.Derived
 import net.noresttherein.oldsql.model.KinFactory.DerivedKinFactory
 import net.noresttherein.oldsql.model.RelatedEntityFactory.KeyExtractor
-import net.noresttherein.oldsql.morsels.{Extractor, Lazy}
+import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.{=?>, OptionalExtractor, RequisiteExtractor}
 import net.noresttherein.oldsql.schema
-import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnExtract, ColumnForm, ColumnMapping, ColumnMappingExtract, MappingExtract, SQLReadForm, SQLWriteForm}
-import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, ExtraSelect, Ignored, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalSelect, ReadOnly}
-import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StandardColumn}
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
-import net.noresttherein.oldsql.schema.RelVar
+import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnExtract, ColumnForm, ColumnMappingExtract, MappingExtract, RelVar, Seal, Sealed, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.Buff.{AutoInsert, AutoUpdate, BuffType, FilterPreset, Ignored, InsertPreset, NoFilter, NoFilterByDefault, NoInsert, NoInsertByDefault, NoSelect, NoSelectByDefault, NoUpdate, NoUpdateByDefault, OptionalFilter, OptionalInsert, OptionalSelect, OptionalUpdate, ReadOnly, SelectPreset, UpdatePreset}
+import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, StandardColumn, TypedColumn}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingReadForm, TypedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.SQLReadForm.ReadFormNullValue
 import net.noresttherein.oldsql.schema.bits.{ForeignKeyColumnMapping, ForeignKeyMapping, JoinedEntityComponent, JoinTableCollectionMapping, RelationshipMapping}
@@ -62,13 +62,13 @@ import net.noresttherein.oldsql.slang._
   *           by ensuring that only components of mappings included in a query can be used in creation
   *           of SQL expressions used by that query.
   * @see [[net.noresttherein.oldsql.schema.bases.SimpleMapping]]
-  */ //todo: document unsafeCascade rules
+  */ //todo: it could be a MappingTemplate, but FrameComponent would have to be extracted; document unsafeCascade rules
 trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] { frame =>
 
 	/** Base trait for all components of this mapping. Creating an instance automatically lists it within owning mapping
 	  * components as well any contained subcomponents and columns within parent mapping appropriate lists.
 	  * This registering is delayed, as in most cases properties listing its subcomponents will not be initialized before
-	  * its constructor is over, so instead it adds itself only to a 'waiting list', which is processed and its contents
+	  * its constructor exits, so instead it adds itself only to a 'waiting list', which is processed and its contents
 	  * appropriately registered within the parent mapping at a later time, when this instance's constructor returns.
 	  * This initialization is triggered as the result of a call to this instance's `include()` or `extract` methods,
 	  * the enclosing mapping explicitly requests initializing all components in the waiting lists via its
@@ -81,16 +81,20 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * mapping - no other call is needed.
 	  *
 	  * There are two broad categories of instances: custom classes explicitly derived from it or one of its
-	  * subclasses, provided as base classes for that purpose, and wrappers of other mappings. The former are slightly
-	  * more efficient and are more concise to declare within the enclosing mapping class, while the latter offers
-	  * more flexibility by allowing dynamic resolution of actual component implementations and their full reuse.
-	  * The best of both worlds can be achieved by simply mixing in this trait into a ready component class.
+	  * subclasses, provided as base classes for that purpose, and wrappers of arbitrary mappings. The former
+	  * are slightly more efficient and are more concise to declare within the enclosing mapping class,
+	  * while the latter offer more flexibility by allowing dynamic resolution of actual component implementations
+	  * and their full reuse. The best of both worlds can be achieved by simply mixing in this trait
+	  * into a ready component class.
 	  *
+	  * This type conforms to [[net.noresttherein.oldsql.schema.Mapping.ExportComponent ExportComponent]]`[T]`
+	  * (instances of this trait are always export components of the enclosing `MappingFrame`).
 	  * @tparam T subject type of this component.
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.RequisiteComponent]]
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.OptionalComponent]]
 	  */
 	trait FrameComponent[T] extends BaseMapping[T, O] { self =>
+		override type SuperMapping = frame.type
 
 		/** Returns the value of this component in an option if an implicit `ComponentValues` instance
 		  * for the enclosing composite mapping is present.
@@ -99,28 +103,74 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 		@inline private[MappingFrame] final def belongsTo(mapping :MappingFrame[_, _]) :Boolean = mapping eq frame
 
-		//the results of MappingFrame.this.<collection>(this)
-		private[MappingFrame] var exportedSelectable        :Unique[Column[_]] = _
-		private[MappingFrame] var exportedFilterable        :Unique[Column[_]] = _
-		private[MappingFrame] var exportedInsertable        :Unique[Column[_]] = _
-		private[MappingFrame] var exportedUpdatable         :Unique[Column[_]] = _
-		private[MappingFrame] var exportedAutoInserted      :Unique[Column[_]] = _
-		private[MappingFrame] var exportedAutoUpdated       :Unique[Column[_]] = _
-		private[MappingFrame] var exportedSelectedByDefault :Unique[Column[_]] = _
-		private[MappingFrame] var exportedFilteredByDefault :Unique[Column[_]] = _
-		private[MappingFrame] var exportedInsertedByDefault :Unique[Column[_]] = _
-		private[MappingFrame] var exportedUpdatedByDefault  :Unique[Column[_]] = _
+		//the results of MappingFrame.this.<collection>(this); can't be referenced before MappingFrame is initialized (export call)!
+		private[MappingFrame] final lazy val exportedColumns           :Unique[Column[_]] =
+			columns.map(frame.export(_))
+
+		private[MappingFrame] final lazy val exportedSelectable        :Unique[Column[_]] =
+			exportedColumns.filter(NoSelect.inactive)
+
+		private[MappingFrame] final lazy val exportedFilterable        :Unique[Column[_]] =
+			exportedColumns.filter(NoFilter.inactive)
+
+		private[MappingFrame] final lazy val exportedInsertable        :Unique[Column[_]] =
+			exportedColumns.filter(NoInsert.inactive)
+
+		private[MappingFrame] final lazy val exportedUpdatable         :Unique[Column[_]] =
+			exportedColumns.filter(NoUpdate.inactive)
+
+		private[MappingFrame] final lazy val exportedAutoInserted      :Unique[Column[_]] =
+			exportedColumns.filter(AutoInsert.active)
+
+		private[MappingFrame] final lazy val exportedAutoUpdated       :Unique[Column[_]] =
+			exportedColumns.filter(AutoUpdate.active)
+
+		private[MappingFrame] final lazy val exportedSelectedByDefault :Unique[Column[_]] =
+			exportedColumns.filter(NoSelectByDefault.inactive)
+
+		private[MappingFrame] final lazy val exportedFilteredByDefault :Unique[Column[_]] =
+			exportedColumns.filter(NoFilterByDefault.inactive)
+
+		private[MappingFrame] final lazy val exportedInsertedByDefault :Unique[Column[_]] =
+			exportedColumns.filter(NoInsertByDefault.inactive)
+
+		private[MappingFrame] final lazy val exportedUpdatedByDefault  :Unique[Column[_]] =
+			exportedColumns.filter(NoUpdateByDefault.inactive)
+
+		private[MappingFrame] final lazy val exportedExtraSelect       :Unique[Column[_]] =
+			exportedColumns.filter(SelectPreset.active)
+
+		private[MappingFrame] final lazy val exportedExtraFilter       :Unique[Column[_]] =
+			exportedColumns.filter(FilterPreset.active)
+
+		private[MappingFrame] final lazy val exportedExtraInsert       :Unique[Column[_]] =
+			exportedColumns.filter(InsertPreset.active)
+
+		private[MappingFrame] final lazy val exportedExtraUpdate       :Unique[Column[_]] =
+			exportedColumns.filter(UpdatePreset.active)
+
+		private[MappingFrame] final lazy val exportedSelectForm        :SQLReadForm[T] =
+			frame.readForm(SelectView, this)
+
+		private[MappingFrame] final lazy val exportedFilterForm        :SQLWriteForm[T] =
+			frame.newWriteForm(FilterView, this)
+
+		private[MappingFrame] final lazy val exportedInsertForm        :SQLWriteForm[T] =
+			frame.newWriteForm(InsertView, this)
+
+		private[MappingFrame] final lazy val exportedUpdateForm        :SQLWriteForm[T] =
+			frame.newWriteForm(UpdateView, this)
 
 		/** Extractor for the value of the component to be used before the component is fully initialized
 		  * and the `extract` property is computed. Typically given as the constructor parameter or initialized
 		  * in the constructor, it is used as the template for the `MappingExtract` for the component.
 		  */
-		protected[schema] def componentSelector :Extractor[S, T]
+		protected[schema] def componentSelector :Sealed[Extractor[S, T]]
 
 		/** The `MappingExtract` for this component from the enclosing mapping.
 		  * The call to this method will trigger the initialization of this component if it was not initialized before.
 		  */
-		protected[MappingFrame] def extract :frame.Extract[T] = {
+		protected[MappingFrame] def extract :Sealed[frame.Extract[T]] = {
 			if (fastExtract == null) {
 				val s = safeExtract
 				if (s != null)
@@ -134,7 +184,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 			fastExtract
 		}
 
-		@volatile
+		@volatile //fixme: lazy val
 		private[this] var safeExtract :frame.Extract[T] = _
 		private[this] var fastExtract :frame.Extract[T] = _
 
@@ -147,34 +197,23 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 				fastExtract = init()
 				safeExtract = fastExtract
 				initExtracts = initExtracts.updated(this, fastExtract)
-
-				exportedSelectable        = columns.map(frame.export(_)).filter(NoSelect.inactive)
-				exportedFilterable        = columns.map(frame.export(_)).filter(NoFilter.inactive)
-				exportedInsertable        = columns.map(frame.export(_)).filter(NoInsert.inactive)
-				exportedUpdatable         = columns.map(frame.export(_)).filter(NoUpdate.inactive)
-				exportedAutoInserted      = columns.map(frame.export(_)).filter(AutoInsert.active)
-				exportedAutoUpdated       = columns.map(frame.export(_)).filter(AutoUpdate.active)
-				exportedSelectedByDefault = columns.map(frame.export(_)).filter(NoSelectByDefault.inactive)
-				exportedFilteredByDefault = columns.map(frame.export(_)).filter(NoFilterByDefault.inactive)
-				exportedInsertedByDefault = columns.map(frame.export(_)).filter(NoInsertByDefault.inactive)
-				exportedUpdatedByDefault  = columns.map(frame.export(_)).filter(NoUpdateByDefault.inactive)
 			}
 			this
 		}
 
 		/** Register itself and all its subcomponents within the parent mapping. This method will be called only once. */
-		protected[MappingFrame] def init() :frame.Extract[T] = frame.synchronized {
+		protected[MappingFrame] def init()(implicit seal :Seal) :frame.Extract[T] = frame.synchronized {
 			initComponents += this
 			initSubcomponents += this
-			extracts foreach { exportExtract(_) }
-			for (column <- columns if !extracts.contains(column))
+			this.extracts foreach { exportExtract(_) }
+			for (column <- columns if !this.extracts.contains(column))
 				exportColumn(column)
-			for (component <- subcomponents if !extracts.contains(component))
+			for (component <- this.subcomponents if !this.extracts.contains(component))
 				exportSubcomponent(component)
 			extractFor(this)
 		}
 
-		protected[MappingFrame] def delayInit() :Unit = frame synchronized {
+		protected[MappingFrame] def delayInit()(implicit seal :Seal) :Unit = frame synchronized {
 			if (isInitialized)
 				throw new IllegalStateException(
 					s"Cannot initialize component $this of $frame: components have already been exported.")
@@ -185,32 +224,33 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 		/** Lifts ('exports') a column of this component to the column of the enclosing composite `MappingFrame`.
 		  * This method is called both during delayed initialization of standard components, and eagerly
-		  * by `ExportComponent` in its constructor. For this reason it should not touch any column/component lists.
+		  * by `ExportedComponent` in its constructor. For this reason it should not touch any column/component lists.
 		  */
-		protected[MappingFrame] def exportColumn[U](column :Column[U]) :Column[U] =
+		protected[MappingFrame] final def exportColumn[U](column :Column[U]) :Column[U] =
 			exportSubcomponent(column).asInstanceOf[Column[U]]
 
 		/** Lifts ('exports') a component of this component to the subcomponent of the enclosing composite
 		  * `MappingFrame`. */
-		protected[MappingFrame] def exportSubcomponent[U](subcomponent :Component[U]) :Component[U] =
+		protected[MappingFrame] final def exportSubcomponent[U](subcomponent :Component[U]) :Component[U] =
 			exportExtract(subcomponent, apply(subcomponent)).export
 
-		protected[MappingFrame] def exportExtract[U](sub :Assoc[Component, Extract, U]) :Unit =
+		protected[MappingFrame] final def exportExtract[U](sub :Assoc[Component, Extract, U]) :Unit =
 			exportExtract(sub._1, sub._2)
 
-		protected[MappingFrame] def exportExtract[U](subextract :MappingExtract[T, U, O]) :frame.Extract[U] =
+		protected[MappingFrame] final def exportExtract[U](subextract :MappingExtract[T, U, O]) :frame.Extract[U] =
 			exportExtract(subextract.export, subextract)
 
-		protected[MappingFrame] def exportExtract[U](subcolumn :Column[U], subextract :ColumnMappingExtract[T, U, O])
+		protected[MappingFrame] final def exportExtract[U](subcolumn :Column[U], subextract :ColumnMappingExtract[T, U, O])
 				:frame.ColumnExtract[U] =
 			exportExtract(subcolumn :Component[U], subextract).asInstanceOf[frame.ColumnExtract[U]]
 
-		protected[MappingFrame] def exportExtract[U](subcomponent :Component[U], subextract :MappingExtract[T, U, O])
+		protected[MappingFrame] final def exportExtract[U](subcomponent :Component[U], subextract :MappingExtract[T, U, O])
 				:frame.Extract[U] =
 			frame.synchronized {
 				if (initExtracts contains subcomponent)
 					throw new IllegalStateException(
-						s"A duplicate of subcomponent $subcomponent of $this already exists under $frame.")
+						s"A duplicate of subcomponent $subcomponent of $this already exists under $frame."
+					)
 
 				val export = subextract.export
 				val result = initExtracts.get(export) getOrElse {
@@ -221,14 +261,14 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 					val subbuffs = export.buffs.zipper.locate(frame.buffs).replace(frameBuffs).buffs
 
 					val frameExtract = export match {
-						case column :SimpleColumn[U @unchecked, O] =>
+						case column :SimpleColumn[U @unchecked, O @unchecked] =>
 							extractFor(
 								new ColumnComponent[U](fromFrame, renameColumn(column.name), subbuffs)(column.form)
 							)
-						case column :ColumnMapping[U @unchecked, O] =>
-							extractFor(new ExportColumn[U](column, fromFrame, renameColumn(column.name), subbuffs))
+						case column :TypedColumn[U, O] @unchecked =>
+							extractFor(new ExportedColumn[U](column, fromFrame, renameColumn(column.name), subbuffs))
 						case _ =>
-							extractFor(new ExportComponent[U](export, fromFrame, columnPrefix, renameColumn, subbuffs))
+							extractFor(new ExportedComponent[U](export, fromFrame, columnPrefix, renameColumn, subbuffs))
 					}
 					initExtracts = initExtracts.updated(export, frameExtract)
 					frameExtract
@@ -237,8 +277,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 				result
 			}
 
-		protected[MappingFrame] def verifyOverrides() :Unit = {
-			if (componentSelector == null)
+		protected[MappingFrame] final def verifyOverrides() :Unit = {
+			if (componentSelector.value == null)
 				throw new IllegalStateException(
 					s"$this.componentSelector is null: overrides with a val must happen before any component declarations!")
 			if (columnPrefix == null)
@@ -250,7 +290,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 			if (renameColumn == null)
 				throw new IllegalStateException(
 					s"$this.renameColumn is null: overrides with a val must happen before any component declarations!")
-			if (buffs == null)
+			if (this.buffs == null)
 				throw new IllegalStateException(
 					s"$this.buffs is null: overrides with a val must happen before any component declarations!")
 
@@ -284,7 +324,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		  * [[net.noresttherein.oldsql.schema.bases.MappingFrame.FrameComponent.renameColumn renameColumn]] instead.
 		  * @return [[net.noresttherein.oldsql.schema.bases.MappingFrame.columnPrefix outer.columnPrefix]] `+`
 		  * [[net.noresttherein.oldsql.schema.bases.MappingFrame.FrameComponent.relativePrefix relativePrefix]]
-		  */
+		  */ //consider: columnSuffix
 		protected def columnPrefix :String =
 			if (relativePrefix == null)
 				throw new IllegalStateException(
@@ -317,7 +357,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * potentially without some minor subcomponents.
 	  */
 	trait LateInitComponent[T] extends FrameComponent[T] {
-		protected[MappingFrame] override def delayInit() :Unit = {
+		protected[MappingFrame] override def delayInit()(implicit seal :Seal) :Unit = {
 			if (isInitialized)
 				throw new IllegalStateException(
 					s"Cannot initialize component $this of $frame: components have already been exported.")
@@ -332,15 +372,16 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * and buffs defined in it and any other enclosing components into the adapted component.
 	  * Its export components are at the same time the export components of the enclosing mapping.
 	  */
-	private class ExportComponent[T](override val backer :Component[T], override val componentSelector :S =?> T,
-	                                 override val columnPrefix :String, override val renameColumn :String => String,
-	                                 override val buffs :Buffs[T])
+	private class ExportedComponent[T](override val backer :Component[T], override val componentSelector :Sealed[S =?> T],
+	                                   override val columnPrefix :String, override val renameColumn :String => String,
+	                                   override val buffs :Buffs[T])
 		extends DeepProxy[T, O](backer) with FrameComponent[T]
 	{
-		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = frame.synchronized {
-			initSubcomponents += this
-			initExtracts.getOrElse[frame.Extract, T](backer, extractFor(this))
-		}
+		protected[MappingFrame] override def init()(implicit seal :Seal) :MappingExtract[S, T, O] =
+			frame.synchronized {
+				initSubcomponents += this
+				initExtracts.getOrElse[frame.Extract, T](backer, extractFor(this))
+			}
 
 		protected override def adapt[X](component :backer.Component[X]) :Component[X] = //exportSubcomponent(component)
 			exportExtract(component, backer(component)).export
@@ -361,7 +402,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.ComponentFrame]]
 	  */
 	trait RequisiteComponent[T] extends FrameComponent[T] {
-		protected[schema] override def componentSelector :RequisiteExtractor[S, T] = Extractor.req(pick)
+		protected[schema] override def componentSelector :Sealed[RequisiteExtractor[S, T]] = Extractor.req(pick)
 		protected def pick :S => T
 	}
 
@@ -408,7 +449,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  *                       inherit these buffs.
 	  * @tparam T value type of this component.
 	  */
-	abstract class ComponentFrame[T](protected[schema] override val pick :S => T,
+	abstract class ComponentFrame[T](protected override val pick :S => T,
 	                                 protected override val relativePrefix :String, declaredBuffs :Buff[T]*)
 		extends MappingFrame[T, O] with RequisiteComponent[T]
 	{
@@ -469,7 +510,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * @see [[net.noresttherein.oldsql.schema.Buff.ExplicitInsert Buff.ExplicitInsert]]
 	  */ //todo: should this come already with an OptionalInsert/Update/Select buff?
 	trait OptionalComponent[T] extends FrameComponent[T] { //would be beneficial to allow overriding of the extractor for efficiency of Opt vs Option
-		protected[schema] override def componentSelector :S =?> T = Extractor(pick)
+		protected[schema] override def componentSelector :Sealed[S =?> T] = Extractor(pick)
 		protected def pick :S => Option[T]
 	}
 
@@ -493,7 +534,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * @tparam T value type of this component.
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.BaseComponent]]
 	  */
-	abstract class BaseOptionalComponent[T](protected[schema] override val componentSelector :OptionalExtractor[S, T],
+	abstract class BaseOptionalComponent[T](protected[schema] override val componentSelector :Sealed[OptionalExtractor[S, T]],
 	                                        protected override val relativePrefix :String, declaredBuffs :Buff[T]*)
 		extends FrameComponent[T]
 	{
@@ -521,7 +562,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  *                          will inherit these buffs.
 	  * @tparam T value type of this component.
 	  */
-	abstract class OptionalFrame[T](protected[schema] override val componentSelector :OptionalExtractor[S, T],
+	abstract class OptionalFrame[T](protected[schema] override val componentSelector :Sealed[OptionalExtractor[S, T]],
 	                                protected override val relativePrefix :String, declaredBuffs :Buff[T]*)
 		extends MappingFrame[T, O] with FrameComponent[T]
 	{
@@ -533,7 +574,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 	/** A component which is not represented by any property of the mapped subject `S`. */
 	trait ReadOnlyComponent[T] extends FrameComponent[T] {
-		protected[schema] override def componentSelector :Extractor[S, Nothing] = Extractor.none
+		protected[schema] override def componentSelector :Sealed[Extractor[S, Nothing]] = Extractor.none
 	}
 
 
@@ -541,10 +582,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	/** An adapter of an independent component, allowing changing of its column names and buffs.
 	  * Used by `component` factory methods.
 	  */
-	private class EmbeddedComponent[T](override val backer :Component[T], override val componentSelector :S =?> T,
+	private class EmbeddedComponent[T](override val backer :Component[T], override val componentSelector :Sealed[S =?> T],
 	                                   override val columnPrefix :String, override val renameColumn :String => String,
 	                                   override val buffs :Buffs[T])
-		extends BuffedMapping[RefinedMapping[T, O], T, O](backer, buffs) with FrameComponent[T]
+		extends BuffedMapping[TypedMapping[T, O], T, O](backer, buffs) with FrameComponent[T]
 	{
 		def this(component :Component[T], selector :S =?> T, rename :String => String, buffs :Buffs[T]) =
 			this(component, selector, "", rename, buffs)
@@ -552,14 +593,15 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		def this(component :Component[T], selector :S =?> T, prefix :String, buffs :Buffs[T]) =
 			this(component, selector, prefix, prefix + _, buffs)
 
-		protected[MappingFrame] override def init() :MappingExtract[S, T, O] = frame.synchronized {
-			val cast = backer.asInstanceOf[Component[T]]
-			if (initExtracts contains cast)
-				throw new IllegalArgumentException(
-					s"Can't embed mapping $backer as a component of $frame as it is already present.")
-			initSubcomponents += this
-			initExtracts.getOrElse[frame.Extract, T](backer, extractFor(this))
-		}
+		protected[MappingFrame] override def init()(implicit seal :Seal) :MappingExtract[S, T, O] =
+			frame.synchronized {
+				val cast = backer.asInstanceOf[Component[T]]
+				if (initExtracts contains cast)
+					throw new IllegalArgumentException(
+						s"Can't embed mapping $backer as a component of $frame as it is already present.")
+				initSubcomponents += this
+				initExtracts.getOrElse[frame.Extract, T](backer, extractFor(this))
+			}
 
 		protected override def adapt[X](component :backer.Component[X]) :Component[X] = {
 			val selector = componentSelector andThen backer(component)
@@ -567,12 +609,12 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		}
 
 		protected override def adapt[X](column :backer.Column[X]) :Column[X] = column match {
-			case _ :SimpleColumn[X, O] =>
+			case _ :SimpleColumn[X @unchecked, O @unchecked] =>
 				val selector = componentSelector andThen backer(column)
 				new ColumnComponent(selector, renameColumn(column.name), buffsFor(column))(column.form)
 			case _ =>
 				val selector = componentSelector andThen backer(column)
-				new ExportColumn(column, selector, renameColumn(column.name), buffsFor(column))
+				new ExportedColumn(column, selector, renameColumn(column.name), buffsFor(column))
 		}
 
 		override def mappingName :String = "${" + backer.mappingName + "}"
@@ -581,8 +623,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 
 
-	private class FKComponent[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X]
-	                         (override val componentSelector :S =?> R, rename :String => String, declared :Seq[Buff[R]])
+	private class FKComponent[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, X]
+	                         (override val componentSelector :Sealed[S =?> R],
+	                          rename :String => String, declared :Seq[Buff[R]])
 	                         (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => C[X])
 		extends RelatedEntityForeignKey[M, C, K, E, T, R, X, O](
 				rename, factory, frame.buffs.unsafeCascade(componentSelector).declare(declared :_*))(table, pk)
@@ -607,8 +650,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		override def columnPrefix = ""
 	}
 
-	private class InverseFKComponent[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R, X]
-	                                (override val componentSelector :S =?> R, key :C[O], declared :Seq[Buff[R]])
+	private class InverseFKComponent[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, X]
+	                                (override val componentSelector :Sealed[S =?> R], key :C[O], declared :Seq[Buff[R]])
 	                                (factory :RelatedEntityFactory[K, E, T, R],
 	                                 table :RelVar[M], fk :M[X] => ForeignKeyMapping[MappingAt, C, K, _, X])
 		extends InverseForeignKeyMapping[M, C, K, E, T, R, X, O](
@@ -616,9 +659,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		   with EffectivelyEmptyMapping[R, O] with FrameComponent[R] with InverseRelationshipValidation[M, R]
 
 	private class ToManyDerivedComponent
-	              [J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+	              [J[A] <: TypedMapping[JE, A], T[A] <: TypedMapping[E, A],
 		           C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
-	              (override val componentSelector :S =?> Derived[E, X], override val joinTable :RelVar[J],
+	              (override val componentSelector :Sealed[S =?> Derived[E, X]], override val joinTable :RelVar[J],
 	               back :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
 	               forward :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
 	               linkKin: => DerivedKinFactory[K, JE, Iterable[JE]], targetKin: => KinFactory[TK, E, E],
@@ -629,9 +672,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		 ) with FrameComponent[Derived[E, X]] with InverseRelationshipValidation[T, Derived[E, X]]
 
 	private class ToManyKinComponent
-	              [J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+	              [J[A] <: TypedMapping[JE, A], T[A] <: TypedMapping[E, A],
 		           C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
-	              (override val componentSelector :S =?> Kin[X], override val joinTable :RelVar[J],
+	              (override val componentSelector :Sealed[S =?> Kin[X]], override val joinTable :RelVar[J],
 	               back :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
 	               forward :J[JO] => ForeignKeyMapping[T, TC, TK, TR, JO],
 	               linkKin: => DerivedKinFactory[K, JE, Iterable[JE]], targetKin: => KinFactory[TK, E, E],
@@ -653,16 +696,17 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * @tparam T value type of this column.
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.DirectColumn]]
 	  */
-	trait FrameColumn[T] extends FrameComponent[T] with ColumnMapping[T, O] {
-		protected[MappingFrame] val index :Int = nextColumnIndex()
+	trait FrameColumn[T] extends FrameComponent[T] with BaseColumn[T, O] {
+		protected[MappingFrame] val index :Sealed[Int] = nextColumnIndex()
 
-		protected[MappingFrame] override def extract :frame.ColumnExtract[T] =
-			super.extract.asInstanceOf[ColumnMappingExtract[S, T, O]]
+		protected[MappingFrame] final override def extract :Sealed[frame.ColumnExtract[T]] =
+			super.extract.asInstanceOf[Sealed[ColumnMappingExtract[S, T, O]]]
 
-		protected[MappingFrame] override def init() :frame.ColumnExtract[T] = frame.synchronized {
-			includeColumn(this)
-			extractFor(this)
-		}
+		protected[MappingFrame] override def init()(implicit seal :Seal) :frame.ColumnExtract[T] =
+			frame.synchronized {
+				includeColumn(this)
+				extractFor(this)
+			}
 	}
 
 
@@ -670,7 +714,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * It automatically inherits the enclosing mapping's `columnPrefix` and buffs.
 	  */
 	protected class DirectColumn[T :ColumnForm]
-	                            (protected[schema] override val componentSelector :S =?> T, name :String,
+	                            (protected[schema] override val componentSelector :Sealed[S =?> T], name :String,
 	                             declaredBuffs :Seq[Buff[T]])
 		extends StandardColumn[T, O](verifiedPrefix + name,
 		                             frame.buffs.unsafeCascade(componentSelector).declare(declaredBuffs :_*))
@@ -679,20 +723,21 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		def this(value :S => T, name :String, buffs :Seq[Buff[T]]) =
 			this(Extractor.req(value), name, buffs)
 
-		protected[MappingFrame] override def init() :ColumnMappingExtract[S, T, O] = frame.synchronized {
-			initComponents += this
-			super.init()
-		}
+		protected[MappingFrame] final override def init()(implicit seal :Seal) :ColumnMappingExtract[S, T, O] =
+			frame.synchronized {
+				initComponents += this
+				super.init()
+			}
 	}
 
 
-	private class ExportColumn[T](override val backer :Column[T], override val componentSelector :S =?> T,
-	                              name :String, buffs :Buffs[T])
+	private class ExportedColumn[T](override val backer :Column[T], override val componentSelector :Sealed[S =?> T],
+	                                name :String, buffs :Buffs[T])
 		extends ExportColumnProxy[T, O](backer, name, buffs) with FrameColumn[T]
 	{
 		override val columnPrefix = ""
 
-		protected[MappingFrame] override def init() = {
+		protected[MappingFrame] override def init()(implicit seal :Seal) = frame.synchronized {
 			val res = super.init()
 			def export[X](entry :Assoc[Component, Extract, X]) :Unit =
 				if (entry._2.export == this) {
@@ -701,7 +746,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 				} else
 					exportExtract(entry)
 
-			extracts foreach { export(_) }
+			this.extracts foreach { export(_) }
 			res
 		}
 	}
@@ -710,9 +755,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 	/** A lower-level column component which accepts values for all abstract fields and initializes them verbatim.
 	  * This column will ''not'' automatically inherit the enclosing mapping's `columnPrefix` or buffs.
-	  * It is not included on the direct components list of this mapping.
+	  * It is not included in the direct components list of this mapping.
 	  */
-	private class ColumnComponent[T :ColumnForm](override val componentSelector :S =?> T, name :String,
+	private class ColumnComponent[T :ColumnForm](override val componentSelector :Sealed[S =?> T], name :String,
 	                                             override val buffs :Buffs[T])
 		extends StandardColumn[T, O](name, buffs) with FrameColumn[T]
 	{
@@ -727,18 +772,18 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	}
 
 
-	private class FKColumn[M[A] <: RefinedMapping[E, A], K, E, T, R, X]
-	                      (override val componentSelector :S =?> R, suffix :String, declaredBuffs :Seq[Buff[R]])
-	                      (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => ColumnMapping[K, X])
+	private class FKColumn[M[A] <: TypedMapping[E, A], K, E, T, R, X]
+	                      (override val componentSelector :Sealed[S =?> R], suffix :String, declaredBuffs :Seq[Buff[R]])
+	                      (factory :RelatedEntityFactory[K, E, T, R], table :RelVar[M], pk :M[X] => TypedColumn[K, X])
 		extends RelatedEntityForeignKeyColumn[M, K, E, T, R, X, O](
 				                              verifiedPrefix + suffix, factory,
 		                                      frame.buffs.unsafeCascade(componentSelector).declare(declaredBuffs :_*)
 		                                     )(table, pk)
 		   with FrameColumn[R] with LateInitComponent[R]
 	{ fk =>
-		private[this] val lazyKey = Lazy {
+		private[this] lazy val lazyKey = {
 			val selector = KeyExtractor(factory)
-			val keyBuffs = buffs.unsafeCascade(selector).declare()
+			val keyBuffs = this.buffs.unsafeCascade(selector).declare()
 			if (target.isInstanceOf[SimpleColumn[_, _]])
 				new ColumnComponent[K](componentSelector andThen selector, name, keyBuffs)(target.form)
 			else
@@ -752,12 +797,13 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 		override lazy val columns = Unique(key)
 
-		protected[MappingFrame] override def init() :frame.ColumnExtract[R] = frame synchronized {
-			initComponents += this
-			includeColumn(this)
-			lazyKey.get //trigger construction and registration in the initQueue
-			extractFor(this)
-		}
+		protected[MappingFrame] final override def init()(implicit seal :Seal) :frame.ColumnExtract[R] =
+			frame synchronized {
+				initComponents += this
+				includeColumn(this)
+				lazyKey //trigger construction and registration in the initQueue
+				extractFor(this)
+			}
 	}
 
 
@@ -1142,21 +1188,21 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 
 
-	protected override def fkimpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R]
+	protected override def fkImpl[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R]
 	                             (value :S => R, buffs :Buff[R]*)
 	                             (table :RelVar[M], pk :M[_] => C[_], reference :RelatedEntityFactory[K, E, T, R])
 	                             (rename :String => String) :ForeignKeyMapping[M, C, K, R, O] =
-		initPreceding(new FKComponent(value, rename, buffs)(reference, table, pk.asInstanceOf[M[Unit] => C[Unit]]))
+		initPreceding(new FKComponent(value :S =?> R, rename, buffs)(reference, table, pk.asInstanceOf[M[Unit] => C[Unit]]))
 
-	protected override def inverseFKImpl[M[A] <: RefinedMapping[E, A], C[A] <: RefinedMapping[K, A], K, E, T, R]
+	protected override def inverseFKImpl[M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R]
 	                       (value :S => R, key :C[O], reference :RelatedEntityFactory[K, E, T, R], buffs :Buff[R]*)
 	                       (table :RelVar[M], fk :M[_] => ForeignKeyMapping[MappingAt, C, K, _, _])
 			:JoinedEntityComponent[M, C, K, R, O] =
-		initPreceding(new InverseFKComponent[M, C, K, E, T, R, Unit](value, key, buffs)(
+		initPreceding(new InverseFKComponent[M, C, K, E, T, R, Unit](value :S =?> R, key, buffs)(
 			reference, table, fk.asInstanceOf[M[Unit] => ForeignKeyMapping[MappingAt, C, K, _, Unit]]
 		))
 
-	protected override def kinimpl[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+	protected override def kinImpl[J[A] <: TypedMapping[JE, A], T[A] <: TypedMapping[E, A],
 		                           C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
 	                              (value :S => Kin[X], joinTable :RelVar[J],
 	                               source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
@@ -1168,11 +1214,11 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	{
 		val allBuffs = this.buffs.cascade(value).declare(buffs :_*)
 		initPreceding(new ToManyKinComponent[J, T, C, TC, K, TK, JE, E, X, TR, JO](
-			value, joinTable, source, target, linkKin, targetKin, allBuffs
+			value :S =?> Kin[X], joinTable, source, target, linkKin, targetKin, allBuffs
 		))
 	}
 
-	protected override def manyimpl[J[A] <: RefinedMapping[JE, A], T[A] <: RefinedMapping[E, A],
+	protected override def manyImpl[J[A] <: TypedMapping[JE, A], T[A] <: TypedMapping[E, A],
 		                            C[A] <: BaseMapping[K, A], TC[A] <: BaseMapping[TK, A], K, TK, JE, E, X, TR <: Kin[E], JO]
 	                               (value :S => Derived[E, X], joinTable :RelVar[J],
 	                                source :J[JO] => ForeignKeyMapping[MappingAt, C, K, _, JO],
@@ -1184,7 +1230,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	{
 		val allBuffs = this.buffs.cascade(value).declare(buffs :_*)
 		initPreceding(new ToManyDerivedComponent[J, T, C, TC, K, TK, JE, E, X, TR, JO](
-			value, joinTable, source, target, linkKin, targetKin, allBuffs
+			value :S =?> Derived[E, X], joinTable, source, target, linkKin, targetKin, allBuffs
 		))
 	}
 
@@ -1195,9 +1241,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 	/** A builder adapting a given column template to a column of this `MappingFrame`. */
 	protected class ColumnCopist[T] private[MappingFrame]
-	                            (template :ColumnMapping[T, _], name :Option[String], buffs :Buffs[T])
+	                            (template :TypedColumn[T, _], name :Option[String], buffs :Buffs[T])
 	{
-		private[MappingFrame] def this(source :ColumnMapping[T, _]) = this(source, None, source.buffs)
+		private[MappingFrame] def this(source :TypedColumn[T, _]) = this(source, None, source.buffs)
 
 		template match {
 			case self :MappingFrame[_, _]#FrameComponent[_] if self.belongsTo(frame) =>
@@ -1280,25 +1326,25 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	/** Create a column based on the given column.
 	  * @return a builder instance allowing to override any properties of the given template column.
 	  */
-	protected def column[T](template :ColumnMapping[T, _]) :ColumnCopist[T] =
+	protected def column[T](template :TypedColumn[T, _]) :ColumnCopist[T] =
 		new ColumnCopist(template)
 
 	/** Create a column based on the given column, giving it a new name.
 	  * @return a builder instance allowing to override any properties of the given template column.
 	  */
-	protected def column[T](template :ColumnMapping[T, _], name :String) :ColumnCopist[T] =
+	protected def column[T](template :TypedColumn[T, _], name :String) :ColumnCopist[T] =
 		new ColumnCopist[T](template, Some(name), template.buffs)
 
 	/** Create a column based on the given column, replacing its buff list with the provided buffs.
 	  * @return a builder instance allowing to override any properties of the given template column.
 	  */
-	protected def column[T](template :ColumnMapping[T, _], buffs :Buffs[T]) :ColumnCopist[T] =
+	protected def column[T](template :TypedColumn[T, _], buffs :Buffs[T]) :ColumnCopist[T] =
 		new ColumnCopist(template, None, buffs)
 
 	/** Create a column based on the given column, replacing its name and buff list with the provided values.
 	  * @return a builder instance allowing to override any properties of the given template column.
 	  */
-	protected def column[T](template :ColumnMapping[T, _], name :String, buffs :Buffs[T]) :ColumnCopist[T] =
+	protected def column[T](template :TypedColumn[T, _], name :String, buffs :Buffs[T]) :ColumnCopist[T] =
 		new ColumnCopist(template, Some(name), buffs)
 
 
@@ -1434,15 +1480,18 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 
 
-	protected override def fkimpl[M[A] <: RefinedMapping[E, A], K, E, T, R]
+	protected override def fkImpl[M[A] <: TypedMapping[E, A], K, E, T, R]
 	                             (name :String, value :S => R, buffs :Buff[R]*)
-	                             (table :RelVar[M], pk :M[_] => ColumnMapping[K, _],
+	                             (table :RelVar[M], pk :M[_] => TypedColumn[K, _],
 	                              reference :RelatedEntityFactory[K, E, T, R]) :ForeignKeyColumnMapping[M, K, R, O] =
-		initPreceding(new FKColumn(value, name, buffs)(reference, table, pk.asInstanceOf[M[Unit] => ColumnMapping[K, Unit]]))
+	{
+		val castpk = pk.asInstanceOf[M[Unit] => TypedColumn[K, Unit]]
+		initPreceding(new FKColumn(Extractor.req(value), name, buffs)(reference, table, castpk))
+	}
 
 
-//	protected override def inverseFKImpl[M[A] <: RefinedMapping[E, A], K, E, X, R]
-//	                                    (value :S => R, key :ColumnMapping[K, O],
+//	protected override def inverseFKImpl[M[A] <: TypedMapping[E, A], K, E, X, R]
+//	                                    (value :S => R, key :TypedColumn[K, O],
 //	                                     reference :RelatedEntityFactory[K, E, X, R], buffs :Buff[R]*)
 //	                                    (table :RelVar[M], fk :M[_] => ForeignKeyColumnMapping[MappingAt, K, _, _])
 //			:ForeignKeyColumnMapping[M, K, R, O] =
@@ -1455,7 +1504,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	/** Renames a column of this mapping. The column might be either directly declared by this mapping or
 	  * any of its subcomponents preceding this call. The new column will have the buffs of its export version,
 	  * as would be returned by `apply(column)`. It is not required that `column` is an instance of
-	  * `ColumnMapping` or that it upholds its invariants: only that it declares exactly one column
+	  * `TypedColumn` or that it upholds its invariants: only that it declares exactly one column
 	  * and has non empty `name`. This means that adapted/mapped columns are accepted.
 	  * @throws IllegalArgumentException if `column` is not a subcolumn of this mapping or it is an export column
 	  *                                  (one declared directly under this mapping or lifted from a subcomponent).
@@ -1491,15 +1540,15 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 				new ColumnComponent[T](currentExport.componentSelector, name, currentExport.buffs)(column.form) {
 					//we'll replace the export column with this manually
 					override val index = currentExport.index
-					override def init() :ColumnMappingExtract[S, T, O] = extractFor(this)
+					override def init()(implicit seal :Seal) :ColumnMappingExtract[S, T, O] = extractFor(this)
 				}
-			case export :ExportColumn[T] =>
-				new ExportColumn[T](export.backer, currentExport.componentSelector, name, currentExport.buffs) {
+			case export :ExportedColumn[T] =>
+				new ExportedColumn[T](export.backer, currentExport.componentSelector, name, currentExport.buffs) {
 					override val index = currentExport.index
-					override def init() :ColumnMappingExtract[S, T, O] = extractFor(this)
+					override def init()(implicit seal :Seal) :ColumnMappingExtract[S, T, O] = extractFor(this)
 				}
 			case _ =>
-				new ExportColumn[T](column, currentExport.componentSelector, name, currentExport.buffs) {
+				new ExportedColumn[T](column, currentExport.componentSelector, name, currentExport.buffs) {
 					override val index = currentExport.index
 				}
 		}
@@ -1524,7 +1573,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 				Assoc[Column, ColumnExtract, T](lift._1.asInstanceOf[Column[T]], extract)
 			else lift
 		}
-		//just to be sure in case equals is wonky and to trigger (empty) initialization
+		//just to be sure in case some component has done something unexpected
 		initExtracts = initExtracts.updated(column, replacement.extract)
 		replacement
 	}
@@ -1541,7 +1590,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		pieces(component.extract)
 
 
-	private[this] final val initBuffs = Lazy {
+	private[this] final val initBuffs = {
 		val bs = declaredBuffs
 		if (bs == null)
 			throw new IllegalStateException(
@@ -1563,8 +1612,8 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * Most subclasses will choose to override
 	  * [[net.noresttherein.oldsql.schema.bases.MappingFrame.declaredBuffs declaredBuffs]] instead (if at all).
 	  * @return `Buffs(this, `[[net.noresttherein.oldsql.schema.bases.MappingFrame.declaredBuffs declaredBuffs]]`:_*)`.
-	  */
-	override def buffs :Buffs[S] = initBuffs.get
+	  */ //consider: we could implement withBuffs via Object.clone() and later resetting the state to uninitialized
+	override def buffs :Buffs[S] = initBuffs
 
 	/** Buffs declared by this instance (rather than inherited). It becomes
 	  * the [[net.noresttherein.oldsql.schema.Buffs.front front]] portion of this instance's
@@ -1593,11 +1642,11 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 
 
-	override def filterValues(subject :S) :ComponentValues[S, O] = writtenValues(FILTER, subject)
-	override def insertValues(subject :S) :ComponentValues[S, O] = writtenValues(INSERT, subject)
-	override def updateValues(subject :S) :ComponentValues[S, O] = writtenValues(UPDATE, subject)
+	override def filterValues(subject :S) :ComponentValues[S, O] = writtenValues(FilterView, subject)
+	override def insertValues(subject :S) :ComponentValues[S, O] = writtenValues(InsertView, subject)
+	override def updateValues(subject :S) :ComponentValues[S, O] = writtenValues(UpdateView, subject)
 
-	override def writtenValues[T](op :WriteOperationType, subject :S) :ComponentValues[S, O] = {
+	override def writtenValues[T](op :WriteOperationView, subject :S) :ComponentValues[S, O] = {
 		val res = new IndexedColumnValuesBuilder
 		writtenValues(op, subject, res) //StaticMapping delegates this to specific methods
 		res.result()
@@ -1605,9 +1654,9 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 	private class IndexedColumnValuesBuilder extends ComponentValuesBuilder[S, O] {
 		private[this] val values = new Array[Any](columnCount)
-		private[this] var componentValues = Map.empty[RefinedMapping[_, O], Any]
+		private[this] var componentValues = Map.empty[TypedMapping[_, O], Any]
 
-		override def addOpt[T](component :RefinedMapping[T, O], result :Opt[T]) :this.type = export(component) match {
+		override def addOpt[T](component :TypedMapping[T, O], result :Opt[T]) :this.type = export(component) match {
 			case col :MappingFrame[_, _]#FrameColumn[_] =>
 				values(col.index) = result.orNull; this
 			case comp if !result.isEmpty =>
@@ -1635,55 +1684,269 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 
 
-	override def export[T](component :Component[T]) :Component[T] = component match {
-		case export :MappingFrame[_, _]#FrameComponent[_] if export belongsTo this =>
-			export.asInstanceOf[Component[T]]
-		case self if self eq this => self
-		case _ =>
-			apply(component).export
+	//initialize first, especially for selectForm, as it reads not synchronized member variables.
+	override lazy val selectForm :SQLReadForm[S]  = { initialize(); new ReadForm(selectedByDefault) }
+	override lazy val filterForm :SQLWriteForm[S] = { initialize(); super.filterForm }
+	override lazy val insertForm :SQLWriteForm[S] = { initialize(); super.insertForm }
+	override lazy val updateForm :SQLWriteForm[S] = { initialize(); super.updateForm }
+
+	override def selectForm[T](component :Component[T]) :SQLReadForm[T]  = framed(component).exportedSelectForm
+	override def filterForm[T](component :Component[T]) :SQLWriteForm[T] = framed(component).exportedFilterForm
+	override def insertForm[T](component :Component[T]) :SQLWriteForm[T] = framed(component).exportedInsertForm
+	override def updateForm[T](component :Component[T]) :SQLWriteForm[T] = framed(component).exportedUpdateForm
+
+	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
+		if (components == selectedByDefault)
+			selectForm
+		else {
+			//_.selectable aren't export components, but should have correct column names
+			//call to frame.export makes sure that the whole mapping is initialized and access to not synchronized fields is safe.
+			val columns = components.map(frame.export(_)).flatMap(_.selectedByDefault)
+			if (columns.exists(NoSelect.active))
+				throw new IllegalArgumentException(
+					s"Can't create a select form for $frame using $components: NoSelect buff present among the selection.")
+
+			if (selectable.exists(c => !columns.contains(c) && OptionalSelect.inactive(c))) {
+				val missing = (selectable.toSet -- columns.toSet).filter(OptionalSelect.inactive)
+				throw new IllegalArgumentException(
+					missing.mkString(
+						s"Can't create a select form for $frame using $components: missing mandatory columns ", ", ", ""
+					)
+				)
+			}
+			//consider: We need to include the default pseudo columns because currently SimpleColumn checks SelectDefault
+			//  in selectForm, not optionally, in order to reduce the overhead.
+			//  Still, damn unintuitive and there are likely bugs in this area.
+			val extra = columns ++ SelectPreset.Active.columns(frame)
+			new ReadForm(columns :++ extra)
+		}
+
+	protected def readForm[T](op :ReadOperationView, component :Component[T]) :SQLReadForm[T] =
+		super.selectForm(component)
+
+	protected override def newWriteForm(op :WriteOperationView, components :Unique[Component[_]]) :SQLWriteForm[S] = {
+		val defaults = defaultColumns(op)
+		if (defaults == components || defaults == components.map(export(_)))
+			op.form(this)
+		else
+			super.newWriteForm(op, components)
 	}
 
-	override def export[T](column :Column[T]) :Column[T] = column match {
-		case export :MappingFrame[_, _]#FrameComponent[_] if export belongsTo this =>
-			export.asInstanceOf[Column[T]]
-		case _ =>
-			apply(column).export
-	}
 
-	override def exportOrNot[T](component :Component[T]) :Component[T] = component match {
-		case export :MappingFrame[_, _]#FrameComponent[_] if export belongsTo this =>
-			export.asInstanceOf[Component[T]]
-		case _ =>
-			val extract = extracts.getOrElse[Extract, T](component, null) //todo: make sure this doesn't create an object
-			if (extract != null) extract.export else component
-	}
+	//must only be created after full initialization of the mapping.
+	private class ReadForm(val columns :Unique[TypedColumn[_, O]],
+	                       val read :TypedColumn[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
+		extends SQLReadForm[S] with ReadFormNullValue[S]
+	{
+		private def frame = MappingFrame.this
 
-	override def exportOrNot[T](column :Column[T]) :Column[T] = column match {
-		case export :MappingFrame[_, _]#FrameColumn[_] if export belongsTo this =>
-			export.asInstanceOf[Column[T]]
-		case _ =>
-			val extract = columnExtracts.getOrElse[ColumnExtract, T](column, null) //todo: make sure this doesn't create an object
-			if (extract != null) extract.export else column
-	}
-
-	override def apply[T](component :Component[T]) :Extract[T] = component match {
-		case export :MappingFrame[_, _]#FrameComponent[_] if export belongsTo this =>
-			export.asInstanceOf[FrameComponent[T]].extract
-		case _  =>
-			extracts.getOrElse(component,
-				throw new NoSuchComponentException(s"Component $component is not a part of mapping $this.")
+		private[this] val fastColumns = columns.view.map {
+			case c :MappingFrame[_, _]#FrameColumn[_] if c belongsTo frame => c
+			case c => throw new IllegalArgumentException(
+				s"A non export column $c passed to SQLReadForm $this of $frame."
 			)
+		}.toArray
+		private val forms :Array[SQLReadForm[_]] = fastColumns.map(read)
+		override val columnTypes :Seq[JDBCType] = ArraySeq.unsafeWrapArray(forms.flatMap(_.columnTypes)) //remember a form can have a width of zero
+		override val columnCount :Int = columnTypes.length
+
+		override def opt(res :ResultSet, position :Int): Opt[S] = {
+			val values = new Array[Any](columnCount)
+			java.util.Arrays.fill(values.asInstanceOf[Array[AnyRef]], None)
+
+			var i = position
+			val end = position + fastColumns.length
+			while (i < end) {
+				i += 1
+				values(fastColumns(i).index.value) = forms(i).opt(res, i - 1).orNull
+			}
+
+			val pieces = ComponentValues(frame)(ArraySeq.unsafeWrapArray(values)) {
+				case column :MappingFrame[_, _]#FrameColumn[_] => column.index.value
+				case _ => -1
+			}
+			frame.optionally(pieces)
+		}
+
+		override def nulls :NullValue[S] = frame.nullValue
+
+		override def register(call :CallableStatement, position :Int) :Unit = {
+			var i = 0; val end = fastColumns.length
+			while (i < end) {
+				forms(i).register(call, position + i)
+				i += 1
+			}
+		}
+
+		override def comparable(other :SQLReadForm[_]) :Boolean = other match {
+			case _ if other eq this => true
+			case _ if columnCount != other.columnCount => false
+			case other :MappingFrame[_, _]#ReadForm => columnTypes == other.columnTypes
+			case _ =>
+				new MappingReadForm[S, O](frame, columns) comparable other
+		}
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if this eq self => true
+			case other :MappingFrame[_, _]#ReadForm => //this function equality should work, as there is no reason for closure
+				(frame identical other.frame) &&
+					(columns identical other.columns) && columns.view.map(read) == other.columns.view.map(other.read)
+			case _ => false
+		}
+		override def hashCode :Int = (frame.hashCode * 31 + columns.hashCode) * 31 + read.hashCode
+
+		override def toString :String = columns.map(read).mkString(s"$frame{", ",", "}>")
 	}
 
-	override def apply[T](column :Column[T]) :ColumnExtract[T] = column match {
-		case export :MappingFrame[_, _]#FrameColumn[_] if export belongsTo this =>
-			export.asInstanceOf[FrameColumn[T]].extract
-		case wonky :MappingFrame[_, _]#FrameComponent[_] if wonky belongsTo this =>
-			wonky.extract.asInstanceOf[ColumnExtract[T]]
-		case _ =>
-			columnExtracts.getOrElse(column,
-				throw new NoSuchComponentException(s"Column $column is not a part of mapping $this.")
-			)
+
+
+
+	/** A sequence which works as a mutable buffer during initialization, but once it is completed requires
+	  * no synchronization. All appends must be synchronized with the enclosing class's lock, immediately
+	  * followed by a test of `isInitialized`, signifying that no further modification can be done
+	  * (will most likely throw a `NullPointerException`). The fields of this type are initialized
+	  * by a call to `initialize()`, which must likewise happen inside a lock and with a guard, as initialization
+	  * is not idempotent. The initialization copies the components from a mutable list to a `@volatile`,
+	  * immutable one which is used by all collection methods. To eliminate the penalty of a `@volatile` field,
+	  * there is another, non-volatile `var` initialized with the same value and which is always checked first.
+	  * Only if the field is `null`, the value of the volatile field is copied and, in case that one is `null`, too,
+	  * the outer `initialize()` method is called. This works because once the volatile field is initialized,
+	  * it never changes value (and its value is immutable), hence reassigns to the cacheable `var` do not result
+	  * in any change of state.
+	  */
+	private[this] class LateInitComponents[C <: FrameComponent[_]](var uninitialized :ListBuffer[C])
+		extends AbstractSeq[C]
+	{
+		def this() = this(ListBuffer.empty[C])
+
+		@volatile //fixme: remove cached field
+		private[this] var initialized :Unique[C] = _
+		private[this] var cached :Unique[C] = _
+
+		def +=(comp :C) :Unit =
+			if (isInitialized)
+				throw new IllegalStateException(
+					s"Can't enlist component $comp for $frame: the list of components has been already exported.")
+			else
+				uninitialized += comp
+
+		def isInitialized :Boolean = initialized != null
+
+		def initialize() :Unit = {
+			cached = uninitialized.result().to(Unique)
+			initialized = cached
+			uninitialized = null
+		}
+
+		def items :Unique[C] =
+			if (cached != null)
+				cached
+			else if (initialized != null) {
+				cached = initialized
+				cached
+			} else {
+				frame.initialize()
+				uninitialized = null
+				cached = initialized
+				cached
+			}
+
+		override def length :Int = items.size
+		override def apply(idx :Int) :C = items(idx)
+		override def foreach[U](f :C => U) :Unit = items.foreach(f)
+		override def iterator :Iterator[C] = items.iterator
+		override def indexOf[B >: C](elem :B, start :Int) :Int = items.indexOf(elem, start)
+		override def lastIndexOf[B >: C](elem :B, end :Int) :Int = items.indexOf(elem, end)
+	}
+
+	private def framed[T](component :Component[T]) = export(component).asInstanceOf[FrameComponent[T]]
+
+	override def columns[T](component :Component[T])           :Unique[Column[_]] =
+		framed(component).exportedColumns
+
+	override def selectable[T](component :Component[T])        :Unique[Column[_]] =
+		framed(component).exportedSelectable
+
+	override def filterable[T](component :Component[T])        :Unique[Column[_]] =
+		framed(component).exportedFilterable
+
+	override def insertable[T](component :Component[T])        :Unique[Column[_]] =
+		framed(component).exportedInsertable
+
+	override def updatable[T](component :Component[T])         :Unique[Column[_]] =
+		framed(component).exportedUpdatable
+
+	override def autoInserted[T](component :Component[T])      :Unique[Column[_]] =
+		framed(component).exportedAutoInserted
+
+	override def autoUpdated[T](component :Component[T])       :Unique[Column[_]] =
+		framed(component).exportedAutoUpdated
+
+	override def selectedByDefault[T](component :Component[T]) :Unique[Column[_]] =
+		framed(component).exportedSelectedByDefault
+
+	override def filteredByDefault[T](component :Component[T]) :Unique[Column[_]] =
+		framed(component).exportedFilteredByDefault
+
+	override def insertedByDefault[T](component :Component[T]) :Unique[Column[_]] =
+		framed(component).exportedInsertedByDefault
+
+	override def updatedByDefault[T](component :Component[T])  :Unique[Column[_]] =
+		framed(component).exportedUpdatedByDefault
+
+	private[this] final val initComponents        = new LateInitComponents[FrameComponent[_]]
+	private[this] final val initSubcomponents     = new LateInitComponents[FrameComponent[_]]
+	private[this] final val initColumns           = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initSelectable        = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initFilterable        = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initInsertable        = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initUpdatable         = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initAutoInsert        = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initAutoUpdate        = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initSelectedByDefault = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initFilteredByDefault = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initInsertedByDefault = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initUpdatedByDefault  = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initMandatorySelect   = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initMandatoryFilter   = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initMandatoryInsert   = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initMandatoryUpdate   = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initExtraSelect       = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initExtraFilter       = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initExtraInsert       = new LateInitComponents[FrameColumn[_]]
+	private[this] final val initExtraUpdate       = new LateInitComponents[FrameColumn[_]]
+
+	final override def components        :Unique[Component[_]] = initComponents.items
+	final override def subcomponents     :Unique[Component[_]] = initSubcomponents.items
+	final override def columns           :Unique[Column[_]]    = initColumns.items
+	final override def selectable        :Unique[Column[_]]    = initSelectable.items
+	final override def filterable        :Unique[Column[_]]    = initFilterable.items
+	final override def insertable        :Unique[Column[_]]    = initInsertable.items
+	final override def updatable         :Unique[Column[_]]    = initUpdatable.items
+	final override def autoInserted      :Unique[Column[_]]    = initAutoInsert.items
+	final override def autoUpdated       :Unique[Column[_]]    = initAutoUpdate.items
+	final override def selectedByDefault :Unique[Column[_]]    = initSelectedByDefault.items
+	final override def filteredByDefault :Unique[Column[_]]    = initFilteredByDefault.items
+	final override def insertedByDefault :Unique[Column[_]]    = initInsertedByDefault.items
+	final override def updatedByDefault  :Unique[Column[_]]    = initUpdatedByDefault.items
+	final override def mandatorySelect   :Unique[Column[_]]    = initMandatorySelect.items
+	final override def mandatoryFilter   :Unique[Column[_]]    = initMandatoryFilter.items
+	final override def mandatoryInsert   :Unique[Column[_]]    = initMandatoryInsert.items
+	final override def mandatoryUpdate   :Unique[Column[_]]    = initMandatoryUpdate.items
+
+	override def columnsWith(buff :BuffType) :Unique[Column[_]] = buff match {
+		case SelectPreset => initExtraSelect.items
+		case FilterPreset => initExtraFilter.items
+		case InsertPreset => initExtraInsert.items
+		case UpdatePreset => initExtraUpdate.items
+		case _ => super.columnsWith(buff)
+	}
+
+	override def columnsWith(component :Component[_], buff :BuffType) :Unique[Column[_]] = buff match {
+		case SelectPreset => framed(component).exportedExtraSelect
+		case FilterPreset => framed(component).exportedExtraFilter
+		case InsertPreset => framed(component).exportedExtraInsert
+		case UpdatePreset => framed(component).exportedExtraUpdate
+		case _ => framed(component).exportedColumns.filter(buff.active)
 	}
 
 
@@ -1719,7 +1982,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		}
 		fastExtracts
 	}
-
+	//fixme: use lazy vals, we can't do better, really
 	@volatile private[this] var safeColumnExtracts :NaturalMap[Column, ColumnExtract] = _
 	private[this] var fastColumnExtracts :NaturalMap[Column, ColumnExtract] = _
 
@@ -1737,116 +2000,68 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	}
 
 
-
-
-	/** A sequence which works as a mutable buffer during initialization, but once it is completed requires
-	  * no synchronization. All appends must be synchronized with the enclosing class's lock, immediately
-	  * followed by a test of `isInitialized`, signifying that no further modification can be done
-	  * (will most likely throw a `NullPointerException`). The fields of this type are initialized
-	  * by a call to `initialize()`, which must likewise happen inside a lock and with a guard, as initialization
-	  * is not idempotent. The initialization copies the components from a mutable list to a `@volatile`,
-	  * immutable one which is used by all collection methods. To eliminate the penalty of a `@volatile` field,
-	  * there is another, non-volatile `var` initialized with the same value and which is always checked first.
-	  * Only if the field is `null`, the value of the volatile field is copied and, in case that one is `null`, too,
-	  * the outer `initialize()` method is called. This works because once the volatile field is initialized,
-	  * it never changes value (and its value is immutable), hence reassigns to the cacheable `var` do not result
-	  * in any change of state.
-	  */
-	private[this] class LateInitComponents[C <: FrameComponent[_]](var uninitialized :ListBuffer[C])
-		extends AbstractSeq[C]
-	{
-		def this() = this(ListBuffer.empty[C])
-
-		@volatile
-		private[this] var initialized :Unique[C] = _
-		private[this] var cached :Unique[C] = _
-
-		def +=(comp :C) :Unit =
-			if (isInitialized)
-				throw new IllegalStateException(
-					s"Can't enlist component $comp for $frame: the list of components has been already exported.")
-			else
-				uninitialized += comp
-
-		def isInitialized :Boolean = initialized != null
-
-		def initialize() :Unit = {
-			cached = uninitialized.result().to(Unique)
-			initialized = cached
-			uninitialized = null
-		}
-
-		def items :Unique[C] =
-			if (cached != null)
-				cached
-			else if (initialized != null) {
-				cached = initialized
-				cached
-			} else {
-				frame.initialize()
-				uninitialized = null
-				cached = initialized
-				cached
-			}
-
-		override def length :Int = items.length
-		override def apply(idx :Int) :C = items(idx)
-		override def foreach[U](f :C => U) :Unit = items.foreach(f)
-		override def iterator :Iterator[C] = items.iterator
-		override def indexOf[B >: C](elem :B, start :Int) :Int = items.indexOf(elem, start)
-		override def lastIndexOf[B >: C](elem :B, end :Int) :Int = items.lastIndexOf(elem, end)
-	}
-
-	private def framed[T](component :Component[T]) = export(component).asInstanceOf[FrameComponent[T]]
-
-	override def selectable(component :Component[_])        :Unique[Column[_]] = framed(component).exportedSelectable
-	override def filterable(component :Component[_])        :Unique[Column[_]] = framed(component).exportedFilterable
-	override def insertable(component :Component[_])        :Unique[Column[_]] = framed(component).exportedInsertable
-	override def updatable(component :Component[_])         :Unique[Column[_]] = framed(component).exportedUpdatable
-	override def autoInserted(component :Component[_])      :Unique[Column[_]] = framed(component).exportedAutoInserted
-	override def autoUpdated(component :Component[_])       :Unique[Column[_]] = framed(component).exportedAutoUpdated
-	override def selectedByDefault(component :Component[_]) :Unique[Column[_]] = framed(component).exportedSelectedByDefault
-	override def filteredByDefault(component :Component[_]) :Unique[Column[_]] = framed(component).exportedFilteredByDefault
-	override def insertedByDefault(component :Component[_]) :Unique[Column[_]] = framed(component).exportedInsertedByDefault
-	override def updatedByDefault(component :Component[_])  :Unique[Column[_]] = framed(component).exportedUpdatedByDefault
-
-	private[this] final val initComponents        = new LateInitComponents[FrameComponent[_]]
-	private[this] final val initSubcomponents     = new LateInitComponents[FrameComponent[_]]
-	private[this] final val initColumns           = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initSelectable        = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initFilterable        = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initInsertable        = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initUpdatable         = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initAutoInsert        = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initAutoUpdate        = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initSelectedByDefault = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initFilteredByDefault = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initInsertedByDefault = new LateInitComponents[FrameColumn[_]]
-	private[this] final val initUpdatedByDefault  = new LateInitComponents[FrameColumn[_]]
-
-	final override def components        :Unique[Component[_]] = initComponents.items
-	final override def subcomponents     :Unique[Component[_]] = initSubcomponents.items
-	final override def columns           :Unique[Column[_]]    = initColumns.items
-	final override def selectable        :Unique[Column[_]]    = initSelectable.items
-	final override def filterable        :Unique[Column[_]]    = initFilterable.items
-	final override def insertable        :Unique[Column[_]]    = initInsertable.items
-	final override def updatable         :Unique[Column[_]]    = initUpdatable.items
-	final override def autoInserted      :Unique[Column[_]]    = initAutoInsert.items
-	final override def autoUpdated       :Unique[Column[_]]    = initAutoUpdate.items
-	final override def selectedByDefault :Unique[Column[_]]    = initSelectedByDefault.items
-	final override def filteredByDefault :Unique[Column[_]]    = initFilteredByDefault.items
-	final override def insertedByDefault :Unique[Column[_]]    = initInsertedByDefault.items
-	final override def updatedByDefault  :Unique[Column[_]]    = initUpdatedByDefault.items
-
-
-	private[this] val columnNames = Lazy { initialize(); columns.map { c => c.name -> c }.toMap }
+	private lazy val columnNames = { initialize(); columns.map { c => c.name -> c }.toMap }
 
 	override def columnNamed(name :String) :Column[_] = columnNames(name)
+
+	override def apply[T](component :Component[T]) :Extract[T] = component match {
+		case export :MappingFrame[_, _]#FrameComponent[_] if export belongsTo this =>
+			export.asInstanceOf[FrameComponent[T]].extract
+		case _  =>
+			extracts.getOrElse(component,
+				throw new NoSuchComponentException(s"Component $component is not a part of mapping $this.")
+			)
+	}
+
+	override def apply[T](column :Column[T]) :ColumnExtract[T] = column match {
+		case export :MappingFrame[_, _]#FrameColumn[_] if export belongsTo this =>
+			export.asInstanceOf[FrameColumn[T]].extract
+		case wonky :MappingFrame[_, _]#FrameComponent[_] if wonky belongsTo this =>
+			wonky.extract.asInstanceOf[ColumnExtract[T]]
+		case _ =>
+			columnExtracts.getOrElse(column,
+				throw new NoSuchComponentException(s"Column $column is not a part of mapping $this.")
+			)
+	}
+
+	override def export[T](component :Component[T]) :Component[T] = component match {
+		case export :MappingFrame[_, _]#FrameComponent[_] if export belongsTo this =>
+			export.asInstanceOf[Component[T]]
+		case self if self eq this => self
+		case _ =>
+			apply(component).export
+	}
+
+	override def export[T](column :Column[T]) :Column[T] = column match {
+		case export :MappingFrame[_, _]#FrameComponent[_] if export belongsTo this =>
+			export.asInstanceOf[Column[T]]
+		case _ =>
+			apply(column).export
+	}
+
+	override def exportOrNot[T](component :Component[T]) :Component[T] = component match {
+		case export :MappingFrame[_, _]#FrameComponent[_] if export belongsTo this =>
+			export.asInstanceOf[Component[T]]
+		case _ =>
+			val extract = extracts.getOrElse[Extract, T](component, null) //todo: make sure this doesn't create an object
+			if (extract != null) extract.export else component
+	}
+
+	override def exportOrNot[T](column :Column[T]) :Column[T] = column match {
+		case export :MappingFrame[_, _]#FrameColumn[_] if export belongsTo this =>
+			export.asInstanceOf[Column[T]]
+		case _ =>
+			val extract = columnExtracts.getOrElse[ColumnExtract, T](column, null) //todo: make sure this doesn't create an object
+			if (extract != null) extract.export else column
+	}
+
+
+
 
 	/** Prefix added to given names of all created instances of this.Column[_]. Defaults to "", subclasses may override.
 	  * Overrides with a `val` or `var` (or any used in their implementation) must happen ''before'' any components
 	  * of this mapping are initialized - in practice before any column declarations.
-	  */
+	  */ //consider: columnSuffix
 	protected override def columnPrefix :String = ""
 
 	private final def verifiedPrefix :String = columnPrefix match {
@@ -1874,9 +2089,16 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 		if (AutoUpdate.active(column)) initAutoUpdate += column
 		if (NoSelectByDefault.inactive(column)) initSelectedByDefault += column
 		if (NoFilterByDefault.inactive(column)) initFilteredByDefault += column
-		if (NoUpdateByDefault.inactive(column)) initUpdatedByDefault += column
 		if (NoInsertByDefault.inactive(column)) initInsertedByDefault += column
-
+		if (NoUpdateByDefault.inactive(column)) initUpdatedByDefault += column
+		if (NoSelectByDefault.inactive(column) && OptionalSelect.inactive(column)) initMandatorySelect += column
+		if (NoFilterByDefault.inactive(column) && OptionalFilter.inactive(column)) initMandatoryFilter += column
+		if (NoInsertByDefault.inactive(column) && OptionalInsert.inactive(column)) initMandatoryInsert += column
+		if (NoUpdateByDefault.inactive(column) && OptionalUpdate.inactive(column)) initMandatoryUpdate += column
+		if (SelectPreset.active(column)) initExtraSelect += column
+		if (FilterPreset.active(column)) initExtraFilter += column
+		if (InsertPreset.active(column)) initExtraInsert += column
+		if (UpdatePreset.active(column)) initExtraUpdate += column
 		column
 	}
 
@@ -1908,18 +2130,17 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 
 
 	/** Initializes all already instantiated components of this instance which haven't been yet initialized in the
-	  * order of their definition. As components are by default initialized lazily to allow their extension by
-	  * subclasses, it is possible that another component registers itself and its subcomponents on the subcomponents
-	  * before a component which definition precedes it. While this has no effect on the functionality, it can be
-	  * somewhat inconvenient from the debugging perspective. For this reason, all concrete classes declared
-	  * by this mapping (or any built-in mappings extending it) initialize all already defined, but not
-	  * initialized components before their own initialization. Nothing else is needed to preserve the order
-	  * unless a subclass decides to initialize a component manually by its `include()` method. It can then
-	  * use this method before the call to `include()` in order to preserve the order of component definition
-	  * on all column/component lists.
-	  *
-	  * @throws IllegalStateException if reentered while a another call to `initPreceding` is present on the stack
-	  *                               as a result of being called from initialization code of a component or
+	  * order of their definition. As components are by default initialized lazily to allow their structure be
+	  * defined by extending subclasses, it is possible that another component registers itself and its subcomponents
+	  * on the subcomponents before a component which definition precedes it. While this has no effect
+	  * on the functionality, it can be somewhat inconvenient from a debugging perspective.
+	  * For this reason, all concrete classes declared by this mapping (or any shipped mappings extending it)
+	  * initialize all already defined, but not initialized components before their own initialization.
+	  * Nothing else is needed to preserve the order unless a subclass decides to initialize a component manually
+	  * by its `include()` method. It can then use this method before the call to `include()` in order to preserve
+	  * the order of component definition on all column/component lists.
+	  * @throws IllegalStateException if reentered while another call to `initPreceding` is present on the stack
+	  *                               as a result of being called from initialization method `init()` of a component or
 	  *                               if the mapping is already initialized.
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.initPreceding[T](value:T) initPreceding(value)]]
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.FrameComponent.include() FrameComponent.include()]]
@@ -2026,7 +2247,7 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 				finalizeInitialization()
 				initializationState = 2
 
-				oldsql.publishMutable()
+				releaseFence()
 			}
 		}
 
@@ -2035,97 +2256,6 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * @see [[net.noresttherein.oldsql.schema.bases.MappingFrame.initialize() initialize()]]
 	  */
 	protected def finalizeInitialization() :Unit = ()
-
-
-	//must only be created after full initialization of the mapping.
-	private class ReadForm(val columns :Unique[ColumnMapping[_, O]],
-	                       val read :ColumnMapping[_, O] => SQLReadForm[_] = (_:MappingAt[O]).selectForm)
-		extends SQLReadForm[S] with ReadFormNullValue[S]
-	{
-		private def frame = MappingFrame.this
-
-		private[this] val fastColumns = columns.toArray
-		private val forms :Array[SQLReadForm[_]] = fastColumns.map(read)
-		override val readColumns: Int = fastColumns.length //(0 /: forms)(_ + _.readColumns)
-
-		override def opt(res :ResultSet, position :Int): Opt[S] = {
-			val values = new Array[Any](columnCount)
-			java.util.Arrays.fill(values.asInstanceOf[Array[AnyRef]], None)
-
-			var i = position
-			val end = position + fastColumns.length
-			while (i < end) fastColumns(i) match {
-				case c :MappingFrame[_, _]#FrameColumn[_] =>
-					i += 1; values(c.index) = forms(i).opt(res, i - 1).orNull
-				case c =>
-					throw new IllegalArgumentException(s"Non-export column $c passed to SQLReadForm $this of $frame.")
-			}
-
-			val pieces = ComponentValues(frame)(ArraySeq.unsafeWrapArray(values)) {
-				case column :MappingFrame[_, _]#FrameColumn[_] => column.index
-				case _ => -1
-			}
-			frame.optionally(pieces)
-		}
-
-		override def nulls :NullValue[S] = frame.nullValue
-
-		override def register(call :CallableStatement, position :Int) :Unit = {
-			var i = 0; val end = fastColumns.length
-			while (i < end) {
-				forms(i).register(call, position + i)
-				i += 1
-			}
-		}
-
-		override def equals(that :Any) :Boolean = that match {
-			case self :AnyRef if self eq this => true
-			case other :MappingFrame[_, _]#ReadForm => //this function equality should work, as there is no reason for closure
-				other.frame == frame && other.columns == columns && read == read
-			case _ => false
-		}
-		override def hashCode :Int = (frame.hashCode * 31 + columns.hashCode) * 31 + read.hashCode
-
-		override def toString :String = columns.map(read).mkString(s"$frame{", ",", "}>")
-	}
-
-
-
-	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		if (components == selectedByDefault)
-			selectForm
-		else {
-			//_.selectable aren't export components, but should have correct column names
-			//call to frame.export makes sure that the whole mapping is initialized and access to not synchronized fields is safe.
-			val columns = components.map(frame.export(_)).flatMap(_.selectedByDefault)
-			if (columns.exists(NoSelect.active))
-				throw new IllegalArgumentException(
-					s"Can't create a select form for $frame using $components: NoSelect buff present among the selection.")
-
-			if (selectable.exists(c => !columns.contains(c) && OptionalSelect.inactive(c))) {
-				val missing = (selectable.toSet -- columns.toSet).filter(OptionalSelect.inactive)
-				throw new IllegalArgumentException(
-					missing.mkString(
-						s"Can't create a select form for $frame using $components: missing mandatory columns ", ", ", ""
-					)
-				)
-			}
-			val extra = columns ++ ExtraSelect.Active.columns(frame)
-			new ReadForm(columns :++ extra)
-		}
-
-	override def writeForm(op :WriteOperationType, components :Unique[Component[_]]) :SQLWriteForm[S] =
-		if (op.defaultColumns(this) == components)
-			op.form(this)
-		else
-			super.writeForm(op, components)
-
-	//initialize first, especially for selectForm, as it reads not synchronized member variables.
-	override lazy val selectForm :SQLReadForm[S] = { initialize(); new ReadForm(selectedByDefault) }
-	override lazy val filterForm :SQLWriteForm[S] = { initialize(); super.filterForm }
-	override lazy val insertForm :SQLWriteForm[S] = { initialize(); super.insertForm }
-	override lazy val updateForm :SQLWriteForm[S] = { initialize(); super.updateForm }
-	override def writeForm(op :WriteOperationType) :SQLWriteForm[S] = op.form(this)
 
 
 }

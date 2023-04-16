@@ -275,7 +275,8 @@ trait RelatedEntityFactory[K, E, X, R] extends Serializable {
 
 object RelatedEntityFactory {
 
-	/** Represents entity relationship with `E` at the end as `Option[X]`. The referenced value is always assumed
+	/** Represents entity relationship with `E` at the end as `Option[X]`, where `X` is some type dereived from `E`
+	  * (either a collection of `E` or `E`). The referenced value is always assumed
 	  * to exist and the option is used only to handle the case when the entity is not loaded. Similarly,
 	  * passing `None` with a saved entity is understood as 'property unchanged', excluding mapped columns from
 	  * the SQL ''insert'' or ''update''.
@@ -376,7 +377,7 @@ object RelatedEntityFactory {
 	private[oldsql] class RelatedEntityOptionFactory[K, E, X, R](backing :RelatedEntityFactory[K, E, X, R])
 		extends RelatedEntityFactory[K, E, X, Option[R]]
 	{
-		implicit override def composition = backing.composition
+		implicit override def composition :ComposableFrom[X, E] = backing.composition
 
 		override def delay(key :K, value: => Option[X]) :Option[R] = Some(backing.delay(key, value))
 		override def apply(key :K, value :Option[X]) :Option[R] = Some(backing(key, value))
@@ -542,7 +543,7 @@ object RelatedEntityFactory {
 	private[oldsql] trait RelatedEntityFactoryProxy[K, E, X, R] extends RelatedEntityFactory[K, E, X, R] {
 		protected def target :RelatedEntityFactory[K, E, X, R]
 
-		implicit override def composition = target.composition
+		implicit override def composition :ComposableFrom[X, E] = target.composition
 
 		override def delay(key :K, value : => Option[X]) :R = target.delay(key, value)
 		override def apply(key :K, value :Option[X]) :R = target(key, value)

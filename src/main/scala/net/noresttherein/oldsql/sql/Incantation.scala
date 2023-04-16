@@ -141,14 +141,14 @@ object Incantation {
 	}
 
 
+	/** Doesn't close the statement after returning the result - used with lazy collections. */
 	private trait LazyBatchedIncantation[-Args, +Res] extends BatchedIncantation[Args, Res] {
 		override def apply(args :Args)(implicit tx :SQLTransaction) :Res = {
 			val stmt = prepare
 			try {
 				addBatch(stmt, args)
 				stmt.execute()
-				val res = batchResult(stmt, args)
-				res
+				batchResult(stmt, args) //todo: it would be good to at least add stmt to some list in tx for future closing.
 			} catch {
 				case e :Exception =>
 					try { stmt.close() }

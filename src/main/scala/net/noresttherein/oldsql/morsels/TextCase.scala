@@ -10,9 +10,13 @@ import java.util.Locale
 /** Enum-like type for string capitalization strategies. Includes `LowerCase`, `UpperCase` and `CamelCase`. */
 trait TextCase extends Serializable {
 	def apply(text :String) :String
+
+	/** A conversion function from text in this capitalization scheme to a new capitalization. */
+	def to(result :TextCase) :String => String = result(_)
 }
 
 
+//consider: a version using a dictionary to camel case individual words
 /** Constants of `TextCase` applying specific capitalization strategies to strings. */
 object TextCase {
 	case class LowerCase(locale :Locale) extends TextCase {
@@ -38,7 +42,7 @@ object TextCase {
 			def toCamel() =
 				if (wordStart < i) {
 					res append text.charAt(wordStart).toUpper
-					while ({wordStart += 1; wordStart < i })
+					while ({ wordStart += 1; wordStart < i })
 						res append text.charAt(wordStart).toLower
 				}
 

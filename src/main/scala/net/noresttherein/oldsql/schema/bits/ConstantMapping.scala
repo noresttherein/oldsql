@@ -16,7 +16,7 @@ import net.noresttherein.oldsql.slang._
   * Any value present in `ComponentValues` is always ignored.
   * @author Marcin Mościcki
   */
-class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] {
+class ConstantMapping[S, O](subject :S, val columnCount :Int = 0) extends EmptyMapping[S, O] {
 	private[this] val result = Got(subject)
 
 	override def assemble(values :Pieces) :Opt[S] = result
@@ -26,9 +26,9 @@ class ConstantMapping[S, O](subject :S) extends EmptyMapping[S, O] {
 	override def apply(values :Pieces) :S = subject
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		SQLReadForm.const(subject, (0 /: components) { _ + _.selectedByDefault.size })
+		SQLReadForm.const((0 /: components) { _ + _.selectedByDefault.size })(subject)
 
-	override val selectForm :SQLReadForm[S] = SQLReadForm.const(subject)
+	override val selectForm :SQLReadForm[S] = SQLReadForm.const(columnCount)(subject)
 
 	override def mappingName :String = "Const[" + subject.localClassName + "]"
 	override def toString :String = "Const(" + subject + ")"
@@ -51,9 +51,9 @@ class GeneratorMapping[S, O](generator: => S) extends EmptyMapping[S, O] {
 	override def apply(values :Pieces) :S = generator
 
 	override def selectForm(components :Unique[Component[_]]) :SQLReadForm[S] =
-		SQLReadForm.eval(generator, (0 /: components) { _ + _.selectedByDefault.size })
+		SQLReadForm.eval((0 /: components) { _ + _.selectedByDefault.size })(generator)
 
-	override val selectForm :SQLReadForm[S] = SQLReadForm.eval(generator)
+	override val selectForm :SQLReadForm[S] = SQLReadForm.eval(0)(generator)
 
 	override def mappingName :String = "Generator#" + System.identityHashCode(this)
 }

@@ -1,11 +1,14 @@
 package net.noresttherein.oldsql.collection
 
+import java.lang.invoke.VarHandle.releaseFence
+
 import scala.collection.mutable
 import scala.collection.mutable.Builder
 
 import net.noresttherein.oldsql
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
-import net.noresttherein.oldsql.morsels.generic.=#>
+import net.noresttherein.oldsql.collection.NaturalMap.WhenNoKey.Throw
+import net.noresttherein.oldsql.morsels.generic.=>:
 
 
 /**
@@ -25,7 +28,7 @@ private[oldsql] trait MutableNaturalMap[K[_], V[_]]
 
 	def put[X](key :K[X], value :V[X]) :Option[V[X]]
 
-	def mapValuesInPlace(f :Item =#> V) :this.type
+	def mapValuesInPlace(f :Item =>: V) :this.type
 }
 
 
@@ -49,7 +52,7 @@ private[oldsql] object MutableNaturalMap {
 
 		def freeze() :NaturalMap[K, V] = {
 			frozen = true
-			oldsql.publishMutable()
+			releaseFence()
 			this
 		}
 
@@ -73,7 +76,7 @@ private[oldsql] object MutableNaturalMap {
 			guard(); clear()
 		}
 
-		override def mapValuesInPlace(f :Item =#> V) :this.type = {
+		override def mapValuesInPlace(f :Item =>: V) :this.type = {
 			guard(); mapValuesInPlace(f)
 		}
 
@@ -134,7 +137,6 @@ private[oldsql] object MutableNaturalMap {
 			NaturalMap.empty[K, U] ++ this ++ entries
 
 
-
 		override def put[X](key :K[X], value :V[X]) :Option[V[X]] =
 			entries.put(key, value).asInstanceOf[Option[V[X]]]
 
@@ -147,13 +149,14 @@ private[oldsql] object MutableNaturalMap {
 		}
 
 
-
-		override def mapValuesInPlace(f :Item =#> V) :this.type = {
+		override def mapValuesInPlace(f :Item =>: V) :this.type = {
 			entries.mapValuesInPlace {
 				(k, v) => f(Assoc[K, V, Any](k.asInstanceOf[K[Any]], v.asInstanceOf[V[Any]]))
 			}
 			this
 		}
+
+		implicit override def defaults :NaturalMap.WhenNoKey[K, Throw] = Throw.aNoSuchElementException
 	}
 
 }

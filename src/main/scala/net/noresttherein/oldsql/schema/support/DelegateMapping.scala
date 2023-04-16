@@ -1,8 +1,9 @@
 package net.noresttherein.oldsql.schema.support
 
+import net.noresttherein.oldsql.OperationView
 import net.noresttherein.oldsql.collection.Unique
 import net.noresttherein.oldsql.schema.Mapping
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, TypedMapping}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
 
 
@@ -16,8 +17,8 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
   * and frameworks for implementing the existing methods. It is a separate hierarchy to
   * [[net.noresttherein.oldsql.schema.support.MappingAdapter MappingAdapter]], which is a 'public' interface, exposing
   * the the adapted mapping through a property. This allows a class to implement both, each with another mapping
-  * type as the adapted mapping - a feature used when the adapted mapping itself is an adapter to expose the
-  * original mapping, rather than the adapter.
+  * type as the adapted mapping - a feature used when the adapted mapping itself is an adapter in order to expose
+  * the original mapping, rather than the adapter.
   *
   * Unless explicitly noted (or evident by type signature), extending classes and traits assume they are ''not''
   * columns, even if `backer` is a column.
@@ -30,7 +31,7 @@ import net.noresttherein.oldsql.schema.bases.BaseMapping
   * @see [[net.noresttherein.oldsql.schema.support.MappingAdapter.ComposedAdapter]]
   */
 trait DelegateMapping[+M <: Mapping, S, O] extends BaseMapping[S, O] {
-	protected val backer :M
+	protected val backer :M //todo: rename to underlying
 
 	/** Converts a component of this mapping to a corresponding component of the backing mapping. If the argument
 	  * already is a component of `backer`, it is returned itself; otherwise a component of `backer` which served
@@ -81,9 +82,8 @@ trait DelegateMapping[+M <: Mapping, S, O] extends BaseMapping[S, O] {
 object DelegateMapping {
 
 	type Delegate[S, O] = DelegateMapping[MappingAt[O], S, O]
-	type Proxy[S, O] = DelegateMapping[RefinedMapping[S, O], S, O]
-	type MappedDelegate[T, S, O] = DelegateMapping[RefinedMapping[T, O], S, O]
-
+	type Proxy[S, O] = DelegateMapping[TypedMapping[S, O], S, O]
+	type MappedDelegate[T, S, O] = DelegateMapping[TypedMapping[T, O], S, O]
 
 
 	//commented out to avoid conflicts for classes extending also other projectable mappings.
@@ -108,20 +108,35 @@ object DelegateMapping {
 	  */
 	trait ShallowDelegate[S, O] extends DelegateMapping[MappingAt[O], S, O] {
 
-		override def components :Unique[Component[_]] = backer.components //Unique(backer)
+		override def components :Unique[Component[_]] = backer.components
 		override def subcomponents :Unique[Component[_]] = backer.subcomponents
 
-		override def columns :Unique[Column[_]] = backer.columns
-		override def selectable :Unique[Column[_]] = backer.selectable
-		override def filterable :Unique[Column[_]] = backer.filterable
-		override def insertable :Unique[Column[_]] = backer.insertable
-		override def updatable :Unique[Column[_]] = backer.updatable
-		override def autoInserted :Unique[Column[_]] = backer.autoInserted
-		override def autoUpdated :Unique[Column[_]] = backer.autoUpdated
+		override def columns           :Unique[Column[_]] = backer.columns
+		override def selectable        :Unique[Column[_]] = backer.selectable
+		override def filterable        :Unique[Column[_]] = backer.filterable
+		override def insertable        :Unique[Column[_]] = backer.insertable
+		override def updatable         :Unique[Column[_]] = backer.updatable
+		override def autoInserted      :Unique[Column[_]] = backer.autoInserted
+		override def autoUpdated       :Unique[Column[_]] = backer.autoUpdated
 		override def selectedByDefault :Unique[Column[_]] = backer.selectedByDefault
 		override def filteredByDefault :Unique[Column[_]] = backer.filteredByDefault
 		override def insertedByDefault :Unique[Column[_]] = backer.insertedByDefault
-		override def updatedByDefault :Unique[Column[_]] = backer.updatedByDefault
+		override def updatedByDefault  :Unique[Column[_]] = backer.updatedByDefault
+		override def mandatorySelect   :Unique[Column[_]] = backer.mandatorySelect
+		override def mandatoryFilter   :Unique[Column[_]] = backer.mandatoryFilter
+		override def mandatoryInsert   :Unique[Column[_]] = backer.mandatoryInsert
+		override def mandatoryUpdate   :Unique[Column[_]] = backer.mandatoryUpdate
+
+		override def columns(op :OperationView) :Unique[Column[_]] = backer.columns(op)
+		override def defaultColumns(op :OperationView) :Unique[Column[_]] = backer.defaultColumns(op)
+
+		override def columns[T](op :OperationView, component :Component[T]) :Unique[Column[_]] =
+			if (component == this || component == backer) columns(op)
+			else backer.columns(op, component)
+
+		override def defaultColumns[T](op :OperationView, component :Component[T]) :Unique[Column[_]] =
+			if (component == this || component == backer) defaultColumns(op)
+			else backer.defaultColumns(op, component)
 
 		override def columnNamed(name :String) :Column[_] = backer.columnNamed(name)
 
@@ -159,11 +174,19 @@ object DelegateMapping {
 	  *           a discriminator tag marking components from the same source.
 	  * @tparam S the subject type of this mapping.
 	  */
-	trait WrapperDelegate[S, O] extends ShallowDelegate[S, O] with DelegateMapping[RefinedMapping[_, O], S, O] {
+	trait WrapperDelegate[S, O] extends ShallowDelegate[S, O] with DelegateMapping[TypedMapping[_, O], S, O] {
 		override def components :Unique[Component[_]] = Unique.single(backer)
 		override def subcomponents :Unique[Component[_]] = backer +: backer.subcomponents
 	}
 
+
+
+	/** A convenience base class for anonymous implementations of `DelegateMapping`, in particular
+	  * those which extend also [[net.noresttherein.oldsql.schema.support.MappingAdapter.DelegateAdapter DelegateAdapter]],
+	  * as it initializes early `backer` field to a mapping of an arbitrary type.
+	  */
+	private[oldsql] abstract class BaseDelegateMapping[+M <: Mapping, S, O](protected override val backer :M)
+		extends DelegateMapping[M, S, O]
 }
 
 

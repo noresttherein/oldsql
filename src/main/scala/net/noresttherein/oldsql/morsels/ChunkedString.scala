@@ -18,13 +18,15 @@ import net.noresttherein.oldsql.morsels.ChunkedString.{AppendedString, Chunk, Co
   * built recursively from many parts in a complex pattern, and when the efficiency of 'writing' is much more important
   * than 'reading' - ''chunked'' strings are not expected to be accessed often before their final conversion
   * to a `String`. It is most notably used by [[net.noresttherein.oldsql.sql.mechanics.SpelledSQL SpelledSQL]]
-  * in the process of SQL/DML formatting.
+  * in the process of SQL/DML formatting. Despite the lack of fast random access,
+  * `length`/`size` are still `O(1)` operations.
   */
 sealed trait ChunkedString extends CharSequence with Seq[Char] with SeqOps[Char, Seq, ChunkedString] with Serializable {
 	override def knownSize :Int = length
 	override def charAt(index :Int) :Char = apply(index)
 	override def subSequence(start :Int, end :Int) :CharSequence = slice(start, end)
 
+	override def isEmpty :Boolean = length == 0
 	override def empty :ChunkedString = ChunkedString.empty
 
 	protected override def fromSpecific(coll :IterableOnce[Char]) :ChunkedString = coll match {
@@ -47,6 +49,7 @@ sealed trait ChunkedString extends CharSequence with Seq[Char] with SeqOps[Char,
 		else if (isEmpty) string
 		else new ConcatChunks(this, string)
 
+	//these methods exist because we can't String + ChunkedString, but we can't mix +: and +
 	def +:(char :Char) :ChunkedString = String.valueOf(char) +: this
 
 	def +:(string :String) :ChunkedString =
@@ -77,6 +80,10 @@ sealed trait ChunkedString extends CharSequence with Seq[Char] with SeqOps[Char,
 
 	override def className :String = "ChunkedString"
 
+	def appendTo(builder :StringBuilder) :StringBuilder = {
+		appendTo(builder.underlying)
+		builder
+	}
 	protected def appendTo(builder :java.lang.StringBuilder) :java.lang.StringBuilder
 
 	override def toString :String = appendTo(new java.lang.StringBuilder).toString
@@ -99,7 +106,7 @@ object ChunkedString {
 
 
 	@SerialVersionUID(ver)
-	object Empty extends ChunkedString {
+	private object Empty extends ChunkedString {
 		override def apply(idx :Int) = throw new IndexOutOfBoundsException("Empty ChunkedString access.")
 		override def length = 0
 		override def iterator :Iterator[Char] = Iterator.empty[Char]
@@ -107,7 +114,6 @@ object ChunkedString {
 		protected override def appendTo(builder :java.lang.StringBuilder) :java.lang.StringBuilder = builder
 		override def toString = ""
 	}
-
 
 
 	@SerialVersionUID(ver)
@@ -137,7 +143,6 @@ object ChunkedString {
 	}
 
 
-
 	@SerialVersionUID(ver)
 	private class AppendedString(prefix :ChunkedString, suffix :String) extends ChunkedString {
 		override def head = if (prefix.isEmpty) suffix.charAt(0) else prefix.head
@@ -154,7 +159,6 @@ object ChunkedString {
 	}
 
 
-
 	@SerialVersionUID(ver)
 	private class PrependedString(prefix :String, suffix :ChunkedString) extends ChunkedString {
 		override def head = prefix.charAt(0)
@@ -169,7 +173,6 @@ object ChunkedString {
 
 		override lazy val toString :String = super.toString
 	}
-
 
 
 	@SerialVersionUID(ver)

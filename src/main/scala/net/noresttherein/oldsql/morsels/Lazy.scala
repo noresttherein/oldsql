@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.morsels
 
+import java.lang.invoke.VarHandle.releaseFence
+
 import net.noresttherein.oldsql
 
 
@@ -17,7 +19,7 @@ private[oldsql] trait Lazy[+T] extends Serializable {
 
 	private def writeReplace = Lazy.eager(get)
 
-	override def toString :String = if (isInitialized) get.toString else "Lazy(?)"
+	override def toString :String = if (isInitialized) String.valueOf(get) else "Lazy(?)"
 }
 
 
@@ -42,7 +44,7 @@ private[oldsql] object Lazy {
 						cache = init()
 						value = cache
 						f = null
-						oldsql.publishMutable()
+						releaseFence()
 					}
 				}
 			}

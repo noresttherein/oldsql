@@ -3,12 +3,12 @@ package net.noresttherein.oldsql.haul
 import net.noresttherein.oldsql.collection.{NaturalMap, Opt, Unique}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
 import net.noresttherein.oldsql.haul.ColumnValues.{AliasedColumnValues, DedicatedColumnValues, EmptyValues, FallbackColumnValues}
-import net.noresttherein.oldsql.haul.ComponentValues.{aliasing, selectiveAliasing, AliasedComponentValues, ChosenDisassembledValues, ComponentValuesAliasing, ComponentValuesMap, ComponentValuesNaturalMap, DedicatedComponentValues, DisassembledValues, FallbackValues, SharedComponentValues, IndexedValues, LazyComponentValuesProxy, MappingAliasing, SimpleComponentValues, TypedValues, UntypedValues}
-import net.noresttherein.oldsql.morsels.generic.{=#>, Self}
-import net.noresttherein.oldsql.schema.ColumnMapping
-import net.noresttherein.oldsql.schema.ColumnMapping.SimpleColumn
-import net.noresttherein.oldsql.schema.Mapping.{MappingAt, RefinedMapping}
+import net.noresttherein.oldsql.haul.ComponentValues.{aliasing, selectiveAliasing, AliasedComponentValues, ChosenDisassembledValues, ComponentValuesAliasing, ComponentValuesMap, ComponentValuesNaturalMap, DedicatedComponentValues, DisassembledValues, FallbackValues, IndexedValues, LazyComponentValuesProxy, MappingAliasing, SharedComponentValues, SimpleComponentValues, TypedValues, UntypedValues}
+import net.noresttherein.oldsql.morsels.generic.{=>:, Self}
+import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, TypedColumn}
+import net.noresttherein.oldsql.schema.Mapping.{MappingAt, TypedMapping}
 import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
+import net.noresttherein.oldsql.OperationView.WriteOperationView
 
 
 
@@ -19,12 +19,12 @@ import net.noresttherein.oldsql.schema.bits.MappingPath.ComponentPath
   * in nature, simplifying handling and allowing optimizations in other places.
   * @see [[net.noresttherein.oldsql.haul.ColumnValues.ColumnValuesAdapter]] a stackable mix-in
   *      overriding the `preset` method.
-  */
+  */ //todo: docs for extra methods
 trait ColumnValues[S, O] extends ComponentValues[S, O] { outer =>
 
 	override def /[T](extract :Extract[T]) :ColumnValues[T, O] = this / extract.export
 
-	override def /[T](path :ComponentPath[_ <: RefinedMapping[S, O], _ <: Component[T], S, T, O])
+	override def /[T](path :ComponentPath[_ <: TypedMapping[S, O], _ <: Component[T], S, T, O])
 			:ColumnValues[T, O] =
 		path.carry(this)
 
@@ -50,23 +50,23 @@ trait ColumnValues[S, O] extends ComponentValues[S, O] { outer =>
 	def ++(values :ColumnValues[S, O]) :ColumnValues[S, O] = orElse(values)
 
 
-	override def aliased(root :RefinedMapping[S, O]) :ColumnValues[S, O] = aliased(aliasing(root))
+	override def aliased(root :TypedMapping[S, O]) :ColumnValues[S, O] = aliased(aliasing(root))
 
-	override def aliased[T](extracts :NaturalMap[MappingAt[O]#Component, RefinedMapping[T, O]#Extract])
+	override def aliased[T](extracts :NaturalMap[MappingAt[O]#Component, TypedMapping[T, O]#Extract])
 			:ColumnValues[S, O] =
 		aliased(aliasing(extracts))
 
-	override def aliased(aliases :MappingAt[O]#Component =#> MappingAt[O]#Component) :ColumnValues[S, O] =
+	override def aliased(aliases :MappingAt[O]#Component =>: MappingAt[O]#Component) :ColumnValues[S, O] =
 		new AliasedColumnValues(this, aliases)
 
-	override def selectivelyAliased(root :RefinedMapping[S, O]) :ColumnValues[S, O] =
+	override def selectivelyAliased(root :TypedMapping[S, O]) :ColumnValues[S, O] =
 		aliased(selectiveAliasing(root))
 
-	override def selectivelyAliased[T](extracts :NaturalMap[MappingAt[O]#Component, RefinedMapping[T, O]#Extract])
+	override def selectivelyAliased[T](extracts :NaturalMap[MappingAt[O]#Component, TypedMapping[T, O]#Extract])
 			:ColumnValues[S, O] =
 		aliased(selectiveAliasing(extracts))
 
-	override def tiedTo[X](mapping :RefinedMapping[S, O]) :ColumnValues[X, O] = {
+	override def tiedTo[X](mapping :TypedMapping[S, O]) :ColumnValues[X, O] = {
 		val assoc = NaturalMap.single[MappingAt[O]#Component, ColumnValues.WithOrigin[O]#T, S](mapping, this)
 		new DedicatedColumnValues[X, O](assoc)
 	}
@@ -97,9 +97,10 @@ object ColumnValues {
 	  * being used and a failed assembly, or a result based on incorrect buffs, and thus it should be taken care of
 	  * by the function itself. You may wish to consider using `ColumnValues(mapping)(values)` instead,
 	  * which is compatible with any mapping. You can supply a `NaturalMap` as an argument.
-	  * @param values factory of values for columns.
+	  * @param values A factory of values for columns. If the function returns `null`, it is treated
+	  *               as lack of value, and the `ColumnValues` will return `Lack` for that column.
 	  */
-	def apply[S, O](values :MappingAt[O]#Column =#> Self) :ColumnValues[S, O] = values match {
+	def apply[S, O](values :MappingAt[O]#Column =>: Self) :ColumnValues[S, O] = values match {
 		case map :NaturalMap[MappingAt[O]#Column @unchecked, Self @unchecked] =>
 			new ColumnValuesNaturalMap(map)
 		case _ =>
@@ -115,11 +116,11 @@ object ColumnValues {
 	  * which is compatible with any mapping. You can supply a `Map` as an argument.
 	  * @param values factory of values for columns, must return an option of the same type as the input mapping.
 	  */
-	def apply[S, O](values :ColumnMapping[_, O] => Any) :ColumnValues[S, O] = values match {
+	def apply[S, O](values :TypedColumn[_, O] => Any) :ColumnValues[S, O] = values match {
 		case map :Map[_, _] =>
-			new ColumnValuesMap(map.asInstanceOf[Map[ColumnMapping[_, O], Any]])
+			new ColumnValuesMap(map.asInstanceOf[Map[TypedColumn[_, O], Any]])
 		case _ =>
-			new UntypedValues[S, O](values.asInstanceOf[Map[RefinedMapping[_, O], Any]])
+			new UntypedValues[S, O](values.asInstanceOf[Map[TypedMapping[_, O], Any]])
 				with ColumnValuesAdapter[S, O] with SharedColumnValues[S, O] with ImmutableColumnValues[S, O]
 	}
 
@@ -132,7 +133,7 @@ object ColumnValues {
 	  * @param index A function returning the index of the value for the column in the given sequence.
 	  *              If the column has no preset value, it should return a negative number.
 	  */
-	def apply[S, O](values :IndexedSeq[Any])(index :ColumnMapping[_, O] => Int) :ColumnValues[S, O] =
+	def apply[S, O](values :IndexedSeq[Any])(index :TypedColumn[_, O] => Int) :ColumnValues[S, O] =
 		new IndexedValues[S, O](values, index.asInstanceOf[MappingAt[O] => Int])
 			with ColumnValuesAdapter[S, O]with SharedColumnValues[S, O] with ImmutableColumnValues[S, O]
 
@@ -142,7 +143,7 @@ object ColumnValues {
 	  * This is equivalent to `ColumnValues(mapping, result.get)` or `ColumnValues.empty`, based
 	  * on whether the `result` is defined.
 	  */
-	def apply[S, O](mapping :RefinedMapping[S, O], result :Option[S]) :ColumnValues[S, O] = result match {
+	def apply[S, O](mapping :TypedMapping[S, O], result :Option[S]) :ColumnValues[S, O] = result match {
 		case Some(value) => apply(mapping, value)
 		case _ => empty[S, O]
 	}
@@ -156,7 +157,7 @@ object ColumnValues {
 	  * based on incorrect buffs.
 	  * @param value the result, top-level value.
 	  */
-	def apply[S, O](mapping :RefinedMapping[S, O], value :S) :ColumnValues[S, O] =
+	def apply[S, O](mapping :TypedMapping[S, O], value :S) :ColumnValues[S, O] =
 		new DisassembledValues[S, S, O](mapping, value)
 			with ColumnValuesAdapter[S, O] with SharedColumnValues[S, O] with ImmutableColumnValues[S, O]
 
@@ -169,7 +170,7 @@ object ColumnValues {
 	  * the general `ColumnValues` contract.
 	  * @param value the result, top-level value.
 	  */
-	def apply[S, O](mapping :RefinedMapping[S, O], value :S, components :Unique[ColumnMapping[_, O]])
+	def apply[S, O](mapping :TypedMapping[S, O], value :S, components :Unique[TypedColumn[_, O]])
 			:ColumnValues[S, O] =
 		new ChosenDisassembledValues[S, S, O](mapping, value, components)
 			with ColumnValuesAdapter[S, O] with SharedColumnValues[S, O] with ImmutableColumnValues[S, O]
@@ -215,7 +216,7 @@ object ColumnValues {
 	  * @param column a column of the root mapping of `R`.
 	  * @param value the preset for the specified column.
 	  */
-	def preset[R, S, O](column :ColumnMapping[S, O], value :S) :ColumnValues[R, O] =
+	def preset[R, S, O](column :TypedColumn[S, O], value :S) :ColumnValues[R, O] =
 		new PresetColumnValue(column, Got(value))
 
 	/** Create `ColumnValues` with a value preset for a single column. This is different to the disassembling
@@ -230,7 +231,7 @@ object ColumnValues {
 	  * @return `ColumnValues.empty` or `ColumnValues.preset(column, value.get)`, depending on whether the value
 	  *        is empty.
 	  */
-	def presetOpt[S, O](column :ColumnMapping[S, O], value :Opt[S]) :ColumnValues[S, O] =
+	def presetOpt[S, O](column :TypedColumn[S, O], value :Opt[S]) :ColumnValues[S, O] =
 		if (value.isEmpty) empty
 		else new PresetColumnValue(column, value)
 
@@ -242,7 +243,7 @@ object ColumnValues {
 	  * @param column a column of the root mapping of `R`.
 	  * @param value the preset for the specified column.
 	  */
-	def later[R, S, O](column :ColumnMapping[S, O], value: => S) :ColumnValues[R, O] =
+	def later[R, S, O](column :TypedColumn[S, O], value: => S) :ColumnValues[R, O] =
 		new LazyColumnValue(column, () => Some(value))
 
 	/** Create a lazy, preset instance using the value of the given expression for the component.
@@ -254,7 +255,7 @@ object ColumnValues {
 	  * @param column a column of the root mapping of `R`.
 	  * @param value the preset for the specified column.
 	  */
-	def fallback[S, O](column :ColumnMapping[S, O], value: => Opt[S]) :ColumnValues[S, O] =
+	def fallback[S, O](column :TypedColumn[S, O], value: => Opt[S]) :ColumnValues[S, O] =
 		new LazyColumnValue(column, () => value.toOption)
 
 
@@ -287,7 +288,7 @@ object ColumnValues {
 	  *     ColumnValues(mapping)(values) { comp => index(comp) } //provide a sequence of values and an index function
 	  * }}}
 	  */
-	@inline def apply[S, O](mapping :RefinedMapping[S, O]) :ColumnValuesFactory[S, O] =
+	@inline def apply[S, O](mapping :TypedMapping[S, O]) :ColumnValuesFactory[S, O] =
 		new ColumnValuesFactory[S, O](mapping)
 
 
@@ -296,7 +297,7 @@ object ColumnValues {
 	  * @tparam S the subject type of the associated 'root' mapping.
 	  * @tparam O the origin type shared by the associated mapping and its subcomponents.
 	  */
-	class ColumnValuesFactory[S, O](private val mapping :RefinedMapping[S, O]) extends AnyVal { factory =>
+	class ColumnValuesFactory[S, O](private val mapping :TypedMapping[S, O]) extends AnyVal { factory =>
 
 		/** Returns `ColumnValues` based on a predefined mapping result. The values for all columns will be
 		  * obtained by disassembling (extracting) their value from the argument based on the function specified by
@@ -339,7 +340,7 @@ object ColumnValues {
 		  * @param value      subject of the root mapping serving as input for values of the given columns.
 		  * @param components list of columns which should be used as the value set in the assembly process.
 		  */
-		def apply(value :S, components :Unique[ColumnMapping[_, O]]) :ColumnValues[S, O] =
+		def apply(value :S, components :Unique[TypedColumn[_, O]]) :ColumnValues[S, O] =
 			new ChosenDisassembledValues[S, S, O](mapping, value, components)
 				with ColumnValuesAdapter[S, O] with ColumnValuesAliasing[S, O] with MappingAliasing[S, O]
 				with ImmutableColumnValues[S, O]
@@ -354,15 +355,16 @@ object ColumnValues {
 		  * All components passed to the created instance will be aliased using the supplied mapping's
 		  * [[net.noresttherein.oldsql.schema.Mapping.export export]] method before being passed to the given function
 		  * or calls to their methods. You can supply a `NaturalMap` as an argument.
-		  * @param values factory of values for columns.
+		  * @param values A factory of values for columns. If the function returns `null`, it is treated
+		  *               as lack of value, and the `ColumnValues` will return `Lack` for that column.
 		  */
-		def apply(values :MappingAt[O]#Column =#> Self) :ColumnValues[S, O] = values match {
+		def apply(values :MappingAt[O]#Column =>: Self) :ColumnValues[S, O] = values match {
 			case map :NaturalMap[MappingAt[O]#Column @unchecked, Self @unchecked] =>
 				new ColumnValuesNaturalMap[S, O](map) with ColumnValuesAliasing[S, O] with MappingAliasing[S, O] {
 					override val mapping = factory.mapping
 				}
 			case _ =>
-				new TypedValues[S, O](values.asInstanceOf[MappingAt[O]#Component =#> Self])
+				new TypedValues[S, O](values.asInstanceOf[MappingAt[O]#Component =>: Self])
 					with ColumnValuesAliasing[S, O] with MappingAliasing[S, O]
 					with ColumnValuesAdapter[S, O] with ImmutableColumnValues[S, O]
 				{
@@ -378,15 +380,15 @@ object ColumnValues {
 		  * or calls to their methods. You can supply a `Map` as an argument.
 		  * @param values factory of values for columns, must return an option of the input mapping's subject type.
 		  */
-		def apply(values :ColumnMapping[_, O] => Any) :ColumnValues[S, O] = values match {
+		def apply(values :TypedColumn[_, O] => Any) :ColumnValues[S, O] = values match {
 			case map :Map[_, _] =>
-				new ColumnValuesMap[S, O](map.asInstanceOf[Map[ColumnMapping[_, O], Any]])
+				new ColumnValuesMap[S, O](map.asInstanceOf[Map[TypedColumn[_, O], Any]])
 					with ColumnValuesAliasing[S, O] with MappingAliasing[S, O]
 				{
 					override val mapping = factory.mapping
 				}
 			case _ =>
-				new UntypedValues[S, O](values.asInstanceOf[RefinedMapping[_, O] => Any])
+				new UntypedValues[S, O](values.asInstanceOf[TypedMapping[_, O] => Any])
 					with ColumnValuesAdapter[S, O] with ColumnValuesAliasing[S, O] with MappingAliasing[S, O]
 				{
 					override val mapping = factory.mapping
@@ -435,11 +437,11 @@ object ColumnValues {
 		def newBuilder :ColumnValuesBuilder[S, O] =
 			new ColumnValuesBuilder[S, O] {
 				val mapping = factory.mapping
-				var map = Map.empty[ColumnMapping[_, O], Any]
+				var map = Map.empty[TypedColumn[_, O], Any]
 
-				override def addOpt[T](component :ColumnMapping[T, O], result :Opt[T]) = {
+				override def addOpt[T](component :TypedColumn[T, O], result :Opt[T]) = {
 					if (result.isDefined)
-						map = map.updated(component, result)
+						map = map.updated(mapping.export(component), result)
 					this
 				}
 
@@ -459,25 +461,33 @@ object ColumnValues {
 
 
 
-	trait ColumnValuesBuilder[S, O] {
-		@inline final def add[T](component :ColumnMapping[T, O], value :T) :this.type = addOpt(component, Got(value))
+	trait ColumnValuesBuilder[S, O] /*extends ComponentValuesBuilder[S, O]*/ {
+		//consider: should we add these? the problem is that Mapping doesn't have a method accepting ColumnValuesBuilder.
+		//  We could make this trait extend ComponentValuesBuilder, but it would require having a WriteOperationView.
+//		@inline final def add[T](view :WriteOperationView, column :TypedColumn[T, O], value :T) :this.type =
+//			addOpt(view, column, Got(value))
+//
+//		def addOpt[T](view :WriteOperationView, column :TypedColumn[T, O], value :Opt[T]) :this.type =
+//			column.writtenValues(view, value ,this)
 
-		def addOpt[T](component :ColumnMapping[T, O], result :Opt[T]) :this.type
+		@inline final def add[T](column :TypedColumn[T, O], value :T) :this.type = addOpt(column, Got(value))
+
+		def addOpt[T](column :TypedColumn[T, O], result :Opt[T]) :this.type
 
 		def result() :ColumnValues[S, O]
 	}
 
 
 	private class ColumnValuesMapBuilder[S, O] extends ColumnValuesBuilder[S, O] {
-		private var map = Map.empty[ColumnMapping[_, O], Any]
+		private var map = Map.empty[TypedColumn[_, O], Any]
 
-		override def addOpt[T](column :ColumnMapping[T, O], result :Opt[T]) :this.type = {
+		override def addOpt[T](column :TypedColumn[T, O], result :Opt[T]) :this.type = {
 			if (result.isDefined)
 				map = map.updated(column, result.get)
 			this
 		}
 
-		override def result() :ColumnValuesMap[S, O] = new ColumnValuesMap(map)
+		override def result() :ColumnValuesMap[S, O] = new ColumnValuesMap(map.withDefaultValue(null))
 	}
 
 
@@ -497,17 +507,31 @@ object ColumnValues {
 	trait SharedColumnValues[S, O] extends SharedComponentValues[S, O] with ColumnValues[S, O] {
 		override def /[T](extract :Extract[T]) :ColumnValues[T, O] = this.asColumnsOf[T]
 		override def /[T](component :Component[T]) :ColumnValues[T, O] = this.asColumnsOf[T]
-		override def /[T](path :ComponentPath[_ <: RefinedMapping[S, O], _ <: Component[T], S, T, O]) :ColumnValues[T, O] =
+		override def /[T](path :ComponentPath[_ <: TypedMapping[S, O], _ <: Component[T], S, T, O]) :ColumnValues[T, O] =
 			this.asColumnsOf[T]
 	}
 
 
 
-	//this trait is currently unused, as we'd need to make column's optionally and assemble final
-	trait SimpleColumnValues[S, O] extends SimpleComponentValues[S, O] {
-		override def preset(root :RefinedMapping[S, O]) :Opt[S] = root match {
-			case column :SimpleColumn[S @unchecked, O @unchecked] => defined(column)
-			case _ => Lack
+	//this trait is currently unused, as we'd need to know that all columns of the dedicated mapping are SimpleColumns
+	trait SimpleColumnValues[S, O] extends SharedColumnValues[S, O] {
+//		override def preset(root :TypedMapping[S, O]) :Opt[S] = root match {
+//			case column :SimpleColumn[S @unchecked, O @unchecked] => defined(column)
+//			case _ => Lack
+//		}
+		override def apply[T](component :Component[T]) :T = component match {
+			case column :SimpleColumn[T @unchecked, O @unchecked] => asColumnsOf[T].preset(column).get
+			case _ => component(this.asColumnsOf[T])
+		}
+
+		override def get[T](component :Component[T]) :Opt[T] = component match {
+			case column :SimpleColumn[T @unchecked, O @unchecked] => asColumnsOf[T].preset(column)
+			case _ => component.optionally(this.asColumnsOf[T])
+		}
+
+		override def get[T](extract :Extract[T]) :Opt[T] = extract.export match {
+			case column :SimpleColumn[T @unchecked, O @unchecked] => asColumnsOf[T].preset(column)
+			case component => component.optionally(this.asColumnsOf[T])
 		}
 	}
 
@@ -525,15 +549,15 @@ object ColumnValues {
 		override val aliasing :ColumnValues[S, O] = new AliasingValues with ColumnValues[S, O] {
 			override def /[T](component :Component[T]) = outer.asColumnsOf[T]
 
-			override def aliased(aliases :MappingAt[O]#Component =#> MappingAt[O]#Component) :ColumnValues[S, O] =
+			override def aliased(aliases :MappingAt[O]#Component =>: MappingAt[O]#Component) :ColumnValues[S, O] =
 				outer.aliased(aliases).aliasing
 		}
 
-		override def aliased(aliases :MappingAt[O]#Component =#> MappingAt[O]#Component) :ColumnValuesAliasing[S, O] =
+		override def aliased(aliases :MappingAt[O]#Component =>: MappingAt[O]#Component) :ColumnValuesAliasing[S, O] =
 			new ColumnValuesAliasing[S, O] {
 				protected override def alias[T](component :Component[T]) = outer.alias(aliases(component))
-				override def preset(root :RefinedMapping[S, O]) = outer.preset(root)
-				override def aliased(again :MappingAt[O]#Component =#> MappingAt[O]#Component) :ColumnValuesAliasing[S, O] =
+				override def preset(root :TypedMapping[S, O]) = outer.preset(root)
+				override def aliased(again :MappingAt[O]#Component =>: MappingAt[O]#Component) :ColumnValuesAliasing[S, O] =
 					outer.aliased(again andThen aliases)
 				override def toString = outer.toString + ".aliased"
 			}
@@ -546,8 +570,8 @@ object ColumnValues {
 	  * Overrides the `preset` method to only call super if the argument is a column.
 	  */
 	trait ColumnValuesAdapter[S, O] extends ColumnValues[S, O] {
-		abstract override def preset(root :RefinedMapping[S, O]) :Opt[S] =
-			if (root.isInstanceOf[ColumnMapping[_, _]]) super.preset(root)
+		abstract override def preset(root :TypedMapping[S, O]) :Opt[S] =
+			if (root.isInstanceOf[TypedColumn[_, _]]) super.preset(root)
 			else Lack
 	}
 
@@ -557,10 +581,10 @@ object ColumnValues {
 	  * by some of the other mapping's `++` methods.
 	  */
 	trait ColumnValue[S, X, O] extends SharedColumnValues[S, O] {
-		val column :ColumnMapping[X, O]
+		val column :TypedColumn[X, O]
 		def value :Opt[X]
 
-		override def preset(root :RefinedMapping[S, O]) :Opt[S] =
+		override def preset(root :TypedMapping[S, O]) :Opt[S] =
 			if (root == column) value.asInstanceOf[Opt[S]] else Lack
 
 		override def orElse(values :ComponentValues[S, O]) :ComponentValues[S, O] =
@@ -608,7 +632,7 @@ object ColumnValues {
 			if (value.isEmpty) values else super.++(values)
 
 
-		override def tiedTo[T](mapping :RefinedMapping[S, O]) :ColumnValues[T, O] = this.asColumnsOf[T]
+		override def tiedTo[T](mapping :TypedMapping[S, O]) :ColumnValues[T, O] = this.asColumnsOf[T]
 
 		override def canEqual(that :Any) :Boolean = that.isInstanceOf[ColumnValue[_, _, _]]
 
@@ -623,7 +647,7 @@ object ColumnValues {
 
 
 
-	private class PresetColumnValue[S, T, O](override val column :ColumnMapping[T, O], result :Opt[T])
+	private class PresetColumnValue[S, T, O](override val column :TypedColumn[T, O], result :Opt[T])
 		extends ColumnValue[S, T, O] with ImmutableColumnValues[S, O] with Serializable
 	{
 		override def value = result
@@ -632,7 +656,7 @@ object ColumnValues {
 	}
 
 
-	private class LazyColumnValue[S, T, O](override val column :ColumnMapping[T, O], private var init: () => Option[T])
+	private class LazyColumnValue[S, T, O](override val column :TypedColumn[T, O], private var init: () => Option[T])
 		extends ColumnValue[S, T, O]
 	{
 		@volatile private var result :Option[T] = _
@@ -680,8 +704,8 @@ object ColumnValues {
 	{
 		private def columnValues :NaturalMap[MappingAt[O]#Column, Self] = values
 
-		override def preset(component :RefinedMapping[S, O]) = component match {
-			case col :ColumnMapping[S @unchecked, O @unchecked] =>
+		override def preset(component :TypedMapping[S, O]) = component match {
+			case col :TypedColumn[S, O] @unchecked =>
 				Opt(values.getOrElse[Self, S](col, null.asInstanceOf[S]))
 			case _ => Lack
 		}
@@ -698,14 +722,14 @@ object ColumnValues {
 	}
 
 
-	private class ColumnValuesMap[S, O](values :Map[ColumnMapping[_, O], Any])
-		extends ComponentValuesMap[S, O](values.asInstanceOf[Map[RefinedMapping[_, O], Any]])
+	private class ColumnValuesMap[S, O](values :Map[TypedColumn[_, O], Any])
+		extends ComponentValuesMap[S, O](values.asInstanceOf[Map[TypedMapping[_, O], Any]])
 		   with ImmutableColumnValues[S, O] with SharedColumnValues[S, O]
 	{
-		private def columnValues :Map[ColumnMapping[_, O], Any] = values
+		private def columnValues :Map[TypedColumn[_, O], Any] = values
 
-		override def preset(component :RefinedMapping[S, O]) :Opt[S] = component match {
-			case col :ColumnMapping[S @unchecked, O @unchecked] =>
+		override def preset(component :TypedMapping[S, O]) :Opt[S] = component match {
+			case col :TypedColumn[S, O] @unchecked =>
 				Opt(values.getOrElse(col, null)).asInstanceOf[Opt[S]]
 			case _ => Lack
 		}
@@ -731,8 +755,8 @@ object ColumnValues {
 		override def presets :NaturalMap[MappingAt[O]#Component, WithOrigin[O]#T] = values
 		override def defaults :ColumnValues[S, O] = default
 
-		override def preset(root :RefinedMapping[S, O]) =
-			if (root.isInstanceOf[ColumnMapping[_, _]]) {
+		override def preset(root :TypedMapping[S, O]) =
+			if (root.isInstanceOf[TypedColumn[_, _]]) {
 				val res = values.getOrElse[WithOrigin[O]#T, S](root, null)
 				if (res == null) Lack else res.preset(root)
 			} else Lack
@@ -755,31 +779,31 @@ object ColumnValues {
 			case _ => super.++(other)
 		}
 
-		override def aliased(aliases :MappingAt[O]#Component =#> MappingAt[O]#Component) :ColumnValues[S, O] =
+		override def aliased(aliases :MappingAt[O]#Component =>: MappingAt[O]#Component) :ColumnValues[S, O] =
 			new DedicatedColumnValues[S, O](values, default aliased aliases)
 
-		override def tiedTo[X](mapping :RefinedMapping[S, O]) = asColumnsOf[X]
+		override def tiedTo[X](mapping :TypedMapping[S, O]) = asColumnsOf[X]
 
 	}
 
 
 
 	private class AliasedColumnValues[S, O]
-	              (values :ColumnValues[S, O], alias :MappingAt[O]#Component =#> RefinedMapping[_, O]#Component)
+	              (values :ColumnValues[S, O], alias :MappingAt[O]#Component =>: TypedMapping[_, O]#Component)
 		extends AliasedComponentValues[S, O](values, alias) with ColumnValues[S, O]
 	{ outer =>
 		def this(values :ColumnValues[S, O],
-		         extracts :NaturalMap[MappingAt[O]#Component, RefinedMapping[_, O]#Extract]) =
+		         extracts :NaturalMap[MappingAt[O]#Component, TypedMapping[_, O]#Extract]) =
 			this(values, aliasing(extracts))
 
-		def this(values :ColumnValues[S, O], root :RefinedMapping[_, O]) =
+		def this(values :ColumnValues[S, O], root :TypedMapping[_, O]) =
 			this(values, aliasing(root))
 
 
 		protected override def contents :ColumnValues[S, O] = values
 
 		protected override val noAliasing :ColumnValues[S, O] = new ColumnValues[S, O] {
-			override def preset(root :RefinedMapping[S, O]) :Opt[S] = values.preset(root)
+			override def preset(root :TypedMapping[S, O]) :Opt[S] = values.preset(root)
 			override def /[T](component :Component[T]) :ColumnValues[T, O] = outer / component
 		}
 
@@ -804,7 +828,7 @@ object ColumnValues {
 			case _ => orElse(other)
 		}
 
-		override def aliased(export :MappingAt[O]#Component =#> MappingAt[O]#Component) :ColumnValues[S, O] =
+		override def aliased(export :MappingAt[O]#Component =>: MappingAt[O]#Component) :ColumnValues[S, O] =
 			new AliasedColumnValues(values, alias andThen export)
 	}
 
@@ -831,19 +855,19 @@ object ColumnValues {
 	private[haul] class EmptyValues[S, O](source : => String) extends SharedColumnValues[S, O] {
 		def this() = this("Empty")
 
-		def this(mapping :RefinedMapping[S, O]) = this(mapping.toString)
+		def this(mapping :TypedMapping[S, O]) = this(mapping.toString)
 
-		override def preset(root: RefinedMapping[S, O]): Opt[S] = Lack
-		override def assemble(root: RefinedMapping[S, O]): Opt[S] = root.assemble(this)
+		override def preset(root: TypedMapping[S, O]): Opt[S] = Lack
+		override def assemble(root: TypedMapping[S, O]): Opt[S] = root.assemble(this)
 
-		override def aliased(root :RefinedMapping[S, O]) :ColumnValues[S, O] = this
-		override def aliased(export :MappingAt[O]#Component =#> MappingAt[O]#Component) :ColumnValues[S, O] = this
-		override def aliased[T](extracts :NaturalMap[MappingAt[O]#Component, RefinedMapping[T, O]#Extract])
+		override def aliased(root :TypedMapping[S, O]) :ColumnValues[S, O] = this
+		override def aliased(export :MappingAt[O]#Component =>: MappingAt[O]#Component) :ColumnValues[S, O] = this
+		override def aliased[T](extracts :NaturalMap[MappingAt[O]#Component, TypedMapping[T, O]#Extract])
 				:ColumnValues[S, O] =
 			this
 
-		override def selectivelyAliased(root :RefinedMapping[S, O]) :ColumnValues[S, O] = this
-		override def selectivelyAliased[T](extracts :NaturalMap[MappingAt[O]#Component, RefinedMapping[T, O]#Extract])
+		override def selectivelyAliased(root :TypedMapping[S, O]) :ColumnValues[S, O] = this
+		override def selectivelyAliased[T](extracts :NaturalMap[MappingAt[O]#Component, TypedMapping[T, O]#Extract])
 				:ColumnValues[S, O] =
 			this
 
@@ -851,7 +875,7 @@ object ColumnValues {
 		override def orElse(values :ColumnValues[S, O]) :ColumnValues[S, O] = values
 
 
-		override def tiedTo[X](mapping :RefinedMapping[S, O]) = asColumnsOf[X]
+		override def tiedTo[X](mapping :TypedMapping[S, O]) = asColumnsOf[X]
 
 		override def clone() :ColumnValues[S, O] = {
 			val name = source //evaluate the lazy init to lose any references

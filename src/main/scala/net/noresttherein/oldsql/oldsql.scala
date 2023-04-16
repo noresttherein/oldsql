@@ -7,28 +7,28 @@ import net.noresttherein.oldsql.collection.Chain.@~
 
 
 
+//todo: rename to org.oldsql.sql
 package object oldsql {
 
 	/** Library version; standard three level versioning, every level having three digits.
 	  * Version 1.14.27 would be 1_014_027.
 	  */
-	final val OldSQLVer = 1L
+	final val OldSQLVer = 0L
 
-	final val ImplArtifactDeprecation = "This class is an implementation artifact introduced to reduce code repetition " +
-	                                    "and should not be referenced by the client code, as it may disappear " +
-	                                    "without notice."
+	/** Default value of `@SerialVersionUID` annotation used by classes in this framework.
+	  * The conditions under which it is incremented are unspecified and may change, but it is guaranteed not to happen
+	  * if [[net.noresttherein.oldsql.OldSQLVer OldSQLVer]] is incremented to a version implying binary compatibility.
+	  */
+	final val SerialVer = 0L
 
-	final val SharedImplDeprecation = ImplArtifactDeprecation + "  Use one of its subclasses instead."
+	final val Version = "Imoen-beta"
 
-	final val DeprecatedAlways = "initial release"
+	final val ImplementationWarning = "This type is an implementation artifact and should not be used by client code. " +
+	                                  "It can be removed in a future release without a further warning."
+	final val InitialVersion = "0"
 
-
-
-	private[oldsql] def publishMutable() :Unit = java.lang.invoke.VarHandle.releaseFence()
 
 	private[oldsql] val anyArg = { _ :Any => @~ }
-
-
 
 	/** An implicit argument used to 'seal' methods to package `oldsql`. A method `private[scope]` or `protected[scope]`
 	  * cannot be used outside package/class `scope`, but, unless final, it can be overriden by extending classes
@@ -63,5 +63,6 @@ package object oldsql {
 		@inline implicit def seal[T](value :T) :Sealed[T] = new Sealed(value)
 		@inline implicit def unseal[T](value :Sealed[T]) :T = value.value
 	}
+
 }
 

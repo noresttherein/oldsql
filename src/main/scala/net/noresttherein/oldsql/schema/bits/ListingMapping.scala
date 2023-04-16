@@ -1,16 +1,16 @@
 package net.noresttherein.oldsql.schema.bits
 
-import net.noresttherein.oldsql.OperationType.WriteOperationType
+import net.noresttherein.oldsql.OperationView.WriteOperationView
 import net.noresttherein.oldsql.collection.{Chain, Listing}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~, Item, Key}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{Buff, ColumnExtract, ColumnForm, MappingExtract, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.ChainMapping.{BaseChainMapping, BaseFlatChainMapping, ChainPrefixSchema, FlatChainPrefixSchema}
+import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.schema.bits.ListingMapping.NonEmptyListingMapping
 import net.noresttherein.oldsql.schema.bits.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, EmptySchema, FlatMappingSchema}
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, ||, LabeledSchemaColumn}
-import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 
 
 
@@ -20,7 +20,7 @@ import net.noresttherein.oldsql.schema.bits.LabeledMapping.Label
 /** A mapping for [[net.noresttherein.oldsql.collection.Listing Listing]] dictionaries indexed on type level
   * by arbitrary types. It is a [[net.noresttherein.oldsql.schema.bits.SchemaMapping SchemaMapping]] and its own
   * [[net.noresttherein.oldsql.schema.bits.MappingSchema MappingSchema]] at the same time, with the values
-  * of individual components in the schema being the values in the index at the corresponding positions.
+  * of individual components in the schema being the values in the listing at the corresponding positions.
   * @author Marcin Mościcki
   */
 trait ListingMapping[V <: Listing, C <: Chain, O] extends BaseChainMapping[V, C, O] {
@@ -144,10 +144,10 @@ object ListingMapping {
 		   with FlatMappingSchema[S, V |~ (K :~ T), C ~ M, O]
 	{
 		override val selectForm = (init.selectForm |~ key :~ last.selectForm)(new ValueOf(key))
-		override val filterForm = init.filterForm |~  key :~ last.filterForm
+		override val filterForm = init.filterForm |~ key :~ last.filterForm
 		override val insertForm = init.insertForm |~ key :~ last.insertForm
 		override val updateForm = init.updateForm |~ key :~ last.updateForm
-		override def writeForm(op :WriteOperationType) :SQLWriteForm[V |~ (K :~ T)] = op.form(this)
+		protected override def newWriteForm(op :WriteOperationView) :SQLWriteForm[V |~ (K :~ T)] = op.form(this)
 
 		override def compose[X](extractor :X =?> S) :FlatMappingSchema[X, V |~ (K :~ T), C ~ M, O] =
 			new NonEmptyFlatListingSchema(init compose extractor, key, last, this.extractor compose extractor)
