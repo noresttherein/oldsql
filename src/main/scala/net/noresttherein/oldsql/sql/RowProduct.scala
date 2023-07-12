@@ -208,7 +208,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * an empty clause can be used as a part of expressions for any other clause.
 	  * The [[net.noresttherein.oldsql.sql.RowProduct.last last]] joined relation of this instance uses this type
 	  * as its domain type parameter.
-	  */
+	  */ 
 	type FromLast >: Generalized <: RowProduct
 
 	/** Given a type constructor for a ''from'' clause accepting a `FromSome` type, apply this type to it
@@ -305,6 +305,7 @@ trait RowProduct extends RowProductTemplate[RowProduct] with Serializable { this
 	  * and, as a result, SQL expressions built based on those clauses and relations being incompatible
 	  * despite type checking. The implementation goes as far as possible to minimise those occurrences, though.
 	  */ //it would be really tempting to declare it Generalized <: FromLast (saves a lot of overrides), but the result is volatile
+        //todo: yet another type, abstracting over Join/JoinParam
 	type Generalized >: Complete <: RowProduct {
 		//todo: try to add InnerParams = thisClause.InnerParams
 		//caution: there is a serious issue in that this.generalized.Self <:< this.generalized.Generalized does not hold.
@@ -3464,7 +3465,7 @@ object RowProduct {
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `M`.
 		  * @return `F Subselect T` if `F` is not empty and `From[T]` otherwise.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
-		  */
+		  */ //todo: overloaded variants accepting a foreign key or join table getter, like when joining
 		@inline def from[M[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S, A <: Label]
 		                (table :StaticTable[A, M])
 		                (implicit cast :InferTypeParams[StaticTable[A, M], StaticTable[A, T], Table[MappingOf[S]#TypedProjection]])

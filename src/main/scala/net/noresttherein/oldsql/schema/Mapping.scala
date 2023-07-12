@@ -1393,6 +1393,14 @@ object Mapping extends Rank1MappingImplicits {
 		  */ //mention the alternative of refining this.type instead of accepting it as a parameter
 		type Origin
 
+                /** A refinement of this object's singleton type defining its [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type.
+                  * It is particularily useful for mapping components defined as member objects (and inheriting `Origin` from the enclosing mapping 
+                  * and [[net.noresthterein.oldsql.schema.TableMapping TableMapping]] singleton objects, which do not define `Origin` in any way. 
+                  * It allows the use of a mapping object as a type parameter to [[net.noresttherein.oldsql.sql.From From]],
+                  * [[net.noresttherein.oldsql.sql.Join Join]] and related classes: `From[Mages.withOrigin]`.
+                  */ //consider: renaming to Of/of, from
+                type withOrigin[O] = this.type { type Origin = O }
+
 		/** A refinement of type `Mapping` defining its [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type.
 		  * It is an abstract type bound: concrete implementations for classes from application's domain model
 		  * are welcome to override it with a definition narrowing their own type, as an alternative to

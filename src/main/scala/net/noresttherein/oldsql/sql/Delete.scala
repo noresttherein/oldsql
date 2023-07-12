@@ -90,7 +90,7 @@ trait DeleteDML[-Args, M[O] <: MappingAt[O], +Res]
   *              [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type.
   * @tparam Res  The type of the value returned by the resulting `Incantation`. In the most common case,
   *              this will be the number of deleted rows (or ''numbers'' of deleted rows in case of batched statements).
-  */
+  */ //todo: support for transparent 'Delete byPK Mages`
 trait Delete[-Args, M[O] <: MappingAt[O], +Res]
 	extends DeleteDML[Args, M, Res] with TableStatement[Args, M, Res] with DMLStatementAPI[Args, Res, Delete.from[M]#Stmt]
 {

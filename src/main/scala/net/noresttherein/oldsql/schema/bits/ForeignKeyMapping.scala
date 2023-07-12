@@ -70,6 +70,8 @@ trait RelationshipMapping[+T[A] <: MappingAt[A], S, O] extends BaseMapping[S, O]
 
 	/** Creates a reference instance of the subject type of this mapping wrapping the given key. */
 	def forKey(key :Key) :S
+
+	//todo: <,>,== and other methods accepting a Key, T[Unit]#Subject or S; likely extract them from SQLExpression to a common trait
 }
 
 

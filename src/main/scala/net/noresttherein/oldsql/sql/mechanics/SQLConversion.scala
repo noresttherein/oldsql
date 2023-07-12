@@ -1,9 +1,10 @@
 package net.noresttherein.oldsql.sql.mechanics
 
 import scala.annotation.{implicitNotFound, tailrec}
+import scala.collection.{Factory, IterableFactory}
 import scala.reflect.ClassTag
 
-import net.noresttherein.oldsql.collection.{Chain, Listing, Opt}
+import net.noresttherein.oldsql.collection.{Chain, Listing, Opt, companionFactoryOf}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
@@ -26,7 +27,7 @@ import net.noresttherein.oldsql.sql.ast.RecordSQL.{ProjectRecord, TransformRecor
 import net.noresttherein.oldsql.sql.ast.SelectSQL.TopSelectSQL
 import net.noresttherein.oldsql.sql.mechanics.ReversibleConversion.Widening
 import net.noresttherein.oldsql.sql.mechanics.SQLAdaptation.DefaultExpressionAdaptation
-import net.noresttherein.oldsql.sql.mechanics.SQLConversion.{ChainConversion, ListingToChain, RecordConversion, RecordConversionEntry, RecordReordering, RowsConversion, SeqConversion, toSelf}
+import net.noresttherein.oldsql.sql.mechanics.SQLConversion.{ChainConversion, IterableConversion, ListingToChain, RecordConversion, RecordConversionEntry, RecordReordering, RowsConversion, SeqConversion, toSelf}
 import net.noresttherein.oldsql.sql.mechanics.SQLFormConversion.SQLFormIdentity
 import net.noresttherein.oldsql.sql.mechanics.SQLTransformation.{ArbitraryTransformation, ChainTransformation, ColumnTransformation, IndependentTransformation}
 import net.noresttherein.oldsql.sql.mechanics.SQLValueConversion.SQLValueIdentity
@@ -1684,6 +1685,11 @@ private[mechanics] sealed abstract class RecordConversions extends LiftedConvers
 //			:RecordReordering[X, Y] { type XKeys = XKs; type YKeys = YKs } =
 			:Equivalent[X, Y] =
 		RecordReordering(there, back)
+
+	implicit def toIterable[I[X <: E] <: Iterable[X], J[X <: E] <: Iterable[X], E]
+	                       (implicit from :Factory[E, I[E]], to :Factory[E, J[E]])
+			:ReversibleConversion[I[E], J[E]] =
+		new IterableConversion[I, J, E](from, to)
 }
 
 private[mechanics] sealed abstract class IdentityConversions extends RecordConversions {
@@ -2001,6 +2007,32 @@ object SQLConversion extends ConversionsToShort {
 //				case _ => Lack
 //			}
 //	}
+
+	class IterableConversion[I[A <: X] <: Iterable[A], J[A <: X] <: Iterable[A], X]
+	                        (val from :Factory[X, I[X]], val to :Factory[X, J[X]])
+		extends ReversibleConversion[I[X], J[X]]
+	{
+		override def apply(value :I[X]) :J[X] = value to to
+		override def inverse(value :J[X]) :I[X] = value to from
+
+		override def equals(that :Any) :Boolean = that match {
+			case self :AnyRef if this eq self => true
+			case other :IterableConversion[_, _, _] =>
+				(from == other.from || ((companionFactoryOf(from), companionFactoryOf(other.from)) match {
+					case (Got(i), Got(j)) => i == j
+					case _ => false
+				})) && (to == other.to || ((companionFactoryOf(to), companionFactoryOf(other.to)) match {
+					case (Got(i), Got(j)) => i == j
+					case _ => false
+				}))
+		}
+		override def hashCode :Int =
+			companionFactoryOf(from).getOrElse(from).hashCode * 31 + companionFactoryOf(to).getOrElse(to).hashCode
+
+		override def applyString(arg :String) :String =
+			arg + ".to(" + companionFactoryOf(to).getOrElse(to.localClassName) + ")"
+	}
+
 
 	case class SeqConversion[X, Y](item :SQLConversion[X, Y]) extends SQLConversion[Seq[X], Seq[Y]] {
 		override def isReversible :Boolean = item.isReversible

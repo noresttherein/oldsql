@@ -375,7 +375,7 @@ due to various ways to pass parameters, and streamlining of typical cases. Examp
         )
         > val res5 :Insert[Any, Mages, Int]
 
-Many other combinations are also possible
+Many other combinations are also possible.
 
 
 ### Other features

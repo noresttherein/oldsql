@@ -1401,7 +1401,7 @@ object FromSome {
 		  * @param table a producer of the mapping for the relation.
 		  * @param cast an implicit witness helping with type inference of the subject type of the mapping type `R`.
 		  * @see [[net.noresttherein.oldsql.sql.Subselect]]
-		  */
+		  */ //todo: subselect by foreign key and join table, as in other joins
 		@inline def subselect[N <: Label, R[O] <: MappingAt[O], T[O] <: BaseMapping[S, O], S]
 		                     (table :StaticTable[N, R])
 		                     (implicit cast :BaseMappingSubject[R, T, S]) :F Subselect R As N =

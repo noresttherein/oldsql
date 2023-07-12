@@ -157,7 +157,7 @@ trait Update[-Args, M[O] <: MappingAt[O], +Res]
   * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.||=]]
   * @see [[net.noresttherein.oldsql.sql.ast.ColumnLValueSQL.++=]]
   * @author Marcin Mościcki
-  */
+  */ //todo: Update join syntax
 object Update {
 	type table[M[O] <: MappingAt[O]] = {
 		type DML[-X, +Y] = UpdateDML[X, M, Y]

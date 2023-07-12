@@ -21,8 +21,11 @@ package net.noresttherein.oldsql.morsels
   * @tparam Y   the type returned by constructor function arguments of all `apply` methods.
   * @tparam Res the output type, returned by all `apply` methods.
   * @author Marcin Mościcki
-  */
-abstract class PolyConstructor[X, Y, +Res](x :X) {
+  */ //todo: rename to MultiApply
+trait PolyConstructor[X, Y, +Res] { self =>
+	import self.{arg => x}
+	protected def arg :X
+
 	def apply(item :Y) :Res
 
 	@inline final def apply(f :X => Y) :Res = apply(f(x))
@@ -76,10 +79,11 @@ abstract class PolyConstructor[X, Y, +Res](x :X) {
 
 
 object PolyConstructor {
-	def apply[X, Y, Z](arg :X)(f :Y => Z) :PolyConstructor[X, Y, Z] =
-		new PolyConstructor[X, Y, Z](arg) {
-			override def apply(y :Y) :Z = f(y)
-		}
+	def apply[X, Y, Z](arg :X)(f :Y => Z) :PolyConstructor[X, Y, Z] = new Impl(arg)(f)
+
+	private class Impl[X, Y, +Res](override val arg :X)(f :Y => Res) extends PolyConstructor[X, Y, Res] {
+		override def apply(item :Y) :Res = f(item)
+	}
 }
 
 

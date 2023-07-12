@@ -12,7 +12,7 @@ import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional}
 
 
 
-/** A factory for an option-like type `R` referencing an entity or entities of type `E` as type `X` using some sort 
+/** A factory for an option-like type `R` referencing an entity or entities of type `E` as type `X` using some sort
   * of 'key' `K`. Provides methods for creating instances of `R` as well as extracting the keys from values of `X`.
   * For example, `K` may be a primary key of some entity `P` referenced by a foreign key in `E`, `X =:= Seq[E]` be
   * the collection of all `E` with the value of that foreign key equal to a given value of `K`, and `R` be `Kin[Seq[E]]`.
@@ -39,7 +39,7 @@ import net.noresttherein.oldsql.morsels.Extractor.{=?>, Optional}
   * if the same value of `K` refers to the same set of entities.
   * @tparam K 'key' type - type of value potentially stored in empty references, for the type of a foreign key property.
   * @tparam E type of the referenced entities.
-  * @tparam X references type, contained by 'full' references - 
+  * @tparam X references' type, contained by 'full' references -
   *           should satisfy `X `[[net.noresttherein.oldsql.model.ComposedOf ComposedOf]]` E`.
   * @tparam R a specific reference type being the result type of all factory methods.
   * @see [[net.noresttherein.oldsql.model.GenericKinFactory]]
