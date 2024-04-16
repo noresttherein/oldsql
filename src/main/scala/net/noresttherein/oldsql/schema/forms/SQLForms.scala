@@ -60,9 +60,11 @@ private[schema] sealed trait Rank2SQLRWFormsImplicits {
 		ChainWriteForm(prefix(chain.init), chain.last)
 
 
-	implicit def ChainReadFormExtension[C <: Chain](self :SQLReadForm[C]) = new ChainReadFormExtension[C](self)
+	implicit def ChainReadFormExtension[C <: Chain](self :SQLReadForm[C]) :ChainReadFormExtension[C] =
+		new ChainReadFormExtension[C](self)
 
-	implicit def ChainWriteFormExtension[C <: Chain](self :SQLWriteForm[C]) = new ChainWriteFormExtension[C](self)
+	implicit def ChainWriteFormExtension[C <: Chain](self :SQLWriteForm[C]) :ChainWriteFormExtension[C] =
+		new ChainWriteFormExtension[C](self)
 }
 
 
@@ -481,9 +483,11 @@ private[forms] sealed trait Rank2SQLFormImplicits extends SQLRWFormsImplicits {
 			:ChainForm[I ~ L] =
 		ChainForm(prefix(chain.init), chain.last)
 
-	implicit def ChainFormExtension[C <: Chain](self :SQLForm[C]) = new ChainFormExtension[C](self)
+	implicit def ChainFormExtension[C <: Chain](self :SQLForm[C]) :ChainFormExtension[C] =
+		new ChainFormExtension[C](self)
 
-	implicit def ListingFormExtension[I <: Listing](self :SQLForm[I]) = new ListingFormExtension[I](self)
+	implicit def ListingFormExtension[I <: Listing](self :SQLForm[I]) :ListingFormExtension[I] =
+		new ListingFormExtension[I](self)
 
 }
 
@@ -762,7 +766,7 @@ private[forms] sealed trait ColumnFormImplicits extends ColumnRWFormsImplicits {
 
 
 object SQLForms extends ColumnFormImplicits with BasicForms with ScalaForms {
-	implicit final val UnitForm = SQLForm.empty("Unit")(())
+	implicit final val UnitForm :SQLForm[Unit] = SQLForm.empty("Unit")(())
 
 
 	implicit object ClassForm

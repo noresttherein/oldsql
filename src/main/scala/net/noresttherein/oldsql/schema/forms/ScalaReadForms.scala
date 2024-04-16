@@ -169,72 +169,81 @@ trait ScalaReadForms {
 
 	//implicit conversions from tuples of forms
 	
-	implicit def toTuple2ReadForm[A, B](t :(SQLReadForm[A], SQLReadForm[B])) = 
+	implicit def toTuple2ReadForm[A, B](t :(SQLReadForm[A], SQLReadForm[B])) :Tuple2ReadForm[A, B] =
 		new Tuple2ReadForm(t._1, t._2)
 	
-	implicit def toTuple3ReadForm[A, B, C](t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C])) =
+	implicit def toTuple3ReadForm[A, B, C](t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C]))
+			:Tuple3ReadForm[A, B, C] =
 		new Tuple3ReadForm(t._1, t._2, t._3)
 
-	implicit def toTuple4ReadForm[A, B, C, D](t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D])) =
+	implicit def toTuple4ReadForm[A, B, C, D](t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D]))
+			:Tuple4ReadForm[A, B, C, D] =
 		new Tuple4ReadForm(t._1, t._2, t._3, t._4)
 	
 	implicit def toTuple5ReadForm[A, B, C, D, E]
-	                         (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E])) =
+	                         (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E]))
+			:Tuple5ReadForm[A, B, C, D, E] =
 		new Tuple5ReadForm(t._1, t._2, t._3, t._4, t._5)
 	
 	implicit def toTuple6ReadForm[A, B, C, D, E, F]
 	                         (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
-	                              SQLReadForm[F])) =
+	                              SQLReadForm[F])) :Tuple6ReadForm[A, B, C, D, E, F] =
 		new Tuple6ReadForm(t._1, t._2, t._3, t._4, t._5, t._6)
 	
 	implicit def toTuple7ReadForm[A, B, C, D, E, F, G]
 	                         (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
-	                              SQLReadForm[F], SQLReadForm[G])) =
+	                              SQLReadForm[F], SQLReadForm[G])) :Tuple7ReadForm[A, B, C, D, E, F, G] =
 		new Tuple7ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7)
 	
 	implicit def toTuple8ReadForm[A, B, C, D, E, F, G, H]
 	                         (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
-	                              SQLReadForm[F], SQLReadForm[G], SQLReadForm[H])) =
+	                              SQLReadForm[F], SQLReadForm[G], SQLReadForm[H]))
+			:Tuple8ReadForm[A, B, C, D, E, F, G, H] =
 		new Tuple8ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8)
 	
 	implicit def toTuple9ReadForm[A, B, C, D, E, F, G, H, I]
 	                         (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
-	                              SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I])) =
+	                              SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I]))
+			:Tuple9ReadForm[A, B, C, D, E, F, G, H, I] =
 		new Tuple9ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9)
 		
 	implicit def toTuple10ReadForm[A, B, C, D, E, F, G, H, I, J]
 	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E], 
-	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J])) =
+	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J]))
+			:Tuple10ReadForm[A, B, C, D, E, F, G, H, I, J] =
 		new Tuple10ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10)
 		
 	implicit def toTuple11ReadForm[A, B, C, D, E, F, G, H, I, J, K]
 	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
 	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J], 
-	                  SQLReadForm[K])) =
+	                  SQLReadForm[K])) :Tuple11ReadForm[A, B, C, D, E, F, G, H, I, J, K] =
 		new Tuple11ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11)
 		
 	implicit def toTuple12ReadForm[A, B, C, D, E, F, G, H, I, J, K, L]
 	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
 	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
-	                  SQLReadForm[K], SQLReadForm[L])) =
+	                  SQLReadForm[K], SQLReadForm[L])) :Tuple12ReadForm[A, B, C, D, E, F, G, H, I, J, K, L] =
 		new Tuple12ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11, t._12)
 		
 	implicit def toTuple13ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M]
 	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
 	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
-	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M])) =
+	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M]))
+			:Tuple13ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M] =
 		new Tuple13ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11, t._12, t._13)
 		
 	implicit def toTuple14ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N]
 	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
 	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
-	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N])) =
+	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N]))
+			:Tuple14ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N] =
 		new Tuple14ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11, t._12, t._13, t._14)
 		
 	implicit def toTuple15ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O]
 	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
 	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
-	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O])) =
+	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O]))
+			:Tuple15ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O] =
 		new Tuple15ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                        t._11, t._12, t._13, t._14, t._15)
 		
@@ -242,7 +251,7 @@ trait ScalaReadForms {
 	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
 		                           SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
 		                           SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
-		                           SQLReadForm[P])) =
+		                           SQLReadForm[P])) :Tuple16ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P] =
 		new Tuple16ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                        t._11, t._12, t._13, t._14, t._15, t._16)
 		
@@ -250,7 +259,8 @@ trait ScalaReadForms {
 	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
 	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
 	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
-	                  SQLReadForm[P], SQLReadForm[Q])) =
+	                  SQLReadForm[P], SQLReadForm[Q]))
+			:Tuple17ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q] =
 		new Tuple17ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                        t._11, t._12, t._13, t._14, t._15, t._16, t._17)
 		
@@ -258,7 +268,8 @@ trait ScalaReadForms {
 	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
 	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
 	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
-	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R])) =
+	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R]))
+			:Tuple18ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R] =
 		new Tuple18ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                        t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18)
 		
@@ -266,7 +277,8 @@ trait ScalaReadForms {
 	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
 	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
 	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
-	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R], SQLReadForm[S])) =
+	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R], SQLReadForm[S]))
+			:Tuple19ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S] =
 		new Tuple19ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                        t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19)
 		
@@ -274,7 +286,8 @@ trait ScalaReadForms {
 	             (t :(SQLReadForm[A], SQLReadForm[B], SQLReadForm[C], SQLReadForm[D], SQLReadForm[E],
 	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
 	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
-	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R], SQLReadForm[S], SQLReadForm[T])) =
+	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R], SQLReadForm[S], SQLReadForm[T]))
+			:Tuple20ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T] =
 		new Tuple20ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                        t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19, t._20)
 		
@@ -283,7 +296,8 @@ trait ScalaReadForms {
 	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
 	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
 	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R], SQLReadForm[S], SQLReadForm[T],
-	                  SQLReadForm[U])) =
+	                  SQLReadForm[U]))
+			:Tuple21ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U] =
 		new Tuple21ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10,
 	                        t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19, t._20, t._21)
 		
@@ -292,7 +306,8 @@ trait ScalaReadForms {
 	                  SQLReadForm[F], SQLReadForm[G], SQLReadForm[H], SQLReadForm[I], SQLReadForm[J],
 	                  SQLReadForm[K], SQLReadForm[L], SQLReadForm[M], SQLReadForm[N], SQLReadForm[O],
 	                  SQLReadForm[P], SQLReadForm[Q], SQLReadForm[R], SQLReadForm[S], SQLReadForm[T],
-	                  SQLReadForm[U], SQLReadForm[V])) =
+	                  SQLReadForm[U], SQLReadForm[V]))
+			:Tuple22ReadForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V] =
 		new Tuple22ReadForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                        t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19, t._20, t._21, t._22)
 

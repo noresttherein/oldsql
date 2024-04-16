@@ -1442,8 +1442,8 @@ object ForeignKeyMapping {
 		override type KeyOrigin = MO
 		//consider: this component being lazy means key must be lazy, meaning extracts and all components lists
 		// must be lazy, but adapters (and possibly other code) may eagerly refer to them on construction.
-		private[this] val lazyTarget = Lazy(pk(table[MO]))
-		override def target :C[MO] = lazyTarget.get
+		private[this] lazy val lazyTarget = pk(table[MO])
+		override def target :C[MO] = lazyTarget
 		def references :RelatedEntityFactory[K, E, T, R] = factory
 
 		override def apply[S <: MappingAt[MO]]
@@ -1463,7 +1463,7 @@ object ForeignKeyMapping {
 		private[this] val composer = factory.composition
 
 		override def assemble(pieces :Pieces) :Opt[R] = pieces.get(key) match {
-			case Got(k) => Got(factory.delay(k, pieces(table).all(lazyTarget.get, k).map(composer(_))))
+			case Got(k) => Got(factory.delay(k, pieces(table).all(lazyTarget, k).map(composer(_))))
 			case _ => Lack
 		}
 
@@ -1494,13 +1494,14 @@ object ForeignKeyMapping {
 		        (table :RelVar[M], pk :M[MO] => C[MO]) =
 			this(rename, factory, Buffs(buffs :_*))(table, pk)
 
-		private[this] val lazyKey = Lazy { //todo: make target lazy in CoveredMapping instead, then it will really be initialized only when assembling
+		private[this] lazy val lazyKey = //todo: make target lazy in CoveredMapping instead, then it will really be initialized only when assembling
 			new CoveredMapping[C[MO], K, MO, O](target, rename, buffs.cascade(factory.forceKeyOutOf).declare())
-		}
-		override def key :Component[K] = lazyKey.get
 
-		override def local[S](subKey :TypedMapping[S, MO]) :Component[S] = lazyKey.get.cover(subKey)
-		override def local[S](subKey :TypedColumn[S, MO]) :Column[S] = lazyKey.get.cover(subKey)
+		//If you override this property you should override also this.local methods
+		override def key :Component[K] = lazyKey
+
+		override def local[S](subKey :TypedMapping[S, MO]) :Component[S] = lazyKey.cover(subKey)
+		override def local[S](subKey :TypedColumn[S, MO]) :Column[S] = lazyKey.cover(subKey)
 
 		override lazy val (extracts, columnExtracts) = {
 			val keyExtract = MappingExtract(key)(Extractor.Optional[R, K](factory.keyOf))
@@ -1627,11 +1628,11 @@ object ForeignKeyMapping {
 	/** Mapping of a reference to any number of values from the target `table` whose foreign key (returned by
 	  * `foreignKey` argument function) matches a key in the table containing this component. The values are
 	  * assembled and disassembled with the help of `factory`
-	  * [[net.noresttherein.oldsql.model.RelatedEntityFactory RelatedEntityFactory]]. Note that as the local key
-	  * `backer` (which should equal `foreignKey(table[MO]).target`) is most likely existing independently
-	  * in the same table, this mapping will most likely require either a buff switching off its persistence such as
-	  * [[net.noresttherein.oldsql.schema.Buff.NonDefault NonDefault]] or similar, or mixing in
-	  * [[net.noresttherein.oldsql.schema.support.EffectivelyEmptyMapping EffectivelyEmptyMapping]].
+	  * [[net.noresttherein.oldsql.model.RelatedEntityFactory RelatedEntityFactory]]. Note that, as the local key
+	  * `backer` (whose value should equal the value of `foreignKey(table[MO]).target`) is most likely
+	  * existing independently in the same table, this mapping will most likely require either a buff switching off
+	  * its persistence such as [[net.noresttherein.oldsql.schema.Buff.NonDefault NonDefault]] or similar,
+	  * or mixing in [[net.noresttherein.oldsql.schema.support.EffectivelyEmptyMapping EffectivelyEmptyMapping]].
 	  */ //consider: careful with extracts: duplicates of an independent key are bad, but lack of any extract for non-existing key is worse.
 	private[oldsql] class InverseForeignKeyMapping
 	                      [M[A] <: TypedMapping[E, A], C[A] <: TypedMapping[K, A], K, E, T, R, MO, O]

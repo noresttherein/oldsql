@@ -1,5 +1,7 @@
 package net.noresttherein.oldsql.sql.ast
 
+import scala.annotation.nowarn
+
 import net.noresttherein.oldsql.collection.{Chain, Listing, Opt, PassedArray, Unique}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
@@ -13,8 +15,8 @@ import net.noresttherein.oldsql.schema.{SQLForm, SQLReadForm, SQLWriteForm}
 import net.noresttherein.oldsql.schema.bits.LabelPath
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.slang.{cast2TypeParams, saferCasting}
-import net.noresttherein.oldsql.sql.{ColumnSQL, RowProduct, RowShape, SQLExpression}
-import net.noresttherein.oldsql.sql.RowProduct.{ExpandedBy, PartOf}
+import net.noresttherein.oldsql.sql.{Clause, ColumnSQL, RowShape, SQLExpression}
+import net.noresttherein.oldsql.sql.Clause.{ExpandedBy, PartOf}
 import net.noresttherein.oldsql.sql.SQLDialect.SQLSpelling
 import net.noresttherein.oldsql.sql.SQLExpression.{AnyExpressionVisitor, ConvertibleSQL, Grouped, ReorderingTemplate, Single, SpecificExpressionVisitor, VariantGroundingTemplate}
 import net.noresttherein.oldsql.sql.ast.ChainSQL.{CaseSpecificChain, splitChainTransformation, upcastListing}
@@ -51,12 +53,12 @@ import net.noresttherein.oldsql.sql.mechanics.SQLConversion.{ChainConversion, Ch
   * @author Marcin Mościcki
   */
 //todo: rename to TupleExtensionSQL
-sealed class ChainSQL[-F <: RowProduct, -S >: Grouped <: Single, I <: Chain, L] protected
+sealed class ChainSQL[-F <: Clause, -S >: Grouped <: Single, I <: Chain, L] protected
                      (val init :SQLExpression[F, S, I], val last :SQLExpression[F, S, L])
 	extends AbstractInlineBinaryCompositeSQL[F, S, I, L, I ~ L]
 	   with BinaryCompositeTemplate[F, S, I, L, I ~ L,
-	                                ({ type E[-f <: RowProduct, -s >: Grouped <: Single] = ChainSQL[f, s, I, L]})#E]
-	   with VariantGroundingTemplate[F, S, I ~ L, ({ type E[-f <: RowProduct] = ChainSQL[f, S, I, L] })#E]
+	                                ({ type E[-f <: Clause, -s >: Grouped <: Single] = ChainSQL[f, s, I, L]})#E]
+	   with VariantGroundingTemplate[F, S, I ~ L, ({ type E[-f <: Clause] = ChainSQL[f, S, I, L] })#E]
 	   with SelectableSQL[F, S, I ~ L]
 { self =>
 	//todo: review where do we want to use NonSpecificSQL and apply them surgically
@@ -85,7 +87,7 @@ sealed class ChainSQL[-F <: RowProduct, -S >: Grouped <: Single, I <: Chain, L] 
 	protected override def rightValue(value :I ~ L) :L = value.last
 	protected override def value(left :I, right :L) :I ~ L = left ~ right
 
-	protected override def reapply[E <: RowProduct, C >: Grouped <: Single]
+	protected override def reapply[E <: Clause, C >: Grouped <: Single]
 	                              (left :SQLExpression[E, C, I], right :SQLExpression[E, C, L]) :ChainSQL[E, C, I, L] =
 		ChainSQL(left, right)
 
@@ -94,7 +96,7 @@ sealed class ChainSQL[-F <: RowProduct, -S >: Grouped <: Single, I <: Chain, L] 
 		for (l <- init.universalForm; r <- last.universalForm) yield l ~ r
 
 
-	protected override def reformer[F2 <: RowProduct, S2 >: Grouped <: Single, V2,
+	protected override def reformer[F2 <: Clause, S2 >: Grouped <: Single, V2,
 	                                EC2[v] <: ConvertibleSQL[F2, S2, v, EC2], U]
 	                               (other :ConvertibleSQL[F2, S2, V2, EC2])(reform :Reform, passCount :PassCount)
 	                               (implicit leftResult :SQLTransformation[I ~ L, U], rightResult :SQLTransformation[V2, U],
@@ -245,9 +247,9 @@ sealed class ChainSQL[-F <: RowProduct, -S >: Grouped <: Single, I <: Chain, L] 
 object ChainSQL {
 
 //	/** [[net.noresttherein.oldsql.sql.ast.EmptySQL EmptySQL]] as an instance of `SQLExpression`. */
-//	val EmptyChain :SQLExpression[RowProduct, Single, @~] = ChainTuple.EmptyChain
+//	val EmptyChain :SQLExpression[Clause, Single, @~] = ChainTuple.EmptyChain
 
-	def apply[F <: RowProduct, S >: Grouped <: Single, I <: Chain, L]
+	def apply[F <: Clause, S >: Grouped <: Single, I <: Chain, L]
 	         (init :SQLExpression[F, S, I], last :SQLExpression[F, S, L]) :ChainSQL[F, S, I, L] =
 		init match {
 			case tuple :ChainTuple[F, S, I] =>
@@ -256,11 +258,11 @@ object ChainSQL {
 				new ChainSQL(init, last) with RowShapeCache
 		}
 //
-//	private class ChainSQLImpl[-F <: RowProduct, -S >: Grouped <: Single, I <: Chain, L]
+//	private class ChainSQLImpl[-F <: Clause, -S >: Grouped <: Single, I <: Chain, L]
 //	                          (init :SQLExpression[F, S, I], last :SQLExpression[F, S, L])
 //		extends ChainSQL(init, last) with InlineBinaryCompositeSQL[F, S, I, L, I ~ L] with RowShapeCache
 
-	type __ = ChainSQL[_ <: RowProduct, _ >: Grouped <: Single, _ <: Chain, _]
+	type __ = ChainSQL[_ <: Clause, _ >: Grouped <: Single, _ <: Chain, _]
 
 
 	/** Splits a transformation of a non-empty chain into transformations for its `init` and `last`.
@@ -297,7 +299,7 @@ object ChainSQL {
 							firstWhole match {
 								case conversion :SQLConversion[YI ~ YL, Y] if conversion.isIdentity =>
 									splitChainTransformation(firstWhole andThen composed.get._2) match {
-										case splitSecond :Opt[SplitSecond[zi, zl]] if splitSecond.isDefined =>
+										case splitSecond :Opt[SplitSecond[zi, zl]] @unchecked if splitSecond.isDefined =>
 											val initResult     = (splitFirst.get._1 :XI sql_=> YI) andThen splitSecond.get._1
 											val lastResult     = (splitFirst.get._2 :XL sql_=> YL) andThen splitSecond.get._2
 											val combinedResult = splitSecond.get._3
@@ -326,13 +328,13 @@ object ChainSQL {
 	private val upcastListing = SQLConversion.supertype[Listing, Chain]
 	private val upcastAny     = SQLConversion.supertype[Any, Any]
 
-	trait SpecificChainVisitor[+F <: RowProduct, +S >: Grouped <: Single, X, +Y] extends SpecificEmptyVisitor[X, Y] {
+	trait SpecificChainVisitor[+F <: Clause, +S >: Grouped <: Single, X, +Y] extends SpecificEmptyVisitor[X, Y] {
 		def chain[I <: Chain, L](e :ChainSQL[F, S, I, L])(implicit isChain :X =:= (I ~ L)) :Y
 	}
 	//or should match extend CaseSpecificChainTuple?
-	type MatchSpecificChain[+F <: RowProduct, +S >: Grouped <: Single, X, +Y] = SpecificChainVisitor[F, S, X, Y]
+	type MatchSpecificChain[+F <: Clause, +S >: Grouped <: Single, X, +Y] = SpecificChainVisitor[F, S, X, Y]
 
-	trait CaseSpecificChain[+F <: RowProduct, +S >: Grouped <: Single, X, +Y]
+	trait CaseSpecificChain[+F <: Clause, +S >: Grouped <: Single, X, +Y]
 		extends MatchSpecificChain[F, S, X, Y] with CaseSpecificChainTuple[F, S, X, Y]
 	{
 		override def chainTuple[C <: Chain](e :ChainTuple[F, S, C])(implicit isChain :X =:= C) :Y =
@@ -343,21 +345,21 @@ object ChainSQL {
 	}
 //
 //
-//	trait ChainVisitor[+F <: RowProduct, +R[-s >: Grouped <: Single, v, -e <: SQLExpression[F, s, v]]] {
+//	trait ChainVisitor[+F <: Clause, +R[-s >: Grouped <: Single, v, -e <: SQLExpression[F, s, v]]] {
 //		def chain[S >: Grouped <: Single, I <: Chain, L](e :ChainSQL[F, S, I, L]) :R[S, I ~ L, ChainSQL[F, S, I, L]]
 //	}
-//	type MatchChain[+F <: RowProduct, +R[-s >: Grouped <: Single, v, -e <: SQLExpression[F, s, v]]] =
+//	type MatchChain[+F <: Clause, +R[-s >: Grouped <: Single, v, -e <: SQLExpression[F, s, v]]] =
 //		ChainVisitor[F, R]
-//	type CaseChain[+F <: RowProduct, +R[-s >: Grouped <: Single, v, -e <: SQLExpression[F, s, v]]] =
+//	type CaseChain[+F <: Clause, +R[-s >: Grouped <: Single, v, -e <: SQLExpression[F, s, v]]] =
 //		ChainVisitor[F, R] with ChainTuple.CaseChain[F, R] //extends a protected trait
 
-	trait AnyChainVisitor[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] extends AnyEmptyVisitor[Y] {
+	trait AnyChainVisitor[+F <: Clause, +Y[-_ >: Grouped <: Single, _]] extends AnyEmptyVisitor[Y] {
 		//todo: make a common mixin CaseAnyXxx with MatchAnyChainTuple
 		def chain[S >: Grouped <: Single, I <: Chain, L](e :ChainSQL[F, S, I, L]) :Y[S, I ~ L]
 	}
-	type MatchAnyChain[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] = AnyChainVisitor[F, Y]
+	type MatchAnyChain[+F <: Clause, +Y[-_ >: Grouped <: Single, _]] = AnyChainVisitor[F, Y]
 
-	trait CaseAnyChain[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]]
+	trait CaseAnyChain[+F <: Clause, +Y[-_ >: Grouped <: Single, _]]
 		extends MatchAnyChain[F, Y] with CaseAnyChainTuple[F, Y] //extends a protected trait
 	{
 //		override def emptyChain :Y[Single, @~] = empty
@@ -378,14 +380,14 @@ object ChainSQL {
   * to a [[net.noresttherein.oldsql.collection.Chain Chain]] subtype containing the member expressions.
   */ //todo: a conversion from tuples of SQLExpressions
 //todo: rename to TupleSQL
-sealed trait ChainTuple[-F <: RowProduct, -S >: Grouped <: Single, V <: Chain]
+sealed trait ChainTuple[-F <: Clause, -S >: Grouped <: Single, V <: Chain]
 	extends InlineSQL[F, S, V] //does not extend GroundingCompositeSQL because it causes clash with ChainSQL in ChainEntry
-//	   with VariantGroundingTemplate[F, S, V, ({ type E[-f <: RowProduct] = ChainTuple[f, S, V] })#E]
-	   with CompositeSQLTemplate[F, S, V, ({ type E[-f <: RowProduct] = ChainTuple[f, S, V] })#E]
-	   with VariantGroundingTemplate[F, S, V, ({ type E[-f <: RowProduct] = ChainTuple[f, S, V] })#E]
+//	   with VariantGroundingTemplate[F, S, V, ({ type E[-f <: Clause] = ChainTuple[f, S, V] })#E]
+	   with CompositeSQLTemplate[F, S, V, ({ type E[-f <: Clause] = ChainTuple[f, S, V] })#E]
+	   with VariantGroundingTemplate[F, S, V, ({ type E[-f <: Clause] = ChainTuple[f, S, V] })#E]
 //	   with ReorderingTemplate[F, S, V, ChainTuple[F, S, V]]
 {
-//	override type Item[-E <: RowProduct, -D >: Grouped <: Single, X] = InlineItem[E, D, X]
+//	override type Item[-E <: Clause, -D >: Grouped <: Single, X] = InlineItem[E, D, X]
 
 	/* These methods are implemented by casting here because in ChainEntry identifiers init and last
 	 * conflict between these methods and fields inherited from ChainSQL.
@@ -424,18 +426,18 @@ sealed trait ChainTuple[-F <: RowProduct, -S >: Grouped <: Single, V <: Chain]
 //	// but we need to override them here because CompositeSQL implements them.
 //	override def anchor(from :F) :ChainTuple[F, S, V] = rephrase(SQLScribe.anchor(from))
 //
-//	override def basedOn[U <: F, E <: RowProduct]
+//	override def basedOn[U <: F, E <: Clause]
 //	                    (base :E)(implicit expansion :U PartOf E) :ChainTuple[E, S, V] =
 //		rephrase(SQLScribe.expand(base))
 //
-//	override def expand[U <: F, E <: RowProduct]
+//	override def expand[U <: F, E <: Clause]
 //	                   (base :E)(implicit expansion :U ExpandedBy E, isSingle :Single <:< S) :ChainTuple[E, S, V] =
 //		rephrase(SQLScribe.expand(base))
 //
 //	//overriden to narrow down the result type
-//	override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :ChainTuple[E, S, V]
+//	override def rephrase[E <: Clause](mapper :SQLScribe[F, E]) :ChainTuple[E, S, V]
 
-	override def rebuild[E <: RowProduct, A >: Grouped <: Single]
+	override def rebuild[E <: Clause, A >: Grouped <: Single]
 	                    (items :({ type T[X] = Item[F, S, X] })#T =>: SQLExpression.from[E]#rows[A]#E)
 			:ChainTuple[E, A, V]
 
@@ -457,21 +459,21 @@ sealed trait ChainTuple[-F <: RowProduct, -S >: Grouped <: Single, V <: Chain]
 
 object ChainTuple {
 
-	def apply() :ChainTuple[RowProduct, Single, @~] = EmptySQL
+	def apply() :ChainTuple[Clause, Single, @~] = EmptySQL
 
-	def apply[F <: RowProduct, S >: Grouped <: Single, T](e :SQLExpression[F, S, T]) :ChainTuple[F, S, @~ ~ T] =
+	def apply[F <: Clause, S >: Grouped <: Single, T](e :SQLExpression[F, S, T]) :ChainTuple[F, S, @~ ~ T] =
 		new NonEmptyChainTuple(EmptySQL, e)
 
 //	/** [[net.noresttherein.oldsql.sql.ast.EmptySQL EmptySQL]] as an instance of `ChainTuple`. */
-//	val EmptyChain :ChainTuple[RowProduct, Single, @~] = EmptySQL
+//	val EmptyChain :ChainTuple[Clause, Single, @~] = EmptySQL
 
 
-	trait SpecificChainTupleVisitor[+F <: RowProduct, +S >: Grouped <: Single, X, +Y]
+	trait SpecificChainTupleVisitor[+F <: Clause, +S >: Grouped <: Single, X, +Y]
 //		extends SpecificEmptyVisitor[X, Y]
 	{
 		def chainTuple[C <: Chain](e :ChainTuple[F, S, C])(implicit isChain :X =:= C) :Y
 	}
-	trait MatchSpecificChainTuple[+F <: RowProduct, +S >: Grouped <: Single, X, +Y]
+	trait MatchSpecificChainTuple[+F <: Clause, +S >: Grouped <: Single, X, +Y]
 		extends SpecificChainTupleVisitor[F, S, X, Y]
 	{
 		def emptyChain(implicit ev :X =:= @~) :Y
@@ -485,14 +487,14 @@ object ChainTuple {
 				case _ => emptyChain(isChain.castParam2[@~])
 			}
 	}
-	type CaseSpecificChainTuple[+F <: RowProduct, +S >: Grouped <: Single, X, +Y] = SpecificChainTupleVisitor[F, S, X, Y]
+	type CaseSpecificChainTuple[+F <: Clause, +S >: Grouped <: Single, X, +Y] = SpecificChainTupleVisitor[F, S, X, Y]
 
 //
 //
-//	trait ChainTupleVisitor[+F <: RowProduct, +R[-S >: Grouped <: Single, V, -E <: SQLExpression[F, S, V]]] {
+//	trait ChainTupleVisitor[+F <: Clause, +R[-S >: Grouped <: Single, V, -E <: SQLExpression[F, S, V]]] {
 //		def chainTuple[S >: Grouped <: Single, V <: Chain](e :ChainTuple[F, S, V]) :R[S, V, ChainTuple[F, S, V]]
 //	}
-//	trait MatchChainTuple[+F <: RowProduct, +R[-S >: Grouped <: Single, V, -E <: SQLExpression[F, S, V]]]
+//	trait MatchChainTuple[+F <: Clause, +R[-S >: Grouped <: Single, V, -E <: SQLExpression[F, S, V]]]
 //		extends ChainTupleVisitor[F, R] with EmptyChainVisitor[R]
 //	{
 //		def chainItem[S >: Grouped <: Single, I <: Chain, L]
@@ -505,14 +507,14 @@ object ChainTuple {
 //				case _ => emptyChain
 //			}).asInstanceOf[R[S, V, ChainTuple[F, S, V]]]
 //	}
-//	type CaseChainTuple[+F <: RowProduct, +R[-S >: Grouped <: Single, V, -E <: SQLExpression[F, S, V]]] =
+//	type CaseChainTuple[+F <: Clause, +R[-S >: Grouped <: Single, V, -E <: SQLExpression[F, S, V]]] =
 //		ChainTupleVisitor[F, R]
 
 
-	trait AnyChainTupleVisitor[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] { //extends AnyEmptyVisitor[Y] {
+	trait AnyChainTupleVisitor[+F <: Clause, +Y[-_ >: Grouped <: Single, _]] { //extends AnyEmptyVisitor[Y] {
 		def chainTuple[S >: Grouped <: Single, X <: Chain](e :ChainTuple[F, S, X]) :Y[S, X]
 	}
-	trait MatchAnyChainTuple[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]]
+	trait MatchAnyChainTuple[+F <: Clause, +Y[-_ >: Grouped <: Single, _]]
 		extends AnyChainTupleVisitor[F, Y]
 	{
 		def emptyChain :Y[Single, @~]
@@ -527,28 +529,28 @@ object ChainTuple {
 	}
 	//Or we could extend MatchAnyChainTuple for uniformity. The result is however the same, including ChainSQL visitors,
 	// unless someone decides to mix in both MatchAnyChainTuple and CaseAnyChainTuple/CaseAnyChain
-	type CaseAnyChainTuple[+F <: RowProduct, +Y[-_ >: Grouped <: Single, _]] = AnyChainTupleVisitor[F, Y]
+	type CaseAnyChainTuple[+F <: Clause, +Y[-_ >: Grouped <: Single, _]] = AnyChainTupleVisitor[F, Y]
 }
 
 
 
 
 //Does not extend BinaryCompositeTemplate, so that reapply/rephrase can return ChainSQL for non ChainTuple arguments
-private final class NonEmptyChainTuple[-F <: RowProduct, -S >: Grouped <: Single, I <: Chain, L]
+private final class NonEmptyChainTuple[-F <: Clause, -S >: Grouped <: Single, I <: Chain, L]
                                       (override val init :ChainTuple[F, S, I], override val last :SQLExpression[F, S, L])
 	extends ChainSQL[F, S, I, L](init, last)
 	   with ChainTuple[F, S, I ~ L] with RowShapeCache
-	   with VariantGroundingTemplate[F, S, I ~ L, ({ type E[-f <: RowProduct] =
+	   with VariantGroundingTemplate[F, S, I ~ L, ({ type E[-f <: Clause] =
 	                                                         ChainSQL[f, S, I, L] with ChainTuple[f, S, I ~ L] })#E]
-//		   with BinaryCompositeTemplate[F, S, I, L, I ~ L, ({ type E[-f <: RowProduct, -s >: Grouped <: Single] =
+//		   with BinaryCompositeTemplate[F, S, I, L, I ~ L, ({ type E[-f <: Clause, -s >: Grouped <: Single] =
 //		                                                           ChainSQL[f, S, I, L] with ChainTuple[f, s, I ~ L] })]
-//		   with GroundingCompositeSQLTemplate[F, S, I ~ L, ({ type E[-f <: RowProduct] =
+//		   with GroundingCompositeSQLTemplate[F, S, I ~ L, ({ type E[-f <: Clause] =
 //		                                                         ChainSQL[f, S, I, L] with ChainTuple[f, S, I ~ L] })#E]
-//		   with SpecificBinaryCompositeSQL[F, S, I, ({ type E[-f <: RowProduct] = ChainTuple[f, S, I] })#E,
-//		                                         L, ({ type E[-f <: RowProduct] = SQLExpression[f, S, L] })#E,
-//		                                         I ~ L, ({ type E[-f <: RowProduct] = ChainEntry[f, S, I, L] })#E]
+//		   with SpecificBinaryCompositeSQL[F, S, I, ({ type E[-f <: Clause] = ChainTuple[f, S, I] })#E,
+//		                                         L, ({ type E[-f <: Clause] = SQLExpression[f, S, L] })#E,
+//		                                         I ~ L, ({ type E[-f <: Clause] = ChainEntry[f, S, I, L] })#E]
 {
-	override type Item[-E <: RowProduct, -D >: Grouped <: Single, X] = InlineItem[E, D, X]
+	override type Item[-E <: Clause, -D >: Grouped <: Single, X] = InlineItem[E, D, X]
 
 	override def size         :Int = item.index + 1
 	val item = InlineItem(init.size, last)
@@ -577,7 +579,7 @@ private final class NonEmptyChainTuple[-F <: RowProduct, -S >: Grouped <: Single
 	override def construct(items :({ type T[X] = InlineItem[F, S, X] })#T =>: generic.Self) :I ~ L =
 		init.construct(items) ~ items(item)
 
-	override def rebuild[E <: RowProduct, A >: Grouped <: Single]
+	override def rebuild[E <: Clause, A >: Grouped <: Single]
                         (items :({ type T[X] = Item[F, S, X] })#T =>: SQLExpression.from[E]#rows[A]#E)
 			:ChainTuple[E, A, I ~ L] =
 		init.rebuild(items) ~ items(item)
@@ -617,10 +619,10 @@ private final class NonEmptyChainTuple[-F <: RowProduct, -S >: Grouped <: Single
 			case (i, l) => new NonEmptyChainTuple(i, l)
 		}
 
-	override def basedOn[U <: F, E <: RowProduct](base :E)(implicit expansion :U PartOf E) :NonEmptyChainTuple[E, S, I, L] =
+	override def basedOn[U <: F, E <: Clause](base :E)(implicit expansion :U PartOf E) :NonEmptyChainTuple[E, S, I, L] =
 		new NonEmptyChainTuple(init.basedOn(base), last.basedOn(base))
 
-	override def expand[U <: F, E <: RowProduct]
+	override def expand[U <: F, E <: Clause]
 	                   (base :E)(implicit expansion :U ExpandedBy E, isSingle :Single <:< S) :NonEmptyChainTuple[E, S, I, L] =
 		new NonEmptyChainTuple(init.expand(base), last.expand(base))
 
@@ -630,10 +632,10 @@ private final class NonEmptyChainTuple[-F <: RowProduct, -S >: Grouped <: Single
 	 * it will built another tuple. Lets call it a feature. The override is necessary because the return type
 	 * is different in ChainSQL and ChainTuple
 	 */
-	override def rephrase[E <: RowProduct](mapper :SQLScribe[F, E]) :NonEmptyChainTuple[E, S, I, L] =
+	override def rephrase[E <: Clause](mapper :SQLScribe[F, E]) :NonEmptyChainTuple[E, S, I, L] =
 		new NonEmptyChainTuple(init.rephrase(mapper), mapper(last))
 
-	protected override def reapply[E <: RowProduct, C >: Grouped <: Single]
+	protected override def reapply[E <: Clause, C >: Grouped <: Single]
 	                              (left :SQLExpression[E, C, I], right :SQLExpression[E, C, L]) :ChainSQL[E, C, I, L] =
 		left match {
 			case tuple :ChainTuple[E, C, I] => new NonEmptyChainTuple(tuple, right)
@@ -663,29 +665,29 @@ private final class NonEmptyChainTuple[-F <: RowProduct, -S >: Grouped <: Single
 sealed abstract class EmptySQL
 	extends NativeTerm[@~]("")
 	   with UnsealedEmptyIndexedSQL
-	   with ChainTuple[RowProduct, Single, @~]
-	   with CompositeSQLTemplate[RowProduct, Single, @~, ({ type E[-f <: RowProduct] = EmptySQL })#E]
-	   with VariantGroundingTemplate[RowProduct, Single, @~, ({ type E[-f <: RowProduct] = EmptySQL })#E]
-	   with ReorderingTemplate[RowProduct, Single, @~, EmptySQL]
+	   with ChainTuple[Clause, Single, @~]
+	   with CompositeSQLTemplate[Clause, Single, @~, ({ type E[-f <: Clause] = EmptySQL })#E]
+	   with VariantGroundingTemplate[Clause, Single, @~, ({ type E[-f <: Clause] = EmptySQL })#E]
+	   with ReorderingTemplate[Clause, Single, @~, EmptySQL]
 {
 	override type LastKey   = Nothing
 	override type LastValue = Nothing
-	override type LabeledItem[-F <: RowProduct, -S >: Grouped <: Single, N <: Label, V] = Nothing
+	override type LabeledItem[-F <: Clause, -S >: Grouped <: Single, N <: Label, V] = Nothing
 	protected override def parts :Seq[Nothing] = PassedArray.empty
 	override def toSeq   :Seq[Nothing] = PassedArray.empty
 	override def inOrder :Seq[Nothing] = PassedArray.empty
 	override def items   :IndexedSeq[Nothing] = PassedArray.empty
 	override def keys    :IndexedSeq[Label] = PassedArray.empty
 	override def paths   :Seq[LabelPath[_]] = PassedArray.empty
-	override def index   :Map[LabelPath[_], LabeledValueSQL[RowProduct, Single, _]] = Map.empty
-	override def columns :Map[LabelPath[_], LabeledColumnSQL[RowProduct, Single, _ <: Label, _]] = Map.empty
-	override def toMap   :Map[String, LabeledValueSQL[RowProduct, Single, _]] = Map.empty
+	override def index   :Map[LabelPath[_], LabeledValueSQL[Clause, Single, _]] = Map.empty
+	override def columns :Map[LabelPath[_], LabeledColumnSQL[Clause, Single, _ <: Label, _]] = Map.empty
+	override def toMap   :Map[String, LabeledValueSQL[Clause, Single, _]] = Map.empty
 	override def size    = 0
 
 	override def lastItem(implicit notEmpty :SplitRecord[@~]) :Nothing =
 		throw new NoSuchElementException("EmptySQL.lastItem: do not cheat the type system!")
 
-	override def extracts[E <: RowProduct, A >: Grouped <: Single]
+	override def extracts[E <: Clause, A >: Grouped <: Single]
 			:Seq[Assoc[SQLExpression.from[E]#rows[A]#E, Extractor.from[@~]#to, _]] =
 		PassedArray.empty
 
@@ -695,33 +697,33 @@ sealed abstract class EmptySQL
 	override def isGround    = true
 	override def asGround    :Option[this.type] = asSingleRow
 	override def isAnchored  = true
-	override def isAnchored(from :RowProduct) = true
-	override def anchor(from :RowProduct) :this.type = this
+	override def isAnchored(from :Clause) = true
+	override def anchor(from :Clause) :this.type = this
 
 	override def apply[K <: Label](key :K)(implicit get :RecordField[@~, K]) =
 		throw new UnsupportedOperationException("EmptySQL does not have elements: " + key + ".")
 
-	override def basedOn[U <: RowProduct, E <: RowProduct](base :E)(implicit expansion :U PartOf E) :EmptySQL = this
+	override def basedOn[U <: Clause, E <: Clause](base :E)(implicit expansion :U PartOf E) :EmptySQL = this
 
-	override def expand[U <: RowProduct, E <: RowProduct]
+	override def expand[U <: Clause, E <: Clause]
 	                   (base :E)(implicit expansion :U ExpandedBy E, isSingle :Single <:< Single) :EmptySQL = this
 
-	override def rephrase[E <: RowProduct](mapper :SQLScribe[RowProduct, E]) :EmptySQL = this
+	override def rephrase[E <: Clause](mapper :SQLScribe[Clause, E]) :EmptySQL = this
 
 	//IndexedSQL methods
 
-	override def construct(items :({ type T[X] = Item[RowProduct, Single, X] })#T =>: generic.Self): @~ = @~
-	override def rebuild[E <: RowProduct, A >: Grouped <: Single]
-	                    (items :({type T[X] = Item[RowProduct, Single, X]})#T =>: SQLExpression.from[E]#rows[A]#E)
+	override def construct(items :({ type T[X] = Item[Clause, Single, X] })#T =>: generic.Self): @~ = @~
+	override def rebuild[E <: Clause, A >: Grouped <: Single]
+	                    (items :({type T[X] = Item[Clause, Single, X]})#T =>: SQLExpression.from[E]#rows[A]#E)
 			:EmptySQL =
 		this
 
-	private[sql] override def rephraseAsLabeledValue[E <: RowProduct](mapper :SQLScribe[RowProduct, E]) = this
+	private[sql] override def rephraseAsLabeledValue[E <: Clause](mapper :SQLScribe[Clause, E]) = this
 
-	override def nullSQL   :IndexedSQL[RowProduct, Single, @~] = this
+	override def nullSQL   :IndexedSQL[Clause, Single, @~] = this
 	override def nullValue : Opt[@~] = Got(@~)
 
-	override def reorder(permutation :IndexedSeq[Int]) :SQLExpression[RowProduct, Single, @~] =
+	override def reorder(permutation :IndexedSeq[Int]) :SQLExpression[Clause, Single, @~] =
 		if (permutation.isEmpty)
 			this
 		else
@@ -729,22 +731,22 @@ sealed abstract class EmptySQL
 				"Cannot reorder an empty record to a non-empty permutation: " + permutation + "."
 			)
 
-	override def reorder(keys :Unique[String]) :SQLExpression[RowProduct, Single, @~] =
+	override def reorder(keys :Unique[String]) :SQLExpression[Clause, Single, @~] =
 		if (keys.isEmpty)
 			this
 		else
 			throw new IllegalArgumentException(
 				"Cannot reorder an empty record to a non-empty key order: " + keys + "."
 			)
-	override def reorder(paths :Seq[LabelPath[_]]) :SQLExpression[RowProduct, Single, @~] =
+	override def reorder(paths :Seq[LabelPath[_]]) :SQLExpression[Clause, Single, @~] =
 		if (paths.isEmpty)
 			this
 		else
 			throw new IllegalArgumentException("Attempted to reorder an empty record to " + paths + ".")
 
-	override def project(paths :Seq[LabelPath[_]]) :SQLExpression[RowProduct, Single, @~] = reorder(paths)
+	override def project(paths :Seq[LabelPath[_]]) :SQLExpression[Clause, Single, @~] = reorder(paths)
 
-	override def reform[E <: RowProduct, A >: Grouped <: Single]
+	override def reform[E <: Clause, A >: Grouped <: Single]
 	                   (paths :Seq[(LabelPath[_], LabeledValueSQL[E, A, _])]) :SQLExpression[E, A, @~] =
 	{
 		def reformed(suffixes :Seq[(List[String], LabeledValueSQL[E, A, _])])
@@ -757,7 +759,7 @@ sealed abstract class EmptySQL
 							"Cannot project an empty record to " + paths + " because the paths are not grouped by leading keys."
 						)
 						lastIndex.updated(key, i)
-			}
+			} : @nowarn
 			val keyOrder = lastIndices.toIndexedSeq.sortBy(_._2).map(_._1)
 			val fields = suffixes.groupBy(_._1.head)//.view.mapValues { case (path, expr) => (path.tail, expr) }
 
@@ -811,7 +813,7 @@ sealed abstract class EmptySQL
 
 	protected override def potentialColumnsCount(implicit spelling :SQLSpelling) :Int = 0
 
-	protected override def split(implicit spelling :SQLSpelling) :Seq[ColumnSQL[RowProduct, Single, _]] =
+	protected override def split(implicit spelling :SQLSpelling) :Seq[ColumnSQL[Clause, Single, _]] =
 		PassedArray.empty
 
 	protected override def shape(implicit spelling :SQLSpelling) :RowShape = RowShape()
@@ -819,25 +821,25 @@ sealed abstract class EmptySQL
 	protected override def columnCount(implicit spelling :SQLSpelling) :Int = 0
 
 	protected override def defaultSpelling[P]
-	                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+	                       (from :Clause, context :SQLContext[P], params :Parameterization[P, Clause])
 	                       (implicit spelling :SQLSpelling) :SpelledSQL[P] =
 		SpelledSQL(context)
 
 	protected override def explodedSpelling[P]
 	                       (independent :Boolean)
-	                       (from :RowProduct, context :SQLContext[P], params :Parameterization[P, RowProduct])
+	                       (from :Clause, context :SQLContext[P], params :Parameterization[P, Clause])
 	                       (implicit spelling :SQLSpelling) :Seq[SpelledSQL[P]] =
 		PassedArray.empty
 
 
-//		private[ast] trait EmptyChainVisitor[+R[-S >: Grouped <: Single, V, -E <: SQLExpression[RowProduct, S, V]]] {
-//			def emptyChain :R[Single, @~, ChainTuple[RowProduct, Single, @~]]
+//		private[ast] trait EmptyChainVisitor[+R[-S >: Grouped <: Single, V, -E <: SQLExpression[Clause, S, V]]] {
+//			def emptyChain :R[Single, @~, ChainTuple[Clause, Single, @~]]
 //		}
 
-	protected override def visit[Y[-_ >: Grouped <: Single, _]](visitor :AnyExpressionVisitor[RowProduct, Y]) :Y[Single, @~] =
+	protected override def visit[Y[-_ >: Grouped <: Single, _]](visitor :AnyExpressionVisitor[Clause, Y]) :Y[Single, @~] =
 		visitor.empty
 
-	protected override def visit[Y](visitor :SpecificExpressionVisitor[RowProduct, Single, @~, Y]) :Y =
+	protected override def visit[Y](visitor :SpecificExpressionVisitor[Clause, Single, @~, Y]) :Y =
 		visitor.empty
 
 }

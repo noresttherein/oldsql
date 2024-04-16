@@ -12,12 +12,13 @@ import net.noresttherein.oldsql.exceptions.NoSuchComponentException
 import net.noresttherein.oldsql.haul.ComponentValues
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.morsels.generic.=>:
-import net.noresttherein.oldsql.schema.{filterColumnExtracts, Buffs, ColumnExtract, ColumnForm, ColumnMapping, SpecificExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buffs, ColumnExtract, ColumnForm, ColumnMapping, GenericExtract, Mapping, MappingExtract, SQLReadForm, SQLWriteForm, SpecificExtract, SpecificMapping, filterColumnExtracts}
 import net.noresttherein.oldsql.schema.ColumnMapping.{StableColumn, TypedColumn}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, MappingOf, MappingTemplate, TypedMapping}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
+import net.noresttherein.oldsql.schema.bases.StableMapping.StableMappingTemplate
 import net.noresttherein.oldsql.schema.bases.{ExportMapping, StableMapping}
-import net.noresttherein.oldsql.schema.support.DelegateMapping.{ShallowDelegate, WrapperDelegate}
+import net.noresttherein.oldsql.schema.support.DelegateMapping.{ShallowDelegate, ShallowDelegateTemplate, WrapperDelegate, WrapperDelegateTemplate}
 
 //implicits:
 import net.noresttherein.oldsql.slang._
@@ -67,6 +68,42 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy]]
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.WrapperProxy]]
 	  */
+	trait ShallowProxyTemplate[+Comp[T, Q] <: TypedMapping[T, Q], +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q], S, O]
+		extends MappingProxy[S, O]
+		   with ShallowDelegateTemplate[Comp[S, O] with MappingTemplate[Comp, Col], Comp, Col, S, O]
+	{ this :Comp[S, O] =>
+		override def assemble(pieces :Pieces) :Opt[S] = {
+			val res = pieces.preset(backer)
+			if (res.isDefined) res else backer.assemble(pieces)
+		}
+
+		override def extracts :NaturalMap[Component, like[Comp]#Extract] = backer.extracts
+//			backer.extracts.updated[like[Comp]#Extract, S](backer, backer(backer))
+
+		override def columnExtracts :NaturalMap[Column, like[Col]#Extract] = backer.columnExtracts
+
+		override def apply[T](component :Component[T]) :SpecificExtract[Comp[T, O], S, T, O] =
+			(if (component eq this)
+				 selfExtract
+			 else
+				 backer(component)
+			).asInstanceOf[SpecificExtract[Comp[T, O], S, T, O]]
+
+		override def apply[T](column :Column[T]) :SpecificExtract[Col[T, O], S, T, O] =
+			(if (column eq backer)
+				 SpecificExtract.ident(backer)
+			 else
+				 backer(column)
+			).asInstanceOf[SpecificExtract[Col[T, O], S, T, O]]
+
+		override def original :Component[S] = backer.original
+
+		override def toString :String = "->" + backer
+	}
+
+	type ShallowProxy[S, O] = ShallowProxyTemplate[TypedMapping, TypedColumn, S, O]
+
+/*
 	trait ShallowProxy[S, O]
 		extends MappingProxy[S, O] with ShallowDelegate[S, O] with DelegateMapping[TypedMapping[S, O], S, O]
 	{
@@ -100,7 +137,7 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 
 		override def toString :String = "->" + backer
 	}
-
+*/
 
 
 	/** A skeleton of a mapping proxy which has its `backer` mapping as its only direct component
@@ -111,9 +148,14 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * its [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] method.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy]]
 	  */
-	trait WrapperProxy[S, O] extends ShallowProxy[S, O] with WrapperDelegate[S, O] {
+	trait WrapperProxyTemplate[+Comp[T, Q] <: TypedMapping[T, Q], +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q], S, O]
+		extends ShallowProxyTemplate[Comp, Col, S, O] with WrapperDelegateTemplate[Comp, Col, S, O]
+	{ this :Comp[S, O] =>
 		override def assemble(pieces :Pieces) :Opt[S] = pieces.get(backer)
+		override def extracts :NaturalMap[Component, like[Comp]#Extract] =
+			backer.extracts.updated[like[Comp]#Extract, S](backer, backer(backer))
 	}
+	type WrapperProxy[S, O] = WrapperProxyTemplate[TypedMapping, TypedColumn, S, O]
 
 
 
@@ -204,11 +246,52 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * [[net.noresttherein.oldsql.schema.support.MappingProxy.ShallowProxy ShallowProxy]], in particular
 	  * it delegates its [[net.noresttherein.oldsql.schema.Mapping.assemble assemble]] method to `backer`,
 	  * ignoring its [[net.noresttherein.oldsql.schema.Mapping.optionally optionally]] method.
-	  * However, unless overriden, the buffs on this instance are exactly the buffs of the adapted mapping.
+	  * However, unless overridden, the buffs on this instance are exactly the buffs of the adapted mapping.
 	  * As the result, the buffs are processed exactly once for the assembled value.
 	  * @see [[net.noresttherein.oldsql.schema.support.MappingProxy.DirectProxy]]
 	  */
-	trait ExportProxy[S, O]
+	trait ExportProxyTemplate[+Comp[T, Q] <: TypedMapping[T, Q], +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q], S, O]
+		extends MappingProxy[S, O]
+		   with ShallowDelegateTemplate[TypedMapping[S, O] with MappingTemplate[Comp, Col], Comp, Col, S, O]
+	{ this :Comp[S, O] =>
+		override def assemble(pieces :Pieces) :Opt[S] = backer.assemble(pieces)
+
+		override def extracts :NaturalMap[Component, like[Comp]#Extract] =
+			backer.extracts.updated[like[Comp]#Extract, S](backer, SpecificExtract.ident(this :Comp[S, O]))
+
+		override def columnExtracts :NaturalMap[Column, like[Col]#Extract] = backer.columnExtracts
+
+		override def original :TypedMapping[S, O] = backer.original
+
+		override def apply[T](component :Component[T]) :SpecificExtract[Comp[T, O], S, T, O] =
+			(if (component eq backer)
+				MappingExtract.ident(this)
+			else
+				backer(component)
+			).asInstanceOf[SpecificExtract[Comp[T, O], S, T, O]]
+
+		override def apply[T](column :Column[T]) :SpecificExtract[Col[T, O], S, T, O] = backer(column)
+
+		override def export[T](component :Component[T]) :Comp[T, O] =
+			if ((component eq backer) | (component eq this)) this.asInstanceOf[Comp[T, O]]
+			else backer.export(component)
+
+		override def exportOrNot[T](component :Component[T]) :Component[T] =
+			if ((component eq backer) | (component eq this)) this.asInstanceOf[Component[T]]
+			else backer.exportOrNot(component)
+
+		override def unexport[X](component :Component[X]) :Component[X] =
+			if (component eq this) backer.asInstanceOf[Component[X]]
+			else component
+
+		override def uniIsomorphic(that :Mapping) :Boolean = backer isomorphic that
+		override def uniHomomorphic(that :Mapping) :Boolean = backer homomorphic that
+
+		override def toString :String = "^" + backer + "^"
+	}
+
+	type ExportProxy[S, O] = ExportProxyTemplate[TypedMapping, TypedColumn, S, O]
+/*	trait ExportProxy[S, O]
 		extends MappingProxy[S, O] with ShallowDelegate[S, O] with DelegateMapping[TypedMapping[S, O], S, O]
 	{
 		override def assemble(pieces :Pieces) :Opt[S] = backer.assemble(pieces)
@@ -246,6 +329,8 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 
 		override def toString :String = "^" + backer + "^"
 	}
+*/
+
 
 
 
@@ -283,6 +368,26 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 
 
 
+	trait DeepProxyTemplate[+Comp[T, Q] <: TypedMapping[T, Q], +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q], S, O]
+		extends MappingProxy[S, O] with MappingTemplate[Comp, Col]
+	{   //Fixme: no Comp[S, O] self type, required by MappingTemplate.refine
+		/** A hook method left for subclasses to implement adapting of a component of the adapted mapping
+		  * to its 'export' form under this mapping. All component lists of this instance contain
+		  * components of `backer` (and `backer` itself) mapped with this method.
+		  * @param component an 'export', non-column component of `backer`.
+		  */
+		protected def adapt[T](component :backer.Component[T]) :Comp[T, O]
+
+		/** A hook method left for subclasses to implement adapting of a column of the adapted mapping
+		  * to its 'export' form under this mapping. All column lists of this instance contain
+		  * columns mapped with this method.
+		  * @param column an 'export' column of `backer`.
+		  */
+		protected def adapt[T](column :backer.Column[T]) :Col[T, O] //= adapt(component)
+
+		/** The 'export' version of the adapted `backer` itself. Defaults to `this`. */
+		protected def adaptBacker :Comp[S, O]
+	}
 
 
 	/** The bulk of implementation
@@ -295,13 +400,18 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * This class is an implementation artifact and should not be used directly by client code.
 	  */
 	private[MappingProxy] sealed abstract
-	class AbstractDeepProxy[+Comp[T, Q] <: TypedMapping[T, Q], +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q], S, O]
-	                      (protected override val backer :MappingOf[S],
-		                  /** Temporary (non-field) constructor parameter which becomes `extracts`
-		                    * property in the mapping process. *///starts empty
-		                   adapters :mutable.Map[Mapping, TypedMapping[S, O]#like[Comp]#Extract[_]])
-		extends MappingProxy[S, O] with MappingTemplate[Comp, Col]
-	{ self :Comp[S, O] =>
+	class AbstractEagerDeepProxy[+Comp[T, Q] <: TypedMapping[T, Q], +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q], S, O]
+	                            (protected override val backer :MappingOf[S],
+		                         /** Temporary (non-field) constructor parameter which becomes `extracts`
+		                           * property in the mapping process. *///starts empty
+		                         adapters :mutable.Map[Mapping, GenericExtract[Comp, S, _, O]],
+		                         /** Mapping from (''export'') components of this instance back to their `export`
+		                           * components of `backer`; every entry exists in the reversed form in `extracts`. */
+		                         originals :mutable.Map[MappingAt[O], Mapping])
+		extends DeepProxyTemplate[Comp, Col, S, O] //with MappingTemplate[Comp, Col]
+	{ //this :Comp[S, O] =>
+		def this(backer :MappingOf[S]) = this(backer, mutable.Map.empty, mutable.Map.empty)
+
 		/** Method called from the `DeepProxy` constructor before any component lists are initialized. */
 		protected def preInit(): Unit = ()
 
@@ -391,27 +501,10 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		}
 
 		private[this] def adaptExport[T](component :backer.Component[T]) :Comp[T, O] = component match {
-			case _ if component eq backer => adaptedBacker.asInstanceOf[Comp[T, O]]
+			case _ if component eq backer => selfExtract.export.asInstanceOf[Comp[T, O]]
 			case column :ColumnMapping => adapt(column.asInstanceOf[backer.Column[T]])
 			case _ => adapt(component)
 		}
-
-		/** A hook method left for subclasses to implement adapting of a component of the adapted mapping
-		  * to its 'export' form under this mapping. All component lists of this instance contain
-		  * components of `backer` (and `backer` itself) mapped with this method.
-		  * @param component an 'export', non-column component of `backer`.
-		  */
-		protected def adapt[T](component :backer.Component[T]) :Comp[T, O]
-
-		/** A hook method left for subclasses to implement adapting of a column of the adapted mapping
-		  * to its 'export' form under this mapping. All column lists of this instance contain
-		  * columns mapped with this method.
-		  * @param column an 'export' column of `backer`.
-		  */
-		protected def adapt[T](column :backer.Column[T]) :Col[T, O] //= adapt(component)
-
-		/** The 'export' version of the adapted `backer` itself. Defaults to `this`. */
-		protected def adaptBacker :Comp[S, O] = this
 
 		override def uniHomomorphic(that :Mapping) :Boolean = backer.homomorphic(that)
 
@@ -419,28 +512,18 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	}
 
 
-
-	/** The generic version of [[net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy DeepProxy]],
-	  * with all components conforming to the type parameter `Comp[_, O]` and all columns to `Col[_, O]`.
-	  *///make it a trait in Scala 3
-	abstract class DeepProxyTemplate[+Comp[T, Q] <: TypedMapping[T, Q],
-	                                 +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q], S, O] private
-	                                (protected override val backer :TypedMapping[S, O],
-	                                 exports :mutable.Map[Mapping, TypedMapping[S, O]#like[Comp]#Extract[_]])
-		extends AbstractDeepProxy[Comp, Col, S, O](backer, exports)
-	{ this :Comp[S, O] =>
-		//a private constructor with a mutable map ensures that extract entries can be created as method side effects,
-		//without the map becoming an instance field - it is used only in initialization of the 'extracts' properties
-		def this(backer :TypedMapping[S, O]) = this(backer, mutable.Map.empty)
-
+	abstract class EagerDeepProxy[+Comp[T, Q] <: TypedMapping[T, Q], +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q], S, O]
+	                             (protected override val backer :TypedMapping[S, O])
+		extends AbstractEagerDeepProxy[Comp, Col, S, O](backer) with StableMappingTemplate[Comp, Col]
+	{ //self :Comp[S, O] =>
 		override def assemble(pieces :Pieces) :Opt[S] = backer.assemble(pieces)
-
 		override def original :TypedMapping[S, O] = backer.original
+//		override def adaptBacker :Comp[S, O] = this
 
 		protected[MappingProxy] override def initExtractMap[E[X] >: like[Comp]#Extract[X] <: Extract[X]]
 		                                     (exports :mutable.Map[Mapping, E[_]]) :NaturalMap[Component, E] =
 		{
-			exports.put(this, SpecificExtract.ident(this))
+			exports.put(backer, exports(this))
 			NaturalMap.from[Component, E](
 				exports.view.map { case (comp, extract) =>
 					Assoc[Component, E, Any](
@@ -449,6 +532,60 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 				}
 			)
 		}
+		releaseFence()
+	}
+
+
+	/** The generic version of [[net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxy DeepProxy]],
+	  * with all components conforming to the type parameter `Comp[_, O]` and all columns to `Col[_, O]`.
+	  *///make it a trait in Scala 3
+	abstract class LazyDeepProxy[+Comp[T, Q] <: TypedMapping[T, Q],
+	                             +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q], S, O]
+	                            (mapping :TypedMapping[S, O])
+		extends ExportProxyTemplate[Comp, Col, S, O] with DeepProxyTemplate[Comp, Col, S, O]
+//		extends EagerDeepProxy[Comp, Col, S, O](backer, exports)
+	{ this :Comp[S, O] =>
+		protected class BackerMapping
+			extends EagerDeepProxy[Comp, Col, S, O](mapping) with StableMappingTemplate[Comp, Col]
+		{
+			protected override def adapt[T](component :mapping.Component[T]) :Comp[T, O] =
+				LazyDeepProxy.this.adapt(component)
+
+			protected override def adapt[T](column :mapping.Column[T]) :Col[T, O] =
+				LazyDeepProxy.this.adapt(column)
+
+			protected override def adaptBacker :Comp[S, O] = LazyDeepProxy.this.adaptBacker
+		}
+		protected override lazy val backer :TypedMapping[S, O] with MappingTemplate[Comp, Col] = new BackerMapping
+
+		override def assemble(pieces :Pieces) :Opt[S] = mapping.assemble(pieces)
+
+		protected override def adaptBacker :Comp[S, O] = this
+
+		override def mappingName :String = backer.mappingName
+
+		override def toString :String = backer.toString
+
+		//a private constructor with a mutable map ensures that extract entries can be created as method side effects,
+		//without the map becoming an instance field - it is used only in initialization of the 'extracts' properties
+//		def this(backer :TypedMapping[S, O]) = this(backer, mutable.Map.empty)
+//
+//		override def assemble(pieces :Pieces) :Opt[S] = backer.assemble(pieces)
+//
+//		override def original :TypedMapping[S, O] = backer.original
+//
+//		protected[MappingProxy] override def initExtractMap[E[X] >: like[Comp]#Extract[X] <: Extract[X]]
+//		                                     (exports :mutable.Map[Mapping, E[_]]) :NaturalMap[Component, E] =
+//		{
+//			exports.put(this, SpecificExtract.ident(this))
+//			NaturalMap.from[Component, E](
+//				exports.view.map { case (comp, extract) =>
+//					Assoc[Component, E, Any](
+//						comp.asInstanceOf[Component[Any]], extract.asInstanceOf[E[Any]]
+//					)
+//				}
+//			)
+//		}
 	}
 
 	/** A `DeepProxy` implementation which eagerly initializes all column and component lists and creates
@@ -466,11 +603,12 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * methods will always return a value for any component of `backer`.
 	  *
 	  * The buffs of this proxy are exactly the same as those on the adapted
-	  * mapping, but the latter are ignored during assembly. This property can be safely overriden.
+	  * mapping, but the latter are ignored during assembly. This property can be safely overridden.
 	  * This adapter is not suitable for columns.
 	  */
-	abstract class DeepProxy[S, O](protected override val backer :TypedMapping[S, O])
-		extends DeepProxyTemplate[TypedMapping, TypedColumn, S, O](backer) with StableMapping
+//	type DeepProxy[S, O] = DeepProxyTemplate[TypedMapping, TypedColumn, S, O]
+	abstract class DeepProxy[S, O](mapping :TypedMapping[S, O])
+		extends LazyDeepProxy[TypedMapping, TypedColumn, S, O](mapping)
 
 
 
@@ -483,13 +621,13 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 	  * `Map`, which is used to perform an extra level of aliasing of
 	  * [[net.noresttherein.oldsql.haul.ComponentValues ComponentValues]] before passing them to `backer` for assembly.
 	  * Handling of buffs on the proxied component is skipped and buffs on this instance are empty, meaning the
-	  * component will receive no special treatment, unless the latter property is overriden by subclasses.
+	  * component will receive no special treatment, unless the latter property is overridden by subclasses.
 	  * This is to protect against `backer` instance being used as another component of of the same root mapping,
 	  * in particular in foreign key scenarios.
 	  */
 	abstract class OpaqueProxy[S, O] private (protected override val backer :MappingOf[S],
 	                                          substitutes :mutable.Map[Mapping, MappingExtract[S, _, O]])
-		extends AbstractDeepProxy[TypedMapping, TypedColumn, S, O](backer, substitutes)
+		extends AbstractEagerDeepProxy[TypedMapping, TypedColumn, S, O](backer, substitutes, mutable.Map.empty)
 		   with StableMapping with ExportMapping
 	{
 		//a private constructor with a mutable map ensures that extract entries can be created as method side effects,
@@ -501,11 +639,11 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 
 		override def buffs :Buffs[S] = Buffs.empty[S]
 
-		private[this] val aliases = NaturalMap[Component, Extract](
-			substitutes.view.map { case (comp, extract) =>
-				Assoc(comp.asInstanceOf[Component[Any]], extract.asInstanceOf[Extract[Any]])
-			}.toSeq  :_*
-		)
+		private[this] val aliases =
+			substitutes.iterator.foldLeft(NaturalMap.empty[Component, Extract]) {
+				case (map, (comp, extract)) =>
+					map.updated(comp.asInstanceOf[Component[Any]], extract.asInstanceOf[Extract[Any]])
+			}
 
 		protected def alias[T](component :backer.Component[T]) :Component[T] =
 			aliases(component.asInstanceOf[Component[T]]).export
@@ -513,15 +651,17 @@ object MappingProxy { //todo: revise writtenValues methods to be consistent with
 		protected def alias[T](column :backer.Column[T]) :Column[T] =
 			aliases(column.asInstanceOf[Column[T]]).export.asInstanceOf[Column[T]]
 
+		protected override def adaptBacker :TypedMapping[S, O] = this
+
 		protected[MappingProxy] override def initExtractMap[E[X] >: Extract[X] <: Extract[X]]
 		                                     (exports :mutable.Map[Mapping, E[_]]) :NaturalMap[Component, E] =
-			NaturalMap.from[Component, E](
-				exports.view.map { entry => //will contain an extract for this because substitutes contains backer->this
-					def export[T](extract :MappingExtract[S, T, O]) =
-						Assoc[Component, E, T](extract.export, extract) //put only export as entry._1 can't leak
-					export(entry._2 :MappingExtract[S, _, O])
-				}
-			)
+		{
+			def export[T](extracts :NaturalMap[Component, E], extract :E[T]) :NaturalMap[Component, E] =
+				extracts.updated(extract.export, extract)
+			exports.iterator.foldLeft(NaturalMap.empty[Component, E]) {
+				case (acc, (_, extract)) => export(acc, extract)
+			}
+		}
 
 		override def toString :String = "//" + backer
 	}

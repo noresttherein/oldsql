@@ -372,24 +372,25 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	  * and buffs defined in it and any other enclosing components into the adapted component.
 	  * Its export components are at the same time the export components of the enclosing mapping.
 	  */
-	private class ExportedComponent[T](override val backer :Component[T], override val componentSelector :Sealed[S =?> T],
+	private class ExportedComponent[T](mapping :Component[T],
+	                                   override val componentSelector :Sealed[S =?> T],
 	                                   override val columnPrefix :String, override val renameColumn :String => String,
 	                                   override val buffs :Buffs[T])
-		extends DeepProxy[T, O](backer) with FrameComponent[T]
+		extends DeepProxy[T, O](mapping) with FrameComponent[T]
 	{
 		protected[MappingFrame] override def init()(implicit seal :Seal) :MappingExtract[S, T, O] =
 			frame.synchronized {
 				initSubcomponents += this
-				initExtracts.getOrElse[frame.Extract, T](backer, extractFor(this))
+				initExtracts.getOrElse[frame.Extract, T](mapping, extractFor(this))
 			}
 
 		protected override def adapt[X](component :backer.Component[X]) :Component[X] = //exportSubcomponent(component)
-			exportExtract(component, backer(component)).export
+			exportExtract(component, this.mapping(component)).export
 
 		protected override def adapt[X](column :backer.Column[X]) :Column[X] =
-			exportExtract(column, backer(column)).export
+			exportExtract(column, this.mapping(column)).export
 
-		override def toString :String = "^" + backer + "^"
+//		override def toString :String = "^" + backer + "^"
 	}
 
 
@@ -582,10 +583,10 @@ trait MappingFrame[S, O] extends StaticMapping[S, O] with RelatedMapping[S, O] {
 	/** An adapter of an independent component, allowing changing of its column names and buffs.
 	  * Used by `component` factory methods.
 	  */
-	private class EmbeddedComponent[T](override val backer :Component[T], override val componentSelector :Sealed[S =?> T],
+	private class EmbeddedComponent[T](mapping :Component[T], override val componentSelector :Sealed[S =?> T],
 	                                   override val columnPrefix :String, override val renameColumn :String => String,
 	                                   override val buffs :Buffs[T])
-		extends BuffedMapping[TypedMapping[T, O], T, O](backer, buffs) with FrameComponent[T]
+		extends BuffedMapping[T, O](mapping, buffs) with FrameComponent[T]
 	{
 		def this(component :Component[T], selector :S =?> T, rename :String => String, buffs :Buffs[T]) =
 			this(component, selector, "", rename, buffs)

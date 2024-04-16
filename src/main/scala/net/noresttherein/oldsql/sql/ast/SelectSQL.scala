@@ -913,8 +913,8 @@ object SelectSQL {
 
 		override def selectOther[X](e :SQLExpression[S, Grouped, X]) :SubselectSQL[F, X] =
 			if (e eq this.selectClause) this.castFrom[SubselectSQL[F, R], SubselectSQL[F, X]]
-			else if (isDistinct) (e subselectFrom[F] from).distinct
-			else e subselectFrom[F] from
+			else if (isDistinct) e.subselectFrom[F](from).distinct
+			else e.subselectFrom[F](from)
 
 		override def anchor(from :F) :SubselectAs[F, H] =
 			if (this.from.outer == from)
@@ -982,8 +982,8 @@ object SelectSQL {
 			if (isDistinct) this else new SubselectComponentColumn(from, selectClause, true)
 
 		override def selectOther[X](e :ColumnSQL[S, Grouped, X]) :SubselectColumn[F, X] =
-			if (isDistinct) (e subselectFrom[F] from).distinct
-			else e subselectFrom[F] from
+			if (isDistinct) e.subselectFrom[F](from).distinct
+			else e.subselectFrom[F](from)
 
 		override def anchor(from :F) :SubselectColumnAs[F, H, V] =
 			if (this.from.outer == from)
@@ -1092,8 +1092,8 @@ object SelectSQL {
 
 		override def selectOther[X](e :SQLExpression[S, Grouped, X]) :SubselectSQL[F, X] =
 			if (e eq this.selectClause) this.castFrom[SubselectSQL[F, R], SubselectSQL[F, X]]
-			else if (isDistinct) (e subselectFrom[F] from).distinct
-			else e subselectFrom[F] from
+			else if (isDistinct) e.subselectFrom[F](from).distinct
+			else e.subselectFrom[F](from)
 
 		override def anchor(from :F) :SubselectSQL[F, R] =
 			if (this.from.outer == from)
@@ -1161,12 +1161,12 @@ object SelectSQL {
 
 		override def selectOther[X](e :SQLExpression[S, Grouped, X]) :SubselectSQL[F, X] =
 			if (e eq this.selectClause) this.castFrom[SubselectSQL[F, R], SubselectSQL[F, X]]
-			else if (isDistinct) (e subselectFrom[F] from).distinct
-			else e subselectFrom[F] from
+			else if (isDistinct) e.subselectFrom[F](from).distinct
+			else e.subselectFrom[F](from)
 
 		override def selectOther[X](e :ColumnSQL[S, Grouped, X]) :SubselectColumn[F, X] =
-			if (isDistinct) (e subselectFrom[F] from).distinct
-			else e subselectFrom[F] from
+			if (isDistinct) e.subselectFrom[F](from).distinct
+			else e.subselectFrom[F](from)
 
 		override def anchor(from :F) :SubselectColumn[F, R] =
 			if (this.from.outer == from)
@@ -1228,8 +1228,8 @@ object SelectSQL {
 
 		override def selectOther[X](e :SQLExpression[S, Grouped, X]) :SubselectSQL[F, X] =
 			if (e eq this.selectClause) this.castFrom[SubselectSQL[F, R], SubselectSQL[F, X]]
-			else if (isDistinct) (e subselectFrom[F] from).distinct
-			else e subselectFrom[F] from
+			else if (isDistinct) e.subselectFrom[F](from).distinct
+			else e.subselectFrom[F](from)
 
 		override def anchor(from :F) :SubselectAs[F, IndexedMapping.of[R]#Mapping] =
 			if (this.from.outer == from)
@@ -1299,12 +1299,12 @@ object SelectSQL {
 
 		override def selectOther[X](e :SQLExpression[S, Grouped, X]) :SubselectSQL[F, X] =
 			if (e eq this.selectClause) this.castFrom[SubselectSQL[F, R], SubselectSQL[F, X]]
-			else if (isDistinct) (e subselectFrom[F] from).distinct
-			else e subselectFrom[F] from
+			else if (isDistinct) e.subselectFrom[F](from).distinct
+			else e.subselectFrom[F](from)
 
 		override def selectOther[X](e :ColumnSQL[S, Grouped, X]) :SubselectColumn[F, X] =
-			if (isDistinct) (e subselectFrom[F] from).distinct
-			else e subselectFrom[F] from
+			if (isDistinct) e.subselectFrom[F](from).distinct
+			else e.subselectFrom[F](from)
 
 		override def anchor(from :F) :SubselectColumnAs[F, IndexedMapping.of[R]#Column, R] =
 			if (this.from.outer == from)

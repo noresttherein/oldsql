@@ -37,12 +37,11 @@ import net.noresttherein.oldsql.schema.support.PatchedMapping.{overrides, Overri
   * @see [[net.noresttherein.oldsql.OperationView]]
   * @author Marcin Mościcki
   */
-class PatchedMapping[+M <: TypedMapping[S, O], S, O]
-                    (protected override val backer :M,
-                     substitutions :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Component])
-	extends DeepProxy[S, O](backer) with DelegateMapping[M, S, O]
+class PatchedMapping[S, O](mapping :TypedMapping[S, O],
+                           substitutions :NaturalMap[MappingAt[O]#Component, MappingAt[O]#Component])
+	extends DeepProxy[S, O](mapping)
 {
-	def this(original :M, op :OperationView,
+	def this(original :TypedMapping[S, O], op :OperationView,
 	         includes :Iterable[TypedMapping[_, O]], excludes :Iterable[TypedMapping[_, O]]) =
 		this(original, overrides(original, op, includes, excludes))
 
@@ -57,8 +56,10 @@ class PatchedMapping[+M <: TypedMapping[S, O], S, O]
 			)
 	}
 
-	protected override def adapt[T](component :backer.Component[T]) :Component[T] =
-		substitutions.getOrElse(component, component)
+	protected override def adapt[T](component :backer.Component[T]) :Component[T] = {
+		val res = substitutions.getOrElse(component :Component[T], null :Component[T])
+		if (res eq null) component else res
+	}
 
 	protected override def adapt[T](column :backer.Column[T]) :Column[T] =
 		substitutions.getOrElse(column, column).asInstanceOf[Column[T]]
@@ -102,7 +103,7 @@ class PatchedMapping[+M <: TypedMapping[S, O], S, O]
 	//as the Overrides would be created with the assumption they are overriding the components from backer, not this
 	//we'd need for this a mechanic of contradicting and disabling buffs
 
-	override def mappingName :String = "Patched(" + backer.mappingName + ")"
+	override def mappingName :String = "Patched(" + mapping.mappingName + ")"
 }
 
 
@@ -202,16 +203,18 @@ object PatchedMapping {
 	@inline def Overrides[S, O](component :TypedMapping[S, O], substitute :TypedMapping[S, O]) :Overrides[O] =
 		NaturalMap.single[MappingAt[O]#Component, MappingAt[O]#Component, S](component, substitute)
 
+	def apply[M <: TypedMapping[S, O], S, O](mapping :M, substitutions :Overrides[O]) :Adapted[M] =
+		new PatchedMapping[S, O](mapping, substitutions)
+			with AbstractDelegateAdapter[M, S, O] with MappingDecorator[M, S, O]
+		{
+			override val body = mapping
+		}
 
-	def apply[M <: TypedMapping[S, O], S, O](original :M, substitutions :Overrides[O]) :Adapted[M] =
-		new PatchedMapping[M, S, O](original, substitutions)
-			with DelegateAdapter[M, S, O] with MappingDecorator[M, S, O]
-
-	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
+	/** Create an adapter to `mapping`, with the same underlying columns and component structure, but with changes
 	  * to effective buffs on the chosen components. The goal is for all components on the `include` list to
 	  * be included in operation `op`, while all columns on the `exclude` list to be excluded.
-	  * @param original a mapping (any in theory, but in practice the 'root' mapping for some table).
-	  * @param op       a type of database operation (`SelectView`, `InsertView`, etc).
+	  * @param mapping a mapping (any in theory, but in practice the 'root' mapping for some table).
+	  * @param op      a type of database operation (`SelectView`, `InsertView`, etc).
 	  * @param include a collection of components of `original`, which must not have
 	  *                the [[net.noresttherein.oldsql.OperationView.Prohibited op.Prohibited]] buff (in any form).
 	  * @param exclude a collection of components of `original`, with each item having
@@ -224,11 +227,23 @@ object PatchedMapping {
 	@throws[IllegalArgumentException]("if a mapping with NoXxx buff is present on the include list, " +
 	                                  "or a mapping without OptionalXxx buff is present on the exclude list.")
 	def apply[M <: TypedMapping[S, O], S, O]
-	         (op :OperationView, original :M,
+	         (op :OperationView, mapping :M,
 	          include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil) :Adapted[M] =
-		PatchedMapping[M, S, O](original, overrides(original, op, include, exclude))
+		PatchedMapping[M, S, O](mapping, overrides(mapping, op, include, exclude))
 
-	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
+	@throws[IllegalArgumentException]("if a mapping with NoXxx buff is present on the include list, " +
+	                                  "or a mapping without OptionalXxx buff is present on the exclude list.")
+	def apply[M <: MappingAt[O], S, O]
+	         (op :OperationView, mapping :MappingAdapter[M, S, O],
+	          include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]]) :MappingAdapter[M, S, O] =
+		new PatchedMapping[S, O](mapping, overrides(mapping, op, include, exclude))
+			with AbstractDelegateAdapter[M, S, O]
+		{
+			override val body = mapping.body
+		}
+
+	//consider: removing these and using simply apply everywhere
+	/** Create an adapter to `mapping`, with the same underlying columns and component structure, but with changes
 	  * to effective buffs on the chosen components. The intent is to modify the default column set used in SQL
 	  * ''select'' clauses to include components on the `include` list and exclude all the components on the `exclude`
 	  * list. This is done by dropping all [[net.noresttherein.oldsql.schema.Buff.NoSelectByDefault NoSelectByDefault]]
@@ -243,7 +258,7 @@ object PatchedMapping {
 	  * have lower precedence than buff declarations on subcomponents. This means that certain portions of
 	  * the component tree may be not affected by this operation - if inherited buffs would conflict with those
 	  * declared on a column/component, include also that subcomponent.
-	  * @param original a mapping (any in theory, but in practice the 'root mapping for some table).
+	  * @param mapping  a mapping (any in theory, but in practice the 'root mapping for some table).
 	  * @param include  a collection of components of `original`, which must not have
 	  *                 [[net.noresttherein.oldsql.schema.Buff.NoSelect NoSelect]] buff. The buff can be present
 	  *                 however on their subcomponents, which will be simply unaffected by the change.
@@ -263,11 +278,11 @@ object PatchedMapping {
 	@throws[IllegalArgumentException]("if a mapping with NoSelect buff is present on the include list, " +
 	                                  "or a mapping without OptionalSelect buff is present on the exclude list.")
 	def select[M <: TypedMapping[S, O], S, O]
-	          (original :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
+	          (mapping :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
               (implicit inferS :InferTypeParams[M, M, TypedMapping[S, O]]) :Adapted[M] =
-		apply[M, S, O](SelectView, original, include, exclude)
+		apply[M, S, O](SelectView, mapping, include, exclude)
 
-	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
+	/** Create an adapter to `mapping`, with the same underlying columns and component structure, but with changes
 	  * to effective buffs on the chosen components. The intent is to modify the default column set used in SQL
 	  * ''where'' clause to include components on the `include` list and exclude all the components on the `exclude`
 	  * list. This is done by dropping all [[net.noresttherein.oldsql.schema.Buff.NoFilterByDefault NoFilterByDefault]]
@@ -282,7 +297,7 @@ object PatchedMapping {
 	  * have lower precedence than buff declarations on subcomponents. This means that certain portions of
 	  * the component tree may be not affected by this operation - if inherited buffs would conflict with those
 	  * declared on a column/component, include also that subcomponent.
-	  * @param original a mapping (any in theory, but in practice the 'root mapping for some table).
+	  * @param mapping  a mapping (any in theory, but in practice the 'root mapping for some table).
 	  * @param include  a collection of components of `original`, which must not have
 	  *                 [[net.noresttherein.oldsql.schema.Buff.NoFilter NoFilter]] buff. The buff can be present
 	  *                 however on their subcomponents, which will be simply unaffected by the change.
@@ -303,11 +318,11 @@ object PatchedMapping {
 	@throws[IllegalArgumentException]("if a mapping with NoFilter buff is present on the include list, " +
 		                              "or a mapping without OptionalFilter buff is present on the exclude list.")
 	def filter[M <: TypedMapping[S, O], S, O]
-	          (original :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
+	          (mapping :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
 	          (implicit inferS :InferTypeParams[M, M, TypedMapping[S, O]]) :Adapted[M] =
-		apply[M, S, O](FilterView, original, include, exclude)
+		apply[M, S, O](FilterView, mapping, include, exclude)
 
-	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
+	/** Create an adapter to `mapping`, with the same underlying columns and component structure, but with changes
 	  * to effective buffs on the chosen components. The intent is to modify the default column set used in SQL
 	  * ''Insert'' statements to include components on the `include` list and exclude all the components on the `exclude`
 	  * list. This is done by dropping all [[net.noresttherein.oldsql.schema.Buff.NoInsertByDefault NoInsertByDefault]]
@@ -322,7 +337,7 @@ object PatchedMapping {
 	  * have lower precedence than buff declarations on subcomponents. This means that certain portions of
 	  * the component tree may be not affected by this operation - if inherited buffs would conflict with those
 	  * declared on a column/component, include also that subcomponent.
-	  * @param original a mapping (any in theory, but in practice the 'root mapping for some table).
+	  * @param mapping  a mapping (any in theory, but in practice the 'root mapping for some table).
 	  * @param include  a collection of components of `original`, which must not have
 	  *                 [[net.noresttherein.oldsql.schema.Buff.NoInsert NoInsert]] buff. The buff can be present
 	  *                 however on their subcomponents, which will be simply unaffected by the change.
@@ -342,11 +357,11 @@ object PatchedMapping {
 	@throws[IllegalArgumentException]("if a mapping with NoInsert buff is present on the include list, " +
 	                                  "or a mapping without OptionalInsert buff is present on the exclude list.")
 	def insert[M <: TypedMapping[S, O], S, O]
-	          (original :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
+	          (mapping :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
               (implicit inferS :InferTypeParams[M, M, TypedMapping[S, O]]) :Adapted[M] =
-		apply[M, S, O](InsertView, original, include, exclude)
+		apply[M, S, O](InsertView, mapping, include, exclude)
 
-	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
+	/** Create an adapter to `mapping`, with the same underlying columns and component structure, but with changes
 	  * to effective buffs on the chosen components. The intent is to modify the default column set used in SQL
 	  * ''update'' statements to include components on the `include` list and exclude all the components on the `exclude`
 	  * list. This is done by dropping all [[net.noresttherein.oldsql.schema.Buff.NoUpdateByDefault NoUpdateByDefault]]
@@ -361,7 +376,7 @@ object PatchedMapping {
 	  * have lower precedence than buff declarations on subcomponents. This means that certain portions of
 	  * the component tree may be not affected by this operation - if inherited buffs would conflict with those
 	  * declared on a column/component, include also that subcomponent.
-	  * @param original a mapping (any in theory, but in practice the 'root mapping for some table).
+	  * @param mapping  a mapping (any in theory, but in practice the 'root mapping for some table).
 	  * @param include  a collection of components of `original`, which must not have
 	  *                 [[net.noresttherein.oldsql.schema.Buff.NoUpdate NoUpdate]] buff. The buff can be present
 	  *                 however on their subcomponents, which will be simply unaffected by the change.
@@ -381,9 +396,9 @@ object PatchedMapping {
 	@throws[IllegalArgumentException]("if a mapping with NoUpdate buff is present on the include list, " +
 	                                  "or a mapping without OptionalUpdate buff is present on the exclude list.")
 	def update[M <: TypedMapping[S, O], S, O]
-	          (original :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
+	          (mapping :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]] = Nil)
               (implicit inferS :InferTypeParams[M, M, TypedMapping[S, O]]) :Adapted[M] =
-		apply[M, S, O](UpdateView, original, include, exclude)
+		apply[M, S, O](UpdateView, mapping, include, exclude)
 
 
 
@@ -427,22 +442,22 @@ object PatchedMapping {
 
 
 	private[schema] def overrides[S, O]
-	                    (original :TypedMapping[S, O], op :OperationView,
+	                    (mapping :TypedMapping[S, O], op :OperationView,
 	                     includes :Iterable[TypedMapping[_, O]], excludes :Iterable[TypedMapping[_, O]])
 			:Overrides[O] =
-		overrides(original, includes, excludes, op.Prohibited, op.NonDefault, op.Exclude, op.Optional)
+		overrides(mapping, includes, excludes, op.Prohibited, op.NonDefault, op.Exclude, op.Optional)
 
 
 	private[schema] def overrides[S, O]
-	                    (original :TypedMapping[S, O],
+	                    (mapping :TypedMapping[S, O],
 	                     includes :Iterable[TypedMapping[_, O]], excludes :Iterable[TypedMapping[_, O]],
 	                     prohibited :BuffType, nonDefault :BuffType, exclude :FlagBuffType, optional :BuffType)
 			:Overrides[O] =
 	{
-		val excludeExports = excludes.view.map(original.export(_)).to(ArraySeq)
-		val includeExports = includes.view.map(original.export(_)).filterNot(annulled(excludes)(_)).to(ArraySeq)
-		val included = this.include(original, includeExports, prohibited, optional, nonDefault)
-		val excluded = this.exclude(original, excludeExports, nonDefault, exclude, optional)
+		val excludeExports = excludes.view.map(mapping.export(_)).to(ArraySeq)
+		val includeExports = includes.view.map(mapping.export(_)).filterNot(annulled(excludes)(_)).to(ArraySeq)
+		val included = this.include(mapping, includeExports, prohibited, optional, nonDefault)
+		val excluded = this.exclude(mapping, excludeExports, nonDefault, exclude, optional)
 		included ++ excluded
 	}
 
@@ -580,31 +595,32 @@ object PatchedMapping {
   *                 all operation types.
   * @see [[net.noresttherein.oldsql.schema.Mapping.ComponentSelection]]
   */ //consider: renaming to MappingView
-class AlteredMapping[+M <: TypedMapping[S, O], S, O] private
-                    (mapping :M, val includes :Unique[TypedMapping[_, O]], val excludes :Unique[TypedMapping[_, O]],
-                     substitutions :Overrides[O])
-	extends PatchedMapping[M, S, O](mapping, substitutions)
+class AlteredMapping[S, O] private (mapping :TypedMapping[S, O], val includes :Unique[TypedMapping[_, O]],
+                                    val excludes :Unique[TypedMapping[_, O]], substitutions :Overrides[O])
+	extends PatchedMapping[S, O](mapping, substitutions)
 {
 	/** The `includes` and `excludes` arguments must contain only export components of `mapping`. */
-	private[oldsql] def this(mapping :M)(includes :Unique[TypedMapping[_, O]], excludes :Unique[TypedMapping[_, O]]) =
+	private[oldsql] def this(mapping :TypedMapping[S, O])
+	                        (includes :Unique[TypedMapping[_, O]], excludes :Unique[TypedMapping[_, O]]) =
 		this(mapping, includes, excludes, AlteredMapping.overrides(mapping, includes, excludes))
 
-	private def this(mapping :M, includes :Iterable[TypedMapping[_, O]])(excludes :Unique[TypedMapping[_, O]]) =
+	private def this(mapping :TypedMapping[S, O], includes :Iterable[TypedMapping[_, O]])
+	                (excludes :Unique[TypedMapping[_, O]]) =
 		this(mapping)(includes.view.map(mapping.export(_)).filterNot(annulled(excludes)(_)).to(Unique), excludes)
 
 //	private def this(mapping :M, selection :(Unique[TypedMapping[_, O]], Unique[TypedMapping[_, O]])) =
 //		this(mapping)(selection._1, selection._2)
 
-	def this(mapping :M, includes :Iterable[TypedMapping[_, O]], excludes :Iterable[TypedMapping[_, O]]) =
+	def this(mapping :TypedMapping[S, O], includes :Iterable[TypedMapping[_, O]], excludes :Iterable[TypedMapping[_, O]]) =
 		this(mapping, includes)(excludes.view.map(mapping.export(_)).to(Unique))
 
-	def this(mapping :M, adjustments :Iterable[ComponentSelection[_, O]]) =
+	def this(mapping :TypedMapping[S, O], adjustments :Iterable[ComponentSelection[_, O]]) =
 		this(mapping, AlteredMapping.includes(mapping, adjustments))(AlteredMapping.excludes(mapping, adjustments))
 
 	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :TypedMapping[S, O] =
 		//we can't use AlteredMapping.stack because the collections may contain already changed components
-		new AlteredMapping[TypedMapping[S, O], S, O](this, include, exclude) {
-			private[this] val target = AlteredMapping.this.backer
+		new AlteredMapping[S, O](this, include, exclude) {
+			private[this] val target = AlteredMapping.this.mapping
 			override def assemble(pieces :Pieces) :Opt[S] = target.assemble(pieces)
 		}
 
@@ -662,7 +678,7 @@ object AlteredMapping {
 		AlteredMapping[M, S, O](original, includes, excludes)
 	}
 
-	/** Create an adapter to mapping `original`, with the same column set and component structure, but with changes
+	/** Create an adapter to `mapping`, with the same underlying columns and component structure, but with changes
 	  * to effective buffs on the chosen components. The intent is to modify the default column set used in all SQL
 	  * operations to include components on the `include` list and exclude all the components on the `exclude`
 	  * list, where existing buffs allow it. This is done by replacing all
@@ -679,7 +695,7 @@ object AlteredMapping {
 	  * have lower precedence than buff declarations on subcomponents. This means that certain portions of
 	  * the component tree may be not affected by this operation - if inherited buffs would conflict with those
 	  * declared on a column/component, specify also that subcomponent.
-	  * @param original a mapping (any in theory, but in practice the 'root mapping for some table).
+	  * @param mapping  a mapping (any in theory, but in practice the 'root mapping for some table).
 	  * @param include  a collection of components of `original`. It may include any components, with those
 	  *                 already included or with all `NoXxx` buffs being unaffected.
 	  * @param exclude  a collection of components of `original`. It may include any components, including those
@@ -691,10 +707,20 @@ object AlteredMapping {
 	  *         but have any `OptionalXxx` receive matching ones.
 	  */
 	def apply[M <: TypedMapping[S, O], S, O]
-	         (original :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]])
+	         (mapping :M, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]])
 			:Adapted[M] =
-		new AlteredMapping[M, S, O](original, include, exclude)
-			with DelegateAdapter[M, S, O] with MappingDecorator[M, S, O] with AlteredMappingTemplate[M, S, O]
+		new AlteredMapping[S, O](mapping, include, exclude)
+			with AbstractDelegateAdapter[M, S, O] with MappingDecorator[M, S, O] with AlteredMappingTemplate[M, S, O]
+		{
+			override val body = mapping
+		}
+
+	def apply[M <: MappingAt[O], S, O](adapter :MappingAdapter[M, S, O],
+	                                   include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]])
+			:MappingAdapter[M, S, O] =
+		new AlteredMapping[S, O](adapter, include, exclude) with AbstractDelegateAdapter[M, S, O] {
+			override val body = adapter.body
+		}
 
 
 
@@ -761,30 +787,30 @@ object AlteredMapping {
 		adjustments.view.collect { case ExcludedComponent(c) => mapping.export(c) }.to(Unique)
 
 
-	private[schema] def overrides[S, O](original :TypedMapping[S, O], adjustments :Iterable[ComponentSelection[_, O]])
+	private[schema] def overrides[S, O](mapping :TypedMapping[S, O], adjustments :Iterable[ComponentSelection[_, O]])
 			:Overrides[O] =
 	{
-		val includes = this.includes(original, adjustments)
-		val excludes = this.excludes(original, adjustments)
-		overrides(original, includes, excludes)
+		val includes = this.includes(mapping, adjustments)
+		val excludes = this.excludes(mapping, adjustments)
+		overrides(mapping, includes, excludes)
 	}
 
 	private[schema] def overrides[S, O]
-	                    (original :TypedMapping[S, O],
+	                    (mapping :TypedMapping[S, O],
 	                     includes :Iterable[TypedMapping[_, O]], excludes :Iterable[TypedMapping[_, O]])
 			:Overrides[O] =
 	{
-		val excludeExports = excludes.view.map(original.export(_)).to(Unique)
-		val includeExports = includes.view.map(original.export(_)).filterNot(annulled(excludeExports)(_)).to(Unique)
-		overrides(original, includeExports, excludeExports)
+		val excludeExports = excludes.view.map(mapping.export(_)).to(Unique)
+		val includeExports = includes.view.map(mapping.export(_)).filterNot(annulled(excludeExports)(_)).to(Unique)
+		overrides(mapping, includeExports, excludeExports)
 	}
 
-	private def overrides[S, O](original :TypedMapping[S, O],
+	private def overrides[S, O](mapping :TypedMapping[S, O],
 	                            includes :Unique[TypedMapping[_, O]], excludes :Unique[TypedMapping[_, O]])
 			:Overrides[O] =
 	{
-		val included = include(original, includes)
-		val excluded = exclude(original, excludes)
+		val included = include(mapping, includes)
+		val excluded = exclude(mapping, excludes)
 		//Any buff with 'exclude' changes will replace its counterpart with 'include' changes, but the nature
 		// of excluding is such that it effectively annuls the include changes, so the effect is the same.
 		included ++ excluded
@@ -866,22 +892,27 @@ object AlteredMapping {
 	  * which delegates directly to this instance's backer, rather than this instance.
 	  */
 	trait AlteredMappingTemplate[+M <: TypedMapping[S, O], S, O]
-		extends AlteredMapping[TypedMapping[S, O], S, O] with AbstractDelegateAdapter[M, S, O]
+		extends AlteredMapping[S, O] with AbstractDelegateAdapter[M, S, O]
 	{
-		override def assemble(pieces :Pieces) :Opt[S] = backer.assemble(pieces)
+		override def assemble(pieces :Pieces) :Opt[S] = body.assemble(pieces)
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :MappingAdapter[M, S, O] =
-			new AlteredMapping[MappingAdapter[M, S, O], S, O](this, include, exclude)
-				with ComposedAdapter[M, S, S, O] with MappingDecorator[M, S, O] with AlteredMappingTemplate[M, S, O]
+			new ComposedAlteredMapping[M, S, O](this, include, exclude)
+//			new AlteredMapping[MappingAdapter[M, S, O], S, O](this, include, exclude)
+//				with MappingDecorator[M, S, O] with AlteredMappingTemplate[M, S, O]
+//			{
+//				override val body = AlteredMappingTemplate.this.body
+//			}
 	}
 
 
 	private[schema] class ComposedAlteredMapping[+M <: TypedMapping[S, O], S, O]
 	                      (mapping :MappingAdapter[M, S, O],
 	                       includes :Iterable[TypedMapping[_, O]], excludes :Iterable[TypedMapping[_, O]])
-		extends AlteredMapping[MappingAdapter[M, S, O], S, O](mapping, includes, excludes)
-		   with ComposedAdapter[M, S, S, O] with MappingDecorator[M, S, O]
+		extends AlteredMapping[S, O](mapping, includes, excludes)
+		   with MappingDecorator[M, S, O] with AbstractDelegateAdapter[M, S, O]
 	{
+		override val body = mapping.body
 		override def assemble(pieces :Pieces) :Opt[S] = body.assemble(pieces)
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :MappingAdapter[M, S, O] =

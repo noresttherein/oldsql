@@ -626,10 +626,10 @@ object TypedSQLMapping {
 //			}
 
 			override def decorated[C >: Grouped <: Single, V](e :DecoratedSQL[F, C, V]) :Extractors[C, V] =
-				apply(e.value)
+				this(e.value)
 
 			override def adapted[C >: Grouped <: Single, T, U](e :AdaptedSQL[F, C, T, U]) = {
-				val extracts = apply(e.value)
+				val extracts = this(e.value)
 				val extractor =
 					if (e.transformation.isReversible) Extractor.req(e.transformation.inverse)
 					else Extractor(e.transformation.unapply(_ :U))
@@ -642,20 +642,20 @@ object TypedSQLMapping {
 
 			override def selectId[C >: Grouped <: Single, V](e :SelectIdSQL[F, C, V]) :Extractors[S, V] = {
 				val idColumn = TypedColumnSQLMapping[F, S, String, O](e.idColumn, nameFor(e.idColumn), Buffs.empty)
-				Assoc[ExpressionColumn, Extractor.from[V]#to, String](idColumn, Extractor.none) +: apply(e.selectClause)
+				Assoc[ExpressionColumn, Extractor.from[V]#to, String](idColumn, Extractor.none) +: this(e.selectClause)
 			}
 
 			override def inline[C >: Grouped <: Single, T](e :InlineSQL[F, C, T]) :Extractors[C, T] =
 				e.extracts.flatMap { entry :Assoc[SQLExpression.from[F]#rows[C]#E, Extractor.from[T]#to, _] =>
 					def map[A](entry :Assoc[SQLExpression.from[F]#rows[C]#E, Extractor.from[T]#to, A]) :Extractors[C, T] =
-						apply(entry._1).map(composeColumnExtractAssoc(entry._2)(_))
+						this(entry._1).map(composeColumnExtractAssoc(entry._2)(_))
 					map(entry)
 				} //to Seq.iterableFactory
 
 			//this is not a tuple!
 			override def chain[C >: Grouped <: Single, I <: Chain, L](e :ChainSQL[F, C, I, L]) =
-				(apply(e.init).view.map(composeColumnExtractAssoc(Chain.init[I] :(I ~L) => I)(_)) :++
-					apply(e.last).view.map(composeColumnExtractAssoc(Chain.last[L] :(I ~ L) => L)(_))
+				(this(e.init).view.map(composeColumnExtractAssoc(Chain.init[I] :(I ~L) => I)(_)) :++
+					this(e.last).view.map(composeColumnExtractAssoc(Chain.last[L] :(I ~ L) => L)(_))
 				) to PassedArray.iterableFactory
 
 
@@ -681,7 +681,7 @@ object TypedSQLMapping {
 			override def expression[C >: Grouped <: Single, T](e :SQLExpression[F, C, T]) =
 				try { //fixme: this can cause discrepancies with spelling
 					StandardSQL.spelling.in(view.spellingScope).split(e).flatMap { col =>
-						apply(col).view.map(composeColumnExtractAssoc(Extractor.none :T =?> Nothing)(_))
+						this(col).view.map(composeColumnExtractAssoc(Extractor.none :T =?> Nothing)(_))
 					}
 				} catch {
 					case e :InseparableExpressionException =>
@@ -915,19 +915,19 @@ object TypedSQLMapping {
 
 
 			override def adapted[C >: Grouped <: Single, T, U](e :AdaptedSQL[F, C, T, U]) = {
-				val base = apply(e.value) //important to have this as a constant
+				val base = this(e.value) //important to have this as a constant
 				pieces => base(pieces).map(e.transformation)
 			}
 
 			override def decorated[C >: Grouped <: Single, V](e :DecoratedSQL[F, C, V]) :Assembler[C, V] = {
-				val base = apply(e.value)
+				val base = this(e.value)
 				pieces => base(pieces)
 			}
 
 
 			override def selectId[C >: Grouped <: Single, V](e :SelectIdSQL[F, C, V]) :Assembler[C, V] = {
 				columnStack = columnStack.tail
-				apply(e.selectClause)
+				this(e.selectClause)
 			}
 
 			//in Scala 3, it would be good to provide direct, faster implementation for proper tuple types
@@ -935,7 +935,7 @@ object TypedSQLMapping {
 				val getters = e.items.view.map { item :e.Item[F, C, _] =>
 					def assembler[V](item :e.Item[F, C, V]) =
 						Assoc[({ type T[A] = e.Item[F, C, A] })#T, ({ type T[A] = Pieces => Option[A] })#T, V](
-							item, apply(item.value)
+							item, this(item.value)
 						)
 					assembler(item)
 				} to NaturalMap
@@ -953,8 +953,8 @@ object TypedSQLMapping {
 			}
 			//not a tuple!
 			override def chain[C >: Grouped <: Single, I <: Chain, L](e :ChainSQL[F, C, I, L]) = {
-				val init = apply(e.init)
-				val last = apply(e.last)
+				val init = this(e.init)
+				val last = this(e.last)
 				pieces :Pieces => for (i <- init(pieces); l <- last(pieces)) yield i ~ l
 			}
 
@@ -1248,7 +1248,7 @@ object TypedListingSQLMapping {
 			override def indexedItem[C >: Grouped <: Single, I <: Listing, K <: Label, L]
 			             (e :IndexedSQL[F, C, I |~ (K :~ L)]) :Assembler[C, I |~ (K :~ L)] =
 			{
-				val tl = apply(e.init)
+				val tl = this(e.init)
 				val hd = subexpressions(e.lastItem)
 				pieces => for (t <- tl(pieces); h <- pieces.get(hd)) yield t |~ :~[K](h)
 			}
@@ -1268,7 +1268,7 @@ object TypedListingSQLMapping {
 			override def indexedItem[C >: Grouped <: Single, I <: Listing, K <: Label, L]
 			             (e :IndexedSQL[F, C, I |~ (K :~ L)]) =
 			{
-				val extracts = apply(e.init).map(_ compose Chain.init[I] _) :Extracts[C, I |~ (K :~ L)]
+				val extracts = this (e.init).map(_ compose Chain.init[I] _) :Extracts[C, I |~ (K :~ L)]
 				val last = subexpressions(e.lastItem).asInstanceOf[TypedListingSQLMapping[F, C, L, O]]
 				val extract = SpecificExtract.req(last) {
 					(_ :(I |~ (K :~ L))).last.value

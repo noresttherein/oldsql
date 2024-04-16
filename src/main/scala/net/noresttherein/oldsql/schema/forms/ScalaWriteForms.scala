@@ -181,72 +181,81 @@ trait ScalaWriteForms {
 
 	//implicit conversions from tuples of forms
 	
-	implicit def toTuple2WriteForm[A, B](t :(SQLWriteForm[A], SQLWriteForm[B])) = 
+	implicit def toTuple2WriteForm[A, B](t :(SQLWriteForm[A], SQLWriteForm[B])) :Tuple2WriteForm[A, B] =
 		new Tuple2WriteForm(t._1, t._2)
 	
-	implicit def toTuple3WriteForm[A, B, C](t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C])) =
+	implicit def toTuple3WriteForm[A, B, C](t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C]))
+			:Tuple3WriteForm[A, B, C] =
 		new Tuple3WriteForm(t._1, t._2, t._3)
 
-	implicit def toTuple4WriteForm[A, B, C, D](t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D])) =
+	implicit def toTuple4WriteForm[A, B, C, D](t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D]))
+			:Tuple4WriteForm[A, B, C, D] =
 		new Tuple4WriteForm(t._1, t._2, t._3, t._4)
 	
 	implicit def toTuple5WriteForm[A, B, C, D, E]
-	                         (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E])) =
+	                         (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E]))
+			:Tuple5WriteForm[A, B, C, D, E] =
 		new Tuple5WriteForm(t._1, t._2, t._3, t._4, t._5)
 	
 	implicit def toTuple6WriteForm[A, B, C, D, E, F]
 	                         (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
-	                              SQLWriteForm[F])) =
+	                              SQLWriteForm[F])) :Tuple6WriteForm[A, B, C, D, E, F] =
 		new Tuple6WriteForm(t._1, t._2, t._3, t._4, t._5, t._6)
 	
 	implicit def toTuple7WriteForm[A, B, C, D, E, F, G]
 	                         (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
-	                              SQLWriteForm[F], SQLWriteForm[G])) =
+	                              SQLWriteForm[F], SQLWriteForm[G])) :Tuple7WriteForm[A, B, C, D, E, F, G] =
 		new Tuple7WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7)
 	
 	implicit def toTuple8WriteForm[A, B, C, D, E, F, G, H]
 	                         (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
-	                              SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H])) =
+	                              SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H]))
+			:Tuple8WriteForm[A, B, C, D, E, F, G, H] =
 		new Tuple8WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8)
 	
 	implicit def toTuple9WriteForm[A, B, C, D, E, F, G, H, I]
 	                         (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
-	                              SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I])) =
+	                              SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I]))
+			:Tuple9WriteForm[A, B, C, D, E, F, G, H, I] =
 		new Tuple9WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9)
 		
 	implicit def toTuple10WriteForm[A, B, C, D, E, F, G, H, I, J]
 	             (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E], 
-	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J])) =
+	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J]))
+			:Tuple10WriteForm[A, B, C, D, E, F, G, H, I, J] =
 		new Tuple10WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10)
 		
 	implicit def toTuple11WriteForm[A, B, C, D, E, F, G, H, I, J, K]
 	             (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
 	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J], 
-	                  SQLWriteForm[K])) =
+	                  SQLWriteForm[K])) :Tuple11WriteForm[A, B, C, D, E, F, G, H, I, J, K] =
 		new Tuple11WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11)
 		
 	implicit def toTuple12WriteForm[A, B, C, D, E, F, G, H, I, J, K, L]
 	             (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
 	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J],
-	                  SQLWriteForm[K], SQLWriteForm[L])) =
+	                  SQLWriteForm[K], SQLWriteForm[L])) :Tuple12WriteForm[A, B, C, D, E, F, G, H, I, J, K, L] =
 		new Tuple12WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11, t._12)
 		
 	implicit def toTuple13WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M]
 	             (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
 	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J],
-	                  SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M])) =
+	                  SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M]))
+			:Tuple13WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M] =
 		new Tuple13WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11, t._12, t._13)
 		
 	implicit def toTuple14WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N]
 	             (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
 	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J],
-	                  SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M], SQLWriteForm[N])) =
+	                  SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M], SQLWriteForm[N]))
+			:Tuple14WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N] =
 		new Tuple14WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11, t._12, t._13, t._14)
 		
 	implicit def toTuple15WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O]
 	             (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
 	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J],
-	                  SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M], SQLWriteForm[N], SQLWriteForm[O])) =
+	                  SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M], SQLWriteForm[N], SQLWriteForm[O]))
+			:Tuple15WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O] =
 		new Tuple15WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                         t._11, t._12, t._13, t._14, t._15)
 		
@@ -254,7 +263,7 @@ trait ScalaWriteForms {
 	             (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
 		                           SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J],
 		                           SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M], SQLWriteForm[N], SQLWriteForm[O],
-		                           SQLWriteForm[P])) =
+		                           SQLWriteForm[P])) :Tuple16WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P] =
 		new Tuple16WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                         t._11, t._12, t._13, t._14, t._15, t._16)
 		
@@ -262,7 +271,8 @@ trait ScalaWriteForms {
 	             (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
 	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J],
 	                  SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M], SQLWriteForm[N], SQLWriteForm[O],
-	                  SQLWriteForm[P], SQLWriteForm[Q])) =
+	                  SQLWriteForm[P], SQLWriteForm[Q]))
+			:Tuple17WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q] =
 		new Tuple17WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                         t._11, t._12, t._13, t._14, t._15, t._16, t._17)
 		
@@ -270,7 +280,8 @@ trait ScalaWriteForms {
 	             (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
 	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J],
 	                  SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M], SQLWriteForm[N], SQLWriteForm[O],
-	                  SQLWriteForm[P], SQLWriteForm[Q], SQLWriteForm[R])) =
+	                  SQLWriteForm[P], SQLWriteForm[Q], SQLWriteForm[R]))
+			:Tuple18WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R] =
 		new Tuple18WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                         t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18)
 		
@@ -278,7 +289,8 @@ trait ScalaWriteForms {
 	             (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
 	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J],
 	                  SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M], SQLWriteForm[N], SQLWriteForm[O],
-	                  SQLWriteForm[P], SQLWriteForm[Q], SQLWriteForm[R], SQLWriteForm[S])) =
+	                  SQLWriteForm[P], SQLWriteForm[Q], SQLWriteForm[R], SQLWriteForm[S]))
+			:Tuple19WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S] =
 		new Tuple19WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                         t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19)
 		
@@ -286,7 +298,8 @@ trait ScalaWriteForms {
 	             (t :(SQLWriteForm[A], SQLWriteForm[B], SQLWriteForm[C], SQLWriteForm[D], SQLWriteForm[E],
 	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J],
 	                  SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M], SQLWriteForm[N], SQLWriteForm[O],
-	                  SQLWriteForm[P], SQLWriteForm[Q], SQLWriteForm[R], SQLWriteForm[S], SQLWriteForm[T])) =
+	                  SQLWriteForm[P], SQLWriteForm[Q], SQLWriteForm[R], SQLWriteForm[S], SQLWriteForm[T]))
+			:Tuple20WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T] =
 		new Tuple20WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                         t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19, t._20)
 		
@@ -295,7 +308,8 @@ trait ScalaWriteForms {
 	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J],
 	                  SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M], SQLWriteForm[N], SQLWriteForm[O],
 	                  SQLWriteForm[P], SQLWriteForm[Q], SQLWriteForm[R], SQLWriteForm[S], SQLWriteForm[T],
-	                  SQLWriteForm[U])) =
+	                  SQLWriteForm[U]))
+			:Tuple21WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U] =
 		new Tuple21WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10,
 	                         t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19, t._20, t._21)
 		
@@ -304,7 +318,8 @@ trait ScalaWriteForms {
 	                  SQLWriteForm[F], SQLWriteForm[G], SQLWriteForm[H], SQLWriteForm[I], SQLWriteForm[J],
 	                  SQLWriteForm[K], SQLWriteForm[L], SQLWriteForm[M], SQLWriteForm[N], SQLWriteForm[O],
 	                  SQLWriteForm[P], SQLWriteForm[Q], SQLWriteForm[R], SQLWriteForm[S], SQLWriteForm[T],
-	                  SQLWriteForm[U], SQLWriteForm[V])) =
+	                  SQLWriteForm[U], SQLWriteForm[V]))
+			:Tuple22WriteForm[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V] =
 		new Tuple22WriteForm(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, 
 	                         t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19, t._20, t._21, t._22)
 	

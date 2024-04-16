@@ -7,7 +7,7 @@ import net.noresttherein.oldsql
 import net.noresttherein.oldsql.OperationView
 import net.noresttherein.oldsql.OperationView.WriteOperationView
 import net.noresttherein.oldsql.collection.{Chain, Listing, NaturalMap, Opt, Unique}
-import net.noresttherein.oldsql.collection.Chain.{@~, ~, ChainApplication}
+import net.noresttherein.oldsql.collection.Chain.{@~, ChainApplication, ~}
 import net.noresttherein.oldsql.collection.Listing.{:~, |~}
 import net.noresttherein.oldsql.collection.NaturalMap.Assoc
 import net.noresttherein.oldsql.collection.Opt.{Got, Lack}
@@ -16,13 +16,13 @@ import net.noresttherein.oldsql.model.PropertyPath
 import net.noresttherein.oldsql.morsels.{Extractor, InferTypeParams}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.morsels.abacus.{Inc, Numeral}
-import net.noresttherein.oldsql.schema.{composeExtractAssoc, filterColumnExtracts, Buff, Buffs, ColumnExtract, ColumnForm, ColumnMappingExtract, Mapping, MappingExtract, SQLWriteForm}
+import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnExtract, ColumnForm, ColumnMappingExtract, Mapping, MappingExtract, SQLWriteForm, composeExtractAssoc, composeExtracts, filterColumnExtracts}
 import net.noresttherein.oldsql.schema.Mapping.{OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.bases.{BaseMapping, LazyMapping}
 import net.noresttherein.oldsql.schema.bits.LabelPath.{/, Label}
 import net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents
-import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, ||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, SchemaColumn}
-import net.noresttherein.oldsql.schema.support.{PatchedMapping, DelegateMapping}
+import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, FlatSchemaMapping, LabeledSchemaColumn, MappedFlatSchema, MappedSchema, SchemaColumn, |-|, ||}
+import net.noresttherein.oldsql.schema.support.{DelegateMapping, PatchedMapping}
 import net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy
 
 
@@ -34,7 +34,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy
   * This is the full list of components, ignoring the fact that some of them might not be available or are optional
   * for some types of database operations.
   * Each component of type `T` additionally has a `MappingExtract[S, T, O]` associated with it by this instance,
-  * which can be accessed using the [[net.noresttherein.oldsql.schema.bits.MappingSchema.extract extract(component)]]
+  * which can be accessed using [[net.noresttherein.oldsql.schema.bits.MappingSchema.extract extract(component)]]
   * method. A schema itself is a mapping for the chain `V` containing the values of all of its components in order,
   * but is more typically used as the basis of a `SchemaMapping` instance for some entity type `S`.
   * This can happen either by directly mapping the chain of values `V` with its
@@ -45,7 +45,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.ExportProxy
   * [[net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaExtension.last last]],
   * [[net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaExtension.apply apply()]],
   * [[net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaExtension.prev prev]].
-  *
+  * @note $ComponentOrderInfo
   * @tparam S the entity type of an owning `SchemaMapping`. This schema disassembles this value into a chain
   *           of component values `V`.
   * @tparam V a `Chain` containing the subject types of all schema  in the chain `C`, which is the subject type
@@ -126,8 +126,12 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends BaseMapping[V, O] with
 	  * without any reference to their `Origin` type in their signature. This is so they not become inconsistent
 	  * with this instance's `Origin` as a result of an origin projection (casting on the last type parameter).
 	  * The appropriate `BaseMapping` subtype for every component is determined by an implicit `OriginProjection[M]`
-	  * declared for the component mapping `M`; safe downcasting can be performed by calling `component.withOrigin[X]`.
+	  * declared for the component mapping `M`; safe down casting can be performed by calling `component.withOrigin[X]`.
+	  * @note the elements may be in their nominal/original, not ''export'' versions.
 	  */
+	//todo: try to ensure they are export. This requires ensuring that mapping of a schema component creates
+	// an instance of the same class as listed here. For this, we would need to restrict elements
+	// only to a handful of supported types.
 	def members :C
 
 
@@ -144,7 +148,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends BaseMapping[V, O] with
 
 
 	/** All components in this schema in the inverse order to their desired appearance on the `components` list.
-	  * Used to make the `components` method implementation more efficient by bypassing much less effective
+	  * Used to make the `components` method implementation more efficient by bypassing much less efficient
 	  * unions of `Unique` instances. Default implementation actually is based on `components` in order to allow
 	  * custom `MappingSchema` implementations as this method is package protected and thus impossible to override
 	  * by client classes.
@@ -152,7 +156,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends BaseMapping[V, O] with
 	protected[schema] def componentsReversed :List[Component[_]] = components.toList.reverse
 
 	/** All subcomponents in this schema in the inverse order to their desired appearance on the `subcomponents` list.
-	  * Used to make the `subcomponents` method implementation more efficient by bypassing much less effective
+	  * Used to make the `subcomponents` method implementation more efficient by bypassing much less efficient
 	  * unions of `Unique` instances. Default implementation actually is based on `subcomponents` in order to allow
 	  * custom `MappingSchema` implementations as this method is package protected and thus impossible to override
 	  * by client classes.
@@ -160,7 +164,7 @@ trait MappingSchema[S, V <: Chain, C <: Chain, O] extends BaseMapping[V, O] with
 	protected[schema] def subcomponentsReversed :List[Component[_]] = subcomponents.toList.reverse
 
 	/** All columns in this schema in the inverse order to their desired appearance on the `columns` list.
-	  * Used to make the `columns` method implementation more efficient by bypassing much less effective
+	  * Used to make the `columns` method implementation more efficient by bypassing much less efficient
 	  * unions of `Unique` instances. Default implementation actually is based on `columns` in order to allow
 	  * custom `MappingSchema` implementations as this method is package protected and thus impossible to override
 	  * by client classes.
@@ -370,6 +374,12 @@ object MappingSchema {
 	  * declaring the [[net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents.Packed Packed]]
 	  * and [[net.noresttherein.oldsql.schema.bits.MappingSchema..MappingSchemaComponents.Unpacked Unpacked]] types
 	  * as well as accessors allowing the retrieval of the components declared within it.
+	  * @define ComponentOrderInfo
+	  *         The components listed
+	  *         in [[net.noresttherein.oldsql.schema.bits.MappingSchema.MappingSchemaComponents.components components]]
+	  *         property and others may occur in order different than listed in type `C`, and be in different
+	  *         ([[net.noresttherein.oldsql.schema.Mapping.ExportComponent export]]) versions than those
+	  *         in [[net.noresttherein.oldsql.schema.bits.MappingSchema.members members]].
 	  */ //todo: we should ditch type safe O(n) implementations and keep a Map inside MappingSchema, casting the result
 	trait MappingSchemaComponents extends Mapping {
 
@@ -1440,8 +1450,8 @@ object MappingSchema {
 				(pieces :ComponentValues[S, O]) => pieces.get(schema).flatMap(f)
 
 
-		@inline def SAM[S, V <: Chain, C <: Chain, O, F]
-		               (construct :SubjectConstructor[S, V, C, O, F]) :SubjectConstructor[S, V, C, O, F] =
+		@inline private def SAM[S, V <: Chain, C <: Chain, O, F]
+		                       (construct :SubjectConstructor[S, V, C, O, F]) :SubjectConstructor[S, V, C, O, F] =
 			construct
 
 
@@ -1454,12 +1464,14 @@ object MappingSchema {
 
 
 
-		implicit def optMap1[Vs <: Chain, CA <: X[A], A, Y, Z] = SAM {
-			(schema :MappingSchema[Y, Vs, @~ ~CA, Z], f :A => Opt[Y]) => (pieces :ComponentValues[Y, Z]) =>
-				pieces.get(schema.lastExtract) flatMap f
-		}
+		implicit def optMap1[Vs <: Chain, CA <: X[A], A, Y, Z] :SubjectConstructor[Y, Vs, @~ ~CA, Z, A => Opt[Y]] = 
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA, Z], f :A => Opt[Y]) => (pieces :ComponentValues[Y, Z]) =>
+					pieces.get(schema.lastExtract) flatMap f
+			}
 
-		implicit def optMap2[Vs <: @~ ~_~_, CA <: X[A], A, CB <: X[B], B, Y, Z] =
+		implicit def optMap2[Vs <: @~ ~_~_, CA <: X[A], A, CB <: X[B], B, Y, Z]
+		        :SubjectConstructor[Y, Vs, @~ ~CA~CB, Z, (A, B) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB, Z], f :(A, B) => Opt[Y]) => {
 					implicit pcs :ComponentValues[Y, Z] =>
@@ -1472,7 +1484,8 @@ object MappingSchema {
 				}
 			}
 
-		implicit def optMap3[Vs <: @~ ~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, Y, Z] =
+		implicit def optMap3[Vs <: @~ ~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, Y, Z] 
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC, Z, (A, B, C) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC, Z], f :(A, B, C) => Opt[Y]) => {
 					implicit pcs :ComponentValues[Y, Z] =>
@@ -1485,7 +1498,8 @@ object MappingSchema {
 				}
 			}
 
-		implicit def optMap4[Vs <: @~ ~_~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, Y, Z] =
+		implicit def optMap4[Vs <: @~ ~_~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, Y, Z] 
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD, Z, (A, B, C, D) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD, Z], f :(A, B, C, D) => Opt[Y]) => {
 					implicit pcs :ComponentValues[Y, Z] =>
@@ -1499,7 +1513,8 @@ object MappingSchema {
 			}
 
 		implicit def optMap5[Vs <: @~ ~_~_~_~_~_,
-		                     CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, Y, Z] =
+		                     CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE, Z, (A, B, C, D, E) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE, Z], f :(A, B, C, D, E) => Opt[Y]) => {
 					implicit pcs :ComponentValues[Y, Z] =>
@@ -1514,7 +1529,8 @@ object MappingSchema {
 
 		implicit def optMap6[Vs <: @~ ~_~_~_~_~_~_,
 			                 CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
-		                     Y, Z] =
+		                     Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF, Z, (A, B, C, D, E, F) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF, Z], f :(A, B, C, D, E, F) => Opt[Y]) => {
 					implicit pcs :ComponentValues[Y, Z] =>
@@ -1531,7 +1547,8 @@ object MappingSchema {
 		implicit def optMap7[Vs <: @~ ~_~_~_~_~_~_~_,
 		                     CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                     CG <: X[G], G,
-		                     Y, Z] =
+		                     Y, Z]
+		      :SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG, Z, (A, B, C, D, E, F, G) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG, Z], f :(A, B, C, D, E, F, G) => Opt[Y]) => {
 					implicit pcs :ComponentValues[Y, Z] =>
@@ -1548,7 +1565,8 @@ object MappingSchema {
 		implicit def optMap8[Vs <: @~ ~_~_~_~_~_~_~_~_,
 		                     CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                     CG <: X[G], G, CH <: X[H], H,
-		                     Y, Z] =
+		                     Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH, Z, (A, B, C, D, E, F, G, H) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH, Z],
 				 f :(A, B, C, D, E, F, G, H) => Opt[Y]) =>
@@ -1566,7 +1584,8 @@ object MappingSchema {
 		implicit def optMap9[Vs <: @~ ~_~_~_~_~_~_~_~_~_,
 		                     CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                     CG <: X[G], G, CH <: X[H], H, CI <: X[I], I,
-		                     Y, Z] =
+		                     Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI, Z, (A, B, C, D, E, F, G, H, I) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI, Z],
 				 f :(A, B, C, D, E, F, G, H, I) => Opt[Y]) =>
@@ -1584,7 +1603,8 @@ object MappingSchema {
 		implicit def optMap10[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J,
-		                      Y, Z] =
+		                      Y, Z]
+		     :SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ, Z, (A, B, C, D, E, F, G, H, I, J) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J) => Opt[Y]) =>
@@ -1599,10 +1619,11 @@ object MappingSchema {
 					}
 			}
 
-		implicit def optMap11[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _,
+		implicit def optMap11[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K,
-		                      Y, Z] =
+		                      Y, Z] 
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK, Z, (A, B, C, D, E, F, G, H, I, J, K) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K) => Opt[Y]) =>
@@ -1620,10 +1641,11 @@ object MappingSchema {
 					}
 			}
 
-		implicit def optMap12[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_,
+		implicit def optMap12[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
-		                      Y, Z] =
+		                      Y, Z]
+		        :SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL, Z, (A, B, C, D, E, F, G, H, I, J, K, L) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L) => Opt[Y]) =>
@@ -1641,11 +1663,12 @@ object MappingSchema {
 					}
 			}
 
-		implicit def optMap13[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_,
+		implicit def optMap13[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                      CM <: X[M], M,
-		                      Y, Z] =
+		                      Y, Z] 
+		      :SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M) => Opt[Y]) =>
@@ -1663,11 +1686,12 @@ object MappingSchema {
 					}
 			}
 
-		implicit def optMap14[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_,
+		implicit def optMap14[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                      CM <: X[M], M, CN <: X[N], N,
-		                      Y, Z] =
+		                      Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N) => Opt[Y]) =>
@@ -1685,11 +1709,12 @@ object MappingSchema {
 					}
 			}
 
-		implicit def optMap15[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_,
+		implicit def optMap15[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O,
-		                      Y, Z] =
+		                      Y, Z] 
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) => Opt[Y]) =>
@@ -1708,11 +1733,12 @@ object MappingSchema {
 					}
 			}
 
-		implicit def optMap16[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_,
+		implicit def optMap16[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P,
-		                      Y, Z] =
+		                      Y, Z] 
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) => Opt[Y]) =>
@@ -1731,11 +1757,12 @@ object MappingSchema {
 					}
 			}
 
-		implicit def optMap17[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_,
+		implicit def optMap17[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q,
-		                      Y, Z] =
+		                      Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) => Opt[Y]) =>
@@ -1754,11 +1781,12 @@ object MappingSchema {
 					}
 			}
 
-		implicit def optMap18[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_,
+		implicit def optMap18[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
-		                      Y, Z] =
+		                      Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) => Opt[Y]) =>
@@ -1777,12 +1805,13 @@ object MappingSchema {
 					}
 			}
 
-		implicit def optMap19[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_,
+		implicit def optMap19[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
 		                      CS <: X[S], S,
-		                      Y, Z] =
+		                      Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) => Opt[Y]) =>
@@ -1801,12 +1830,13 @@ object MappingSchema {
 					}
 			}
 
-		implicit def optMap20[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_~_,
+		implicit def optMap20[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
 		                      CS <: X[S], S, CT <: X[T], T,
-		                      Y, Z] =
+		                      Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) => Opt[Y]) =>
@@ -1826,12 +1856,13 @@ object MappingSchema {
 					}
 			}
 
-		implicit def optMap21[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_~_ ~ _,
+		implicit def optMap21[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
 		                      CS <: X[S], S, CT <: X[T], T, CU <: X[U], U,
-		                      Y, Z] =
+		                      Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) => Opt[Y]) =>
@@ -1852,12 +1883,13 @@ object MappingSchema {
 					}
 			}
 
-		implicit def optMap22[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_~_ ~ _,
+		implicit def optMap22[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                      CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                      CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                      CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
 		                      CS <: X[S], S, CT <: X[T], T, CU <: X[U], U, CV <: X[V], V,
-		                      Y, Z] =
+		                      Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU~CV, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) => Opt[Y]] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU~CV, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) => Opt[Y]) =>
@@ -1880,12 +1912,14 @@ object MappingSchema {
 
 
 
-		implicit def map1[Vs <: Chain, CA <: X[A], A, Y, Z] = SAM {
-			(schema :MappingSchema[Y, Vs, @~ ~CA, Z], f :A => Y) => (pieces :ComponentValues[Y, Z]) =>
-				pieces.get(schema.lastExtract) map f
-		}
+		implicit def map1[Vs <: Chain, CA <: X[A], A, Y, Z] :SubjectConstructor[Y, Vs, @~ ~CA, Z, A => Y] =
+			SAM {
+				(schema :MappingSchema[Y, Vs, @~ ~CA, Z], f :A => Y) => (pieces :ComponentValues[Y, Z]) =>
+					pieces.get(schema.lastExtract) map f
+			}
 
-		implicit def map2[Vs <: @~ ~_~_, CA <: X[A], A, CB <: X[B], B, Y, Z] =
+		implicit def map2[Vs <: @~ ~_~_, CA <: X[A], A, CB <: X[B], B, Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB, Z, (A, B) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB, Z], f :(A, B) => Y) => {
 					implicit pcs :ComponentValues[Y, Z] =>
@@ -1898,7 +1932,8 @@ object MappingSchema {
 				}
 			}
 
-		implicit def map3[Vs <: @~ ~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, Y, Z] =
+		implicit def map3[Vs <: @~ ~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC, Z, (A, B, C) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC, Z], f :(A, B, C) => Y) => {
 					implicit pcs :ComponentValues[Y, Z] =>
@@ -1911,7 +1946,8 @@ object MappingSchema {
 				}
 			}
 
-		implicit def map4[Vs <: @~ ~_~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, Y, Z] =
+		implicit def map4[Vs <: @~ ~_~_~_~_, CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD, Z, (A, B, C, D) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD, Z], f :(A, B, C, D) => Y) => {
 					implicit pcs :ComponentValues[Y, Z] =>
@@ -1925,7 +1961,8 @@ object MappingSchema {
 			}
 
 		implicit def map5[Vs <: @~ ~_~_~_~_~_,
-		                  CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, Y, Z] =
+		                  CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE, Z, (A, B, C, D, E) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE, Z], f :(A, B, C, D, E) => Y) => {
 					implicit pcs :ComponentValues[Y, Z] =>
@@ -1940,7 +1977,8 @@ object MappingSchema {
 
 		implicit def map6[Vs <: @~ ~_~_~_~_~_~_,
 			              CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
-		                  Y, Z] =
+		                  Y, Z]
+		        :SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF, Z, (A, B, C, D, E, F) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF, Z], f :(A, B, C, D, E, F) => Y) => {
 					implicit pcs :ComponentValues[Y, Z] =>
@@ -1957,7 +1995,8 @@ object MappingSchema {
 		implicit def map7[Vs <: @~ ~_~_~_~_~_~_~_,
 		                  CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                  CG <: X[G], G,
-		                  Y, Z] =
+		                  Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG, Z, (A, B, C, D, E, F, G) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG, Z], f :(A, B, C, D, E, F, G) => Y) => {
 					implicit pcs :ComponentValues[Y, Z] =>
@@ -1976,7 +2015,8 @@ object MappingSchema {
 		implicit def map8[Vs <: @~ ~_~_~_~_~_~_~_~_,
 		                  CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                  CG <: X[G], G, CH <: X[H], H,
-		                  Y, Z] =
+		                  Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH, Z, (A, B, C, D, E, F, G, H) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH, Z],
 				 f :(A, B, C, D, E, F, G, H) => Y) =>
@@ -1996,7 +2036,8 @@ object MappingSchema {
 		implicit def map9[Vs <: @~ ~_~_~_~_~_~_~_~_~_,
 		                  CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                  CG <: X[G], G, CH <: X[H], H, CI <: X[I], I,
-		                  Y, Z] =
+		                  Y, Z]
+		        :SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI, Z, (A, B, C, D, E, F, G, H, I) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI, Z],
 				 f :(A, B, C, D, E, F, G, H, I) => Y) =>
@@ -2016,7 +2057,8 @@ object MappingSchema {
 		implicit def map10[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ, Z, (A, B, C, D, E, F, G, H, I, J) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J) => Y) =>
@@ -2033,10 +2075,11 @@ object MappingSchema {
 					}
 			}
 
-		implicit def map11[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _,
+		implicit def map11[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK, Z, (A, B, C, D, E, F, G, H, I, J, K) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K) => Y) =>
@@ -2056,10 +2099,11 @@ object MappingSchema {
 					}
 			}
 
-		implicit def map12[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_,
+		implicit def map12[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL, Z, (A, B, C, D, E, F, G, H, I, J, K, L) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L) => Y) =>
@@ -2079,11 +2123,12 @@ object MappingSchema {
 					}
 			}
 
-		implicit def map13[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_,
+		implicit def map13[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                   CM <: X[M], M,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M) => Y) =>
@@ -2103,11 +2148,12 @@ object MappingSchema {
 					}
 			}
 
-		implicit def map14[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_,
+		implicit def map14[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                   CM <: X[M], M, CN <: X[N], N,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N) => Y) =>
@@ -2127,11 +2173,12 @@ object MappingSchema {
 					}
 			}
 
-		implicit def map15[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_,
+		implicit def map15[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) => Y) =>
@@ -2151,11 +2198,12 @@ object MappingSchema {
 					}
 			}
 
-		implicit def map16[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_,
+		implicit def map16[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) => Y) =>
@@ -2176,11 +2224,12 @@ object MappingSchema {
 					}
 			}
 
-		implicit def map17[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_,
+		implicit def map17[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) => Y) =>
@@ -2201,11 +2250,12 @@ object MappingSchema {
 					}
 			}
 
-		implicit def map18[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_,
+		implicit def map18[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) => Y) =>
@@ -2226,12 +2276,13 @@ object MappingSchema {
 					}
 			}
 
-		implicit def map19[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_,
+		implicit def map19[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
 		                   CS <: X[S], S,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) => Y) =>
@@ -2252,12 +2303,13 @@ object MappingSchema {
 					}
 			}
 
-		implicit def map20[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_~_,
+		implicit def map20[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
 		                   CS <: X[S], S, CT <: X[T], T,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) => Y) =>
@@ -2279,12 +2331,13 @@ object MappingSchema {
 					}
 			}
 
-		implicit def map21[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_~_ ~ _,
+		implicit def map21[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
 		                   CS <: X[S], S, CT <: X[T], T, CU <: X[U], U,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) => Y) =>
@@ -2307,12 +2360,13 @@ object MappingSchema {
 					}
 			}
 
-		implicit def map22[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_ ~ _~_~_~_~_~_~_~_~_~_ ~ _,
+		implicit def map22[Vs <: @~ ~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_~_,
 		                   CA <: X[A], A, CB <: X[B], B, CC <: X[C], C, CD <: X[D], D, CE <: X[E], E, CF <: X[F], F,
 		                   CG <: X[G], G, CH <: X[H], H, CI <: X[I], I, CJ <: X[J], J, CK <: X[K], K, CL <: X[L], L,
 		                   CM <: X[M], M, CN <: X[N], N, CO <: X[O], O, CP <: X[P], P, CQ <: X[Q], Q, CR <: X[R], R,
 		                   CS <: X[S], S, CT <: X[T], T, CU <: X[U], U, CV <: X[V], V,
-		                   Y, Z] =
+		                   Y, Z]
+				:SubjectConstructor[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU~CV, Z, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) => Y] =
 			SAM {
 				(schema :MappingSchema[Y, Vs, @~ ~CA~CB~CC~CD~CE~CF~CG~CH~CI~CJ~CK~CL~CM~CN~CO~CP~CQ~CR~CS~CT~CU~CV, Z],
 				 f :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) => Y) =>
@@ -2491,7 +2545,7 @@ object MappingSchema {
 				.updated[PackedExtract, T](component, extractor).updated[PackedExtract, V L E](this, unpackSelf)
 
 		override val packedColumnExtracts :NaturalMap[Column, PackedColumnExtract] =
-			NaturalMap.delayed(filterColumnExtracts(toString)(packedExtracts))
+			NaturalMap.delayed(filterColumnExtracts(packedExtracts))
 
 
 		protected[schema] override def componentsReversed :List[Component[_]] =
@@ -2625,8 +2679,29 @@ object MappingSchema {
 				:MappingSchema[S, I, P, O] =
 			backer.prev
 
-		override def packedExtracts :NaturalMap[Component, PackedExtract] = backer.packedExtracts
+		override def packedExtracts       :NaturalMap[Component, PackedExtract] = backer.packedExtracts
 		override def packedColumnExtracts :NaturalMap[Column, PackedColumnExtract] = backer.packedColumnExtracts
+	}
+
+	private[schema] trait MappingSchemaDeepProxy[S, V <: Chain, C <: Chain, O] extends MappingSchemaProxy[S, V, C, O] {
+		override val packedExtracts :NaturalMap[Component, PackedExtract] = {
+			//No sense in
+//			val extracts = subcomponentsReversed.iterator.map { component =>
+//				val extract = backer.extract(component)
+//				val export  = this.export(component)
+//				Assoc(component, MappingExtract(export)(extract))
+//			} to NaturalMap //This will probably be all, but we need to add any special components introduced by backer.
+			def addExtract[T](extracts :NaturalMap[Component, PackedExtract], assoc :Assoc[Component, PackedExtract, T]) =
+				if (extracts.contains(assoc._1))
+					extracts
+				else
+					extracts.updated(assoc._1, assoc._2.replace(export(assoc._1)) :PackedExtract[T])
+			val selfExtract = NaturalMap.single[Component, PackedExtract, V](this, backer.extract(backer).replace(this))
+			backer.packedExtracts.foldLeft(selfExtract)(addExtract(_, _))
+		}
+
+		override val packedColumnExtracts :NaturalMap[Column, PackedColumnExtract] =
+			filterColumnExtracts(packedExtracts)
 	}
 
 
@@ -2651,24 +2726,24 @@ object MappingSchema {
 	  * extracts for all those missing components. No buffs are changed by this class: only the `members` and other
 	  * component/column lists are altered to reflect to contain only 'public' components, that is those
 	  * of the filtered `backer`.
-	  * @param original the mapping schema which is being altered for some operation
+	  * @param full the mapping schema which is being altered for some operation
 	  * @param backer a mapping schema recreated from `original` by filtering its `members` chain.
-	  */
+	  */ //todo: analyze if this shouldn't have lazy component lists just in case.
 	private class FilteredSchema[S, V <: Chain, C <: Chain, O] //consider: mixing in StableMapping or creating a StableAdapter
-	                            (original :MappingSchema[S, _ <: Chain, _ <: Chain, O],
-	                             protected override val backer :MappingSchema[S, V, C, O])
+	                            (full :MappingSchema[S, _ <: Chain, _ <: Chain, O],
+	                             override val backer :MappingSchema[S, V, C, O])
 		extends ExportProxy[V, O] with MappingSchemaProxy[S, V, C, O]
 	{
 		override val packedExtracts :NaturalMap[Component, PackedExtract] =
-			original.packedExtracts.updated[PackedExtract, V](
+			full.packedExtracts.updated[PackedExtract, V](
 				backer, MappingExtract(backer)(Extractor.Optional(backer.unapply(_)))
 			) ++ backer.packedExtracts
 
 		override val packedColumnExtracts :NaturalMap[Column, PackedColumnExtract] =
-			original.packedColumnExtracts ++ backer.packedColumnExtracts
+			full.packedColumnExtracts ++ backer.packedColumnExtracts
 
 		override val extracts =
-			(backer.extracts /: original.extracts) { case (acc, Assoc(component, _)) =>
+			(backer.extracts /: full.extracts) { case (acc, Assoc(component, _)) =>
 					if (acc.contains(component)) acc
 					else acc.updated[Extract, component.Subject](component, MappingExtract.none(component))
 			}.updated[Extract, V](backer, MappingExtract.ident(backer))
@@ -2676,24 +2751,24 @@ object MappingSchema {
 
 		override val columnExtracts = oldsql.schema.filterColumnExtracts(this)(extracts)
 
-		override val components        :Unique[Component[_]] = original.components ++ backer.components
-		override val subcomponents     :Unique[Component[_]] = original.subcomponents ++ backer.subcomponents
+		override val components        :Unique[Component[_]] = full.components ++ backer.components
+		override val subcomponents     :Unique[Component[_]] = full.subcomponents ++ backer.subcomponents
 
-		override val columns           :Unique[Column[_]] = original.columns
-		override val selectable        :Unique[Column[_]] = original.selectable
-		override val filterable        :Unique[Column[_]] = original.filterable
-		override val insertable        :Unique[Column[_]] = original.insertable
-		override val updatable         :Unique[Column[_]] = original.updatable
-		override val autoInserted      :Unique[Column[_]] = original.autoInserted
-		override val autoUpdated       :Unique[Column[_]] = original.autoUpdated
-		override val selectedByDefault :Unique[Column[_]] = original.selectedByDefault
-		override val filteredByDefault :Unique[Column[_]] = original.filteredByDefault
-		override val insertedByDefault :Unique[Column[_]] = original.insertedByDefault
-		override val updatedByDefault  :Unique[Column[_]] = original.updatedByDefault
-		override val mandatorySelect   :Unique[Column[_]] = original.mandatorySelect
-		override val mandatoryFilter   :Unique[Column[_]] = original.mandatoryFilter
-		override val mandatoryInsert   :Unique[Column[_]] = original.mandatoryInsert
-		override val mandatoryUpdate   :Unique[Column[_]] = original.mandatoryUpdate
+		override val columns           :Unique[Column[_]] = full.columns
+		override val selectable        :Unique[Column[_]] = full.selectable
+		override val filterable        :Unique[Column[_]] = full.filterable
+		override val insertable        :Unique[Column[_]] = full.insertable
+		override val updatable         :Unique[Column[_]] = full.updatable
+		override val autoInserted      :Unique[Column[_]] = full.autoInserted
+		override val autoUpdated       :Unique[Column[_]] = full.autoUpdated
+		override val selectedByDefault :Unique[Column[_]] = full.selectedByDefault
+		override val filteredByDefault :Unique[Column[_]] = full.filteredByDefault
+		override val insertedByDefault :Unique[Column[_]] = full.insertedByDefault
+		override val updatedByDefault  :Unique[Column[_]] = full.updatedByDefault
+		override val mandatorySelect   :Unique[Column[_]] = full.mandatorySelect
+		override val mandatoryFilter   :Unique[Column[_]] = full.mandatoryFilter
+		override val mandatoryInsert   :Unique[Column[_]] = full.mandatoryInsert
+		override val mandatoryUpdate   :Unique[Column[_]] = full.mandatoryUpdate
 
 		override def apply[T](component :Component[T]) :Extract[T] = extracts(component)
 		override def apply[T](column :Column[T]) :ColumnExtract[T] = columnExtracts(column)
@@ -2701,22 +2776,30 @@ object MappingSchema {
 		override def export[T](column :Column[T]) :Column[T] = columnExtracts(column).export
 
 
-		override def compose[X](extractor :X =?> S) :MappingSchema[X, V, C, O] =
-			new FilteredSchema(original compose extractor, backer compose extractor)
+		override def compose[X](extractor :X =?> S) :FilteredSchema[X, V, C, O] =
+			new FilteredSchema(full compose extractor, backer compose extractor)
 	}
 
 
 
-	private[schema] class DedicatedSchema[S, V <: Chain, C <: Chain, O]
-	                                   (original :MappingSchema[S, _ <: Chain, _ <: Chain, O],
-	                                    filtered: MappingSchema[S, V, C, O],
-	                                    op :OperationView,
-	                                    include :Iterable[TypedMapping[_, O]],
-	                                    exclude :Iterable[TypedMapping[_, O]])
-		extends PatchedMapping[MappingSchema[S, V, C, O], V, O](
-				new FilteredSchema[S, V, C, O](original, filtered), op, include, exclude)
+	private[schema] class DedicatedSchema[S, V <: Chain, C <: Chain, O] private
+	                                     (body :FilteredSchema[S, V, C, O],
+	                                      op :OperationView,
+	                                      include :Iterable[TypedMapping[_, O]],
+	                                      exclude :Iterable[TypedMapping[_, O]])
+		extends PatchedMapping[V, O](body, op, include, exclude)
 		   with MappingSchemaProxy[S, V, C, O]
 	{
+		def this(original :MappingSchema[S, _ <: Chain, _ <: Chain, O], filtered: MappingSchema[S, V, C, O],
+		         op :OperationView, include :Iterable[TypedMapping[_, O]], exclude :Iterable[TypedMapping[_, O]]) =
+			this({
+				if (filtered.components.exists(op.Prohibited.active))
+					throw new IllegalArgumentException(
+						s"${filtered.members} is an invalid $op schema as it contains a component with the ${op.Prohibited} Buff."
+					)
+				new FilteredSchema[S, V, C, O](original, filtered)
+			}, op, include, exclude)
+
 		def this(original :MappingSchema[S, _ <: Chain, _ <: Chain, O], filtered :MappingSchema[S, V, C, O],
 		         op :OperationView, include :Iterable[TypedMapping[_, O]]) =
 			this(original, filtered, op, include, {
@@ -2725,17 +2808,20 @@ object MappingSchema {
 				components.filterNot(remaining)
 			})
 
-		if (filtered.components.exists(op.Prohibited.active))
-			throw new IllegalArgumentException(
-				s"$members is an invalid $op schema as it contains a component with the ${op.Prohibited} Buff."
-			)
+		protected class BackerSchema extends BackerMapping with MappingSchemaDeepProxy[S, V, C, O] {
+			override val backer :MappingSchema[S, V, C, O] = body
+			override def compose[X](extractor :X =?> S) :MappingSchema[X, V, C, O] = //Unused
+				DedicatedSchema.this.compose(extractor)
+		}
+		override lazy val backer = new BackerSchema
+		private[this] val filtered = body.backer
 
 		override def unapply(subject :S) :Opt[V] = filtered.unapply(subject)
 		override def disassemble(subject :S) :V = filtered.disassemble(subject)
 		override def assemble(pieces :Pieces) :Opt[V] = filtered.assemble(pieces)
 
 		override def compose[X](extractor :X =?> S) :MappingSchema[X, V, C, O] =
-			new DedicatedSchema(original compose extractor, filtered compose extractor, op, include, exclude)
+			new DedicatedSchema(body compose extractor, op, include, exclude)
 	}
 
 

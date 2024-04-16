@@ -308,15 +308,20 @@ object StableMapping {
 				case res => res
 			}
 
-		abstract override val extracts       :NaturalMap[Component, like[Comp]#Extract] = super.extracts
-		abstract override val columnExtracts :NaturalMap[Column, like[Col]#Extract]     = super.columnExtracts
 		protected override val selfExtract   :SpecificExtract[Comp[Subject, Origin], Subject, Subject, Origin] =
 			super.selfExtract
 		//	private val selfExtract = extracts.getOrElse(refine, MappingExtract.ident(refine))
 
-		abstract override val subcomponents :Unique[Comp[_, Origin]] = super.subcomponents
-		abstract override val components    :Unique[Comp[_, Origin]] = super.components
-		abstract override val columns       :Unique[Col[_, Origin]]  = super.columns
+		//consider: extracting these to another trait so that super properties may be vals.
+		// They would have to be initialized before this trait's initialization.
+		//It is unsafe to have them here as they may delegate to each other in an unspecified direction,
+		// and if it happens to be different than declaration order then the accessed val will be null.
+//		abstract override val extracts       :NaturalMap[Component, like[Comp]#Extract] = super.extracts
+//		abstract override val columnExtracts :NaturalMap[Column, like[Col]#Extract]     = super.columnExtracts
+//
+//		abstract override val subcomponents :Unique[Comp[_, Origin]] = super.subcomponents
+//		abstract override val components    :Unique[Comp[_, Origin]] = super.components
+//		abstract override val columns       :Unique[Col[_, Origin]]  = super.columns
 
 		override val selectable        :Unique[Col[_, Origin]] = super.selectable
 		override val filterable        :Unique[Col[_, Origin]] = super.filterable

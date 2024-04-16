@@ -89,7 +89,7 @@ object MappingExtract {
 			}
 		}
 
-
+	//todo: use Opt
 	def opt[S, T, O](component :TypedMapping[T, O])(extractor :S => Option[T]) :MappingExtract[S, T, O] =
 		new OptionalExtract[TypedMapping[T, O], S, T, O](component, extractor)
 
@@ -135,6 +135,9 @@ object MappingExtract {
   */ //consider: use M[X, Y] or M[Y] as the first type argument instead?
 trait SpecificExtract[+M <: TypedMapping[T, O], -S, T, O] extends Extractor[S, T] {
 	val export :M //todo: rename to actual
+
+	def replace[M1 <: TypedMapping[T, O]](mapping :M1) :SpecificExtract[M1, S, T, O] =
+		SpecificExtract(mapping)(this)
 
 	@inline final def apply[L <: S](pieces :ComponentValues[L, O]) :T = pieces(this)
 

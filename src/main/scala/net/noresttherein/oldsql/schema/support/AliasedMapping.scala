@@ -7,10 +7,9 @@ import net.noresttherein.oldsql.schema.SpecificExtract
 import net.noresttherein.oldsql.schema.Mapping.{MappingTemplate, TypedMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.{SimpleColumn, TypedColumn}
 import net.noresttherein.oldsql.schema.bases.BaseMapping
-import net.noresttherein.oldsql.schema.bases.StableMapping.StableMappingTemplate
-import net.noresttherein.oldsql.schema.support.MappingAdapter.{ColumnAdapter, DelegateAdapter}
+import net.noresttherein.oldsql.schema.support.MappingAdapter.{AbstractDelegateAdapter, ColumnAdapter}
 import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.{ExportColumnAdapter, SimpleColumnAdapter}
-import net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxyTemplate
+import net.noresttherein.oldsql.schema.support.MappingProxy.LazyDeepProxy
 
 
 
@@ -20,7 +19,7 @@ import net.noresttherein.oldsql.schema.support.MappingProxy.DeepProxyTemplate
 /**
   * @author Marcin Mościcki
   */
-trait AliasedMapping[S, O] extends BaseMapping[S, O] with StableMappingTemplate[TypedMapping, AliasedColumn] {
+trait AliasedMapping[S, O] extends BaseMapping[S, O] with MappingTemplate[TypedMapping, AliasedColumn] {
 	type AliasedExtract[T] = SpecificExtract[AliasedColumn[T, O], S, T, O]
 }
 
@@ -37,11 +36,12 @@ object AliasedMapping {
 	}
 
 	private class AliasedMappingAdapter[+M <: TypedMapping[S, O], S, O]
-	                                   (protected override val backer :M, val aliases :Map[TypedColumn[_, O], String])
-		extends DeepProxyTemplate[TypedMapping, AliasedColumn, S, O](backer)
-		   with DelegateMapping[M, S, O] with MappingTemplate[TypedMapping, AliasedColumn]
-		   with DelegateAdapter[M, S, O] with MappingDecorator[M, S, O] with AliasedMapping[S, O]
-		   with StableMappingTemplate[TypedMapping, AliasedColumn]
+	                                   (override val body :M, val aliases :Map[TypedColumn[_, O], String])
+		extends LazyDeepProxy[TypedMapping, AliasedColumn, S, O](body)
+//		   with DelegateMapping[M, S, O]// with MappingTemplate[TypedMapping, AliasedColumn]
+		   with AbstractDelegateAdapter[M, S, O] with MappingDecorator[M, S, O] with AliasedMapping[S, O]
+//		   with MappingDecorator[M, S, O] with AliasedMapping[S, O]
+//		   with StableMappingTemplate[TypedMapping, AliasedColumn]
 	{
 		if (aliases.keySet.exists(body.columns.indexOf(_) < 0))
 			throw new IllegalArgumentException(
@@ -55,9 +55,9 @@ object AliasedMapping {
 //			case _ =>
 //		}
 
-		protected override def adapt[T](component :backer.Component[T]) :Component[T] = component
+		protected override def adapt[T](component :body.Component[T]) :Component[T] = component
 
-		protected override def adapt[T](column :backer.Column[T]) :AliasedColumn[T, O] =
+		protected override def adapt[T](column :body.Column[T]) :AliasedColumn[T, O] =
 			AliasedColumn(column, aliases.get(column))
 	}
 

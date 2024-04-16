@@ -23,7 +23,7 @@ import net.noresttherein.oldsql.morsels.abacus.{Inc, NegativeInc, Numeral, Posit
 /** A list-like collection of fixed length, with the types of all its elements encoded in its type.
   * This is a very limited variant of ''shapeless'' `HList`, but which is extended from the end, rather than the front,
   * in opposition to traditional immutable lists. This stems from the intent of using it in conjunction with
-  * `RowProduct`, with `AndFrom` being likewise left-associative, which makes the elements of both appear in the exact same
+  * `Clause`, with `AndFrom` being likewise left-associative, which makes the elements of both appear in the exact same
   * order, rather than reversed as an ease-of-life feature.
   *
   * Chain instances are, like lists, typically built by extending the empty chain `@~`:
@@ -256,7 +256,7 @@ object Chain extends ChainFactory {
 	type Knot = Knot.type
 
 
-	@inline implicit def @~[T](first :T) = new method_@~[T](first)
+	@inline implicit def @~[T](first :T) :method_@~[T] = new method_@~[T](first)
 
 	class method_@~[A](private val first :A) extends AnyVal {
 		/** Creates a two-element chain with `this` as the first and the argument as the second element. */
@@ -420,7 +420,7 @@ object Chain extends ChainFactory {
 	@implicitNotFound("Type ${U} is not an upper bound of elements in chain ${C}.")
 	sealed class UpperBound[-C <: Chain, +U] private[collection]() {}
 
-	implicit final val EmptyChainBound = new UpperBound[@~, Nothing]
+	implicit final val EmptyChainBound :UpperBound[@~, Nothing] = new UpperBound[@~, Nothing]
 
 	@inline implicit def upperBound[T <: Chain, H, U, X](implicit tail :UpperBound[T, U], lub :LUB[H, U, X]) :UpperBound[T ~ H, X] =
 		tail.asInstanceOf[UpperBound[T ~ H, X]]
@@ -459,10 +459,10 @@ object Chain extends ChainFactory {
 	class ChainLength[-C <: Chain, N <: Numeral] private()
 
 	object ChainLength {
-		implicit val ZeroLength = new ChainLength[@~, 0]
+		implicit val ZeroLength :ChainLength[@~, 0] = new ChainLength[@~, 0]
 
 		implicit def oneLinkLonger[C <: Chain, M <: Numeral, N <: Numeral]
-		(implicit prefix :ChainLength[C, M], plus :Inc[M, N]) :ChainLength[C ~ Any, N] =
+		                          (implicit prefix :ChainLength[C, M], plus :Inc[M, N]) :ChainLength[C ~ Any, N] =
 			ZeroLength.asInstanceOf[ChainLength[C ~ Any, N]]
 	}
 
@@ -508,13 +508,15 @@ object Chain extends ChainFactory {
 			last.asInstanceOf[ChainGet[C ~ X, N, X]]
 
 		implicit def getEarlierPositive[C <: Chain, N <: Numeral, X]
-		(implicit prev :ChainGet[C, N, X], positive :Positive[N]) :ChainGet[C ~ Any, N, X] =
+		                               (implicit prev :ChainGet[C, N, X], positive :Positive[N])
+				:ChainGet[C ~ Any, N, X] =
 			new GetPrev(prev)
 
 		implicit def getLastNegative[X] :ChainGet[Chain ~ X, -1, X] = last.asInstanceOf[ChainGet[Chain ~ X, -1, X]]
 
 		implicit def getEarlierNegative[C <: Chain, M <: Numeral, N <: Numeral, X]
-		(implicit prev :ChainGet[C, N, X], negative :NegativeInc[M, N]) :ChainGet[C ~ Any, M, X] =
+		                               (implicit prev :ChainGet[C, N, X], negative :NegativeInc[M, N])
+		        :ChainGet[C ~ Any, M, X] =
 			new GetPrev(prev)
 	}
 
@@ -538,20 +540,20 @@ object Chain extends ChainFactory {
 		}
 
 		implicit def setLastPositive[C <: Chain, N <: Numeral, X]
-		(implicit length :ChainLength[C, N]) :ChainSet[C ~ Any, N, X, C ~ X] =
+		                            (implicit length :ChainLength[C, N]) :ChainSet[C ~ Any, N, X, C ~ X] =
 			last.asInstanceOf[ChainSet[C ~ Any, N, X, C ~ X]]
 
 		implicit def setEarlierPositive[C <: Chain, N <: Numeral, X, T, R <: Chain]
-		(implicit prev :ChainSet[C, N, X, R], positive :Positive[N])
-		:ChainSet[C ~ T, N, X, R ~ T] =
+		                               (implicit prev :ChainSet[C, N, X, R], positive :Positive[N])
+				:ChainSet[C ~ T, N, X, R ~ T] =
 			new SetPrev(prev)
 
 		implicit def setLastNegative[C <: Chain, X] :ChainSet[C ~ Any, -1, X, C ~ X] =
 			last.asInstanceOf[ChainSet[C ~ Any, -1, X, C ~ X]]
 
 		implicit def setEarlierNegative[C <: Chain, M <: Numeral, N <: Numeral, X, T, R <: Chain]
-		(implicit prev :ChainSet[C, N, X, R], negative :NegativeInc[M, N])
-		:ChainSet[C ~ T, M, X, R ~ T] =
+		                               (implicit prev :ChainSet[C, N, X, R], negative :NegativeInc[M, N])
+				:ChainSet[C ~ T, M, X, R ~ T] =
 			new SetPrev(prev)
 
 	}
@@ -576,11 +578,11 @@ object Chain extends ChainFactory {
 		}
 
 		implicit def insertLastPositive[C <: Chain, N <: Numeral, X]
-		(implicit length :ChainLength[C, N]) :ChainInsert[C, N, X, C ~ X] =
+		                               (implicit length :ChainLength[C, N]) :ChainInsert[C, N, X, C ~ X] =
 			last.asInstanceOf[ChainInsert[C, N, X, C ~ X]]
 
 		implicit def insertEarlierPositive[C <: Chain, N <: Numeral, X, T, R <: Chain]
-		(implicit prev :ChainInsert[C, N, X, R], positive :Positive[N])
+		                                  (implicit prev :ChainInsert[C, N, X, R], positive :Positive[N])
 		:ChainInsert[C ~ T, N, X, R ~ T] =
 			new InsertPrev(prev)
 
@@ -588,7 +590,7 @@ object Chain extends ChainFactory {
 			last.asInstanceOf[ChainInsert[C, -1, X, C ~ X]]
 
 		implicit def insertEarlierNegative[C <: Chain, M <: Numeral, N <: Numeral, X, T, R <: Chain]
-		(implicit prev :ChainInsert[C, N, X, R], negative :NegativeInc[M, N])
+		                                  (implicit prev :ChainInsert[C, N, X, R], negative :NegativeInc[M, N])
 		:ChainInsert[C ~ T, M, X, R ~ T] =
 			new InsertPrev(prev)
 
@@ -609,15 +611,17 @@ object Chain extends ChainFactory {
 			}
 
 		private class DeletePrev[-C <: Chain, T, N <: Numeral, +R <: Chain](prev :ChainDelete[C, _, R])
-			extends ChainDelete[C ~ T, N, R ~ T] {
+			extends ChainDelete[C ~ T, N, R ~ T]
+		{
 			override def apply(chain :C ~ T) = prev(chain.init) ~ chain.last
 		}
 
 		implicit def deleteLastPositive[C <: Chain, N <: Numeral](implicit length :ChainLength[C, N])
-		:ChainDelete[C ~ Any, N, C] = last.asInstanceOf[ChainDelete[C ~ Any, N, C]]
+				:ChainDelete[C ~ Any, N, C] =
+			last.asInstanceOf[ChainDelete[C ~ Any, N, C]]
 
 		implicit def deleteEarlierPositive[C <: Chain, X, N <: Numeral, R <: Chain]
-		(implicit prev :ChainDelete[C, N, R], positive :Positive[N])
+		                                  (implicit prev :ChainDelete[C, N, R], positive :Positive[N])
 		:ChainDelete[C ~ X, N, R ~ X] =
 			new DeletePrev(prev)
 
@@ -625,7 +629,7 @@ object Chain extends ChainFactory {
 			last.asInstanceOf[ChainDelete[C ~ Any, -1, C]]
 
 		implicit def deleteEarlierNegative[C <: Chain, X, M <: Numeral, N <: Numeral, R <: Chain]
-		(implicit prev :ChainDelete[C, N, R], negative :NegativeInc[M, N])
+		                                  (implicit prev :ChainDelete[C, N, R], negative :NegativeInc[M, N])
 		:ChainDelete[C ~ X, M, R ~ X] =
 			new DeletePrev(prev)
 
@@ -644,7 +648,8 @@ object Chain extends ChainFactory {
 		}
 
 		@inline implicit def mapChainHead[XF[T], XT <: Chain, YF[T], YT <: Chain, H]
-		(implicit mapTail :MapChain[XF, XT, YF, YT]) :MapChain[XF, XT ~ XF[H], YF, YT ~ YF[H]] =
+		                                 (implicit mapTail :MapChain[XF, XT, YF, YT])
+				:MapChain[XF, XT ~ XF[H], YF, YT ~ YF[H]] =
 			new MapChain[XF, XT ~ XF[H], YF, YT ~ YF[H]] {
 				override def apply(f :GenericFun[XF, YF])(x :XT ~ XF[H]) :YT ~ YF[H] =
 					mapTail(f)(x.init) ~ f(x.last)
@@ -663,68 +668,87 @@ object Chain extends ChainFactory {
 		implicit def apply[X <: Chain](implicit tuple :ChainApplication[X, T => T, T]) :ChainToTuple[X, T] = { x :X => tuple(identity, x) }
 	}
 
-	implicit def ChainToTuple1[A] = ChainToTuple[Tuple1[A]](applyTuple1)
+	implicit def ChainToTuple1[A] :ChainToTuple[@~ ~A, Tuple1[A]] =
+		ChainToTuple[Tuple1[A]](applyTuple1)
 
-	implicit def ChainToTuple2[A, B] = ChainToTuple[(A, B)](applyTuple2)
+	implicit def ChainToTuple2[A, B] :ChainToTuple[@~ ~A~B, (A, B)] =
+		ChainToTuple[(A, B)](applyTuple2)
 
-	implicit def ChainToTuple3[A, B, C] =
+	implicit def ChainToTuple3[A, B, C] :ChainToTuple[@~ ~A~B~C, (A, B, C)] =
 		ChainToTuple[(A, B, C)](applyTuple3)
 
-	implicit def ChainToTuple4[A, B, C, D] =
+	implicit def ChainToTuple4[A, B, C, D] :ChainToTuple[@~ ~A~B~C~D, (A, B, C, D)] =
 		ChainToTuple[(A, B, C, D)](applyTuple4)
 
-	implicit def ChainToTuple5[A, B, C, D, E] =
+	implicit def ChainToTuple5[A, B, C, D, E] :ChainToTuple[@~ ~A~B~C~D~E, (A, B, C, D, E)] =
 		ChainToTuple[(A, B, C, D, E)](applyTuple5)
 
-	implicit def ChainToTuple6[A, B, C, D, E, F] =
+	implicit def ChainToTuple6[A, B, C, D, E, F]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F, (A, B, C, D, E, F)] =
 		ChainToTuple[(A, B, C, D, E, F)](applyTuple6)
 
-	implicit def ChainToTuple7[A, B, C, D, E, F, G] =
+	implicit def ChainToTuple7[A, B, C, D, E, F, G]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G, (A, B, C, D, E, F, G)] =
 		ChainToTuple[(A, B, C, D, E, F, G)](applyTuple7)
 
-	implicit def ChainToTuple8[A, B, C, D, E, F, G, H] =
+	implicit def ChainToTuple8[A, B, C, D, E, F, G, H]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H, (A, B, C, D, E, F, G, H)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H)](applyTuple8)
 
-	implicit def ChainToTuple9[A, B, C, D, E, F, G, H, I] =
+	implicit def ChainToTuple9[A, B, C, D, E, F, G, H, I]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I, (A, B, C, D, E, F, G, H, I)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I)](applyTuple9)
 
-	implicit def ChainToTuple10[A, B, C, D, E, F, G, H, I, J] =
+	implicit def ChainToTuple10[A, B, C, D, E, F, G, H, I, J]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J, (A, B, C, D, E, F, G, H, I, J)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J)](applyTuple10)
 
-	implicit def ChainToTuple11[A, B, C, D, E, F, G, H, I, J, K] =
+	implicit def ChainToTuple11[A, B, C, D, E, F, G, H, I, J, K]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J~K, (A, B, C, D, E, F, G, H, I, J, K)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J, K)](applyTuple11)
 
-	implicit def ChainToTuple12[A, B, C, D, E, F, G, H, I, J, K, L] =
+	implicit def ChainToTuple12[A, B, C, D, E, F, G, H, I, J, K, L]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J~K~L, (A, B, C, D, E, F, G, H, I, J, K, L)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J, K, L)](applyTuple12)
 
-	implicit def ChainToTuple13[A, B, C, D, E, F, G, H, I, J, K, L, M] =
+	implicit def ChainToTuple13[A, B, C, D, E, F, G, H, I, J, K, L, M]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J~K~L~M, (A, B, C, D, E, F, G, H, I, J, K, L, M)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J, K, L, M)](applyTuple13)
 
-	implicit def ChainToTuple14[A, B, C, D, E, F, G, H, I, J, K, L, M, N] =
+	implicit def ChainToTuple14[A, B, C, D, E, F, G, H, I, J, K, L, M, N]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N, (A, B, C, D, E, F, G, H, I, J, K, L, M, N)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J, K, L, M, N)](applyTuple14)
 
-	implicit def ChainToTuple15[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O] =
+	implicit def ChainToTuple15[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)](applyTuple15)
 
-	implicit def ChainToTuple16[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P] =
+	implicit def ChainToTuple16[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)](applyTuple16)
 
-	implicit def ChainToTuple17[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q] =
+	implicit def ChainToTuple17[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q)](applyTuple17)
 
-	implicit def ChainToTuple18[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R] =
+	implicit def ChainToTuple18[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R)](applyTuple18)
 
-	implicit def ChainToTuple19[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S] =
+	implicit def ChainToTuple19[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S]
+			:ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R~S, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S)](applyTuple19)
 
-	implicit def ChainToTuple20[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T] =
+	implicit def ChainToTuple20[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R~S~T, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T)](applyTuple20)
 
-	implicit def ChainToTuple21[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U] =
+	implicit def ChainToTuple21[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R~S~T~U, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U)](applyTuple21)
 
-	implicit def ChainToTuple22[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V] =
+	implicit def ChainToTuple22[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V]
+	       :ChainToTuple[@~ ~A~B~C~D~E~F~G~H~I~J~K~L~M~N~O~P~Q~R~S~T~U~V, (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)] =
 		ChainToTuple[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V)](applyTuple22)
 
 
@@ -740,91 +764,124 @@ object Chain extends ChainFactory {
 	@inline private[collection] def ToChain[X, Y <: Chain](conversion :ToChain[X, Y]) :ToChain[X, Y] =
 		conversion
 
-	implicit def Tuple1ToChain[A] = ToChain { x :Tuple1[A] => @~ ~ x._1 }
+	implicit def Tuple1ToChain[A] :ToChain[Tuple1[A], Chain] =
+		ToChain { x :Tuple1[A] => @~ ~ x._1 }
 
-	implicit def Tuple2ToChain[A, B] = ToChain { x :(A, B) => @~ ~ x._1 ~ x._2 }
+	implicit def Tuple2ToChain[A, B] :ToChain[(A, B), Chain] =
+		ToChain { x :(A, B) => @~ ~ x._1 ~ x._2 }
 
-	implicit def Tuple3ToChain[A, B, C] = ToChain { x :(A, B, C) => @~ ~ x._1 ~ x._2 ~ x._3 }
+	implicit def Tuple3ToChain[A, B, C] :ToChain[(A, B, C), Chain] =
+		ToChain { x :(A, B, C) => @~ ~ x._1 ~ x._2 ~ x._3 }
 
-	implicit def Tuple4ToChain[A, B, C, D] = ToChain { x :(A, B, C, D) => @~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 }
+	implicit def Tuple4ToChain[A, B, C, D] :ToChain[(A, B, C, D), Chain] =
+		ToChain { x :(A, B, C, D) => @~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 }
 
-	implicit def Tuple5ToChain[A, B, C, D, E] = ToChain { x :(A, B, C, D, E) => @~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 }
+	implicit def Tuple5ToChain[A, B, C, D, E] :ToChain[(A, B, C, D, E), Chain] =
+		ToChain { x :(A, B, C, D, E) => @~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 }
 
-	implicit def Tuple6ToChain[A, B, C, D, E, F] = ToChain { x :(A, B, C, D, E, F) => @~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 }
+	implicit def Tuple6ToChain[A, B, C, D, E, F] :ToChain[(A, B, C, D, E, F), Chain] =
+		ToChain { x :(A, B, C, D, E, F) => @~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 }
 
-	implicit def Tuple7ToChain[A, B, C, D, E, F, G] = ToChain { x :(A, B, C, D, E, F, G) =>
-		@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7
-	}
+	implicit def Tuple7ToChain[A, B, C, D, E, F, G] :ToChain[(A, B, C, D, E, F, G), Chain] =
+		ToChain { x :(A, B, C, D, E, F, G) =>
+			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7
+		}
 
-	implicit def Tuple8ToChain[A, B, C, D, E, F, G, H] = ToChain { x :(A, B, C, D, E, F, G, H) =>
-		@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8
-	}
+	implicit def Tuple8ToChain[A, B, C, D, E, F, G, H] :ToChain[(A, B, C, D, E, F, G, H), Chain] =
+		ToChain { x :(A, B, C, D, E, F, G, H) =>
+			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8
+		}
 
-	implicit def Tuple9ToChain[A, B, C, D, E, F, G, H, I] = ToChain { x :(A, B, C, D, E, F, G, H, I) =>
-		@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9
-	}
+	implicit def Tuple9ToChain[A, B, C, D, E, F, G, H, I] :ToChain[(A, B, C, D, E, F, G, H, I), Chain] =
+		ToChain { x :(A, B, C, D, E, F, G, H, I) =>
+			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9
+		}
 
-	implicit def Tuple10ToChain[A, B, C, D, E, F, G, H, I, J] = ToChain { x :(A, B, C, D, E, F, G, H, I, J) =>
-		@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10
-	}
+	implicit def Tuple10ToChain[A, B, C, D, E, F, G, H, I, J] :ToChain[(A, B, C, D, E, F, G, H, I, J), Chain] =
+		ToChain { x :(A, B, C, D, E, F, G, H, I, J) =>
+			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10
+		}
 
-	implicit def Tuple11ToChain[A, B, C, D, E, F, G, H, I, J, K] = ToChain { x :(A, B, C, D, E, F, G, H, I, J, K) =>
-		@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11
-	}
+	implicit def Tuple11ToChain[A, B, C, D, E, F, G, H, I, J, K] :ToChain[(A, B, C, D, E, F, G, H, I, J, K), Chain] =
+		ToChain { x :(A, B, C, D, E, F, G, H, I, J, K) =>
+			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11
+		}
 
-	implicit def Tuple12ToChain[A, B, C, D, E, F, G, H, I, J, K, L] = ToChain { x :(A, B, C, D, E, F, G, H, I, J, K, L) =>
-		@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12
-	}
+	implicit def Tuple12ToChain[A, B, C, D, E, F, G, H, I, J, K, L]
+			:ToChain[(A, B, C, D, E, F, G, H, I, J, K, L), Chain] =
+		ToChain { x :(A, B, C, D, E, F, G, H, I, J, K, L) =>
+			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12
+		}
 
-	implicit def Tuple13ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M] = ToChain { x :(A, B, C, D, E, F, G, H, I, J, K, L, M) =>
-		@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13
-	}
+	implicit def Tuple13ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M]
+	       :ToChain[(A, B, C, D, E, F, G, H, I, J, K, L, M), Chain] =
+		ToChain { x :(A, B, C, D, E, F, G, H, I, J, K, L, M) =>
+			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13
+		}
 
-	implicit def Tuple14ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N] = ToChain { x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N) =>
-		@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14
-	}
+	implicit def Tuple14ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N]
+			:ToChain[(A, B, C, D, E, F, G, H, I, J, K, L, M, N), Chain] =
+		ToChain { x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N) =>
+			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14
+		}
 
-	implicit def Tuple15ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O] = ToChain { x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) =>
-		@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15
-	}
+	implicit def Tuple15ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O]
+	       :ToChain[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O), Chain] =
+		ToChain { x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O) =>
+			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15
+		}
 
-	implicit def Tuple16ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P] = ToChain {
-		x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) =>
-			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16
-	}
+	implicit def Tuple16ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P]
+	       :ToChain[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P), Chain] =
+		ToChain {
+			x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P) =>
+				@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16
+		}
 
-	implicit def Tuple17ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q] = ToChain {
-		x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) =>
-			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16 ~ x._17
-	}
+	implicit def Tuple17ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q]
+			:ToChain[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q), Chain] =
+		ToChain {
+			x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q) =>
+				@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16 ~ x._17
+		}
 
-	implicit def Tuple18ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R] = ToChain {
-		x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) =>
-			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16 ~ x._17 ~ x._18
-	}
+	implicit def Tuple18ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R]
+			:ToChain[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R), Chain] =
+		ToChain {
+			x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R) =>
+				@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16 ~ x._17 ~ x._18
+		}
 
-	implicit def Tuple19ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S] = ToChain {
-		x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) =>
-			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16 ~ x._17 ~ x._18 ~ x._19
-	}
+	implicit def Tuple19ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S]
+			:ToChain[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S), Chain] =
+		ToChain {
+			x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S) =>
+				@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16 ~ x._17 ~ x._18 ~ x._19
+		}
 
-	implicit def Tuple20ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T] = ToChain {
-		x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) =>
-			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16 ~ x._17 ~ x._18 ~
-				x._19 ~ x._20
-	}
+	implicit def Tuple20ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T]
+			:ToChain[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T), Chain] =
+		ToChain {
+			x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T) =>
+				@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16 ~ x._17 ~ x._18 ~
+					x._19 ~ x._20
+		}
 
-	implicit def Tuple21ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U] = ToChain {
-		x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) =>
-			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16 ~ x._17 ~ x._18 ~
-				x._19 ~ x._20 ~ x._21
-	}
+	implicit def Tuple21ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U]
+	       :ToChain[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U), Chain] =
+		ToChain {
+			x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U) =>
+				@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16 ~ x._17 ~ x._18 ~
+					x._19 ~ x._20 ~ x._21
+		}
 
-	implicit def Tuple22ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V] = ToChain {
-		x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) =>
-			@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16 ~ x._17 ~ x._18 ~
-				x._19 ~ x._20 ~ x._21 ~ x._22
-	}
+	implicit def Tuple22ToChain[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V]
+	       :ToChain[(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V), Chain] =
+		ToChain {
+			x :(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V) =>
+				@~ ~ x._1 ~ x._2 ~ x._3 ~ x._4 ~ x._5 ~ x._6 ~ x._7 ~ x._8 ~ x._9 ~ x._10 ~ x._11 ~ x._12 ~ x._13 ~ x._14 ~ x._15 ~ x._16 ~ x._17 ~ x._18 ~
+					x._19 ~ x._20 ~ x._21 ~ x._22
+		}
 
 
 	@implicitNotFound("Can't apply object ${F} to the chain ${X} with any known conversion.")
@@ -832,7 +889,7 @@ object Chain extends ChainFactory {
 
 	/** Forces SAM conversion of a function literal `(F, X) => Y` into a `ChainApplication`. */
 	@inline private[collection] def ChainApplication[X <: Chain, F, Y]
-	(apply :ChainApplication[X, F, Y]) :ChainApplication[X, F, Y] =
+	                                                (apply :ChainApplication[X, F, Y]) :ChainApplication[X, F, Y] =
 		apply
 
 	implicit def applyChain[C <: Chain, Y] :ChainApplication[C, C => Y, Y] =
@@ -1663,7 +1720,7 @@ sealed abstract class ListingFactory extends ChainFactory {
 	  */
 	implicit val upperValueBound :ValueBound[Type, Value] = new ValueBound[Type, Value]
 
-	implicit final val EmptyListingValueBound = new ValueBound[@~, Nothing]
+	implicit final val EmptyListingValueBound :ValueBound[@~, Nothing] = new ValueBound[@~, Nothing]
 
 	@inline implicit def valueBound[T <: Type, K <: Key, V <: Value, U, X]
 	                               (implicit tail :ValueBound[T, U], lub :LUB[V, U, X])
@@ -1841,7 +1898,7 @@ sealed abstract class ListingFactory extends ChainFactory {
 	/** A specialized `UpperBound` implementation existing to force ''scalac'' to infer singleton types when needed. */
 	final class UpperIndexBound[C <: Type, +K, +V] private[ListingFactory]() extends UpperBound[C, (K, V)]
 
-	implicit final val EmptyIndexBound = new UpperIndexBound[@~, Nothing, Nothing]
+	implicit final val EmptyIndexBound :UpperIndexBound[@~, Nothing, Nothing] = new UpperIndexBound[@~, Nothing, Nothing]
 
 	@inline implicit def upperIndexBound[T <: Type, HK <: Key, HV <: Value, K, V]
 	                                    (implicit tail :UpperIndexBound[T, K, V], k :HK <:< K, v :HV <:< V)
@@ -1877,7 +1934,7 @@ sealed abstract class ListingFactory extends ChainFactory {
 			}
 	}
 
-	@implicitNotFound("Cannot determine the full list of keys in ${I} (or it is not ${O}).")
+	@implicitNotFound("Cannot determine the full list of keys in ${I} (or it is not ${K}).")
 	sealed abstract class ToKeyChain[-I <: Type, +K <: Chain] {
 		def apply(index :I) :K
 	}

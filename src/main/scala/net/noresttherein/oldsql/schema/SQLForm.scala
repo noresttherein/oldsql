@@ -279,7 +279,7 @@ trait SQLForm[T] extends SQLReadForm[T] with SQLWriteForm[T] { outer =>
 	/** Creates a synthetic [[net.noresttherein.oldsql.schema.Relation.StaticRelation StaticRelation]]
 	  * for an unbound SQL [[net.noresttherein.oldsql.sql.ParamClause.NamedParamRelation parameter]]
 	  * using the (left) argument `String` literal as relation the name, SQL statement parameter name
-	  * and mapping label for access from [[net.noresttherein.oldsql.sql.RowProduct.JoinedMappings JoinedMappings]].
+	  * and mapping label for access from [[net.noresttherein.oldsql.sql.Clause.JoinedMappings JoinedMappings]].
 	  */
 	def ?:[N <: Label](name :N) :NamedParamRelation[N, T] = NamedParamRelation[N, T](name)(this)
 
@@ -1135,7 +1135,7 @@ object SQLForm {
 		implicit final val Null :NullValue[Null] = new ArbitraryNullValue(null) //this is made an implicit in anticipation of Scala 3 X | Null types
 
 		/** Unit itself as its 'null' value. */
-		implicit final val Unit = NullValue(())
+		implicit final val Unit :NullValue[Unit] = NullValue(())
 
 		/** Scala `None` as the null value for `Option[T]`. */
 		implicit final val None :NullValue[Option[Nothing]] = NullValue(scala.None)
@@ -1156,26 +1156,26 @@ object SQLForm {
 //			/** Specifies `null` itself as the 'null' value used by nullable types `T >: scala.Null`. */
 //			implicit final val NullRef :NullValue[Null] = NullValue(null)
 			/** Specifies zero as the 'null' value. */
-			implicit final val NullInt = NullValue(0)
+			implicit final val NullInt     :NullValue[Int]     = NullValue(0)
 			/** Specifies zero as the 'null' value. */
-			implicit final val NullLong = NullValue(0L)
+			implicit final val NullLong    :NullValue[Long]    = NullValue(0L)
 			/** Specifies zero as the 'null' value. */
-			implicit final val NullShort = NullValue(0.toShort)
+			implicit final val NullShort   :NullValue[Short]   = NullValue(0.toShort)
 			/** Specifies zero as the 'null' value. */
-			implicit final val NullByte = NullValue(0.toByte)
+			implicit final val NullByte    :NullValue[Byte]    = NullValue(0.toByte)
 			/** Specifies `false` as the 'null' value. */
-			implicit final val NullBoolean = NullValue[Boolean](false)
+			implicit final val NullBoolean :NullValue[Boolean] = NullValue[Boolean](false)
 			/** Specifies zero as the 'null' value. */
-			implicit final val NullChar = NullValue(0.toChar)
+			implicit final val NullChar    :NullValue[Char]    = NullValue(0.toChar)
 			/** Specifies zero as the 'null' value. */
-			implicit final val NullFloat = NullValue(0.0f)
+			implicit final val NullFloat   :NullValue[Float]   = NullValue(0.0f)
 			/** Specifies zero as the 'null' value. */
-			implicit final val NullDouble = NullValue(0.0)
+			implicit final val NullDouble  :NullValue[Double]  = NullValue(0.0)
 
 			/** Specifies [[net.noresttherein.oldsql.model.Kin Kin]]`.`[[net.noresttherein.oldsql.model.Kin.Nonexistent Nonexistent]]
 			  * as the 'null' value.
 			  */
-			implicit final val NullKin = NullValue(Kin.Nonexistent())
+			implicit final val NullKin :NullValue[Kin[Nothing]] = NullValue(Kin.Nonexistent())
 		}
 
 		object Collections { //consider: constants. Lots of mini classes to change precedence

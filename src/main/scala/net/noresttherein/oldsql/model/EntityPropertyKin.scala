@@ -55,7 +55,7 @@ object EntityPropertyKin {
 	                     (implicit composition :T ComposableFrom P) :Derived[E, T] =
 		new EntityPropertyKin(owners, property) {
 			override lazy val toOption = value orElse owner.items.map {
-				items => propertyComposition(items.view.map(property.fun))
+				items => propertyComposition(items.view.map(this.property.fun))
 			}
 		}
 
@@ -67,7 +67,7 @@ object EntityPropertyKin {
 		else
 			new SingularPropertyKin[E, T](owner.recompose, property) {
 				override lazy val toOption = value orElse this.owner.items.map {
-					items => propertyComposition(items.view.map(property.fun))
+					items => propertyComposition(items.view.map(this.property.fun))
 				}
 			}
 

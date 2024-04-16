@@ -98,8 +98,8 @@ object TeleKin {
 			new BrokerKin[E, T](key) {
 				override lazy val toOption =
 					if (value.isDefined) value
-					else key.toOption match {
-						case Some(kin) if kin.forall(_.isPresent) => Some(composition(kin.map(_.get)))
+					else this.key.toOption match {
+						case Some(kin) if kin.forall(_.isPresent) => Some(this.composition(kin.map(_.get)))
 						case _ => None
 					}
 			}

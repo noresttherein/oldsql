@@ -7,13 +7,13 @@ import net.noresttherein.oldsql.collection.NaturalMap.WhenNoKey.Throw
 import net.noresttherein.oldsql.collection.Opt.Got
 import net.noresttherein.oldsql.haul.ComponentValues.ComponentValuesBuilder
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buffs, ColumnForm, ColumnMapping, Mapping, Seal}
+import net.noresttherein.oldsql.schema.{Buffs, ColumnForm, ColumnMapping, Mapping, Seal, SpecificMapping}
 import net.noresttherein.oldsql.schema.Buff.{SelectAudit, SelectDefault, SelectPreset}
 import net.noresttherein.oldsql.schema.Mapping.{ComponentSelection, ExcludedComponent, IncludedComponent, OriginProjection, TypedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.ProjectionDef
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.OptionMapping
-import net.noresttherein.oldsql.schema.bits.OptionMapping.{Optional, OptionColumn}
+import net.noresttherein.oldsql.schema.bits.OptionMapping.{OptionColumn, Optional}
 import net.noresttherein.oldsql.schema.support.{AlteredMapping, BuffedMapping, ColumnMappingPrototype, MappedMapping, MappingPrototype, PatchedMapping, PrefixedMapping, RenamedMapping, ReorderedMapping}
 import net.noresttherein.oldsql.schema.ColumnMapping.TypedColumn
 import net.noresttherein.oldsql.schema.support.MappingProxy.ExportColumnProxy
@@ -32,14 +32,8 @@ import net.noresttherein.oldsql.OperationView
   * unimplemented in the `Mapping` trait, allowing traits extending it to narrow down their result types without
   * providing their definitions. See the [[net.noresttherein.oldsql.schema.Mapping Mapping]]'s class documentation
   * for more detailed reasons behind its existence as well as extensive general introduction.
-  *
-  * @tparam S The subject type, that is the type of objects read and written to a particular table (or a view, query,
-  *           or table fragment).
-  * @tparam O A marker 'Origin' type, used to distinguish between several instances of the same mapping class,
-  *           but coming from different sources (especially different aliases for a table occurring more then once
-  *           in a join). At the same time, it adds additional type safety by ensuring that only components of mappings
-  *           included in a query can be used in the creation of SQL expressions used by that query.
-  *           Consult [[net.noresttherein.oldsql.schema.Mapping.Origin Mapping.Origin]]
+  * @tparam S $SubjectParamInfo
+  * @tparam O $OriginParamInfo
   */
 trait BaseMapping[S, O] extends Mapping with MappingPrototype[({ type A[s] = TypedMapping[s, O] })#A, S, O] { self =>
 	override type Origin = O

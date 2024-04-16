@@ -17,7 +17,7 @@ import net.noresttherein.oldsql.schema.bits.{ConstantMapping, ForeignKeyColumnMa
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.schema.support.AlteredMapping
 import net.noresttherein.oldsql.schema.support.AlteredMapping.annulled
-import net.noresttherein.oldsql.schema.support.MappingAdapter.{Adapted, DelegateAdapter}
+import net.noresttherein.oldsql.schema.support.MappingAdapter.{AbstractDelegateAdapter, Adapted, DelegateAdapter}
 import net.noresttherein.oldsql.slang.{castTypeParam, saferCasting}
 import net.noresttherein.oldsql.sql.CommonTableExpression.CommonTableAlias
 import net.noresttherein.oldsql.sql.{AndFrom, From, RowProduct, WithClause}
@@ -446,10 +446,13 @@ object Relation {
 		private lazy val mapping = {
 			val template = default.export[default.type].refine
 			//this converts default.row.ExportComponent to default.export.ExportComponent
-			new AlteredMapping[template.type, template.Subject, default.type](template,
+			new AlteredMapping[template.Subject, default.type](template,
 					includes.asInstanceOf[Unique[TypedMapping[_, default.type]]],
 					excludes.asInstanceOf[Unique[TypedMapping[_, default.type]]]
-				) with DelegateAdapter[template.type, template.Subject, default.type]
+				) with AbstractDelegateAdapter[template.type, template.Subject, default.type]
+			{
+				override val body = template
+			}
 		}
 
 		override def row[O] :M[O] = default[O]

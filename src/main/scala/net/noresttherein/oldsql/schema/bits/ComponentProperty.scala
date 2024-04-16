@@ -232,16 +232,16 @@ object ComponentProperty {
 			extractor match {
 				case _ :IdentityExtractor[Y @unchecked] =>
 					if (extractor.export == export) this.asInstanceOf[SpecificComponentProperty[C, S, Y, O]]
-					else new OptionalProperty[C, S, Y, O](extractor.export, optional.asInstanceOf[S => Option[Y]])
+					else new OptionalProperty[C, S, Y, O](extractor.export, this.optional.asInstanceOf[S => Option[Y]])
 
 				case requisite :RequisiteExtractor[T @unchecked, Y @unchecked] =>
-					val first = optional; val second = requisite.getter
+					val first = this.optional; val second = requisite.getter
 					new OptionalProperty(extractor.export, first(_) map second)
 
 				case _ :EmptyExtractor[_, _] => new EmptyProperty[C, Y, O](extractor.export)
 
 				case _ =>
-					val first = optional; val second = extractor.optional
+					val first = this.optional; val second = extractor.optional
 					new OptionalProperty(extractor.export, first(_) flatMap second)
 			}
 
@@ -335,22 +335,22 @@ object ComponentProperty {
 			extractor match {
 				case _ :IdentityExtractor[_] =>
 					if (extractor.export == export) this.asInstanceOf[SpecificComponentProperty[C, Any, Y, O]]
-					else new ConstantProperty[C, Y, O](extractor.export, constant.asInstanceOf[Y])
+					else new ConstantProperty[C, Y, O](extractor.export, this.constant.asInstanceOf[Y])
 
 				case const :ConstantExtractor[_, Y @unchecked] => extractor match {
 					case const :ConstantProperty[C @unchecked, Y @unchecked, O @unchecked] => const
 					case _ => new ConstantProperty(extractor.export, const.constant)
 				}
 				case req :RequisiteExtractor[T @unchecked, Y @unchecked] =>
-					new ConstantProperty(extractor.export, req(constant))
-				case _ => extractor.opt(constant) match {
+					new ConstantProperty(extractor.export, req(this.constant))
+				case _ => extractor.opt(this.constant) match {
 					case Got(const) => new ConstantProperty(extractor.export, const)
 					case _ => new EmptyProperty(extractor.export)
 				}
 
 			}
 
-		override def toString :String = "Constant(" + property + ":" + export + "=" + constant + ")"
+		override def toString :String = "Constant(" + property + ":" + export + "=" + this.constant + ")"
 	}
 
 
@@ -359,7 +359,7 @@ object ComponentProperty {
 	private class EmptyProperty[+M <: TypedMapping[T, O], T, O](component :M)
 		extends EmptyExtract[M, T, O](component) with SpecificComponentProperty[M, Any, T, O]
 	{
-		override val property = prop(optional) //fixme: PropertyPath will throw up
+		override val property = prop(this.optional) //fixme: PropertyPath will throw up
 		override val argumentType = typeOf[Any]
 		protected[this] override val tag :TypeTag[Any] = typeTag[Any]
 

@@ -360,7 +360,7 @@ object IndexedSQL {
 	def apply[F <: RowProduct, S >: Grouped <: Single, K <: Label, T]
 	         (key :K, value :ColumnSQL[F, S, T]) :IndexedSQL[F, S, @~ |~ (K :~ T)] =
 		//a minor inconsistency: this will silently drop a preexisting label from a LabeledColumnSQL
-		IndexedSQL(key @:[K] value)
+		IndexedSQL(value.@:[K](key))
 
 	def apply[F <: RowProduct, S >: Grouped <: Single, K <: Label, T]
 	         (key :K, value :LabeledValueSQL[F, S, T]) :IndexedSQL[F, S, @~ |~ (K :~ T)] =

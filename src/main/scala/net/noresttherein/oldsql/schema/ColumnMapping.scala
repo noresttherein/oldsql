@@ -665,7 +665,7 @@ object ColumnMapping extends Rank1ColumnMappingImplicits {
 
 		override def apply[T](component :Component[T]) :ColumnExtract[T] =
 			if (component == this)
-				ColumnExtract.ident[S, O](this).asInstanceOf[ColumnExtract[T]]
+				selfExtract.asInstanceOf[ColumnExtract[T]]
 			else throwNoSuchComponentException(component)
 
 		override def apply[T](column :Column[T]) :ColumnExtract[T] = apply(column :Component[T])
@@ -882,9 +882,9 @@ object ColumnMapping extends Rank1ColumnMappingImplicits {
 //		protected final val superUpdatedByDefault  :Unique[Col[_, O]] = super.updatedByDefault
 
 
-		override def apply[T](component :Component[T]) :like[Col]#Extract[T] =
+		override def apply[T](component :Component[T]) :SpecificExtract[Col[T, O], S, T, O] =
 			if (component eq this)
-				selfExtract.asInstanceOf[like[Col]#Extract[T]]
+				selfExtract.asInstanceOf[SpecificExtract[Col[T, O], S, T, O]]
 			else
 				throw new IllegalArgumentException(
 					s"Mapping $component is not a subcomponent of column $this. The only subcomponent of a column is the column itself."
@@ -900,7 +900,8 @@ object ColumnMapping extends Rank1ColumnMappingImplicits {
 
 
 	/** A late mix-in trait overriding all benefiting `TypedColumn` methods with `val`s. Needs to be placed
-	  * in the linearization order after declarations of `name`, `buffs` and `form`.
+	  * in the linearization order after declarations of `name`, `buffs` and `form`. It does not extend
+	  * [[net.noresttherein.oldsql.schema.bases.StableMapping.StableMappingTemplate StableMappingTemplate]].
 	  * @see [[net.noresttherein.oldsql.schema.ColumnMapping.ColumnSupport]]
 	  */
 	trait StableColumn[S, O] extends OptimizedColumn[S, O] {

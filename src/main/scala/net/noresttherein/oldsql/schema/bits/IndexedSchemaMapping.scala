@@ -4,21 +4,22 @@ import net.noresttherein.oldsql.OperationView
 import net.noresttherein.oldsql.OperationView.WriteOperationView
 import net.noresttherein.oldsql.collection.{Chain, Listing}
 import net.noresttherein.oldsql.collection.Chain.{@~, ~}
-import net.noresttherein.oldsql.collection.Listing.{:~, |~, UniqueKey}
+import net.noresttherein.oldsql.collection.Listing.{:~, UniqueKey, |~}
 import net.noresttherein.oldsql.morsels.Extractor
 import net.noresttherein.oldsql.morsels.Extractor.=?>
 import net.noresttherein.oldsql.schema.{Buff, Buffs, ColumnExtract, ColumnForm, MappingExtract}
 import net.noresttherein.oldsql.schema.Mapping.TypedMapping
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bits.IndexedMappingSchema.{DedicatedFlatIndexedSchema, DedicatedIndexedSchema, ExtensibleFlatIndexedSchema, FlatIndexedMappingSchema}
-import net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping.{DelegateIndexedSchemaMapping, FlatIndexedSchemaMapping, IndexedSchemaMappingAdapter, IndexedSchemaMappingProxy, MappedIndexedSchema, MappedIndexedSchemaMapping}
+import net.noresttherein.oldsql.schema.bits.IndexedSchemaMapping.{FlatIndexedSchemaMapping, IndexedSchemaMappingAdapter, MappedIndexedSchema, MappedIndexedSchemaMapping}
 import net.noresttherein.oldsql.schema.bits.LabelPath.Label
 import net.noresttherein.oldsql.schema.bits.MappingSchema.{BaseNonEmptyFlatSchema, BaseNonEmptySchema, DedicatedSchema, EmptySchema, FlatMappingSchema, FlatMappingSchemaProxy, MappingSchemaProxy, SubjectConstructor}
-import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, |-|, AlteredSchemaMapping, AlterSchema, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, FlatSchemaMappingProxy, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, SchemaMappingProxy, StaticSchemaMapping}
+import net.noresttherein.oldsql.schema.bits.SchemaMapping.{@|-|, @||, AlterSchema, AlteredSchemaMapping, FlatOperationSchema, FlatSchemaMapping, FlatSchemaMappingAdapter, LabeledSchemaColumn, MappedSchema, MappingSchemaDelegate, OperationSchema, SchemaMappingAdapter, |-|}
 import net.noresttherein.oldsql.schema.bits.SchemaMapping.AlterSchema.{ComponentsExist, FilterSchema}
 import net.noresttherein.oldsql.schema.support.{AlteredMapping, BuffedMapping, DelegateMapping, MappedMapping, MappingPrototype, PatchedMapping, PrefixedMapping, RenamedMapping, ReorderedMapping}
-import net.noresttherein.oldsql.schema.support.MappingAdapter.{ComposedAdapter, DelegateAdapter}
+import net.noresttherein.oldsql.schema.support.MappingAdapter.{AbstractDelegateAdapter, ComposedAdapter}
 import net.noresttherein.oldsql.schema.support.MappingDecorator.ExportDecorator
+import net.noresttherein.oldsql.schema.support.ReorderedMapping.{ReorderedMappingAdapter, ReorderedMappingComposedAdapter}
 
 
 
@@ -27,6 +28,7 @@ import net.noresttherein.oldsql.schema.support.MappingDecorator.ExportDecorator
 
 /** A [[net.noresttherein.oldsql.schema.bits.MappingSchema MappingSchema]] variant where all components are indexed
   * with `String` literals for access.
+  * @note $ComponentOrderInfo
   * @tparam S the ''packed'' type of this schema, that is one of values assembled from the values of the components
   *           from this schema, and the subject type of the mapping based on this schema.
   * @tparam V a `Listing` with values of all components appearing on the components list `C`, indexed with
@@ -646,8 +648,9 @@ object IndexedMappingSchema {
 	                      filtered :IndexedMappingSchema[S, V, C, O],
 	                      op :OperationView, include :Iterable[TypedMapping[_, O]])
 		extends DedicatedSchema[S, V, C, O](original, filtered, op, include)
-			with IndexedMappingSchema[S, V, C, O]
+		   with IndexedMappingSchema[S, V, C, O]
 	{
+//		protected override lazy val backer = new Backer with Mapping
 		override def prev[I <: Chain, P <: Chain](implicit vals :V <:< (I ~ Any), comps :C <:< (P ~ Any))
 				:IndexedMappingSchema[S, I, P, O] =
 			filtered.prev
@@ -704,9 +707,15 @@ trait IndexedSchemaMapping[S, V <: Listing, C <: Chain, O]
 { outer =>
 	override val schema :IndexedMappingSchema[S, V, C, O]
 
+	private trait Proxy
+		extends IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] with AbstractDelegateAdapter[this.type, S, O]
+	{
+		override val body   = IndexedSchemaMapping.this
+		override val schema = IndexedSchemaMapping.this.schema
+	}
+
 	override def withBuffs(buffs :Buffs[S]) :IndexedSchemaMapping[S, V, C, O] =
-		new BuffedMapping[this.type, S, O](this, buffs)
-			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
+		new BuffedMapping[S, O](this, buffs) with Proxy
 
 	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:IndexedSchemaMapping[S, V, C, O] =
@@ -714,31 +723,27 @@ trait IndexedSchemaMapping[S, V <: Listing, C <: Chain, O]
 
 	protected[schema] override def alter(includes :Iterable[TypedMapping[_, O]], excludes :Iterable[TypedMapping[_, O]])
 			:IndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-		new AlteredMapping[this.type, S, O](this, includes, excludes)
-			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
+		new AlteredMapping[S, O](this, includes, excludes) with Proxy
 
 	protected override def apply(op :OperationView, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:IndexedSchemaMapping[S, V, C, O] =
-		new PatchedMapping[this.type, S, O](this, op, include, exclude)
-			with DelegateAdapter[this.type, S, O] with IndexedSchemaMappingProxy[this.type, S, V, C, O]
-
+		new PatchedMapping[S, O](this, op, include, exclude) with Proxy
 
 	override def prefixed(prefix :String) :IndexedSchemaMapping[S, V, C, O] =
 		if (prefix.length == 0)
 			this
 		else
-			new PrefixedMapping[this.type, S, O](prefix, this) with DelegateIndexedSchemaMapping[S, V, C, O]
+			new PrefixedMapping[S, O](prefix, this) with Proxy
 
 	override def renamed(naming :String => String) :IndexedSchemaMapping[S, V, C, O] =
-		new RenamedMapping[this.type, S, O](this, naming) with DelegateIndexedSchemaMapping[S, V, C, O]
+		new RenamedMapping[S, O](this, naming) with Proxy
 
 	override def reorder(permutation :IndexedSeq[Int]) :IndexedSchemaMapping[S, V, C, O] = {
 		ReorderedMapping.validatePermutation(this, permutation)
 		if (permutation == permutation.indices)
 			this
 		else
-			new ReorderedMapping[this.type, S, O](this, permutation)
-				with DelegateIndexedSchemaMapping[S, V, C, O]
+			new ReorderedMappingAdapter[this.type, S, O](this, permutation) with Proxy
 	}
 
 	override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X]) :IndexedSchemaMapping[X, V, C, O] =
@@ -845,8 +850,15 @@ object IndexedSchemaMapping {
 	{ outer =>
 		override val schema :FlatIndexedMappingSchema[S, V, C, O]
 
+		private trait Proxy
+			extends FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] with AbstractDelegateAdapter[this.type, S, O]
+		{
+			override val body   = outer
+			override val schema = outer.schema
+		}
+
 		override def withBuffs(buffs :Buffs[S]) :FlatIndexedSchemaMapping[S, V, C, O] =
-			new BuffedMapping[this.type, S, O](this, buffs) with DelegateFlatIndexedSchemaMapping[S, V, C, O]
+			new BuffedMapping[S, O](this, buffs) with Proxy
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatIndexedSchemaMapping[S, V, C, O] =
@@ -854,32 +866,25 @@ object IndexedSchemaMapping {
 
 		protected[schema] override def alter(includes :Iterable[TypedMapping[_, O]], excludes :Iterable[TypedMapping[_, O]])
 				:FlatIndexedSchemaMappingAdapter[this.type, S, S, V, C, O] =
-			new AlteredMapping[this.type, S, O](this, includes, excludes)
-				with DelegateAdapter[this.type, S, O] with FlatIndexedSchemaMappingProxy[this.type, S, V, C, O]
+			new AlteredMapping[S, O](this, includes, excludes) with Proxy
 
 		protected override def apply(op :OperationView, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatIndexedSchemaMapping[S, V, C, O] =
-			new PatchedMapping[this.type, S, O](this, op, include, exclude)
-				with DelegateAdapter[this.type, S, O] with FlatIndexedSchemaMappingProxy[this.type, S, V, C, O]
-
+			new PatchedMapping[S, O](this, op, include, exclude) with Proxy
 
 		override def prefixed(prefix :String) :FlatIndexedSchemaMapping[S, V, C, O] =
-			if (prefix.length == 0)
-				this
-			else
-				new PrefixedMapping[this.type, S, O](prefix, this)
-					with DelegateFlatIndexedSchemaMapping[S, V, C, O]
+			if (prefix.length == 0) this
+			else new PrefixedMapping[S, O](prefix, this) with Proxy
 
 		override def renamed(naming :String => String) :FlatIndexedSchemaMapping[S, V, C, O] =
-			new RenamedMapping[this.type, S, O](this, naming) with DelegateFlatIndexedSchemaMapping[S, V, C, O]
+			new RenamedMapping[S, O](this, naming) with Proxy
 
 		override def reorder(permutation :IndexedSeq[Int]) :FlatIndexedSchemaMapping[S, V, C, O] = {
 			ReorderedMapping.validatePermutation(this, permutation)
 			if (permutation == permutation.indices)
 				this
 			else
-				new ReorderedMapping[this.type, S, O](this, permutation)
-					with DelegateFlatIndexedSchemaMapping[S, V, C, O]
+				new ReorderedMappingAdapter[this.type, S, O](this, permutation) with Proxy
 		}
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
@@ -924,36 +929,30 @@ object IndexedSchemaMapping {
 		extends IndexedSchemaMapping[S, V, C, O] with SchemaMappingAdapter[M, T, S, V, C, O]
 		   with MappingPrototype[({ type A[s] = IndexedSchemaMappingAdapter[M, T, s, V, C, O] })#A, S, O]
 	{
+		private trait Proxy
+			extends IndexedSchemaMappingAdapter[M, T, S, V, C, O] with AbstractDelegateAdapter[M, S, O]
+		{
+			override val body   = IndexedSchemaMappingAdapter.this.body
+			override val schema = IndexedSchemaMappingAdapter.this.schema
+		}
+
 		override def withBuffs(buffs :Buffs[S]) :IndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			new BuffedMapping[this.type, S, O](this, buffs)
-				with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
-				with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
+			new BuffedMapping[S, O](this, buffs) with Proxy
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:IndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			new AlteredMapping[this.type, S, O](this, include, exclude)
-				with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
-				with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
+			new AlteredMapping[S, O](this, include, exclude) with Proxy
 
 		protected override def apply(op :OperationView, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:IndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			new PatchedMapping[this.type, S, O](this, op, include, exclude)
-				with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
-				with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
-
+			new PatchedMapping[S, O](this, op, include, exclude) with Proxy
 
 		override def prefixed(prefix :String) :IndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			if (prefix.length == 0)
-				this
-			else
-				new PrefixedMapping[this.type, S, O](prefix, this)
-					with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
-					with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
+			if (prefix.length == 0) this
+			else new PrefixedMapping[S, O](prefix, this) with Proxy
 
 		override def renamed(naming :String => String) :IndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			new RenamedMapping[this.type, S, O](this, naming)
-				with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
-				with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
+			new RenamedMapping[S, O](this, naming) with Proxy
 
 		override def reorder(permutation :IndexedSeq[Int]) :IndexedSchemaMappingAdapter[M, T, S, V, C, O] =
 			if (permutation.length != columns.size)
@@ -964,9 +963,7 @@ object IndexedSchemaMapping {
 			else if (permutation == permutation.indices)
 				this
 			else
-				new ReorderedMapping[this.type, S, O](this, permutation)
-					with ComposedAdapter[M, S, S, O]
-					with DelegateIndexedSchemaMapping[S, V, C, O] with IndexedSchemaMappingAdapter[M, T, S, V, C, O]
+				new ReorderedMappingComposedAdapter[M, S, O](this, permutation) with Proxy
 
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
@@ -982,41 +979,35 @@ object IndexedSchemaMapping {
 
 
 
-	trait IndexedSchemaMappingProxy[+M <: IndexedSchemaMapping[S, V, C, O], S, V <: Listing, C <: Chain, O]
+/*	trait IndexedSchemaMappingProxy[+M <: IndexedSchemaMapping[S, V, C, O], S, V <: Listing, C <: Chain, O]
 		extends IndexedSchemaMappingAdapter[M, S, S, V, C, O] with SchemaMappingProxy[M, S, V, C, O]
 	{
 		override val schema = body.schema
 
+		private trait Proxy
+			extends AbstractDelegateAdapter[M, S, O] with ExportDecorator[M, S, O]
+			   with DelegateIndexedSchemaMapping[S, V, C, O] with IndexedSchemaMappingProxy[M, S, V, C, O]
+		{
+			override val body = IndexedSchemaMappingProxy.this.body
+		}
+
 		override def withBuffs(buffs :Buffs[S]) :IndexedSchemaMappingAdapter[M, S, S, V, C, O] =
-			new BuffedMapping[this.type, S, O](this, buffs)
-				with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
-				with ExportDecorator[M, S, O] with IndexedSchemaMappingProxy[M, S, V, C, O]
+			new BuffedMapping[S, O](this, buffs) with Proxy
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:IndexedSchemaMappingAdapter[M, S, S, V, C, O] =
-			new AlteredMapping[this.type, S, O](this, include, exclude)
-				with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
-				with ExportDecorator[M, S, O] with IndexedSchemaMappingProxy[M, S, V, C, O]
+			new AlteredMapping[S, O](this, include, exclude) with Proxy
 
 		protected override def apply(op :OperationView, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:IndexedSchemaMappingAdapter[M, S, S, V, C, O] =
-			new PatchedMapping[this.type, S, O](this, op, include, exclude)
-				with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
-				with ExportDecorator[M, S, O] with IndexedSchemaMappingProxy[M, S, V, C, O]
-
+			new PatchedMapping[S, O](this, op, include, exclude) with Proxy
 
 		override def prefixed(prefix :String) :IndexedSchemaMappingAdapter[M, S, S, V, C, O] =
-			if (prefix.length == 0)
-				this
-			else
-				new PrefixedMapping[this.type, S, O](prefix, this)
-					with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
-					with ExportDecorator[M, S, O] with IndexedSchemaMappingProxy[M, S, V, C, O]
+			if (prefix.length == 0) this
+			else new PrefixedMapping[S, O](prefix, this) with Proxy
 
 		override def renamed(naming :String => String) :IndexedSchemaMappingAdapter[M, S, S, V, C, O] =
-			new RenamedMapping[this.type, S, O](this, naming)
-				with ComposedAdapter[M, S, S, O] with DelegateIndexedSchemaMapping[S, V, C, O]
-				with ExportDecorator[M, S, O] with IndexedSchemaMappingProxy[M, S, V, C, O]
+			new RenamedMapping[S, O](this, naming) with Proxy
 
 		override def reorder(permutation :IndexedSeq[Int]) :IndexedSchemaMappingAdapter[M, S, S, V, C, O] =
 			if (permutation.length != columns.size)
@@ -1027,11 +1018,10 @@ object IndexedSchemaMapping {
 			else if (permutation == permutation.indices)
 				this
 			else
-				new ReorderedMapping[this.type, S, O](this, permutation)
-					with ComposedAdapter[M, S, S, O]
+				new ReorderedMappingComposedAdapter[M, S, O](this, permutation)
 					with DelegateIndexedSchemaMapping[S, V, C, O] with IndexedSchemaMappingProxy[M, S, V, C, O]
 	}
-
+*/
 
 
 	trait FlatIndexedSchemaMappingAdapter[+M <: TypedMapping[T, O], T, S, V <: Listing, C <: Chain, O]
@@ -1039,45 +1029,37 @@ object IndexedSchemaMapping {
 		   with FlatSchemaMappingAdapter[M, T, S, V, C, O]
 		   with MappingPrototype[({ type A[s] = FlatIndexedSchemaMappingAdapter[M, T, s, V, C, O] })#A, S, O]
 	{
+		private trait Proxy
+			extends FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] with AbstractDelegateAdapter[M, S, O]
+		{
+			override val body   = FlatIndexedSchemaMappingAdapter.this.body
+			override val schema = FlatIndexedSchemaMappingAdapter.this.schema
+		}
+
 		override def withBuffs(buffs :Buffs[S]) :FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			new BuffedMapping[this.type, S, O](this, buffs)
-				with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-				with FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O]
+			new BuffedMapping[S, O](this, buffs) with Proxy
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			new AlteredMapping[this.type, S, O](this, include, exclude)
-				with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-				with FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O]
+			new AlteredMapping[S, O](this, include, exclude) with Proxy
 
 		protected override def apply(op :OperationView, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			new PatchedMapping[this.type, S, O](this, op, include, exclude)
-				with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-				with FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O]
-
+			new PatchedMapping[S, O](this, op, include, exclude) with Proxy
 
 		override def prefixed(prefix :String) :FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			if (prefix.length == 0)
-				this
-			else
-				new PrefixedMapping[this.type, S, O](prefix, this)
-					with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-					with FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O]
+			if (prefix.length == 0) this
+			else new PrefixedMapping[S, O](prefix, this) with Proxy
 
 		override def renamed(naming :String => String) :FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] =
-			new RenamedMapping[this.type, S, O](this, naming)
-				with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-				with FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O]
+			new RenamedMapping[S, O](this, naming) with Proxy
 
 		override def reorder(permutation :IndexedSeq[Int]) :FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O] = {
 			ReorderedMapping.validatePermutation(this, permutation)
 			if (permutation == permutation.indices)
 				this
 			else
-				new ReorderedMapping[this.type, S, O](this, permutation)
-					with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-					with FlatIndexedSchemaMappingAdapter[M, T, S, V, C, O]
+				new ReorderedMappingComposedAdapter[M, S, O](this, permutation) with Proxy
 		}
 
 		override def as[X](there :S =?> X, back :X =?> S)(implicit nulls :NullValue[X])
@@ -1093,50 +1075,45 @@ object IndexedSchemaMapping {
 
 
 
+/*
 	trait FlatIndexedSchemaMappingProxy[+M <: FlatIndexedSchemaMapping[S, V, C, O], S, V <: Listing, C <: Chain, O]
 		extends FlatIndexedSchemaMappingAdapter[M, S, S, V, C, O] with IndexedSchemaMappingProxy[M, S, V, C, O]
 		   with FlatSchemaMappingProxy[M, S, V, C, O]
 	{
 		override val schema = body.schema
 
+		private trait Proxy
+			extends AbstractDelegateAdapter[M, S, O] with ExportDecorator[M, S, O]
+			   with DelegateFlatIndexedSchemaMapping[S, V, C, O] with FlatIndexedSchemaMappingProxy[M, S, V, C, O]
+		{
+			override val body = FlatIndexedSchemaMappingProxy.this.body
+		}
+
 		override def withBuffs(buffs :Buffs[S]) :FlatIndexedSchemaMappingAdapter[M, S, S, V, C, O] =
-			new BuffedMapping[this.type, S, O](this, buffs)
-				with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-				with ExportDecorator[M, S, O] with FlatIndexedSchemaMappingProxy[M, S, V, C, O]
+			new BuffedMapping[S, O](this, buffs) with Proxy
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatIndexedSchemaMappingAdapter[M, S, S, V, C, O] =
-			new AlteredMapping[this.type, S, O](this, include, exclude)
-				with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-				with ExportDecorator[M, S, O] with FlatIndexedSchemaMappingProxy[M, S, V, C, O]
+			new AlteredMapping[S, O](this, include, exclude) with Proxy
 
 		protected override def apply(op :OperationView, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:FlatIndexedSchemaMappingAdapter[M, S, S, V, C, O] =
-			new PatchedMapping[this.type, S, O](this, op, include, exclude)
-				with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-				with ExportDecorator[M, S, O] with FlatIndexedSchemaMappingProxy[M, S, V, C, O]
-
+			new PatchedMapping[S, O](this, op, include, exclude) with Proxy
 
 		override def prefixed(prefix :String) :FlatIndexedSchemaMappingAdapter[M, S, S, V, C, O] =
-			if (prefix.length == 0)
-				this
-			else
-				new PrefixedMapping[this.type, S, O](prefix, this)
-					with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-					with ExportDecorator[M, S, O] with FlatIndexedSchemaMappingProxy[M, S, V, C, O]
+			if (prefix.length == 0) this
+			else new PrefixedMapping[S, O](prefix, this) with Proxy
 
 		override def renamed(naming :String => String) :FlatIndexedSchemaMappingAdapter[M, S, S, V, C, O] =
-			new RenamedMapping[this.type, S, O](this, naming)
-				with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
-				with ExportDecorator[M, S, O] with FlatIndexedSchemaMappingProxy[M, S, V, C, O]
+			new RenamedMapping[S, O](this, naming) with Proxy
 
 		override def reorder(permutation :IndexedSeq[Int]) :FlatIndexedSchemaMappingAdapter[M, S, S, V, C, O] = {
 			ReorderedMapping.validatePermutation(this, permutation)
 			if (permutation == permutation.indices)
 				this
 			else
-				new ReorderedMapping[this.type, S, O](this, permutation)
-					with ComposedAdapter[M, S, S, O] with DelegateFlatIndexedSchemaMapping[S, V, C, O]
+				new ReorderedMappingComposedAdapter[M, S, O](this, permutation)
+					with DelegateFlatIndexedSchemaMapping[S, V, C, O]
 					with FlatIndexedSchemaMappingProxy[M, S, V, C, O]
 		}
 	}
@@ -1154,7 +1131,7 @@ object IndexedSchemaMapping {
 	{
 		override val schema = backer.schema
 	}
-
+*/
 
 
 

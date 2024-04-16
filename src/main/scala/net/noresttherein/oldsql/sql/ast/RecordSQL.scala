@@ -266,7 +266,7 @@ object LabeledSQL {
 		extends MatchSpecificLabeled[F, S, X, Y] with CaseSpecificRecord[F, S, X, Y]
 	{
 		override def record[V <: Listing](e :RecordSQL[F, S, V])(implicit isListing :X =:= V) :Y =
-			e match {
+			(e : @nowarn) match {
 				case labeled :LabeledSQL[F, S, i, k, l] => this.labeled(labeled)
 				case EmptySQL => empty(isListing.asInstanceOf[X =:= @~])
 			}
@@ -284,7 +284,7 @@ object LabeledSQL {
 	{
 //		override def emptyLabeled :Y[Single, @~] = empty
 		override def record[S >: Grouped <: Single, X <: Listing](e :RecordSQL[F, S, X]) :Y[S, X] =
-			(e match {
+			((e : @nowarn) match {
 				case labeled :LabeledSQL[F, S, i, k, l] => this.labeled(labeled)
 				case EmptySQL => empty
 			}).castFrom[Y[S, _], Y[S, X]]

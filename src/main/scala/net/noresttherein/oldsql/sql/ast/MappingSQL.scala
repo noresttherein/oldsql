@@ -1118,9 +1118,9 @@ object MappingSQL {
 		protected override def decorate[E <: RowProduct, C >: Grouped <: Single, X]
 		                               (e :SQLExpression[E, C, X]) :MappingSQL[E, C, M, X] =
 			e match {
-				case unaligned :UnalignedMappingSQL[E, C, M @unchecked, V] if unaligned.mapping identical mapping =>
+				case unaligned :UnalignedMappingSQL[E, C, M, V] @unchecked if unaligned.mapping identical mapping =>
 					unaligned
-				case value     :MappingSQL[E, C, M @unchecked, V] if value.mapping identical mapping =>
+				case value     :MappingSQL[E, C, M, V] @unchecked if value.mapping identical mapping =>
 					new UnalignedMappingSQL(value)
 				case _ =>
 					throw new IllegalExpressionException(

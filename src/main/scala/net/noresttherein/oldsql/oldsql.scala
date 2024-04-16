@@ -42,7 +42,7 @@ package object oldsql {
 
 	private[oldsql] object Seal {
 		@inline def apply() :Seal = instance
-		implicit final val instance = new Seal
+		implicit final val instance :Seal = new Seal
 	}
 
 	/** A value wrapper with visibility restricted to package `oldsql`, ensuring that any definition including it

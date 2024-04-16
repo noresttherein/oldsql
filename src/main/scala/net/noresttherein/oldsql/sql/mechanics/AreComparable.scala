@@ -151,7 +151,7 @@ sealed trait =~=[L, R] extends Interoperable[L, R] { self =>
 	override val swap :Swap
 
 	override def canEqual(that :Any) :Boolean = that.isInstanceOf[=~=[_, _]]
-	override def toString :String = left + "=~=" + right
+	override def toString :String = left.toString + "=~=" + right
 }
 
 

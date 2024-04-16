@@ -88,7 +88,7 @@ object PolyConstructor {
 
 
 
-abstract class MultiPolyConstructor[X, Y, +Res](x :X) extends PolyConstructor[X, Y, Res](x) {
+abstract class MultiPolyConstructor[X, Y, +Res](x :X) extends PolyConstructor[X, Y, Res] {
 	override def apply(item :Y) :Res = apply(item :: Nil)
 
 	def apply(items :Seq[Y]) :Res

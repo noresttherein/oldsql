@@ -60,6 +60,8 @@ package object schema {
 	  */
 	type MappingExtract[-S, T, O] = SpecificExtract[TypedMapping[T, O], S, T, O]
 
+	type GenericExtract[+M[s, o] <: TypedMapping[s, o], S, T, O] = SpecificExtract[M[T, O], S, T, O]
+
 	/** A `MappingExtract` for a column with subject type `T` of a parent mapping with subject type `S` and origin
 	  * type `O`.
 	  * @see [[net.noresttherein.oldsql.schema.MappingExtract]]
@@ -171,11 +173,10 @@ package object schema {
 	                    (mapping :TypedMapping[S, O])
 	                    (extracts :NaturalMap[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract])
 			:NaturalMap[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract] =
-		filterColumnExtracts(mapping.toString)(extracts)
+		filterColumnExtracts(extracts)
 
 
 	private[oldsql] def filterColumnExtracts[S, O]
-	                    (mapping: => String)
 	                    (extracts :NaturalMap[TypedMapping[S, O]#Component, TypedMapping[S, O]#Extract])
 			:NaturalMap[TypedMapping[S, O]#Column, TypedMapping[S, O]#ColumnExtract] =
 	{

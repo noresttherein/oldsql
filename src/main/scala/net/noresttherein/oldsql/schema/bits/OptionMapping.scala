@@ -100,7 +100,7 @@ object OptionMapping {
 	{
 		def this(get :M) = this(get, Extractor.Requisite(Some(_:S)), Extractor.fromOption[S])
 
-		private[this] val backerExtract = apply(get)
+		private[this] val backerExtract = this(get)
 
 		override def assemble(values: Pieces): Opt[Option[S]] = Got(values.get(backerExtract).toOption)
 
@@ -116,7 +116,7 @@ object OptionMapping {
 	{
 		def this(get :M) = this(get, Extractor.Requisite(Some(_:S)), Extractor.fromOption[S])
 
-		private[this] val backerExtract = apply(get)
+		private[this] val backerExtract = this(get)
 
 		override def assemble(values: Pieces): Opt[Option[S]] = Got(values.get(backerExtract).toOption)
 	}

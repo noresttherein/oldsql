@@ -3,14 +3,14 @@ package net.noresttherein.oldsql.schema.support
 import net.noresttherein.oldsql.OperationView
 import net.noresttherein.oldsql.collection.{NaturalMap, Opt}
 import net.noresttherein.oldsql.morsels.Extractor.=?>
-import net.noresttherein.oldsql.schema.{Buffs, ColumnForm, Mapping, Seal, SQLForm}
+import net.noresttherein.oldsql.schema.{Buffs, ColumnForm, Mapping, SQLForm, Seal}
 import net.noresttherein.oldsql.schema.ColumnMapping.{ColumnAt, SimpleColumn, StableColumn, TypedColumn}
 import net.noresttherein.oldsql.schema.Mapping.{MappingAt, TypedMapping}
 import net.noresttherein.oldsql.schema.Mapping.OriginProjection.{ExactProjection, ProjectionDef}
 import net.noresttherein.oldsql.schema.SQLForm.NullValue
 import net.noresttherein.oldsql.schema.bases.{BaseColumn, BaseMapping}
-import net.noresttherein.oldsql.schema.support.MappingAdapter.{BaseAdapter, ComposedAdapter}
-import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.{ComposedColumnAdapter, ExportComposedColumnAdapter}
+import net.noresttherein.oldsql.schema.support.MappingAdapter.{AbstractDelegateAdapter, BaseAdapter}
+import net.noresttherein.oldsql.schema.support.MappingAdapter.ColumnAdapter.ExportComposedColumnAdapter
 import net.noresttherein.oldsql.schema.support.MappingDecorator.ExportDecorator
 import net.noresttherein.oldsql.schema.support.MappingProxy.{DirectProxy, ExportColumnProxy}
 import net.noresttherein.oldsql.schema.support.ReorderedMapping.ReorderedMappingComposedAdapter
@@ -192,11 +192,11 @@ object MappingAdapter {
 		override def withBuffs(buffs :Buffs[S]) :MappingAdapter[M, S, O] = BuffedMapping(this, buffs)
 
 		override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :MappingAdapter[M, S, O] =
-			new AlteredMapping[this.type, S, O](this, include, exclude) with ComposedAdapter[M, S, S, O]
+			AlteredMapping(this, include, exclude)
 
 		protected override def apply(op :OperationView, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 				:MappingAdapter[M, S, O] =
-			new PatchedMapping[this.type, S, O](this, op, include, exclude) with ComposedAdapter[M, S, S, O]
+			PatchedMapping(op, this, include, exclude)
 
 		override def prefixed(prefix :String) :MappingAdapter[M, S, O] =
 			if (prefix.length == 0) this else PrefixedMapping(prefix, this)
@@ -510,29 +510,28 @@ object MappingAdapter {
   * with its `body`.
   */ //consider: extending AbstractDelegateAdapter
 trait MappingDecorator[+M <: TypedMapping[S, O], S, O] extends BaseAdapter[M, S, O] {
+	private trait Decorator extends ExportDecorator[M, S, O] with AbstractDelegateAdapter[M, S, O] {
+		override val body = MappingDecorator.this.body
+	}
+
 	override def withBuffs(buffs :Buffs[S]) :MappingAdapter[M, S, O] =
-		new BuffedMapping[this.type, S, O](this, buffs)
-			with ComposedAdapter[M, S, S, O] with ExportDecorator[M, S, O]
+		new BuffedMapping[S, O](this, buffs) with Decorator
 
 	override def apply(include :Iterable[Component[_]], exclude :Iterable[Component[_]]) :MappingAdapter[M, S, O] =
-		new AlteredMapping[this.type, S, O](this, include, exclude)
-			with ComposedAdapter[M, S, S, O] with ExportDecorator[M, S, O]
+		new AlteredMapping[S, O](this, include, exclude) with Decorator
 
 	protected override def apply(op :OperationView, include :Iterable[Component[_]], exclude :Iterable[Component[_]])
 			:MappingAdapter[M, S, O] =
-		new PatchedMapping[this.type, S, O](this, op, include, exclude)
-			with ComposedAdapter[M, S, S, O] with ExportDecorator[M, S, O]
+		new PatchedMapping[S, O](this, op, include, exclude) with Decorator
 
 	override def prefixed(prefix :String) :MappingAdapter[M, S, O] =
 		if (prefix.length == 0)
 			this
 		else
-			new PrefixedMapping[this.type, S, O](prefix, this)
-				with ComposedAdapter[M, S, S, O] with ExportDecorator[M, S, O]
+			new PrefixedMapping[S, O](prefix, this) with Decorator
 
 	override def renamed(naming :String => String) :MappingAdapter[M, S, O] =
-		new RenamedMapping[this.type, S, O](this, naming)
-			with ComposedAdapter[M, S, S, O] with ExportDecorator[M, S, O]
+		new RenamedMapping[S, O](this, naming) with Decorator
 
 	override def reorder(permutation :IndexedSeq[Int]) :MappingAdapter[M, S, O] = {
 		ReorderedMapping.validatePermutation(this, permutation)

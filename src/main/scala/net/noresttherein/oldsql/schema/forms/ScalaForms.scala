@@ -190,130 +190,130 @@ trait ScalaForms extends ScalaReadForms with ScalaWriteForms {
 
 	//implicit conversions from tuples of forms
 	
-	implicit def toTuple2Form[A, B](t :(SQLForm[A], SQLForm[B])) = 
+	implicit def toTuple2Form[A, B](t :(SQLForm[A], SQLForm[B])) :Tuple2Form[A, B] =
 		new Tuple2Form(t._1, t._2)
 	
-	implicit def toTuple3Form[A, B, C](t :(SQLForm[A], SQLForm[B], SQLForm[C])) =
+	implicit def toTuple3Form[A, B, C](t :(SQLForm[A], SQLForm[B], SQLForm[C])) :Tuple3Form[A, B, C] =
 		new Tuple3Form(t._1, t._2, t._3)
 
-	implicit def toTuple4Form[A, B, C, D](t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D])) =
+	implicit def toTuple4Form[A, B, C, D](t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D])) :Tuple4Form[A, B, C, D] =
 		new Tuple4Form(t._1, t._2, t._3, t._4)
 	
 	implicit def toTuple5Form[A, B, C, D, E]
-	                         (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E])) =
+	                         (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E]))
+			:Tuple5Form[A, B, C, D, E] =
 		new Tuple5Form(t._1, t._2, t._3, t._4, t._5)
 	
 	implicit def toTuple6Form[A, B, C, D, E, F]
-	                         (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                              SQLForm[F])) =
+	                         (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F]))
+			:Tuple6Form[A, B, C, D, E, F] =
 		new Tuple6Form(t._1, t._2, t._3, t._4, t._5, t._6)
 	
 	implicit def toTuple7Form[A, B, C, D, E, F, G]
-	                         (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                              SQLForm[F], SQLForm[G])) =
+	                         (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G]))
+			:Tuple7Form[A, B, C, D, E, F, G] =
 		new Tuple7Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7)
 	
 	implicit def toTuple8Form[A, B, C, D, E, F, G, H]
-	                         (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                              SQLForm[F], SQLForm[G], SQLForm[H])) =
+	                         (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                         SQLForm[H])) :Tuple8Form[A, B, C, D, E, F, G, H] =
 		new Tuple8Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8)
 	
 	implicit def toTuple9Form[A, B, C, D, E, F, G, H, I]
-	                         (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                              SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I])) =
+	                         (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                         SQLForm[H], SQLForm[I])) :Tuple9Form[A, B, C, D, E, F, G, H, I] =
 		new Tuple9Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9)
 		
 	implicit def toTuple10Form[A, B, C, D, E, F, G, H, I, J]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                               SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J])) :Tuple10Form[A, B, C, D, E, F, G, H, I, J] =
 		new Tuple10Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10)
 		
 	implicit def toTuple11Form[A, B, C, D, E, F, G, H, I, J, K]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                               SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J],
-	                               SQLForm[K])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J], SQLForm[K]))
+			:Tuple11Form[A, B, C, D, E, F, G, H, I, J, K] =
 		new Tuple11Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11)
 		
 	implicit def toTuple12Form[A, B, C, D, E, F, G, H, I, J, K, L]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                               SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J],
-	                               SQLForm[K], SQLForm[L])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J], SQLForm[K], SQLForm[L]))
+			:Tuple12Form[A, B, C, D, E, F, G, H, I, J, K, L] =
 		new Tuple12Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11, t._12)
 		
 	implicit def toTuple13Form[A, B, C, D, E, F, G, H, I, J, K, L, M]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                               SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J],
-	                               SQLForm[K], SQLForm[L], SQLForm[M])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J], SQLForm[K], SQLForm[L], SQLForm[M]))
+			:Tuple13Form[A, B, C, D, E, F, G, H, I, J, K, L, M] =
 		new Tuple13Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11, t._12, t._13)
 		
 	implicit def toTuple14Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                               SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J],
-	                               SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J], SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N]))
+			:Tuple14Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N] =
 		new Tuple14Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10, t._11, t._12, t._13, t._14)
 		
 	implicit def toTuple15Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                               SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J],
-	                               SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N], SQLForm[O])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J], SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N],
+		                          SQLForm[O])) :Tuple15Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O] =
 		new Tuple15Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10,
 	                    t._11, t._12, t._13, t._14, t._15)
 		
 	implicit def toTuple16Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-		                           SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J],
-		                           SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N], SQLForm[O],
-		                           SQLForm[P])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J], SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N],
+		                          SQLForm[O], SQLForm[P]))
+			:Tuple16Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P] =
 		new Tuple16Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10,
 	                    t._11, t._12, t._13, t._14, t._15, t._16)
 		
 	implicit def toTuple17Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                               SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J],
-	                               SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N], SQLForm[O],
-	                               SQLForm[P], SQLForm[Q])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J], SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N],
+		                          SQLForm[O], SQLForm[P], SQLForm[Q]))
+			:Tuple17Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q] =
 		new Tuple17Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10,
 	                    t._11, t._12, t._13, t._14, t._15, t._16, t._17)
 		
 	implicit def toTuple18Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                               SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J],
-	                               SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N], SQLForm[O],
-	                               SQLForm[P], SQLForm[Q], SQLForm[R])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J], SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N],
+		                          SQLForm[O], SQLForm[P], SQLForm[Q], SQLForm[R]))
+			:Tuple18Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R] =
 		new Tuple18Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10,
 	                    t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18)
 		
 	implicit def toTuple19Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                               SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J],
-	                               SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N], SQLForm[O],
-	                               SQLForm[P], SQLForm[Q], SQLForm[R], SQLForm[S])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J], SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N],
+		                          SQLForm[O], SQLForm[P], SQLForm[Q], SQLForm[R], SQLForm[S]))
+			:Tuple19Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S] =
 		new Tuple19Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10,
 	                    t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19)
 		
 	implicit def toTuple20Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                               SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J],
-	                               SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N], SQLForm[O],
-	                               SQLForm[P], SQLForm[Q], SQLForm[R], SQLForm[S], SQLForm[T])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J], SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N],
+		                          SQLForm[O], SQLForm[P], SQLForm[Q], SQLForm[R], SQLForm[S], SQLForm[T]))
+			:Tuple20Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T] =
 		new Tuple20Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10,
 	                    t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19, t._20)
 		
 	implicit def toTuple21Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                               SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J],
-	                               SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N], SQLForm[O],
-	                               SQLForm[P], SQLForm[Q], SQLForm[R], SQLForm[S], SQLForm[T],
-	                               SQLForm[U])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J], SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N],
+		                          SQLForm[O], SQLForm[P], SQLForm[Q], SQLForm[R], SQLForm[S], SQLForm[T], SQLForm[U]))
+			:Tuple21Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U] =
 		new Tuple21Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10,
 	                    t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19, t._20, t._21)
 		
 	implicit def toTuple22Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V]
-	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E],
-	                               SQLForm[F], SQLForm[G], SQLForm[H], SQLForm[I], SQLForm[J],
-	                               SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N], SQLForm[O],
-	                               SQLForm[P], SQLForm[Q], SQLForm[R], SQLForm[S], SQLForm[T],
-	                               SQLForm[U], SQLForm[V])) =
+	                          (t :(SQLForm[A], SQLForm[B], SQLForm[C], SQLForm[D], SQLForm[E], SQLForm[F], SQLForm[G],
+		                          SQLForm[H], SQLForm[I], SQLForm[J], SQLForm[K], SQLForm[L], SQLForm[M], SQLForm[N],
+		                          SQLForm[O], SQLForm[P], SQLForm[Q], SQLForm[R], SQLForm[S], SQLForm[T], SQLForm[U],
+		                          SQLForm[V]))
+			:Tuple22Form[A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V] =
 		new Tuple22Form(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10,
 	                    t._11, t._12, t._13, t._14, t._15, t._16, t._17, t._18, t._19, t._20, t._21, t._22)
 	
@@ -322,9 +322,6 @@ trait ScalaForms extends ScalaReadForms with ScalaWriteForms {
 
 
 
-
-
-	
 	private[schema] case class Tuple2Form[L, R](_1 :SQLForm[L], _2 :SQLForm[R])
 		extends AbstractTuple2ReadForm[L, R] with AbstractTuple2WriteForm[L, R] with SQLForm[(L, R)]
 	{

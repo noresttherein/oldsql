@@ -142,6 +142,7 @@ object Incantation {
 
 
 	/** Doesn't close the statement after returning the result - used with lazy collections. */
+	@nowarn("cat=unused")
 	private trait LazyBatchedIncantation[-Args, +Res] extends BatchedIncantation[Args, Res] {
 		override def apply(args :Args)(implicit tx :SQLTransaction) :Res = {
 			val stmt = prepare
@@ -254,6 +255,7 @@ object Incantation {
 	}
 
 
+	@nowarn("cat=unused")
 	private trait LazyExecutePreparedStatement[-Args, +Res] extends ExecutePreparedStatement[Args, Res] {
 		override def apply(args :Args)(implicit tx :SQLTransaction) :Res = {
 			val stmt = prepare

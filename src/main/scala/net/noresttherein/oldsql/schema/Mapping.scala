@@ -1334,6 +1334,16 @@ object Mapping extends Rank1MappingImplicits {
 	  * other templates for various mixins and specialist mapping implementations of kind `Comp`
 	  * shared with all their [[net.noresttherein.oldsql.schema.Mapping.MappingTemplate.export export]] components,
 	  * Note that the mapping can still have non-export components/columns of generic `Mapping`/`TypedColumn` types.
+	  * @tparam Comp $ComponentParamInfo
+	  * @tparam Col  $ColumnParamInfo
+	  * @define ComponentParamInfo A type constructor for a `Mapping` subtype being a supertype of this mapping
+	  *                            and all its ''export'' components. Its type parameters define
+	  *                            the component's [[net.noresttherein.oldsql.schema.Mapping.Subject Subject]]
+	  *                            and [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] types, respectively.
+	  *                            Due to technical difficulties, it is not used as a self type for this trait,
+	  *                            but any concrete subclass must be also a subtype of `Comp[this.Subject, this.Origin]`.
+	  * @define ColumnParamInfo A type constructor for a `TypedColumn` subtype being a supertype
+	  *                         of all ''export'' columns.
 	  * @define mapping `Mapping`
 	  * @define column `TypedColumn`
 	  * @define ExportSubcomponentsInfo [[net.noresttherein.oldsql.schema.Mapping.export Export]] columns
@@ -1342,14 +1352,7 @@ object Mapping extends Rank1MappingImplicits {
 	  *                                 [[net.noresttherein.oldsql.schema.Mapping.columns component.columns]]
 	  *                                 may return columns with invalid - from the point of view of this mapping -
 	  *                                 [[net.noresttherein.oldsql.schema.Mapping.buffs buffs]] or even names.
-	  * @tparam Comp A type constructor for a `Mapping` subtype being a supertype of this mapping and
-	  *              all its ''export'' components. Its type parameters define
-	  *              the component's [[net.noresttherein.oldsql.schema.Mapping.Subject Subject]]
-	  *              and [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] types, respectively.
-	  *              Due to technical difficulties, it is not used as a self type for this trait, but any concrete
-	  *              subclass must be also a subtype of `Comp[this.Subject, this.Origin]`.
-	  * @tparam Col A type constructor for a `TypedColumn` subtype being a supertype of all ''export'' columns.
-	  */
+	  */ //TODO: BaseMappingTemplate[Comp[v] <: TypedMapping[v, O], Col[v] <: TypedColumn[v, O] with Comp[v, O], S, O]
 	trait MappingTemplate[+Comp[T, Q] <: TypedMapping[T, Q], +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q]] {
 		//consider: we could try to make type parameters member types instead, moving back everything to mapping
 		//  this would mean that MappingFrame etc. could extend this trait.
@@ -1393,13 +1396,13 @@ object Mapping extends Rank1MappingImplicits {
 		  */ //mention the alternative of refining this.type instead of accepting it as a parameter
 		type Origin
 
-                /** A refinement of this object's singleton type defining its [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type.
-                  * It is particularily useful for mapping components defined as member objects (and inheriting `Origin` from the enclosing mapping 
-                  * and [[net.noresthterein.oldsql.schema.TableMapping TableMapping]] singleton objects, which do not define `Origin` in any way. 
-                  * It allows the use of a mapping object as a type parameter to [[net.noresttherein.oldsql.sql.From From]],
-                  * [[net.noresttherein.oldsql.sql.Join Join]] and related classes: `From[Mages.withOrigin]`.
-                  */ //consider: renaming to Of/of, from
-                type withOrigin[O] = this.type { type Origin = O }
+        /** A refinement of this object's singleton type defining its [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type.
+          * It is particularly useful for mapping components defined as member objects (and inheriting `Origin` from the enclosing mapping
+          * and [[net.noresttherein.oldsql.schema.TableMapping TableMapping]] singleton objects, which do not define `Origin` in any way.
+          * It allows the use of a mapping object as a type parameter to [[net.noresttherein.oldsql.sql.From From]],
+          * [[net.noresttherein.oldsql.sql.Join Join]] and related classes: `From[Mages.withOrigin]`.
+          */ //consider: renaming to Of/of, from
+        type withOrigin[O] = this.type { type Origin = O }
 
 		/** A refinement of type `Mapping` defining its [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type.
 		  * It is an abstract type bound: concrete implementations for classes from application's domain model
@@ -1460,7 +1463,7 @@ object Mapping extends Rank1MappingImplicits {
 		  * It is used by specific subtypes of `Mapping` whose components are all of type `M[T, Origin]`.
 		  * @see [[net.noresttherein.oldsql.schema.Mapping.MappingTemplate.specific]]
 		  * @see [[net.noresttherein.oldsql.schema.Mapping.MappingTemplate]]
-		  */
+		  */ //todo: rename to specific
 		type like[M[T, O] <: TypedMapping[T, O]] = {
 			/** A mapping `M` with [[net.noresttherein.oldsql.schema.Mapping.Subject Subject]] type `T`
 			  * and the same [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type as this mapping.
@@ -1529,7 +1532,7 @@ object Mapping extends Rank1MappingImplicits {
 		  * It is used to describe a specific component of `Mapping`.
 		  * @see [[net.noresttherein.oldsql.schema.Mapping.MappingTemplate.like]]
 		  * @see [[net.noresttherein.oldsql.schema.Mapping.MappingTemplate]]
-		  */
+		  */ //todo: rename to project
 		type specific[M[O] <: TypedMapping[_, O]] = {
 			/** A mapping instance of the specified type ''used solely as a path element'' to access member
 			  * types of `M[Origin]`. As no instances of the type container `specific` exists, neither `it`
@@ -2218,6 +2221,11 @@ object Mapping extends Rank1MappingImplicits {
 		/** A reference to this instance as a `TypedMapping` with its own `Origin` and `Subject` types.
 		  * This is a simple cast, and this method is final, so any extending type must be also a subtype of `Comp`.
 		  */
+		//Consider: it is final and returns this, but MappingTemplate doesn't have (and can't have) Comp self type.
+		// This is a potential problem for classes which extend MappingTemplate, but not Comp,
+		// such as DeepProxy.BackerMapping. However, the method is erased, and the only place
+		// where we depend on Comp return type (rather than Component) is in selfExtract, which is overridden
+		// in the proxy class. This is not ideal and we should refactor it.
 		final def refine :Comp[Subject, Origin] = this.asInstanceOf[Comp[Subject, Origin]]
 
 		/** The mapping of which this mapping is the export version (or in other way derived, while preserving
@@ -2240,7 +2248,7 @@ object Mapping extends Rank1MappingImplicits {
 		// ComponentSQL.{anchored, altered, export).original == ComponentSQL.mapping.
 		def original :Component[Subject] = refine
 
-		/** An identity extract for this very mapping. */
+		/** An identity extract for this very mapping. */ //consider: renaming to wholeExtract
 		protected def selfExtract :SpecificExtract[Comp[Subject, Origin], Subject, Subject, Origin] =
 			SpecificExtract.ident(refine)
 
@@ -2887,7 +2895,7 @@ object Mapping extends Rank1MappingImplicits {
 			if (component eq this)
 				extracts.getOrElse[like[Comp]#Extract, T](component, null) match {
 					case null =>
-						SpecificExtract.ident(refine).asInstanceOf[SpecificExtract[Comp[T, Origin], Subject, T, Origin]]
+						selfExtract.asInstanceOf[SpecificExtract[Comp[T, Origin], Subject, T, Origin]]
 					case ex => ex
 				}
 			else extracts(component)
@@ -4210,4 +4218,26 @@ object Mapping extends Rank1MappingImplicits {
 	}
 
 
+}
+
+
+/**
+  * @tparam Comp $ComponentParamInfo
+  * @tparam Col  $ColumnParamInfo
+  * @tparam S    $SubjectParamInfo
+  * @tparam O    $OriginParamInfo
+  * @define SubjectParamInfo [[net.noresttherein.oldsql.schema.Mapping.Subject Subject]] type, that is the type of objects
+  *                          read and written to a particular table (or a view, query, or table fragment).
+  * @define OriginParamInfo  A marker [[net.noresttherein.oldsql.schema.Mapping.Origin Origin]] type,
+  *                          used to distinguish between several instances of the same mapping class,
+  *                          but coming from different sources (especially different aliases for a table
+  *                          occurring more then once in a join). At the same time, it adds additional type safety
+  *                          by ensuring that only components of mappings included in a query can be used
+  *                          in creation of SQL expressions used by that query.
+  */
+trait SpecificMapping[+Comp[T, Q] <: TypedMapping[T, Q], +Col[T, Q] <: TypedColumn[T, Q] with Comp[T, Q], S, O]
+	extends Mapping with MappingTemplate[Comp, Col]
+{
+	override type Subject = S
+	override type Origin  = O
 }

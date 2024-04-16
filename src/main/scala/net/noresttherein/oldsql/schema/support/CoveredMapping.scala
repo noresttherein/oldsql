@@ -30,6 +30,7 @@ class CoveredMapping[M <: TypedMapping[S, X], S, X, O]
 //	def this(backer :M, columnPrefix :String) = this(backer, columnPrefix + _)
 
 	val body :M = backer
+	releaseFence()
 
 	protected override def adapt[T](component :backer.Component[T]) :Component[T] =
 		new CoveredMapping[TypedMapping[T, X], T, X, O](

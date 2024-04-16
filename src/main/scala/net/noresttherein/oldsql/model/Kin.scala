@@ -249,7 +249,7 @@ trait Kin[+T] extends Serializable {
 	  * @return `this ++ Derived.present(item::Nil)`.
 	  */
 	def +[E, U >: T](item :E)(implicit composition :U CollectionOf E) :Kin[U] =
-		this ++[E, List[E], U] Derived.many(item::Nil)
+		++[E, List[E], U](Derived.many(item::Nil))
 
 	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin encompassing all values of `E`
 	  * referenced by this instance and the value of the given kin. This is semantically equivalent to adding the given
@@ -258,7 +258,7 @@ trait Kin[+T] extends Serializable {
 	  * @return `this ++ item.singleton`.
 	  */
 	def +[E, U >: T](item :Kin[E])(implicit composition :U CollectionOf E) :Kin[U] =
-		this ++[E, List[E], U] item.singleton(List)
+		++[E, List[E], U](item.singleton(List))
 
 	/** Creates a [[net.noresttherein.oldsql.model.Kin.Derived derived]] kin encompassing all values of `E`
 	  * referenced by this instance and the given value. This is semantically equivalent to prepending
@@ -268,7 +268,7 @@ trait Kin[+T] extends Serializable {
 	  * @return `Derived.present(item::Nil) ++: this`.
 	  */
 	def +:[E, U >: T](item :E)(implicit composition :U CollectionOf E) :Kin[U] =
-		Derived.many(item::Nil) ++:[E, List[E], U] this
+		++:[E, List[E], U](Derived.many(item::Nil))
 
 	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin encompassing all values of `E`
 	  * referenced by this instance and the value of the given kin. This is semantically equivalent to prepending
@@ -279,7 +279,7 @@ trait Kin[+T] extends Serializable {
 	  * @return `item.singleton ++: this`.
 	  */
 	def +:[E, U >: T](item :Kin[E])(implicit composition :U CollectionOf E) :Kin[U] =
-		item.singleton(List) ++:[E, List[E], U] this
+		++:[E, List[E], U](item.singleton(List))
 
 	/** Creates a [[net.noresttherein.oldsql.model.Kin.Derived derived]] kin including all elements of
 	  * this and the given kin. This is semantically equivalent to creating a union of the two referenced logical
@@ -288,7 +288,7 @@ trait Kin[+T] extends Serializable {
 	  * @return `this ++ Derived.present(items)`.
 	  */
 	def ++[E, U >: T](items :Iterable[E])(implicit composition :U CollectionOf E) :Kin[U] =
-		this ++[E, Iterable[E], U] Derived.many(items)
+		++[E, Iterable[E], U](Derived.many(items))
 
 	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin including all elements of
 	  * this and the given kin. This is semantically equivalent to creating a union of the two referenced logical
@@ -299,8 +299,8 @@ trait Kin[+T] extends Serializable {
 	                    (implicit composition :U CollectionOf E, decomposition :X DecomposableTo E) :Kin[U] =
 		items match {
 			case composite :Derived[E @unchecked, X @unchecked]
-				if composite.composition compatibleWith decomposition => this ++[E, X, U] composite
-			case _ => this ++[E, U, U] Recomposed(items)(decomposition, composition.composer)
+				if composite.composition compatibleWith decomposition => ++[E, X, U](composite)
+			case _ => ++[E, U, U](Recomposed(items)(decomposition, composition.composer))
 		}
 
 	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin including all elements of
@@ -309,7 +309,7 @@ trait Kin[+T] extends Serializable {
 	  * to eagerly add the new element (if Present) instead of creating a collective proxy.
 	  */
 	def ++[E, X, U >: T](items :Kin.Derived[E, X])(implicit composition :U CollectionOf E) :Kin[U] =
-		Recomposed(this)(composition.decomposer, composition.composer) ++[E, X, U] items
+		Recomposed(this)(composition.decomposer, composition.composer).++[E, X, U](items)
 
 
 	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin including all elements of
@@ -320,7 +320,7 @@ trait Kin[+T] extends Serializable {
 	  * @return `Derived.present(items) ++: this`.
 	  */
 	def ++:[E, U >: T](items :Iterable[E])(implicit composition :U CollectionOf E) :Kin[U] =
-		Derived.many(items) ++:[E, Iterable[E], U] this
+		++:[E, Iterable[E], U](Derived.many(items))
 
 	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin including all elements of
 	  * this and the given kin. This is semantically equivalent to prepending the given logical collection
@@ -332,8 +332,8 @@ trait Kin[+T] extends Serializable {
 	                     (implicit composition :U CollectionOf E, decomposition :X DecomposableTo E) :Kin[U] =
 		items match {
 			case composite :Derived[E @unchecked, X @unchecked]
-				if composite.composition compatibleWith decomposition => composite ++:[E, X, U] this
-			case _ => Recomposed(items)(decomposition, composition.composer) ++:[E, U, U] this
+				if composite.composition compatibleWith decomposition => ++:[E, X, U](composite)
+			case _ => ++:[E, U, U](Recomposed(items)(decomposition, composition.composer))
 		}
 
 	/** Creates a [[net.noresttherein.oldsql.model.Kin.Collective$ collective]] kin including all elements of
@@ -343,7 +343,7 @@ trait Kin[+T] extends Serializable {
 	  * Present kin may opt to eagerly add the new element (if Present) instead of creating a collective proxy.
 	  */
 	def ++:[E, X, U >: T](items :Kin.Derived[E, X])(implicit composition :U CollectionOf E) :Kin[U] =
-		items ++:[E, X, U] Recomposed(this)(composition.decomposer, composition.composer)
+		Recomposed(this)(composition.decomposer, composition.composer).++:[E, X, U](items)
 
 	//todo: -
 	/** Create a kin for the value of property `property` of `T` in this kin. */
@@ -1335,26 +1335,26 @@ object Kin {
 
 
 		override def +[I, U >: T](item :I)(implicit composition :U CollectionOf I) :Derived[I, U] =
-			this ++[I, List[I], U] Derived.many(item::Nil)
+			++[I, List[I], U](Derived.many(item::Nil))
 
 		override def +[I, U >: T](item :Kin[I])(implicit composition :U CollectionOf I) :Derived[I, U] =
-			this ++[I, List[I], U] item.singleton(List)
+			++[I, List[I], U](item.singleton(List))
 
 		override def +:[I, U >: T](item :I)(implicit composition :U CollectionOf I) :Derived[I, U] =
-			Derived.many(item::Nil) ++:[I, List[I], U] this
+			++:[I, List[I], U](Derived.many(item::Nil))
 
 		override def +:[I, U >: T](item :Kin[I])(implicit composition :U CollectionOf I) :Derived[I, U] =
-			item.singleton(List) ++:[I, List[I], U] this
+			++:[I, List[I], U](item.singleton(List))
 
 		override def ++[I, U >: T](items :Iterable[I])(implicit composition :U CollectionOf I) :Derived[I, U] =
-			this ++[I, Iterable[I], U] Derived.many(items)
+			++[I, Iterable[I], U](Derived.many(items))
 
 		override def ++[I, X, U >: T](items :Kin[X])
 		                             (implicit composition :U CollectionOf I, decomposition :X DecomposableTo I) :Derived[I, U] =
 			items match {
 				case composite :Derived[I @unchecked, X @unchecked]
-					if composite.composition compatibleWith decomposition => this ++[I, X, U] composite
-				case _ => this ++[I, U, U] Recomposed(items)(decomposition, composition.composer)
+					if composite.composition compatibleWith decomposition => ++[I, X, U](composite)
+				case _ => ++[I, U, U](Recomposed(items)(decomposition, composition.composer))
 			}
 
 		override def ++[I, X, U >: T](items :Derived[I, X])(implicit composition :U CollectionOf I) :Derived[I, U] = {
@@ -1367,14 +1367,14 @@ object Kin {
 		}
 
 		override def ++:[I, U >: T](items :Iterable[I])(implicit composition :U CollectionOf I) :Derived[I, U] =
-			Derived.many(items) ++:[I, Iterable[I], U] this
+			++:[I, Iterable[I], U](Derived.many(items))
 
 		override def ++:[I, X, U >: T](items :Kin[X])
 		                              (implicit composition :U CollectionOf I, decomposition :X DecomposableTo I) :Derived[I, U] =
 			items match {
 				case composite :Derived[I @unchecked, X @unchecked]
-					if composite.composition compatibleWith decomposition => composite ++:[I, X, U] this
-				case _ => Recomposed(items)(decomposition, composition.composer) ++:[I, U, U] this
+					if composite.composition compatibleWith decomposition => ++:[I, X, U](composite)
+				case _ => ++:[I, U, U](Recomposed(items)(decomposition, composition.composer))
 			}
 
 		override def ++:[I, X, U >: T](items :Derived[I, X])(implicit composition :U CollectionOf I) :Derived[I, U] = {
@@ -1531,16 +1531,16 @@ object Kin {
 			override def items :Option[Iterable[E]] = None
 		}
 
-		@SerialVersionUID(KinVer)
-		private class RecomposedKin[E, X, +T](val kin :Kin[X])(implicit val decomposition :X DecomposableTo E,
-		                                                       override val composition :T ComposableFrom E)
-			extends Derived[E, T]
-		{
-			override def isMissing = kin.isMissing
-			override def isPresent = kin.isPresent
-			override def items :Option[Iterable[E]] = kin.toOption.map(decomposition.apply)
-			override lazy val toOption = kin.toOption.map(x => composition(decomposition(x)))
-		}
+//		@SerialVersionUID(KinVer)
+//		private class RecomposedKin[E, X, +T](val kin :Kin[X])(implicit val decomposition :X DecomposableTo E,
+//		                                                       override val composition :T ComposableFrom E)
+//			extends Derived[E, T]
+//		{
+//			override def isMissing = kin.isMissing
+//			override def isPresent = kin.isPresent
+//			override def items :Option[Iterable[E]] = kin.toOption.map(decomposition.apply)
+//			override lazy val toOption = kin.toOption.map(x => composition(decomposition(x)))
+//		}
 
 		@SerialVersionUID(KinVer)
 		private[oldsql] class LazyDerived[E, +T](value: => T)(implicit composite :T ComposedOf E)
@@ -1795,9 +1795,9 @@ object Kin {
 			else
 				new Property[E, X, P, T](owners, property) {
 					override lazy val toOption = value orElse owner.items.map {
-						items => this.composition(items.view.map(property.fun))
+						items => this.composition(items.view.map(this.property.fun))
 					}
-					private def writeReplace = new Property(owners, property, toOption)(this.composition)
+					private def writeReplace = new Property(owners, this.property, toOption)(this.composition)
 				}
 
 		/** Create a lazy kin for the value of property `property` of the value `E` of kin `owner`. */
