@@ -431,14 +431,14 @@ object Relation {
 	  * certain optional components.
 	  *
 	  * If this class is extended and some [[net.noresttherein.oldsql.schema.Relation.RelationTemplate RelationTemplate]]
-	  * subtype is mixed in after it, then `alter` method must be overriden to delegate to the implementation
+	  * subtype is mixed in after it, then `alter` method must be overridden to delegate to the implementation
 	  * in this class, as otherwise `default` would be incorrectly set to the altered `this` mapping.
 	  * @param includes Export Components of mapping `default.row` which should be included in all operations
 	  *                 on this relation, if possible. This list must not include altered components of `default.export`.
 	  * @param excludes Export components of mapping `default.row` which should be excluded from all operations
 	  *                 on this relation, if possible. This list must not include altered components of `default.export`.
 	  */
-	class AlteredRelation[M[O] <: MappingAt[O], R <: Relation[M] with RelationTemplate[M, R]]
+	class AlteredRelation[M[O] <: MappingAt[O], +R <: Relation[M] with RelationTemplate[M, R]]
 	                     (override val default :R,
 	                      val includes :Unique[TypedMapping[_, _]], val excludes :Unique[TypedMapping[_, _]])
 		extends Relation[M]
@@ -518,6 +518,18 @@ object Relation {
 
 		override def refString :String = default.refString
 		override def toString :String = alteredString
+	}
+
+	/** A convenience base class for altered [[net.noresttherein.oldsql.schema.Relation.NamedRelation named relations]],
+	  * having the same name as the underlying relation. This is an implementation class; users of its instances
+	  * should not depend on this interface.
+	  */
+	class NamedAlteredRelation[M[O] <: MappingAt[O], +R <: NamedRelation[M] with RelationTemplate[M, R]]
+	                          (override val default :R,
+	                           includes :Unique[TypedMapping[_, _]], excludes :Unique[TypedMapping[_, _]])
+		extends AlteredRelation[M, R](default, includes, excludes) with NamedRelation[M]
+	{
+		override def name :String = default.name
 	}
 
 
